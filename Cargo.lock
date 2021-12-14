@@ -17,3 +17,6 @@ version = "0.1.0"
 [[package]]
 name = "txt_assembler"
 version = "0.1.0"
+dependencies = [
+ "model",
+]
