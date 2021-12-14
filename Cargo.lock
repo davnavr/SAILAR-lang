@@ -3,5 +3,17 @@
 version = 3
 
 [[package]]
+name = "asmdl"
+version = "0.1.0"
+
+[[package]]
 name = "model"
+version = "0.1.0"
+
+[[package]]
+name = "runmdl"
+version = "0.1.0"
+
+[[package]]
+name = "txt_assembler"
 version = "0.1.0"
