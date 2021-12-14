@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "asmdl",
-    "txt_assembler",
-    "model",
-    "runmdl",
+    "asmdl_cli",
+    "registir",
 ]
