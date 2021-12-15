@@ -57,17 +57,6 @@ pub struct VersionNumbers(pub LengthEncodedVector<uvarint>);
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct Identifier(LengthEncodedVector<u8>);
 
-impl Identifier {
-    pub fn with_bytes(bytes: Vec<u8>) -> Identifier {
-        Identifier(LengthEncodedVector(bytes))
-    }
-
-    pub fn bytes(&self) -> &Vec<u8> {
-        let Identifier(LengthEncodedVector(bytes)) = self;
-        bytes
-    }
-}
-
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub enum PrimitiveType {
     U8,
@@ -116,7 +105,15 @@ pub enum AnyType {
     GC(NonStackType),
     /// A pointer to a field or array element that is tracked by the garbage collector.
     Heap(NonStackType),
-    Ref(ReferenceType),
+    Ref(ReferenceType)
+}
+
+/// Describes the return types and parameter types of a method.
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub struct MethodSignature {
+    /// The types of the values returned by the method.
+    pub return_types: Vec<TypeSignatureIndex>,
+    pub parameter_types: Vec<TypeSignatureIndex>
 }
 
 /// Describes the features that a module makes use of.
@@ -145,7 +142,8 @@ impl ModuleHeader {
     pub fn field_count(&self) -> uvarint { MAX_HEADER_FIELD_COUNT }
 }
 
-pub type ModuleData<T> = Option<ByteLengthEncoded<T>>;
+pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
+pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(5);
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
@@ -153,26 +151,41 @@ pub struct Module {
     pub format_version: FormatVersion,
     //pub data_count: (),
     /// The header, which identifies and describes the module.
-    pub header: ModuleData<ModuleHeader>,
+    pub header: ByteLengthEncoded<ModuleHeader>,
     /// An array containing the names of the types, namespaces, fields, and methods.
-    pub identifiers: ModuleData<LengthEncodedVector<Identifier>>,
+    pub identifiers: ByteLengthEncoded<LengthEncodedVector<Identifier>>,
     /// An array of the namespaces containing the imported and defined types.
-    pub namespaces: ModuleData<LengthEncodedVector<LengthEncodedVector<IdentifierIndex>>>,
-    pub type_signatures: ModuleData<LengthEncodedVector<AnyType>>,
+    pub namespaces: ByteLengthEncoded<LengthEncodedVector<LengthEncodedVector<IdentifierIndex>>>,
+    pub type_signatures: ByteLengthEncoded<LengthEncodedVector<AnyType>>,
+    pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>
+}
+
+impl Identifier {
+    pub fn with_bytes(bytes: Vec<u8>) -> Identifier {
+        Identifier(LengthEncodedVector(bytes))
+    }
+
+    pub fn bytes(&self) -> &Vec<u8> {
+        let Identifier(LengthEncodedVector(bytes)) = self;
+        bytes
+    }
+}
+
+impl<T> ByteLengthEncoded<T> {
+    pub fn data(&self) -> &T {
+        let ByteLengthEncoded(data) = self;
+        data
+    }
+}
+
+impl<T> LengthEncodedVector<T> {
+    pub fn len(&self) -> usize {
+        let LengthEncodedVector(items) = self;
+        items.len()
+    }
 }
 
 impl Module {
     /// Variable-length unsigned integer following the format version indicating the number of length encoded things to follow.
-    pub fn data_count(&self) -> uvarint {
-        macro_rules! count_data {
-            ($field: ident) => { self.$field.is_some() as u64 };
-        }
-
-        uvarint(
-            count_data!(header) +
-            count_data!(identifiers) +
-            count_data!(namespaces) +
-            count_data!(type_signatures)
-        )
-    }
+    pub fn data_count(&self) -> uvarint { MAX_MODULE_DATA_COUNT }
 }

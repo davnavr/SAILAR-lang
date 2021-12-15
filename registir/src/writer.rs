@@ -86,15 +86,6 @@ impl<T: BinWrite> BinWrite for format::LengthEncodedVector<T> {
     }
 }
 
-impl<D: BinWrite> BinWrite for format::ModuleData<D> {
-    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
-        match self {
-            Some(value) => value.write(destination),
-            None => format::uvarint::default().write(destination)
-        }
-    }
-}
-
 impl BinWrite for format::VersionNumbers {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let format::VersionNumbers(numbers) = self;
@@ -108,6 +99,8 @@ impl BinWrite for format::ModuleIdentifier {
         self.version.write(destination)
     }
 }
+
+
 
 impl BinWrite for format::ModuleHeader {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
