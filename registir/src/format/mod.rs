@@ -42,6 +42,8 @@ index_type!(ModuleIndex, "`0` refers to the current module, while the remaining 
 index_type!(TypeDefinitionIndex, "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types.");
 index_type!(FieldIndex, "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields.");
 index_type!(MethodIndex, "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods.");
+//
+index_type!(TypeLayoutIndex, "An index into the module's type layouts, which specify how the fields of a type's instances are arranged.");
 
 /// Represents data that is preceded by a variable-length unsigned integer indicating the byte length of the following data.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
@@ -286,7 +288,6 @@ bitflags! {
         const CONSTRUCTOR = Self::CONSTRUCTOR_OR_INITIALIZER.bits | Self::INSTANCE.bits;
         const INITIALIZER = Self::CONSTRUCTOR_OR_INITIALIZER.bits;
         const VIRTUAL = 0b0000_0100;
-        const VALID_MASK = 0b0000_0111;
     }
 }
 
@@ -298,9 +299,20 @@ bitflags! {
         const NOT_FINAL = 0b0000_0001;
         /// Instances of this type cannot be created.
         const ABSTRACT = 0b0000_0010;
-        const VALID_MASK = 0b0000_0011;
     }
 }
+
+macro_rules! flags_helpers {
+    ($name: ident) => {
+        impl $name {
+            pub fn is_valid(self) -> bool { $name::all().contains(self) }
+        }
+    };
+}
+
+flags_helpers!(FieldFlags);
+flags_helpers!(MethodFlags);
+flags_helpers!(TypeDefinitionFlags);
 
 #[derive(Debug)]
 pub struct TypeDefinitionImport {
@@ -315,14 +327,15 @@ pub struct TypeDefinitionImport {
 pub struct FieldImport {
     pub owner: TypeDefinitionIndex,
     pub name: IdentifierIndex,
+    //pub flags: FieldFlags,
     pub signature: TypeSignatureIndex,
 }
 
 #[derive(Debug)]
 pub struct MethodImport {
-    //pub flags: MethodFlags,
     pub owner: TypeDefinitionIndex,
     pub name: IdentifierIndex, // TODO: How to handle importing constructors, use flags?
+    //pub flags: MethodFlags,
     pub signature: MethodSignatureIndex,
     //pub type_parameters: (),
 }
@@ -334,15 +347,6 @@ pub struct ModuleImports {
     pub imported_types: ByteLengthEncoded<LengthEncodedVector<TypeDefinitionImport>>,
     pub imported_fields: ByteLengthEncoded<LengthEncodedVector<FieldImport>>,
     pub imported_methods: ByteLengthEncoded<LengthEncodedVector<MethodImport>>,
-}
-
-#[derive(Debug)]
-pub enum TypeDefinitionLayout {
-    /// The runtime or compiler is free to decide how the fields of the class or struct are laid out.
-    Unspecified,
-    /// The fields of the class or struct are laid out sequentially.
-    Sequential,
-    //Explicit { }
 }
 
 #[derive(Debug)] // TODO: Custom equality comparison to prevent overriding of method twice?
@@ -360,7 +364,7 @@ pub struct TypeDefinition {
     pub namespace: NamespaceIndex,
     pub visibility: Visibility,
     pub flags: TypeDefinitionFlags,
-    pub layout: TypeDefinitionLayout,
+    pub layout: TypeLayoutIndex,
     pub inherited_types: LengthEncodedVector<TypeDefinitionIndex>,
     pub fields: LengthEncodedVector<FieldIndex>,
     pub methods: LengthEncodedVector<MethodIndex>,
@@ -389,6 +393,28 @@ pub enum MethodBody {
     External { library: IdentifierIndex, entry_point_name: IdentifierIndex }
 }
 
+bitflags! {
+    #[repr(transparent)]
+    pub struct MethodImplementationFlags: u8 {
+        const DEFINED = 0;
+        /// The method body is not defined.
+        const NONE = 0b0000_0001;
+        const EXTERNAL = 0b0000_0010;
+    }
+}
+
+flags_helpers!(MethodImplementationFlags);
+
+impl MethodBody {
+    pub fn flags(&self) -> MethodImplementationFlags {
+        match self {
+            MethodBody::Defined(_) => MethodImplementationFlags::DEFINED,
+            MethodBody::Abstract => MethodImplementationFlags::NONE,
+            MethodBody::External { .. } => MethodImplementationFlags::EXTERNAL,
+        }
+    }
+}
+
 /// Represents a method, constructor, or initializer.
 /// 
 /// Valid constructors must have the [`MethodFlags::CONSTRUCTOR`] flags set, must have no type parameters, and must
@@ -402,10 +428,17 @@ pub struct Method {
     pub name: IdentifierIndex,
     pub visibility: Visibility,
     pub flags: MethodFlags,
+    //pub implementation_flags: MethodImplementationFlags,
     pub signature: MethodSignatureIndex,
+    /// The method body, in the binary format, this is where the structure for external methods would go.
     pub body: MethodBody,
     //pub annotations: LengthEncodedVector<>,
     //pub type_parameters: (),
+}
+
+impl Method {
+    /// Flags that describe how the method is implemented, placed after the [`flags`] field.
+    pub fn implementation_flags(&self) -> MethodImplementationFlags { self.body.flags() }
 }
 
 /// Contains the types, fields, and methods defined in the module.
@@ -417,6 +450,17 @@ pub struct ModuleDefinitions {
     pub defined_types: ByteLengthEncoded<LengthEncodedVector<TypeDefinition>>,
     pub defined_fields: ByteLengthEncoded<LengthEncodedVector<Field>>,
     pub defined_methods: ByteLengthEncoded<LengthEncodedVector<Method>>,
+}
+
+//
+
+#[derive(Debug)]
+pub enum TypeDefinitionLayout {
+    /// The runtime or compiler is free to decide how the fields of the class or struct are laid out.
+    Unspecified,
+    /// The fields of the class or struct are laid out sequentially.
+    Sequential,
+    //Explicit { }
 }
 
 /// Describes the features that a module makes use of.
@@ -466,6 +510,8 @@ pub struct Module {
     pub data_arrays: ByteLengthEncoded<DataArray>,
     pub imports: ByteLengthEncoded<ModuleImports>,
     pub definitions: ByteLengthEncoded<ModuleDefinitions>,
+    //
+    //pub type_layouts: ByteLengthEncoded<TypeDefinitionLayout>,
 }
 
 impl Identifier {

@@ -277,9 +277,101 @@ impl BinWrite for format::DataArray {
     }
 }
 
+impl BinWrite for format::TypeDefinitionImport {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.module.write(destination)?;
+        self.name.write(destination)?;
+        self.namespace.write(destination)
+    }
+}
+
+impl BinWrite for format::FieldImport {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.owner.write(destination)?;
+        self.name.write(destination)?;
+        self.signature.write(destination)
+    }
+}
+
+impl BinWrite for format::MethodImport {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.owner.write(destination)?;
+        self.name.write(destination)?;
+        self.signature.write(destination)
+    }
+}
+
+impl BinWrite for format::ModuleImports {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.imported_modules.write(destination)?;
+        self.imported_types.write(destination)?;
+        self.imported_fields.write(destination)?;
+        self.imported_methods.write(destination)
+    }
+}
+
+impl BinWrite for format::MethodOverride {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.declaration.write(destination)?;
+        self.implementation.write(destination)
+    }
+}
+
+impl BinWrite for format::TypeDefinition {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.name.write(destination)?;
+        self.namespace.write(destination)?;
+        (self.visibility as u8).write(destination)?;
+        self.flags.bits().write(destination)?;
+        self.layout.write(destination)?;
+        self.inherited_types.write(destination)?;
+        self.fields.write(destination)?;
+        self.methods.write(destination)?;
+        self.vtable.write(destination)
+    }
+}
+
+impl BinWrite for format::Field {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.owner.write(destination)?;
+        self.name.write(destination)?;
+        (self.visibility as u8).write(destination)?;
+        self.flags.bits().write(destination)?;
+        self.signature.write(destination)
+    }
+}
+
+impl BinWrite for format::Method {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.owner.write(destination)?;
+        self.name.write(destination)?;
+        (self.visibility as u8).write(destination)?;
+        self.flags.bits().write(destination)?;
+        self.implementation_flags().bits().write(destination)?;
+        self.signature.write(destination)?;
+        
+        match self.body {
+            format::MethodBody::Defined(_) | format::MethodBody::Abstract => Ok(()),
+            format::MethodBody::External { library, entry_point_name } => {
+                library.write(destination)?;
+                entry_point_name.write(destination)
+            }
+        }
+    }
+}
+
+impl BinWrite for format::ModuleDefinitions {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.defined_types.write(destination)?;
+        self.defined_fields.write(destination)?;
+        self.defined_methods.write(destination)
+    }
+}
+
 /// Writes a binary module to the specified [`destination`].
 pub fn write<Destination: std::io::Write>(module: &format::Module, destination: &mut Destination) -> WriteResult {
     format::MAGIC.write(destination)?;
+    // NOTE: For all top level byte encoding things, could share Vec<u8> to reduce allocations.
     module.format_version.write(destination)?;
     module.data_count().write(destination)?;
     module.header.write(destination)?;
@@ -289,5 +381,7 @@ pub fn write<Destination: std::io::Write>(module: &format::Module, destination: 
     module.method_signatures.write(destination)?;
     module.method_bodies.write(destination)?;
     module.data_arrays.write(destination)?;
+    module.imports.write(destination)?;
+    module.definitions.write(destination)?;
     unimplemented!()
 }
