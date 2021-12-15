@@ -45,7 +45,7 @@ impl BinWrite for format::uvarint {
                 &bytes[0 .. 0]
             }
             else {
-                panic!("Writing of integer {} is not supported", value)
+                panic!("Writing of unsigned integer {} is not supported", value)
             };
 
         sliced.write(destination)
@@ -58,9 +58,26 @@ impl<T: format::Index> BinWrite for T {
     }
 }
 
-impl BinWrite for format::instruction_set::BlockOffset {
+impl BinWrite for format::varint {
+    // TODO: Check that this actually works as intended when writing signed integers.
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
-        unimplemented!("TODO: Write block offset")
+        let format::varint(value) = *self;
+        let converted =
+            if value >= 0xC0 && value <= 0x3F {
+                (value as u8 & 0b0111_1111u8) as u64
+            }
+            else {
+                panic!("Writing of signed integer {} is not supported", value)
+            };
+
+        format::uvarint(converted).write(destination)
+    }
+}
+
+impl BinWrite for instruction_set::BlockOffset {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let instruction_set::BlockOffset(offset) = self;
+        offset.write(destination)
     }
 }
 
@@ -197,6 +214,22 @@ impl BinWrite for Opcode {
     }
 }
 
+struct RegisterIndexVectorWrite<'t> {
+    input_register_count: format::uvarint,
+    indices: &'t format::LengthEncodedVector<instruction_set::RegisterIndex>,
+}
+
+impl<'t> BinWrite for RegisterIndexVectorWrite<'t> {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let format::LengthEncodedVector(indices) = self.indices;
+        indices.len().write(destination)?;
+        for index in indices {
+            index.index(self.input_register_count).write(destination)?;
+        };
+        Ok(())
+    }
+}
+
 impl BinWrite for format::CodeBlock {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         (self.flags() as u8).write(destination)?;
@@ -210,14 +243,20 @@ impl BinWrite for format::CodeBlock {
             }
         }
 
-        let write_register_index = |index: instruction_set::RegisterIndex| -> WriteResult {
-            index.index(self.input_register_count).write(destination)
-        };
-
         let format::ByteLengthEncoded(format::LengthEncodedVector(code)) = &self.instructions;
         for instruction in code {
-            unimplemented!("TODO: Write the instructions");
-        }
+            instruction.opcode().write(destination)?;
+            match instruction {
+                Instruction::Nop => (),
+                Instruction::Ret(registers) => {
+                    RegisterIndexVectorWrite {
+                        input_register_count: self.input_register_count, 
+                        indices: registers
+                    }
+                    .write(destination)?;
+                },
+            };
+        };
 
         Ok(())
     }
