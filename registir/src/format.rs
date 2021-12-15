@@ -15,16 +15,22 @@ pub trait Index: Copy {
     fn index(self) -> uvarint;
 }
 
+macro_rules! index_implementation {
+    ($name: ident) => {
+        impl Index for $name {
+            fn index(self) -> uvarint {
+                let $name(index) = self;
+                index
+            }
+        }
+    };
+}
+
 /// An index into the module's identifiers, the index of the first identifier is `0`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct IdentifierIndex(pub uvarint);
 
-impl Index for IdentifierIndex {
-    fn index(self) -> uvarint {
-        let IdentifierIndex(index) = self;
-        index
-    }
-}
+index_implementation!(IdentifierIndex);
 
 /// Represents data that is preceded by a variable-length unsigned integer indicating the byte length of the following data.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
@@ -37,13 +43,6 @@ pub struct LengthEncodedVector<T>(pub Vec<T>);
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
 #[derive(Debug, Default)]
 pub struct VersionNumbers(pub LengthEncodedVector<uvarint>);
-
-/// Describes the features that a module makes use of.
-#[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct FormatVersion {
-    pub major: uvarint,
-    pub minor: uvarint,
-}
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
@@ -58,6 +57,64 @@ impl Identifier {
         let Identifier(LengthEncodedVector(bytes)) = self;
         bytes
     }
+}
+
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub enum PrimitiveType {
+    U8,
+    S8,
+    U16,
+    S16,
+    U32,
+    S32,
+    U64,
+    S64,
+    UNative,
+    SNative,
+    F32,
+    F64
+}
+
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub enum ValueType {
+    Primitive(PrimitiveType),
+    Defined(TypeDefinitionIndex),
+}
+
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub enum ReferenceType {
+    /// An untyped object reference, similar to `System.Object` or `java.lang.Object`.
+    Any,
+    /// An object reference to an instance of a class or a boxed primitive type.
+    To(ValueType),
+    Vector(Box<NonStackType>),
+    NativePointer(ValueType),
+}
+
+/// Union of all types in the type system that do not represent pointers to the stack that are tracked by the garbage collector.
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub enum NonStackType {
+    Val(ValueType),
+    Ref(ReferenceType),
+    Heap(Box<NonStackType>),
+}
+
+/// Represents the type of a parameter or a method return type.
+#[derive(Debug, Eq, PartialEq, PartialOrd)]
+pub enum AnyType {
+    Val(ValueType),
+    /// A pointer to a field, array element, or the stack that is tracked by the garbage collector.
+    GC(NonStackType),
+    /// A pointer to a field or array element that is tracked by the garbage collector.
+    Heap(NonStackType),
+    Ref(ReferenceType),
+}
+
+/// Describes the features that a module makes use of.
+#[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
+pub struct FormatVersion {
+    pub major: uvarint,
+    pub minor: uvarint,
 }
 
 #[derive(Debug)]
@@ -92,6 +149,7 @@ pub struct Module {
     pub identifiers: ModuleData<LengthEncodedVector<Identifier>>,
     /// An array of the namespaces containing the imported and defined types.
     pub namespaces: ModuleData<LengthEncodedVector<LengthEncodedVector<IdentifierIndex>>>,
+    pub type_signatures: ModuleData<LengthEncodedVector<AnyType>>,
 }
 
 impl Module {
@@ -104,7 +162,8 @@ impl Module {
         uvarint(
             count_data!(header) +
             count_data!(identifiers) +
-            count_data!(namespaces)
+            count_data!(namespaces) +
+            count_data!(type_signatures)
         )
     }
 }

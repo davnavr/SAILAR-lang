@@ -116,6 +116,7 @@ impl BinWrite for format::ModuleHeader {
     }
 }
 
+/// Writes a binary module to the specified [`destination`].
 pub fn write<Destination: std::io::Write>(module: &format::Module, destination: &mut Destination) -> WriteResult {
     write_bytes(destination, format::MAGIC)?;
     module.format_version.write(destination)?;
