@@ -447,13 +447,46 @@ pub struct ModuleDefinitions {
     pub defined_methods: ByteLengthEncoded<LengthEncodedVector<Method>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum TypeLayoutFlags {
+    /// The runtime or compiler is free to decide how the fields of the type are laid out.
+    Unspecified = 0,
+    /// The fields of the type are laid out sequentially, and the size of the type is calculated automatically.
+    Sequential = 1,
+    /// The size and offset of fields is specified manually.
+    ExplicitOffsets = 2,
+    /// The fields of the type are laid out sequentially, but the size of the type is specified manually.
+    ExplicitSize = 3,
+}
+
+#[derive(Debug)]
+pub struct FieldOffset {
+    pub field: FieldIndex,
+    pub offset: uvarint,
+}
+
+/// Describes how the fields are a type are layout, starting with a flag byte indicating whether or not the type has an explicit layout.
 #[derive(Debug)]
 pub enum TypeDefinitionLayout {
-    /// The runtime or compiler is free to decide how the fields of the class or struct are laid out.
     Unspecified,
-    /// The fields of the class or struct are laid out sequentially.
-    Sequential,
-    //Explicit { }
+    Sequential(Option<uvarint>),
+    Explicit {
+        size: uvarint,
+        field_offsets: Vec<FieldOffset>, // TODO: Use a hash map for field offsets?
+    }
+}
+
+impl TypeDefinitionLayout {
+    /// Flags at the beginning of the structure indicating the kind of layout used by a type's instances.
+    pub fn flags(&self) -> TypeLayoutFlags {
+        match self {
+            Self::Unspecified => TypeLayoutFlags::Unspecified,
+            Self::Sequential(None) => TypeLayoutFlags::Sequential,
+            Self::Explicit { .. } => TypeLayoutFlags::ExplicitOffsets,
+            Self::Sequential(Some(_)) => TypeLayoutFlags::ExplicitSize,
+        }
+    }
 }
 
 /// Describes the features that a module makes use of.

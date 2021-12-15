@@ -402,6 +402,32 @@ impl BinWrite for &format::ModuleDefinitions {
     }
 }
 
+impl BinWrite for &format::FieldOffset {
+    fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
+        self.field.write(out)?;
+        self.offset.write(out)
+    }
+}
+
+impl BinWrite for &format::TypeDefinitionLayout {
+    fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
+        (self.flags() as u8).write(out)?;
+
+        match self {
+            format::TypeDefinitionLayout::Unspecified |
+            format::TypeDefinitionLayout::Sequential(None) => Ok(()),
+            format::TypeDefinitionLayout::Sequential(Some(size)) => size.write(out),
+            format::TypeDefinitionLayout::Explicit { size, field_offsets } => {
+                size.write(out)?;
+                for offset in field_offsets { 
+                    offset.write(out)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Writes a binary module.
 pub fn write<'t, W: std::io::Write>(module: &'t format::Module, out: &mut W) -> WriteResult {
     format::MAGIC.write(out)?;
@@ -418,5 +444,5 @@ pub fn write<'t, W: std::io::Write>(module: &'t format::Module, out: &mut W) -> 
     module.imports.write(out)?;
     module.definitions.write(out)?;
     module.entry_point.write(out)?;
-    unimplemented!()
+    module.type_layouts.write(out)
 }
