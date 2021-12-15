@@ -1,4 +1,5 @@
-use crate::format as format;
+use crate::{format, format::instruction_set};
+use crate::format::instruction_set::{Opcode, Instruction};
 
 #[non_exhaustive]
 pub enum WriteError {
@@ -8,37 +9,58 @@ pub enum WriteError {
 
 pub type WriteResult = Result<(), WriteError>;
 
-fn write_bytes<Destination: std::io::Write>(destination: &mut Destination, bytes: &[u8]) -> WriteResult {
-    match destination.write_all(bytes) {
-        Ok(()) => Ok(()),
-        Err(err) => Err(WriteError::IoError(err)),
+trait BinWrite {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult;
+}
+
+impl BinWrite for &[u8] {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        match destination.write_all(self) {
+            Ok(()) => Ok(()),
+            Err(err) => Err(WriteError::IoError(err)),
+        }
     }
 }
 
-trait BinWrite {
-    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult;
+impl BinWrite for u8 {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let buffer: &[u8] = &[ *self ];
+        buffer.write(destination)
+    }
+}
+
+impl BinWrite for Vec<u8> {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let bytes: &[u8] = self;
+        bytes.write(destination)
+    }
 }
 
 impl BinWrite for format::uvarint {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let format::uvarint(value) = *self;
         let bytes = value.to_le_bytes();
-
-        write_bytes(
-            destination,
+        let sliced =
             if value < 0x80u64 {
                 &bytes[0 .. 0]
             }
             else {
                 panic!("Writing of integer {} is not supported", value)
-            }
-        )
+            };
+
+        sliced.write(destination)
     }
 }
 
 impl<T: format::Index> BinWrite for T {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         self.index().write(destination)
+    }
+}
+
+impl BinWrite for format::instruction_set::BlockOffset {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        unimplemented!("TODO: Write block offset")
     }
 }
 
@@ -54,7 +76,7 @@ impl BinWrite for format::Identifier {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let bytes = self.bytes();
         vector_length(bytes)?.write(destination)?;
-        write_bytes(destination,bytes)
+        bytes.write(destination)
     }
 }
 
@@ -71,7 +93,7 @@ impl<D: BinWrite> BinWrite for format::ByteLengthEncoded<D> {
         let format::ByteLengthEncoded(data) = self;
         data.write(&mut buffer)?;
         vector_length(&buffer)?.write(destination)?;
-        write_bytes(destination, buffer.as_slice())
+        buffer.as_slice().write(destination)
     }
 }
 
@@ -102,7 +124,7 @@ impl BinWrite for format::ModuleIdentifier {
 
 impl BinWrite for format::TypeTag {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
-        write_bytes(destination, &[ *self as u8 ])
+        (*self as u8).write(destination)
     }
 }
 
@@ -158,9 +180,58 @@ impl BinWrite for format::ModuleHeader {
     }
 }
 
+impl BinWrite for Opcode {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let mut value = *self as usize;
+
+        (value as u8).write(destination)?;
+        value = value - Opcode::Continuation as usize;
+
+        while value > 0 {
+            (value as u8).write(destination)?;
+            value = value - Opcode::Continuation as usize;
+        }
+
+        Ok(())
+    }
+}
+
+impl BinWrite for format::CodeBlock {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        (self.flags() as u8).write(destination)?;
+        self.input_register_count.write(destination)?;
+
+        // Flags already indicate if exception handler is present or if exception register is used.
+        if let Some(exception_handler) = &self.exception_handler {
+            exception_handler.catch_block.write(destination)?;
+            if let Some(exception_register) = exception_handler.exception_register {
+                exception_register.write(destination)?;
+            }
+        }
+
+        let write_register_index = |index: instruction_set::RegisterIndex| -> WriteResult {
+            index.index(self.input_register_count).write(destination)
+        };
+
+        let format::ByteLengthEncoded(format::LengthEncodedVector(code)) = &self.instructions;
+        for instruction in code {
+            unimplemented!("TODO: Write the instructions");
+        }
+
+        Ok(())
+    }
+}
+
+impl BinWrite for format::Code {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.entry_block.write(destination)?;
+        self.blocks.write(destination)
+    }
+}
+
 /// Writes a binary module to the specified [`destination`].
 pub fn write<Destination: std::io::Write>(module: &format::Module, destination: &mut Destination) -> WriteResult {
-    write_bytes(destination, format::MAGIC)?;
+    format::MAGIC.write(destination)?;
     module.format_version.write(destination)?;
     module.data_count().write(destination)?;
     module.header.write(destination)?;
@@ -168,5 +239,6 @@ pub fn write<Destination: std::io::Write>(module: &format::Module, destination: 
     module.namespaces.write(destination)?;
     module.type_signatures.write(destination)?;
     module.method_signatures.write(destination)?;
+    module.method_bodies.write(destination)?;
     unimplemented!()
 }

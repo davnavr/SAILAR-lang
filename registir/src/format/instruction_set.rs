@@ -3,7 +3,7 @@ use crate::format::*;
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
 /// if the target branch is taken, with `0` refering to the current block.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct BlockOffset(varint);
+pub struct BlockOffset(pub varint);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub enum RegisterIndex {
@@ -12,7 +12,7 @@ pub enum RegisterIndex {
 }
 
 impl RegisterIndex {
-    pub fn index(&self, input_register_count: u64) -> uvarint {
+    pub fn index(&self, uvarint(input_register_count): uvarint) -> uvarint {
         match self {
             // TODO: What if Input(index) is > input_register_count
             RegisterIndex::Input(index) => *index,
@@ -22,9 +22,12 @@ impl RegisterIndex {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u16)]
 pub enum Opcode {
     Nop = 0,
     Ret = 1,
+    /// Not an instruction, indicates that there are more opcode bytes to follow.
+    Continuation = 0xFF,
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.

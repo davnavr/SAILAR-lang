@@ -105,9 +105,8 @@ pub enum AnyType {
     Heap(HeapType),
 }
 
-pub mod instruction_set;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u8)]
 pub enum TypeTag {
     /// The type of things that have no value, currently unused.
     Unit = 0,
@@ -194,6 +193,62 @@ pub struct MethodSignature {
     pub parameter_types: LengthEncodedVector<TypeSignatureIndex>
 }
 
+pub mod instruction_set;
+
+index_type!(CodeBlockIndex, "An index corresponding to the input registers of a code block");
+index_type!(InputRegisterIndex, "An index corresponding to the input registers of a code block");
+index_type!(TemporaryRegisterIndex, "An index corresponding to the temporary registers of a code block");
+
+#[derive(Debug)]
+pub struct CodeExceptionHandler {
+    /// Indicates the block that control will transfer to when an exception is thrown, relative to the current block.
+    pub catch_block: instruction_set::BlockOffset,
+    /// Specifies the input register of the `[catch_block]` that the exception object is stored into when an exception is thrown.
+    /// If omitted, the exception object is ignored.
+    pub exception_register: Option<InputRegisterIndex>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum CodeBlockFlags {
+    NoExceptionHandling = 0,
+    ExceptionHandlerIgnoresException = 1,
+    ExceptionHandlerStoresException = 2,
+}
+
+#[derive(Debug)]
+pub struct CodeBlock {
+    //pub flags: (),
+    /// A variable-length integer preceding the flags indicating the number of input registers for this block.
+    /// 
+    /// For the entry block's count, this should match the number of arguments of the method.
+    pub input_register_count: uvarint,
+    /// Specifies the block that control should be transferred to if an exception is thrown inside this block.
+    pub exception_handler: Option<CodeExceptionHandler>,
+    /// The instructions of the block.
+    /// 
+    /// Both the byte length and the actual number of instructions are included to simplify parsing.
+    pub instructions: ByteLengthEncoded<LengthEncodedVector<instruction_set::Instruction>>,
+}
+
+impl CodeBlock {
+    /// Byte at the beginning of the block describing how it handles exceptions.
+    pub fn flags(&self) -> CodeBlockFlags {
+        match self.exception_handler {
+            None => CodeBlockFlags::NoExceptionHandling,
+            Some(CodeExceptionHandler { exception_register: Some(_), .. }) => CodeBlockFlags::ExceptionHandlerIgnoresException,
+            Some(CodeExceptionHandler { exception_register: None, .. }) => CodeBlockFlags::ExceptionHandlerStoresException,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Code {
+    /// The block that will be executed when the method is called, corresponds to block index `0`.
+    pub entry_block: CodeBlock,
+    pub blocks: LengthEncodedVector<CodeBlock>
+}
+
 /// Describes the features that a module makes use of.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct FormatVersion {
@@ -235,7 +290,9 @@ pub struct Module {
     /// An array of the namespaces containing the imported and defined types.
     pub namespaces: ByteLengthEncoded<LengthEncodedVector<LengthEncodedVector<IdentifierIndex>>>,
     pub type_signatures: ByteLengthEncoded<LengthEncodedVector<AnyType>>,
-    pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>
+    pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>,
+    /// An array containing the method bodies of the module.
+    pub method_bodies: ByteLengthEncoded<LengthEncodedVector<Code>>,
 }
 
 impl Identifier {
