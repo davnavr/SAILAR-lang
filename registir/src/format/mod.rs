@@ -105,6 +105,8 @@ pub enum AnyType {
     Heap(HeapType),
 }
 
+pub mod instruction_set;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub enum TypeTag {
     /// The type of things that have no value, currently unused.
