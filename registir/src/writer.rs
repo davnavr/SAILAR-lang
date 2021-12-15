@@ -144,6 +144,13 @@ impl BinWrite for format::AnyType {
     }
 }
 
+impl BinWrite for format::MethodSignature {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.return_types.write(destination)?;
+        self.parameter_types.write(destination)
+    }
+}
+
 impl BinWrite for format::ModuleHeader {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         self.field_count().write(destination)?;
@@ -160,5 +167,6 @@ pub fn write<Destination: std::io::Write>(module: &format::Module, destination: 
     module.identifiers.write(destination)?;
     module.namespaces.write(destination)?;
     module.type_signatures.write(destination)?;
+    module.method_signatures.write(destination)?;
     unimplemented!()
 }

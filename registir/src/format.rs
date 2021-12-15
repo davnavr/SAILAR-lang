@@ -188,8 +188,8 @@ impl TypeTagged for HeapType {
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub struct MethodSignature {
     /// The types of the values returned by the method.
-    pub return_types: Vec<TypeSignatureIndex>,
-    pub parameter_types: Vec<TypeSignatureIndex>
+    pub return_types: LengthEncodedVector<TypeSignatureIndex>,
+    pub parameter_types: LengthEncodedVector<TypeSignatureIndex>
 }
 
 /// Describes the features that a module makes use of.
