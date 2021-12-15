@@ -13,20 +13,16 @@ pub struct uvarint(pub u64);
 #[allow(non_camel_case_types)]
 pub struct varint(pub u128);
 
-pub(crate) trait Index: Copy {
-    fn index(self) -> uvarint;
-}
-
 macro_rules! index_type {
     ($name: ident, $description: literal) => {
         #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
         #[doc = $description]
         pub struct $name(pub uvarint);
 
-        impl Index for $name {
-            fn index(self) -> uvarint {
-                let $name(index) = self;
-                index
+        impl $name {
+            pub fn index(self) -> uvarint {
+                let $name(value) = self;
+                value
             }
         }
     };
@@ -42,7 +38,6 @@ index_type!(ModuleIndex, "`0` refers to the current module, while the remaining 
 index_type!(TypeDefinitionIndex, "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types.");
 index_type!(FieldIndex, "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields.");
 index_type!(MethodIndex, "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods.");
-//
 index_type!(TypeLayoutIndex, "An index into the module's type layouts, which specify how the fields of a type's instances are arranged.");
 
 /// Represents data that is preceded by a variable-length unsigned integer indicating the byte length of the following data.
@@ -199,9 +194,9 @@ pub struct MethodSignature {
 
 pub mod instruction_set;
 
-index_type!(CodeBlockIndex, "An index corresponding to the input registers of a code block");
-index_type!(InputRegisterIndex, "An index corresponding to the input registers of a code block");
-index_type!(TemporaryRegisterIndex, "An index corresponding to the temporary registers of a code block");
+index_type!(CodeBlockIndex, "An index corresponding to the input registers of a code block, with `0` refering to the entry block.");
+index_type!(InputRegisterIndex, "An index corresponding to the input registers of a code block.");
+index_type!(TemporaryRegisterIndex, "An index corresponding to the temporary registers of a code block.");
 
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
@@ -452,8 +447,6 @@ pub struct ModuleDefinitions {
     pub defined_methods: ByteLengthEncoded<LengthEncodedVector<Method>>,
 }
 
-//
-
 #[derive(Debug)]
 pub enum TypeDefinitionLayout {
     /// The runtime or compiler is free to decide how the fields of the class or struct are laid out.
@@ -490,7 +483,7 @@ impl ModuleHeader {
 }
 
 pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
-pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(9);
+pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(11);
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
@@ -510,8 +503,11 @@ pub struct Module {
     pub data_arrays: ByteLengthEncoded<DataArray>,
     pub imports: ByteLengthEncoded<ModuleImports>,
     pub definitions: ByteLengthEncoded<ModuleDefinitions>,
-    //
-    //pub type_layouts: ByteLengthEncoded<TypeDefinitionLayout>,
+    /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
+    /// compiler or runtime to determine if the signature of the entry point method is valid.
+    pub entry_point: ByteLengthEncoded<Option<MethodIndex>>,
+    pub type_layouts: ByteLengthEncoded<LengthEncodedVector<TypeDefinitionLayout>>,
+    //pub debugging_information: ByteLengthEncoded<>
 }
 
 impl Identifier {
