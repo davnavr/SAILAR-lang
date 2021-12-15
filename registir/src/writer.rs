@@ -64,18 +64,19 @@ impl BinWrite for format::instruction_set::BlockOffset {
     }
 }
 
-fn vector_length<T>(v: &Vec<T>) -> Result<format::uvarint, WriteError> {
-    let length = v.len();
-    match u64::try_from(length) {
-        Ok(length) => Ok(format::uvarint(length)),
-        Err(_) => Err(WriteError::VectorTooLarge(length))
+impl BinWrite for usize {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        match u64::try_from(*self) {
+            Ok(length) => format::uvarint(length).write(destination),
+            Err(_) => Err(WriteError::VectorTooLarge(*self))
+        }
     }
 }
 
 impl BinWrite for format::Identifier {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let bytes = self.bytes();
-        vector_length(bytes)?.write(destination)?;
+        bytes.len().write(destination)?;
         bytes.write(destination)
     }
 }
@@ -92,7 +93,7 @@ impl<D: BinWrite> BinWrite for format::ByteLengthEncoded<D> {
         let mut buffer: Vec<u8> = Vec::new();
         let format::ByteLengthEncoded(data) = self;
         data.write(&mut buffer)?;
-        vector_length(&buffer)?.write(destination)?;
+        buffer.len().write(destination)?;
         buffer.as_slice().write(destination)
     }
 }
@@ -100,7 +101,7 @@ impl<D: BinWrite> BinWrite for format::ByteLengthEncoded<D> {
 impl<T: BinWrite> BinWrite for format::LengthEncodedVector<T> {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let format::LengthEncodedVector(items) = self;
-        vector_length(items)?.write(destination)?;
+        items.len().write(destination)?;
         for e in items {
             e.write(destination)?;
         }
@@ -119,6 +120,13 @@ impl BinWrite for format::ModuleIdentifier {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         self.name.write(destination)?;
         self.version.write(destination)
+    }
+}
+
+impl BinWrite for format::ModuleHeader {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        self.field_count().write(destination)?;
+        self.identifier.write(destination)
     }
 }
 
@@ -173,13 +181,6 @@ impl BinWrite for format::MethodSignature {
     }
 }
 
-impl BinWrite for format::ModuleHeader {
-    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
-        self.field_count().write(destination)?;
-        self.identifier.write(destination)
-    }
-}
-
 impl BinWrite for Opcode {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
         let mut value = *self as usize;
@@ -229,6 +230,14 @@ impl BinWrite for format::Code {
     }
 }
 
+impl BinWrite for format::DataArray {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        let format::DataArray(bytes) = self;
+        bytes.len().write(destination)?;
+        bytes.write(destination)
+    }
+}
+
 /// Writes a binary module to the specified [`destination`].
 pub fn write<Destination: std::io::Write>(module: &format::Module, destination: &mut Destination) -> WriteResult {
     format::MAGIC.write(destination)?;
@@ -240,5 +249,6 @@ pub fn write<Destination: std::io::Write>(module: &format::Module, destination: 
     module.type_signatures.write(destination)?;
     module.method_signatures.write(destination)?;
     module.method_bodies.write(destination)?;
+    module.data_arrays.write(destination)?;
     unimplemented!()
 }

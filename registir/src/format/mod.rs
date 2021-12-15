@@ -249,6 +249,9 @@ pub struct Code {
     pub blocks: LengthEncodedVector<CodeBlock>
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct DataArray(pub Vec<u8>);
+
 /// Describes the features that a module makes use of.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct FormatVersion {
@@ -276,7 +279,7 @@ impl ModuleHeader {
 }
 
 pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
-pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(5);
+pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(7);
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
@@ -293,6 +296,7 @@ pub struct Module {
     pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>,
     /// An array containing the method bodies of the module.
     pub method_bodies: ByteLengthEncoded<LengthEncodedVector<Code>>,
+    pub data_arrays: ByteLengthEncoded<DataArray>,
 }
 
 impl Identifier {
