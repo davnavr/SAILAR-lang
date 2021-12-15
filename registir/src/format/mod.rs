@@ -252,6 +252,65 @@ pub struct Code {
 #[derive(Clone, Debug, Default)]
 pub struct DataArray(pub Vec<u8>);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum MethodFlags {
+    Instance = 0b0000_0001,
+    ConstructorOrInitializer = 0b0000_0010,
+    Constructor = 0b0000_0011,
+    //Initializer = 0b0000_0010,
+}
+
+#[derive(Debug)]
+pub struct TypeDefinitionImport {
+
+}
+
+#[derive(Debug)]
+pub struct FieldImport {
+
+}
+
+#[derive(Debug)]
+pub struct MethodImport {
+
+}
+
+/// Contains the types, fields, and methods imported by a module.
+#[derive(Debug)]
+pub struct ModuleImports {
+    pub imported_modules: LengthEncodedVector<ModuleIdentifier>,
+    pub imported_types: ByteLengthEncoded<LengthEncodedVector<TypeDefinitionImport>>,
+    pub imported_fields: ByteLengthEncoded<LengthEncodedVector<FieldImport>>,
+    pub imported_methods: ByteLengthEncoded<LengthEncodedVector<MethodImport>>,
+}
+
+#[derive(Debug)]
+pub struct TypeDefinition {
+
+}
+
+#[derive(Debug)]
+pub struct Field {
+
+}
+
+#[derive(Debug)]
+pub struct Method {
+
+}
+
+/// Contains the types, fields, and methods defined in the module.
+/// 
+/// Each type contains a list indices refering to the fields and methods that it defines, and each field or method contains the
+/// index of the type that defines it. These indices must exactly match in order for the module to be valid.
+#[derive(Debug)]
+pub struct ModuleDefinitions {
+    pub defined_types: ByteLengthEncoded<LengthEncodedVector<TypeDefinition>>,
+    pub defined_fields: ByteLengthEncoded<LengthEncodedVector<Field>>,
+    pub defined_methods: ByteLengthEncoded<LengthEncodedVector<Method>>,
+}
+
 /// Describes the features that a module makes use of.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct FormatVersion {
@@ -279,7 +338,7 @@ impl ModuleHeader {
 }
 
 pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
-pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(7);
+pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(9);
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
@@ -297,6 +356,8 @@ pub struct Module {
     /// An array containing the method bodies of the module.
     pub method_bodies: ByteLengthEncoded<LengthEncodedVector<Code>>,
     pub data_arrays: ByteLengthEncoded<DataArray>,
+    pub imports: ByteLengthEncoded<ModuleImports>,
+    pub definitions: ByteLengthEncoded<ModuleDefinitions>,
 }
 
 impl Identifier {
