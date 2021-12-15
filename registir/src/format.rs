@@ -11,12 +11,16 @@ pub struct uvarint(pub u64);
 #[allow(non_camel_case_types)]
 pub struct varint(pub u128);
 
-pub trait Index: Copy {
+pub(crate) trait Index: Copy {
     fn index(self) -> uvarint;
 }
 
-macro_rules! index_implementation {
-    ($name: ident) => {
+macro_rules! index_type {
+    ($name: ident, $description: literal) => {
+        #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
+        #[doc = $description]
+        pub struct $name(pub uvarint);
+
         impl Index for $name {
             fn index(self) -> uvarint {
                 let $name(index) = self;
@@ -26,11 +30,16 @@ macro_rules! index_implementation {
     };
 }
 
-/// An index into the module's identifiers, the index of the first identifier is `0`.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct IdentifierIndex(pub uvarint);
-
-index_implementation!(IdentifierIndex);
+index_type!(IdentifierIndex, "An index into the module's identifiers, the index of the first identifier is `0`.");
+index_type!(NamespaceIndex, "An index into the namespaces of the types defined in this module, starting at `0`.");
+index_type!(TypeSignatureIndex, "An index into the module's type signatures, starting at `0`.");
+index_type!(MethodSignatureIndex, "An index into the module's method signatures, starting at `0`.");
+index_type!(CodeIndex, "An index into the module's method bodies, starting at `0`.");
+index_type!(DataIndex, "An index into the module's data arrays, starting at `0`.");
+index_type!(ModuleIndex, "`0` refers to the current module, while the remaining indices refer to the module imports.");
+index_type!(TypeDefinitionIndex, "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types.");
+index_type!(FieldIndex, "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields.");
+index_type!(MethodIndex, "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods.");
 
 /// Represents data that is preceded by a variable-length unsigned integer indicating the byte length of the following data.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
