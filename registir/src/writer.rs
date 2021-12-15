@@ -100,7 +100,49 @@ impl BinWrite for format::ModuleIdentifier {
     }
 }
 
+impl BinWrite for format::TypeTag {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        write_bytes(destination, &[ *self as u8 ])
+    }
+}
 
+impl BinWrite for format::SimpleType {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        format::TypeTagged::tag(self).write(destination)?;
+        match self {
+            format::SimpleType::Primitive(_) => Ok(()),
+            format::SimpleType::Defined(index) => index.write(destination),
+            format::SimpleType::NativePointer(pointee) => pointee.write(destination)
+        }
+    }
+}
+
+impl BinWrite for format::HeapType {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        format::TypeTagged::tag(self).write(destination)?;
+        match self {
+            format::HeapType::ObjRef(format::SimpleType::Defined(index)) => index.write(destination),
+            format::HeapType::ArrayRef(element_type) |
+            format::HeapType::HeapPointer(element_type) => element_type.write(destination),
+            format::HeapType::ObjRef(simple_type) => simple_type.write(destination),
+            format::HeapType::Val(_) |
+            format::HeapType::AnyRef => Ok(()),
+        }
+    }
+}
+
+impl BinWrite for format::AnyType {
+    fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
+        match self {
+            format::AnyType::Val(simple_type) => simple_type.write(destination),
+            format::AnyType::Heap(heap_type) => heap_type.write(destination),
+            format::AnyType::GargbageCollectedPointer(element_type) => {
+                format::TypeTag::GarbageCollectedPointer.write(destination)?;
+                element_type.write(destination)
+            },
+        }
+    }
+}
 
 impl BinWrite for format::ModuleHeader {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
@@ -117,5 +159,6 @@ pub fn write<Destination: std::io::Write>(module: &format::Module, destination: 
     module.header.write(destination)?;
     module.identifiers.write(destination)?;
     module.namespaces.write(destination)?;
+    module.type_signatures.write(destination)?;
     unimplemented!()
 }
