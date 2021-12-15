@@ -255,37 +255,76 @@ pub struct Code {
 #[derive(Clone, Debug, Default)]
 pub struct DataArray(pub Vec<u8>);
 
-// #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-// #[repr(u8)]
-// pub enum MethodFlags {
-//     Instance = 0b0000_0001,
-//     ConstructorOrInitializer = 0b0000_0010,
-//     Constructor = 0b0000_0011,
-//     //Initializer = 0b0000_0010,
-// }
+/// Indicates whether or not a type, field, or method can be imported by another module.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum Visibility {
+    /// Compiler decides whether or not it can be used.
+    Unspecified = 0,
+    /// Can be used as an import by another module.
+    Public = 1,
+    /// Can only be used within the current module.
+    Private = 2,
+}
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct FieldFlags: u8 {
+        const READ_ONLY = 0;
+        const MUTABLE = 0b0000_0001;
+        const STATIC = 0b0000_0010;
+        const VALID_MASK = 0b0000_0011;
+    }
+}
+
 bitflags! {
     #[repr(transparent)]
     pub struct MethodFlags: u8 {
+        const FINAL = 0;
         const INSTANCE = 0b0000_0001;
         const CONSTRUCTOR_OR_INITIALIZER = 0b0000_0010;
         const CONSTRUCTOR = Self::CONSTRUCTOR_OR_INITIALIZER.bits | Self::INSTANCE.bits;
         const INITIALIZER = Self::CONSTRUCTOR_OR_INITIALIZER.bits;
+        const VIRTUAL = 0b0000_0100;
+        const VALID_MASK = 0b0000_0111;
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct TypeDefinitionFlags: u8 {
+        const FINAL = 0;
+        /// The type can be inherited from.
+        const NOT_FINAL = 0b0000_0001;
+        /// Instances of this type cannot be created.
+        const ABSTRACT = 0b0000_0010;
+        const VALID_MASK = 0b0000_0011;
     }
 }
 
 #[derive(Debug)]
 pub struct TypeDefinitionImport {
-
+    /// Indicates the module that the type was imported from.
+    pub module: ModuleIndex,
+    pub name: IdentifierIndex,
+    pub namespace: NamespaceIndex,
+    //pub type_parameters: (),
 }
 
 #[derive(Debug)]
 pub struct FieldImport {
-
+    pub owner: TypeDefinitionIndex,
+    pub name: IdentifierIndex,
+    pub signature: TypeSignatureIndex,
 }
 
 #[derive(Debug)]
 pub struct MethodImport {
-
+    //pub flags: MethodFlags,
+    pub owner: TypeDefinitionIndex,
+    pub name: IdentifierIndex, // TODO: How to handle importing constructors, use flags?
+    pub signature: MethodSignatureIndex,
+    //pub type_parameters: (),
 }
 
 /// Contains the types, fields, and methods imported by a module.
@@ -298,18 +337,75 @@ pub struct ModuleImports {
 }
 
 #[derive(Debug)]
-pub struct TypeDefinition {
+pub enum TypeDefinitionLayout {
+    /// The runtime or compiler is free to decide how the fields of the class or struct are laid out.
+    Unspecified,
+    /// The fields of the class or struct are laid out sequentially.
+    Sequential,
+    //Explicit { }
+}
 
+#[derive(Debug)] // TODO: Custom equality comparison to prevent overriding of method twice?
+pub struct MethodOverride {
+    /// Specifies the method to override.
+    pub declaration: MethodIndex,
+    /// Specifies the new implementation of the method, the method must be defined in the current type.
+    pub implementation: MethodIndex
+    // TODO: Could optimize implementation index by just having 0 be current type's first method since the method vector is just before the vtable field.
+}
+
+#[derive(Debug)]
+pub struct TypeDefinition {
+    pub name: IdentifierIndex,
+    pub namespace: NamespaceIndex,
+    pub visibility: Visibility,
+    pub flags: TypeDefinitionFlags,
+    pub layout: TypeDefinitionLayout,
+    pub inherited_types: LengthEncodedVector<TypeDefinitionIndex>,
+    pub fields: LengthEncodedVector<FieldIndex>,
+    pub methods: LengthEncodedVector<MethodIndex>,
+    pub vtable: LengthEncodedVector<MethodOverride>,
+    //pub annotations: LengthEncodedVector<>,
+    //pub type_parameters: (),
 }
 
 #[derive(Debug)]
 pub struct Field {
-
+    pub owner: TypeDefinitionIndex,
+    pub name: IdentifierIndex,
+    pub visibility: Visibility,
+    pub flags: FieldFlags,
+    pub signature: TypeSignatureIndex,
+    //pub annotations: LengthEncodedVector<>,
 }
 
 #[derive(Debug)]
-pub struct Method {
+pub enum MethodBody {
+    /// Defined in the current module with the specified method body.
+    Defined(CodeIndex),
+    /// Not defined in the current type, but in a derived type.
+    Abstract,
+    /// Defined elsewhere, used by the foreign function interface or to call methods defined in the runtime.
+    External { library: IdentifierIndex, entry_point_name: IdentifierIndex }
+}
 
+/// Represents a method, constructor, or initializer.
+/// 
+/// Valid constructors must have the [`MethodFlags::CONSTRUCTOR`] flags set, must have no type parameters, and must
+/// not have any return values.
+/// 
+/// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
+/// restrictions regarding valid constructors.
+#[derive(Debug)]
+pub struct Method {
+    pub owner: TypeDefinitionIndex,
+    pub name: IdentifierIndex,
+    pub visibility: Visibility,
+    pub flags: MethodFlags,
+    pub signature: MethodSignatureIndex,
+    pub body: MethodBody,
+    //pub annotations: LengthEncodedVector<>,
+    //pub type_parameters: (),
 }
 
 /// Contains the types, fields, and methods defined in the module.
