@@ -232,7 +232,7 @@ impl<'t> BinWrite for RegisterIndexVectorWrite<'t> {
 
 impl BinWrite for format::CodeBlock {
     fn write<Destination: std::io::Write>(&self, destination: &mut Destination) -> WriteResult {
-        (self.flags() as u8).write(destination)?;
+        self.flags().bits().write(destination)?;
         self.input_register_count.write(destination)?;
 
         // Flags already indicate if exception handler is present or if exception register is used.

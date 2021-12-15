@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 /// The magic number for `binmdl` files.
 pub static MAGIC: &'static [u8] = "reg\0".as_bytes();
 
@@ -208,12 +210,13 @@ pub struct CodeExceptionHandler {
     pub exception_register: Option<InputRegisterIndex>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum CodeBlockFlags {
-    NoExceptionHandling = 0,
-    ExceptionHandlerIgnoresException = 1,
-    ExceptionHandlerStoresException = 2,
+bitflags! {
+    #[repr(transparent)]
+    pub struct CodeBlockFlags: u8 {
+        const NO_EXCEPTION_HANDLING = 0;
+        const EXCEPTION_HANDLER_IGNORES_EXCEPTION = 0b0000_0001;
+        const EXCEPTION_HANDLER_STORES_EXCEPTION = 0b0000_0010;
+    }
 }
 
 #[derive(Debug)]
@@ -235,9 +238,9 @@ impl CodeBlock {
     /// Byte at the beginning of the block describing how it handles exceptions.
     pub fn flags(&self) -> CodeBlockFlags {
         match self.exception_handler {
-            None => CodeBlockFlags::NoExceptionHandling,
-            Some(CodeExceptionHandler { exception_register: Some(_), .. }) => CodeBlockFlags::ExceptionHandlerIgnoresException,
-            Some(CodeExceptionHandler { exception_register: None, .. }) => CodeBlockFlags::ExceptionHandlerStoresException,
+            None => CodeBlockFlags::NO_EXCEPTION_HANDLING,
+            Some(CodeExceptionHandler { exception_register: Some(_), .. }) => CodeBlockFlags::EXCEPTION_HANDLER_IGNORES_EXCEPTION,
+            Some(CodeExceptionHandler { exception_register: None, .. }) => CodeBlockFlags::EXCEPTION_HANDLER_STORES_EXCEPTION,
         }
     }
 }
@@ -252,13 +255,22 @@ pub struct Code {
 #[derive(Clone, Debug, Default)]
 pub struct DataArray(pub Vec<u8>);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum MethodFlags {
-    Instance = 0b0000_0001,
-    ConstructorOrInitializer = 0b0000_0010,
-    Constructor = 0b0000_0011,
-    //Initializer = 0b0000_0010,
+// #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+// #[repr(u8)]
+// pub enum MethodFlags {
+//     Instance = 0b0000_0001,
+//     ConstructorOrInitializer = 0b0000_0010,
+//     Constructor = 0b0000_0011,
+//     //Initializer = 0b0000_0010,
+// }
+bitflags! {
+    #[repr(transparent)]
+    pub struct MethodFlags: u8 {
+        const INSTANCE = 0b0000_0001;
+        const CONSTRUCTOR_OR_INITIALIZER = 0b0000_0010;
+        const CONSTRUCTOR = Self::CONSTRUCTOR_OR_INITIALIZER.bits | Self::INSTANCE.bits;
+        const INITIALIZER = Self::CONSTRUCTOR_OR_INITIALIZER.bits;
+    }
 }
 
 #[derive(Debug)]
