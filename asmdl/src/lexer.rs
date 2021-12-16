@@ -41,6 +41,12 @@ where
     }
 }
 
+fn directive(input: &str) -> IResult<&str, String> {
+    let (input, _) = character::complete::char('.')(input)?;
+    let (input, name) = character::complete::alpha1(input)?;
+    Ok((input, String::from(name)))
+}
+
 fn keyword_char(input: &str, allow_digit: bool) -> IResult<&str, char> {
     let (input, c) = character::complete::anychar(input)?;
     if c.is_alphabetic() || c == '.' || (allow_digit && c.is_digit(10u32)) {
@@ -83,6 +89,7 @@ fn character_token<'a>(c: char, token: Token) -> impl FnMut(&'a str) -> IResult<
 
 fn token<'a>(input: &'a str) -> IResult<&'a str, Token> {
     branch::alt((
+        combinator::map(directive, Token::Directive),
         combinator::map(keyword, Token::Keyword),
         combinator::map(literal_integer, Token::LiteralInteger),
         character_token(';', Token::Semicolon),
@@ -106,7 +113,10 @@ fn token_sequence<'a>(input: &'a str) -> IResult<&'a str, Vec<Token>> {
 }
 
 pub fn lex(input: &str) -> Vec<Token> {
-    unimplemented!()
+    match nom::Finish::finish(token_sequence(input)).unwrap() {
+        ("", tokens) => tokens,
+        (remaining, _) => panic!("unable to lex remaining input {}", remaining),
+    }
 }
 
 #[cfg(test)]
@@ -133,6 +143,27 @@ mod tests {
                     Token::Keyword(String::from("ret")),
                     Token::Semicolon,
                     Token::LiteralInteger(42),
+                ]
+            ))
+        );
+    }
+
+    #[test]
+    fn format_directive_tokens_test() {
+        assert_eq!(
+            token_sequence(".format { .major 0; .minor 1; }"),
+            Ok((
+                "",
+                vec![
+                    Token::Directive(String::from("format")),
+                    Token::OpenBracket,
+                    Token::Directive(String::from("major")),
+                    Token::LiteralInteger(0),
+                    Token::Semicolon,
+                    Token::Directive(String::from("minor")),
+                    Token::LiteralInteger(1),
+                    Token::Semicolon,
+                    Token::CloseBracket,
                 ]
             ))
         );
