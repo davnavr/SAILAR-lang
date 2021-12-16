@@ -43,7 +43,7 @@ where
 
 fn keyword_char(input: &str, allow_digit: bool) -> IResult<&str, char> {
     let (input, c) = character::complete::anychar(input)?;
-    if c.is_alphanumeric() || c == '.' || (allow_digit && c.is_digit(10u32)) {
+    if c.is_alphabetic() || c == '.' || (allow_digit && c.is_digit(10u32)) {
         Ok((input, c))
     } else {
         Err(nom::Err::Error(make_error(input, ErrorKind::Alpha))) // TODO: More specific error kind for keyword character.
@@ -131,7 +131,8 @@ mod tests {
                 vec![
                     Token::OpenBracket,
                     Token::Keyword(String::from("ret")),
-                    Token::Semicolon
+                    Token::Semicolon,
+                    Token::LiteralInteger(42),
                 ]
             ))
         );
