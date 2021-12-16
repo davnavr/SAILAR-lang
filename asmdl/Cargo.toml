@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 registir = { path = "../registir" }
+nom = "7.1.0"

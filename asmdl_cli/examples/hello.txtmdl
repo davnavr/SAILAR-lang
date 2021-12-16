@@ -1,0 +1,4 @@
+.format { .major 0; .minor 0; };
+.module { .name "Hello"; .version 1 0 0; };
+
+.code 
