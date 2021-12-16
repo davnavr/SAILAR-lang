@@ -1,5 +1,5 @@
+use crate::format::instruction_set::{Instruction, Opcode};
 use crate::{format, format::instruction_set};
-use crate::format::instruction_set::{Opcode, Instruction};
 
 #[non_exhaustive]
 pub enum WriteError {
@@ -30,7 +30,7 @@ impl BinWrite for &[u8] {
 
 impl BinWrite for u8 {
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
-        (&[ self ]).write(out)
+        (&[self]).write(out)
     }
 }
 
@@ -45,13 +45,11 @@ impl BinWrite for format::uvarint {
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         let format::uvarint(value) = self;
         let bytes = value.to_le_bytes();
-        let sliced =
-            if value < 0x80u64 {
-                &bytes[0 .. 0]
-            }
-            else {
-                panic!("Writing of unsigned integer {} is not supported", value)
-            };
+        let sliced = if value < 0x80u64 {
+            &bytes[0..0]
+        } else {
+            panic!("Writing of unsigned integer {} is not supported", value)
+        };
 
         sliced.write(out)
     }
@@ -86,13 +84,11 @@ impl BinWrite for format::varint {
     // TODO: Check that this actually works as intended when writing signed integers.
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         let format::varint(value) = self;
-        let converted =
-            if value >= 0xC0 && value <= 0x3F {
-                (value as u8 & 0b0111_1111u8) as u64
-            }
-            else {
-                panic!("Writing of signed integer {} is not supported", value)
-            };
+        let converted = if value >= 0xC0 && value <= 0x3F {
+            (value as u8 & 0b0111_1111u8) as u64
+        } else {
+            panic!("Writing of signed integer {} is not supported", value)
+        };
 
         format::uvarint(converted).write(out)
     }
@@ -109,7 +105,7 @@ impl BinWrite for usize {
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         match u64::try_from(self) {
             Ok(length) => format::uvarint(length).write(out),
-            Err(_) => Err(WriteError::VectorTooLarge(self))
+            Err(_) => Err(WriteError::VectorTooLarge(self)),
         }
     }
 }
@@ -129,7 +125,10 @@ impl BinWrite for &format::FormatVersion {
     }
 }
 
-impl<'a, D> BinWrite for &'a format::ByteLengthEncoded<D> where &'a D: BinWrite {
+impl<'a, D> BinWrite for &'a format::ByteLengthEncoded<D>
+where
+    &'a D: BinWrite,
+{
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         let mut buffer: Vec<u8> = Vec::new();
         let format::ByteLengthEncoded(ref data) = self;
@@ -139,7 +138,10 @@ impl<'a, D> BinWrite for &'a format::ByteLengthEncoded<D> where &'a D: BinWrite 
     }
 }
 
-impl<'a, D: BinWrite> BinWrite for &'a format::ByteLengthEncoded<Option<D>> where &'a D: BinWrite {
+impl<'a, D: BinWrite> BinWrite for &'a format::ByteLengthEncoded<Option<D>>
+where
+    &'a D: BinWrite,
+{
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         let format::ByteLengthEncoded(ref wrapped) = self;
         match wrapped {
@@ -149,7 +151,10 @@ impl<'a, D: BinWrite> BinWrite for &'a format::ByteLengthEncoded<Option<D>> wher
     }
 }
 
-impl<'a, T> BinWrite for &'a format::LengthEncodedVector<T> where &'a T: BinWrite {
+impl<'a, T> BinWrite for &'a format::LengthEncodedVector<T>
+where
+    &'a T: BinWrite,
+{
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
         let format::LengthEncodedVector(items) = self;
         items.len().write(out)?;
@@ -193,7 +198,7 @@ impl BinWrite for &format::SimpleType {
         match self {
             format::SimpleType::Primitive(_) => Ok(()),
             format::SimpleType::Defined(index) => (*index).write(out),
-            format::SimpleType::NativePointer(pointee) => pointee.write(out)
+            format::SimpleType::NativePointer(pointee) => pointee.write(out),
         }
     }
 }
@@ -203,11 +208,10 @@ impl BinWrite for &format::HeapType {
         format::TypeTagged::tag(self).write(out)?;
         match self {
             format::HeapType::ObjRef(format::SimpleType::Defined(index)) => index.write(out),
-            format::HeapType::ArrayRef(element_type) |
-            format::HeapType::HeapPointer(element_type) => element_type.write(out),
+            format::HeapType::ArrayRef(element_type)
+            | format::HeapType::HeapPointer(element_type) => element_type.write(out),
             format::HeapType::ObjRef(simple_type) => simple_type.write(out),
-            format::HeapType::Val(_) |
-            format::HeapType::AnyRef => Ok(()),
+            format::HeapType::Val(_) | format::HeapType::AnyRef => Ok(()),
         }
     }
 }
@@ -220,7 +224,7 @@ impl BinWrite for &format::AnyType {
             format::AnyType::GargbageCollectedPointer(element_type) => {
                 format::TypeTag::GarbageCollectedPointer.write(out)?;
                 element_type.write(out)
-            },
+            }
         }
     }
 }
@@ -259,7 +263,7 @@ impl<'t> BinWrite for &RegisterIndexVectorWrite<'t> {
         indices.len().write(out)?;
         for index in indices {
             index.index(self.input_register_count).write(out)?;
-        };
+        }
         Ok(())
     }
 }
@@ -284,13 +288,13 @@ impl BinWrite for &format::CodeBlock {
                 Instruction::Nop => (),
                 Instruction::Ret(registers) => {
                     RegisterIndexVectorWrite {
-                        input_register_count: self.input_register_count, 
-                        indices: registers
+                        input_register_count: self.input_register_count,
+                        indices: registers,
                     }
                     .write(out)?;
-                },
+                }
             };
-        };
+        }
 
         Ok(())
     }
@@ -383,10 +387,13 @@ impl BinWrite for &format::Method {
         self.flags.bits().write(out)?;
         self.implementation_flags().bits().write(out)?;
         self.signature.write(out)?;
-        
+
         match self.body {
             format::MethodBody::Defined(_) | format::MethodBody::Abstract => Ok(()),
-            format::MethodBody::External { library, entry_point_name } => {
+            format::MethodBody::External {
+                library,
+                entry_point_name,
+            } => {
                 library.write(out)?;
                 entry_point_name.write(out)
             }
@@ -414,12 +421,15 @@ impl BinWrite for &format::TypeDefinitionLayout {
         (self.flags() as u8).write(out)?;
 
         match self {
-            format::TypeDefinitionLayout::Unspecified |
-            format::TypeDefinitionLayout::Sequential(None) => Ok(()),
+            format::TypeDefinitionLayout::Unspecified
+            | format::TypeDefinitionLayout::Sequential(None) => Ok(()),
             format::TypeDefinitionLayout::Sequential(Some(size)) => size.write(out),
-            format::TypeDefinitionLayout::Explicit { size, field_offsets } => {
+            format::TypeDefinitionLayout::Explicit {
+                size,
+                field_offsets,
+            } => {
                 size.write(out)?;
-                for offset in field_offsets { 
+                for offset in field_offsets {
                     offset.write(out)?;
                 }
                 Ok(())

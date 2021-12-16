@@ -28,13 +28,34 @@ macro_rules! index_type {
     };
 }
 
-index_type!(IdentifierIndex, "An index into the module's identifiers, the index of the first identifier is `0`.");
-index_type!(NamespaceIndex, "An index into the namespaces of the types defined in this module, starting at `0`.");
-index_type!(TypeSignatureIndex, "An index into the module's type signatures, starting at `0`.");
-index_type!(MethodSignatureIndex, "An index into the module's method signatures, starting at `0`.");
-index_type!(CodeIndex, "An index into the module's method bodies, starting at `0`.");
-index_type!(DataIndex, "An index into the module's data arrays, starting at `0`.");
-index_type!(ModuleIndex, "`0` refers to the current module, while the remaining indices refer to the module imports.");
+index_type!(
+    IdentifierIndex,
+    "An index into the module's identifiers, the index of the first identifier is `0`."
+);
+index_type!(
+    NamespaceIndex,
+    "An index into the namespaces of the types defined in this module, starting at `0`."
+);
+index_type!(
+    TypeSignatureIndex,
+    "An index into the module's type signatures, starting at `0`."
+);
+index_type!(
+    MethodSignatureIndex,
+    "An index into the module's method signatures, starting at `0`."
+);
+index_type!(
+    CodeIndex,
+    "An index into the module's method bodies, starting at `0`."
+);
+index_type!(
+    DataIndex,
+    "An index into the module's data arrays, starting at `0`."
+);
+index_type!(
+    ModuleIndex,
+    "`0` refers to the current module, while the remaining indices refer to the module imports."
+);
 index_type!(TypeDefinitionIndex, "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types.");
 index_type!(FieldIndex, "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields.");
 index_type!(MethodIndex, "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods.");
@@ -69,7 +90,7 @@ pub enum PrimitiveType {
     UNative,
     SNative,
     F32,
-    F64
+    F64,
 }
 
 /// A value type or native pointer type.
@@ -135,7 +156,7 @@ pub enum TypeTag {
     /// A type specified by a type definition index passed by value.
     Struct = 0xDE,
     F32 = 0xF4,
-    F64 = 0xF8
+    F64 = 0xF8,
 }
 
 pub(crate) trait TypeTagged {
@@ -189,14 +210,20 @@ impl TypeTagged for HeapType {
 pub struct MethodSignature {
     /// The types of the values returned by the method.
     pub return_types: LengthEncodedVector<TypeSignatureIndex>,
-    pub parameter_types: LengthEncodedVector<TypeSignatureIndex>
+    pub parameter_types: LengthEncodedVector<TypeSignatureIndex>,
 }
 
 pub mod instruction_set;
 
 index_type!(CodeBlockIndex, "An index corresponding to the input registers of a code block, with `0` refering to the entry block.");
-index_type!(InputRegisterIndex, "An index corresponding to the input registers of a code block.");
-index_type!(TemporaryRegisterIndex, "An index corresponding to the temporary registers of a code block.");
+index_type!(
+    InputRegisterIndex,
+    "An index corresponding to the input registers of a code block."
+);
+index_type!(
+    TemporaryRegisterIndex,
+    "An index corresponding to the temporary registers of a code block."
+);
 
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
@@ -220,13 +247,13 @@ bitflags! {
 pub struct CodeBlock {
     //pub flags: (),
     /// A variable-length integer preceding the flags indicating the number of input registers for this block.
-    /// 
+    ///
     /// For the entry block's count, this should match the number of arguments of the method.
     pub input_register_count: uvarint,
     /// Specifies the block that control should be transferred to if an exception is thrown inside this block.
     pub exception_handler: Option<CodeExceptionHandler>,
     /// The instructions of the block.
-    /// 
+    ///
     /// Both the byte length and the actual number of instructions are included to simplify parsing.
     pub instructions: ByteLengthEncoded<LengthEncodedVector<instruction_set::Instruction>>,
 }
@@ -236,8 +263,14 @@ impl CodeBlock {
     pub fn flags(&self) -> CodeBlockFlags {
         match self.exception_handler {
             None => CodeBlockFlags::NO_EXCEPTION_HANDLING,
-            Some(CodeExceptionHandler { exception_register: Some(_), .. }) => CodeBlockFlags::EXCEPTION_HANDLER_IGNORES_EXCEPTION,
-            Some(CodeExceptionHandler { exception_register: None, .. }) => CodeBlockFlags::EXCEPTION_HANDLER_STORES_EXCEPTION,
+            Some(CodeExceptionHandler {
+                exception_register: Some(_),
+                ..
+            }) => CodeBlockFlags::EXCEPTION_HANDLER_IGNORES_EXCEPTION,
+            Some(CodeExceptionHandler {
+                exception_register: None,
+                ..
+            }) => CodeBlockFlags::EXCEPTION_HANDLER_STORES_EXCEPTION,
         }
     }
 }
@@ -246,7 +279,7 @@ impl CodeBlock {
 pub struct Code {
     /// The block that will be executed when the method is called, corresponds to block index `0`.
     pub entry_block: CodeBlock,
-    pub blocks: LengthEncodedVector<CodeBlock>
+    pub blocks: LengthEncodedVector<CodeBlock>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -300,7 +333,9 @@ bitflags! {
 macro_rules! flags_helpers {
     ($name: ident) => {
         impl $name {
-            pub fn is_valid(self) -> bool { $name::all().contains(self) }
+            pub fn is_valid(self) -> bool {
+                $name::all().contains(self)
+            }
         }
     };
 }
@@ -349,8 +384,7 @@ pub struct MethodOverride {
     /// Specifies the method to override.
     pub declaration: MethodIndex,
     /// Specifies the new implementation of the method, the method must be defined in the current type.
-    pub implementation: MethodIndex
-    // TODO: Could optimize implementation index by just having 0 be current type's first method since the method vector is just before the vtable field.
+    pub implementation: MethodIndex, // TODO: Could optimize implementation index by just having 0 be current type's first method since the method vector is just before the vtable field.
 }
 
 #[derive(Debug)]
@@ -385,7 +419,10 @@ pub enum MethodBody {
     /// Not defined in the current type, but in a derived type.
     Abstract,
     /// Defined elsewhere, used by the foreign function interface or to call methods defined in the runtime.
-    External { library: IdentifierIndex, entry_point_name: IdentifierIndex }
+    External {
+        library: IdentifierIndex,
+        entry_point_name: IdentifierIndex,
+    },
 }
 
 bitflags! {
@@ -411,10 +448,10 @@ impl MethodBody {
 }
 
 /// Represents a method, constructor, or initializer.
-/// 
+///
 /// Valid constructors must have the [`MethodFlags::CONSTRUCTOR`] flags set, must have no type parameters, and must
 /// not have any return values.
-/// 
+///
 /// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
 /// restrictions regarding valid constructors.
 #[derive(Debug)]
@@ -433,11 +470,13 @@ pub struct Method {
 
 impl Method {
     /// Flags that describe how the method is implemented, placed after the [`flags`] field.
-    pub fn implementation_flags(&self) -> MethodImplementationFlags { self.body.flags() }
+    pub fn implementation_flags(&self) -> MethodImplementationFlags {
+        self.body.flags()
+    }
 }
 
 /// Contains the types, fields, and methods defined in the module.
-/// 
+///
 /// Each type contains a list indices refering to the fields and methods that it defines, and each field or method contains the
 /// index of the type that defines it. These indices must exactly match in order for the module to be valid.
 #[derive(Debug)]
@@ -474,7 +513,7 @@ pub enum TypeDefinitionLayout {
     Explicit {
         size: uvarint,
         field_offsets: Vec<FieldOffset>, // TODO: Use a hash map for field offsets?
-    }
+    },
 }
 
 impl TypeDefinitionLayout {
@@ -512,7 +551,9 @@ pub struct ModuleHeader {
 
 impl ModuleHeader {
     /// Variable-length unsigned integer placed at the start of the header indicating the number of fields present.
-    pub fn field_count(&self) -> uvarint { MAX_HEADER_FIELD_COUNT }
+    pub fn field_count(&self) -> uvarint {
+        MAX_HEADER_FIELD_COUNT
+    }
 }
 
 pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
@@ -570,5 +611,7 @@ impl<T> LengthEncodedVector<T> {
 
 impl Module {
     /// Variable-length unsigned integer following the format version indicating the number of length encoded things to follow.
-    pub fn data_count(&self) -> uvarint { MAX_MODULE_DATA_COUNT }
+    pub fn data_count(&self) -> uvarint {
+        MAX_MODULE_DATA_COUNT
+    }
 }

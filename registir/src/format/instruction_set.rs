@@ -16,7 +16,7 @@ impl RegisterIndex {
         match self {
             // TODO: What if Input(index) is > input_register_count
             RegisterIndex::Input(index) => *index,
-            RegisterIndex::Temporary(uvarint(index)) => uvarint(index + input_register_count)
+            RegisterIndex::Temporary(uvarint(index)) => uvarint(index + input_register_count),
         }
     }
 }
@@ -31,10 +31,10 @@ pub enum Opcode {
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
-/// 
+///
 /// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
 /// included as usual to simplify parsing.
-/// 
+///
 /// For instructions that call another method, such as `call` or `call.virt`, the number of registers used as
 /// arguments must exactly match the number of arguments specified by the signature of the method. Additionally, the number
 /// of temporary registers introduced is equal to the number of return values.
@@ -50,9 +50,9 @@ pub enum Instruction {
     /// ret (<values>)
     /// ```
     /// Returns the values in the specified registers and transfers control back to the calling method.
-    /// 
+    ///
     /// Must be the last instruction in a block.
-    Ret(LengthEncodedVector<RegisterIndex>)
+    Ret(LengthEncodedVector<RegisterIndex>),
 }
 
 impl Instruction {
