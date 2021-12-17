@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
     pub line: u32,
     pub column: u32,
@@ -72,6 +72,19 @@ impl From<&str> for LiteralString {
 }
 
 #[derive(Debug)]
-pub enum Declaration {
-    Module(/*Vec<ModuleDeclaration>*/),
+pub enum FormatDeclaration {
+    Major(u8),
+    Minor(u8),
+}
+
+#[derive(Debug)]
+pub enum ModuleDeclaration {
+    Name(LiteralString),
+    Version(Vec<u64>),
+}
+
+#[derive(Debug)]
+pub enum TopLevelDeclaration {
+    Format(Vec<FormatDeclaration>),
+    Module(Vec<ModuleDeclaration>),
 }

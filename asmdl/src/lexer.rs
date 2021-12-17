@@ -34,19 +34,19 @@ impl PositionedToken {
     }
 }
 
-type TokenInput<'a> = combine::stream::easy::Stream<
+type ParserInput<'a> = combine::stream::easy::Stream<
     combine::stream::position::Stream<&'a str, combine::stream::position::SourcePosition>,
 >;
 
-fn skip_parser<'a, P: Parser<TokenInput<'a>>>(p: P) -> impl Parser<TokenInput<'a>, Output = ()> {
+fn skip_parser<'a, P: Parser<ParserInput<'a>>>(p: P) -> impl Parser<ParserInput<'a>, Output = ()> {
     p.map(|_| ())
 }
 
-fn period<'a>() -> impl Parser<TokenInput<'a>> {
+fn period<'a>() -> impl Parser<ParserInput<'a>> {
     char::char('.')
 }
 
-fn newline<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
+fn newline<'a>() -> impl Parser<ParserInput<'a>, Output = ()> {
     combine::choice((
         skip_parser(char::crlf()),
         skip_parser(char::newline()),
@@ -55,7 +55,7 @@ fn newline<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
     .expected("new line or end of file")
 }
 
-fn whitespace_or_comments<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
+fn whitespace_or_comments<'a>() -> impl Parser<ParserInput<'a>, Output = ()> {
     combine::choice((
         char::string("//")
             .with(combine::skip_many1(combine::not_followed_by(
@@ -67,16 +67,16 @@ fn whitespace_or_comments<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
     ))
 }
 
-fn directive<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
+fn directive<'a>() -> impl Parser<ParserInput<'a>, Output = String> {
     period()
         .with(combine::many1::<String, _, _>(char::alpha_num()))
         .expected("directive")
 }
 
-fn keyword<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
-    combine::satisfy::<TokenInput<'a>, _>(|c| c.is_alphabetic())
+fn keyword<'a>() -> impl Parser<ParserInput<'a>, Output = String> {
+    combine::satisfy::<ParserInput<'a>, _>(|c| c.is_alphabetic())
         .then(|first: char| {
-            combine::parser::<TokenInput<'a>, String, _>(move |input| {
+            combine::parser::<ParserInput<'a>, String, _>(move |input| {
                 let mut buffer = String::new();
                 buffer.push(first);
                 let mut iterator =
@@ -88,16 +88,16 @@ fn keyword<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
         .expected("keyword")
 }
 
-fn literal_integer_digits<'a, D: Parser<TokenInput<'a>, Output = char>>(
+fn literal_integer_digits<'a, D: Parser<ParserInput<'a>, Output = char>>(
     radix: u32,
     digit_parser: D,
-) -> impl Parser<TokenInput<'a>, Output = i128> {
+) -> impl Parser<ParserInput<'a>, Output = i128> {
     combine::sep_by1::<String, _, _, _>(digit_parser, combine::skip_many(char::char('_')))
         // Probably safe to unwrap, digits are guaranteed to be correct.
         .map(move |digits: String| i128::from_str_radix(&digits, radix).unwrap())
 }
 
-fn literal_integer<'a>() -> impl Parser<TokenInput<'a>, Output = i128> {
+fn literal_integer<'a>() -> impl Parser<ParserInput<'a>, Output = i128> {
     combine::choice((
         combine::attempt(char::string("0x").with(literal_integer_digits(16, char::hex_digit()))),
         combine::attempt(
@@ -113,7 +113,7 @@ fn literal_integer<'a>() -> impl Parser<TokenInput<'a>, Output = i128> {
 }
 
 // TODO: Allow escape sequences in literal strings.
-fn literal_string<'a>() -> impl Parser<TokenInput<'a>, Output = ast::LiteralString> {
+fn literal_string<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LiteralString> {
     combine::between(
         char::char('\"'),
         char::char('\"'),
@@ -122,11 +122,11 @@ fn literal_string<'a>() -> impl Parser<TokenInput<'a>, Output = ast::LiteralStri
     .map(ast::LiteralString)
 }
 
-fn character_token<'a>(c: char, token: Token) -> impl Parser<TokenInput<'a>, Output = Token> {
+fn character_token<'a>(c: char, token: Token) -> impl Parser<ParserInput<'a>, Output = Token> {
     char::char(c).with(combine::value(token))
 }
 
-fn token<'a>() -> impl Parser<TokenInput<'a>, Output = Token> {
+fn token<'a>() -> impl Parser<ParserInput<'a>, Output = Token> {
     combine::choice((
         directive().map(Token::Directive),
         keyword().map(Token::Keyword),
@@ -142,7 +142,7 @@ fn token<'a>() -> impl Parser<TokenInput<'a>, Output = Token> {
     .expected("token")
 }
 
-fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToken> {
+fn positioned_token<'a>() -> impl Parser<ParserInput<'a>, Output = PositionedToken> {
     (combine::position(), token()).map(|(position, token)| {
         PositionedToken::new(
             token,
@@ -152,7 +152,7 @@ fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToke
     })
 }
 
-fn positioned_token_sequence<'a>() -> impl Parser<TokenInput<'a>, Output = Vec<PositionedToken>> {
+fn positioned_token_sequence<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<PositionedToken>> {
     whitespace_or_comments()
         .with(combine::sep_by::<Vec<_>, _, _, _>(
             positioned_token(),
@@ -161,7 +161,7 @@ fn positioned_token_sequence<'a>() -> impl Parser<TokenInput<'a>, Output = Vec<P
         .skip(combine::eof())
 }
 
-fn lexer_input<'a>(input: &'a str) -> TokenInput<'a> {
+fn lexer_input<'a>(input: &'a str) -> ParserInput<'a> {
     combine::stream::easy::Stream(combine::stream::position::Stream::new(input))
 }
 
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn module_directive_tokens_test() {
         assert_eq!(
-            lex(".module { .name \"Hello\" }"),
+            lex(".module { .name \"Hello\" };"),
             vec![
                 PositionedToken::new(Token::Directive(String::from("module")), 0, 0),
                 PositionedToken::new(Token::OpenBracket, 0, 8),
@@ -222,6 +222,7 @@ mod tests {
                     16
                 ),
                 PositionedToken::new(Token::CloseBracket, 0, 24),
+                PositionedToken::new(Token::Semicolon, 0, 25),
             ]
         );
     }
