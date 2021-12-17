@@ -122,7 +122,11 @@ fn token<'a>() -> impl Parser<TokenInput<'a>, Output = Token> {
 
 fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToken> {
     (combine::position(), token()).map(|(position, token)| {
-        PositionedToken::new(token, position.line as u32, position.column as u32)
+        PositionedToken::new(
+            token,
+            (position.line - 1) as u32,
+            (position.column - 1) as u32,
+        )
     })
 }
 
