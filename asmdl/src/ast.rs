@@ -48,7 +48,30 @@ pub struct Symbol {
     pub name: Identifier,
 }
 
+#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+pub struct LiteralString(pub Vec<char>);
+
+impl std::fmt::Display for LiteralString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in &self.0 {
+            let c = *c;
+            if c.is_control() || c == '\t' || c == '\\' || c == '\"' {
+                write!(f, "\\u{:04X}", u32::from(c))?;
+            } else {
+                write!(f, "{}", c)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl From<&str> for LiteralString {
+    fn from(s: &str) -> Self {
+        Self(s.chars().collect())
+    }
+}
+
 #[derive(Debug)]
 pub enum Declaration {
-    Module { name: Identifier },
+    Module(/*Vec<ModuleDeclaration>*/),
 }
