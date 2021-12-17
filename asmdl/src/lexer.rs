@@ -19,42 +19,43 @@ pub enum Token {
     Keyword(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct PositionedToken {
     pub token: Token,
     pub position: ast::Position,
 }
 
-// //fn positioned_token
+impl PositionedToken {
+    pub fn new(token: Token, line: u32, column: u32) -> PositionedToken {
+        Self {
+            token,
+            position: ast::Position { line, column },
+        }
+    }
+}
 
-// fn token_sequence<'a>(input: &'a str) -> IResult<&'a str, Vec<Token>> {
-//     let (input, ()) = whitespace_or_comments(input)?;
-//     multi::many0(|input: &'a str| {
-//         let (input, token) = token(input)?;
-//         let (input, ()) = whitespace_or_comments(input)?;
-//         Ok((input, token))
-//     })(input)
-// }
+type TokenInput<'a> =
+    combine::stream::position::Stream<&'a str, combine::stream::position::SourcePosition>;
 
-fn period<'a>() -> impl Parser<&'a str> {
+fn period<'a>() -> impl Parser<TokenInput<'a>> {
     char::char('.')
 }
 
-fn newline<'a>() -> impl Parser<&'a str> {
+fn newline<'a>() -> impl Parser<TokenInput<'a>> {
     combine::choice((char::crlf(), char::newline()))
 }
 
-fn whitespace_or_comments<'a>() -> impl Parser<&'a str> {
+fn whitespace_or_comments<'a>() -> impl Parser<TokenInput<'a>> {
     combine::choice((newline(), newline()))
 }
 
-fn directive<'a>() -> impl Parser<&'a str, Output = String> {
+fn directive<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
     period().with(combine::many1::<String, _, _>(char::alpha_num()))
 }
 
-fn keyword<'a>() -> impl Parser<&'a str, Output = String> {
-    combine::satisfy::<&str, _>(|c| c.is_alphabetic()).then(|first: char| {
-        combine::parser::<&str, String, _>(move |input| {
+fn keyword<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
+    combine::satisfy::<TokenInput<'a>, _>(|c| c.is_alphabetic()).then(|first: char| {
+        combine::parser::<TokenInput<'a>, String, _>(move |input| {
             let mut buffer = String::new();
             buffer.push(first);
             let mut iterator =
@@ -65,19 +66,15 @@ fn keyword<'a>() -> impl Parser<&'a str, Output = String> {
     })
 }
 
-fn literal_integer_separator<'a>() -> impl Parser<&'a str> {
-    combine::skip_many(char::char('_'))
-}
-
-fn literal_integer_digits<'a, D: Parser<&'a str, Output = char>>(
+fn literal_integer_digits<'a, D: Parser<TokenInput<'a>, Output = char>>(
     radix: u32,
     digit_parser: D,
-) -> impl Parser<&'a str, Output = i128> {
+) -> impl Parser<TokenInput<'a>, Output = i128> {
     combine::sep_by1::<String, _, D, _>(digit_parser, combine::skip_many(char::char('_')))
         .map(move |digits: String| i128::from_str_radix(&digits, radix).unwrap())
 }
 
-fn literal_integer<'a>() -> impl Parser<&'a str, Output = i128> {
+fn literal_integer<'a>() -> impl Parser<TokenInput<'a>, Output = i128> {
     combine::choice((
         char::string("0x").with(literal_integer_digits(16, char::hex_digit())),
         char::string("0b").with(literal_integer_digits(2, combine::one_of("01".chars()))),
@@ -89,11 +86,11 @@ fn literal_integer<'a>() -> impl Parser<&'a str, Output = i128> {
     ))
 }
 
-fn character_token<'a>(c: char, token: Token) -> impl Parser<&'a str, Output = Token> {
+fn character_token<'a>(c: char, token: Token) -> impl Parser<TokenInput<'a>, Output = Token> {
     char::char(c).with(combine::value(token))
 }
 
-fn token<'a>() -> impl Parser<&'a str, Output = Token> {
+fn token<'a>() -> impl Parser<TokenInput<'a>, Output = Token> {
     combine::choice((
         directive().map(Token::Directive),
         keyword().map(Token::Keyword),
@@ -107,29 +104,39 @@ fn token<'a>() -> impl Parser<&'a str, Output = Token> {
     ))
 }
 
-fn positioned_token<'a>() -> impl Parser<&'a str, Output = PositionedToken> {
-    (combine::position(),
-    token())
-    .map(|(position, token)| PositionedToken { token,  })
+fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToken> {
+    (combine::position(), token()).map(|(position, token)| {
+        PositionedToken::new(token, position.line as u32, position.column as u32)
+    })
 }
 
-pub fn lex(input: &str) -> Vec<Token> {
-    unimplemented!()
+fn positioned_token_sequence<'a>() -> impl Parser<TokenInput<'a>, Output = Vec<PositionedToken>> {
+    whitespace_or_comments().with(combine::sep_by1::<Vec<_>, _, _, _>(
+        positioned_token(),
+        whitespace_or_comments(),
+    ))
+}
+
+pub fn lex(input: &str) -> Vec<PositionedToken> {
+    positioned_token_sequence()
+        .parse(TokenInput::new(input))
+        .unwrap()
+        .0
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::{lex, Token};
+    use crate::lexer::{lex, PositionedToken, Token};
 
     #[test]
     fn basic_sequence_test() {
         assert_eq!(
             lex("{ret;42"),
             vec![
-                Token::OpenBracket,
-                Token::Keyword(String::from("ret")),
-                Token::Semicolon,
-                Token::LiteralInteger(42),
+                PositionedToken::new(Token::OpenBracket, 0, 0),
+                PositionedToken::new(Token::Keyword(String::from("ret")), 0, 1),
+                PositionedToken::new(Token::Semicolon, 0, 4),
+                PositionedToken::new(Token::LiteralInteger(42), 0, 5),
             ]
         );
     }
@@ -137,17 +144,17 @@ mod tests {
     #[test]
     fn format_directive_tokens_test() {
         assert_eq!(
-            lex(".format { .major 0; .minor 0x1; }"),
+            lex(".format {\n  .major 0;\n  .minor 0x1;\n}"),
             vec![
-                Token::Directive(String::from("format")),
-                Token::OpenBracket,
-                Token::Directive(String::from("major")),
-                Token::LiteralInteger(0),
-                Token::Semicolon,
-                Token::Directive(String::from("minor")),
-                Token::LiteralInteger(1),
-                Token::Semicolon,
-                Token::CloseBracket,
+                PositionedToken::new(Token::Directive(String::from("format")), 0, 0),
+                PositionedToken::new(Token::OpenBracket, 0, 8),
+                PositionedToken::new(Token::Directive(String::from("major")), 1, 2),
+                PositionedToken::new(Token::LiteralInteger(0), 1, 9),
+                PositionedToken::new(Token::Semicolon, 1, 10),
+                PositionedToken::new(Token::Directive(String::from("minor")), 2, 2),
+                PositionedToken::new(Token::LiteralInteger(1), 2, 9),
+                PositionedToken::new(Token::Semicolon, 2, 10),
+                PositionedToken::new(Token::CloseBracket, 3, 0),
             ]
         );
     }
