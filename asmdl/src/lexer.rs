@@ -34,8 +34,9 @@ impl PositionedToken {
     }
 }
 
-type TokenInput<'a> =
-    combine::stream::position::Stream<&'a str, combine::stream::position::SourcePosition>;
+type TokenInput<'a> = combine::stream::easy::Stream<
+    combine::stream::position::Stream<&'a str, combine::stream::position::SourcePosition>,
+>;
 
 fn skip_parser<'a, P: Parser<TokenInput<'a>>>(p: P) -> impl Parser<TokenInput<'a>, Output = ()> {
     p.map(|_| ())
@@ -50,22 +51,21 @@ fn newline<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
         skip_parser(char::crlf()),
         skip_parser(char::newline()),
         combine::eof(),
-    ))
+    )).expected("new line or end of file")
 }
 
 fn whitespace_or_comments<'a>() -> impl Parser<TokenInput<'a>, Output = ()> {
     combine::choice((
-        char::spaces(),
         char::string("//").with(combine::skip_many1(combine::not_followed_by(
             // Hack to get () returning parser to work with not_followed_by
             newline().map(|()| '\n'),
-        ))),
-        combine::value(()),
+        ))).expected("single-line comment"),
+        char::spaces(),
     ))
 }
 
 fn directive<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
-    period().with(combine::many1::<String, _, _>(char::alpha_num()))
+    period().with(combine::many1::<String, _, _>(char::alpha_num())).expected("directive")
 }
 
 fn keyword<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
@@ -79,27 +79,29 @@ fn keyword<'a>() -> impl Parser<TokenInput<'a>, Output = String> {
             iterator.into_result(buffer.clone())
         })
     })
+    .expected("keyword")
 }
 
 fn literal_integer_digits<'a, D: Parser<TokenInput<'a>, Output = char>>(
     radix: u32,
     digit_parser: D,
 ) -> impl Parser<TokenInput<'a>, Output = i128> {
-    combine::sep_by1::<String, _, D, _>(digit_parser, combine::skip_many(char::char('_')))
+    combine::sep_by1::<String, _, _, _>(digit_parser, combine::skip_many(char::char('_')))
         // Probably safe to unwrap, digits are guaranteed to be correct.
         .map(move |digits: String| i128::from_str_radix(&digits, radix).unwrap())
 }
 
 fn literal_integer<'a>() -> impl Parser<TokenInput<'a>, Output = i128> {
     combine::choice((
-        char::string("0x").with(literal_integer_digits(16, char::hex_digit())),
-        char::string("0b").with(literal_integer_digits(2, combine::one_of("01".chars()))),
+        combine::attempt(char::string("0x").with(literal_integer_digits(16, char::hex_digit()))),
+        combine::attempt(char::string("0b").with(literal_integer_digits(2, combine::one_of("01".chars())))),
         (
             combine::optional(char::char('-')).map(|neg| neg.is_some()),
             literal_integer_digits(10, char::digit()),
         )
             .map(|(is_negative, value)| if is_negative { value * -1 } else { value }),
     ))
+    .expected("integer literal")
 }
 
 fn character_token<'a>(c: char, token: Token) -> impl Parser<TokenInput<'a>, Output = Token> {
@@ -117,7 +119,7 @@ fn token<'a>() -> impl Parser<TokenInput<'a>, Output = Token> {
         character_token('(', Token::OpenParenthesis),
         character_token(')', Token::CloseParenthesis),
         combine::any().with(combine::value(Token::Unknown)), // TODO: To reduce memory usage, try to maximize number of unknown chars parsed.
-    ))
+    )).expected("token")
 }
 
 fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToken> {
@@ -132,17 +134,23 @@ fn positioned_token<'a>() -> impl Parser<TokenInput<'a>, Output = PositionedToke
 
 fn positioned_token_sequence<'a>() -> impl Parser<TokenInput<'a>, Output = Vec<PositionedToken>> {
     whitespace_or_comments()
-        .with(combine::sep_by1::<Vec<_>, _, _, _>(
+        .with(combine::sep_by::<Vec<_>, _, _, _>(
             positioned_token(),
             whitespace_or_comments(),
         ))
         .skip(combine::eof())
 }
 
+fn lexer_input<'a>(input: &'a str) -> TokenInput<'a> {
+    combine::stream::easy::Stream(
+        combine::stream::position::Stream::new(input),
+    )
+}
+
 pub fn lex(input: &str) -> Vec<PositionedToken> {
-    match positioned_token_sequence().parse(TokenInput::new(input)) {
+    match positioned_token_sequence().parse(lexer_input(input)) {
         Ok((tokens, _)) => tokens,
-        Err(error) => panic!("internal lexer error {}", error),
+        Err(error) => panic!("{}", error),
     }
 }
 

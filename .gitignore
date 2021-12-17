@@ -3,3 +3,6 @@ target
 
 # rustfmt
 **/*.rs.bk
+
+# vscode
+.vscode/launch.json
