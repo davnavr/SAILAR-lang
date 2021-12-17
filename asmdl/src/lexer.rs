@@ -1,9 +1,5 @@
 use crate::ast;
-use nom::{
-    branch, character, combinator,
-    error::{make_error, ErrorKind, ParseError},
-    multi, IResult,
-};
+use combine::parser::{char, Parser};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
@@ -26,146 +22,133 @@ pub enum Token {
 #[derive(Debug)]
 pub struct PositionedToken {
     pub token: Token,
-    pub position: usize,
+    pub position: ast::Position,
 }
 
-fn ignore_parser<'a, O, E: ParseError<&'a str>, F>(
-    mut parser: F,
-) -> impl FnMut(&'a str) -> IResult<&str, (), E>
-where
-    F: nom::Parser<&'a str, O, E>,
-{
-    move |input: &str| {
-        let (input, _) = parser.parse(input)?;
-        Ok((input, ()))
-    }
+// //fn positioned_token
+
+// fn token_sequence<'a>(input: &'a str) -> IResult<&'a str, Vec<Token>> {
+//     let (input, ()) = whitespace_or_comments(input)?;
+//     multi::many0(|input: &'a str| {
+//         let (input, token) = token(input)?;
+//         let (input, ()) = whitespace_or_comments(input)?;
+//         Ok((input, token))
+//     })(input)
+// }
+
+fn period<'a>() -> impl Parser<&'a str> {
+    char::char('.')
 }
 
-fn directive(input: &str) -> IResult<&str, String> {
-    let (input, _) = character::complete::char('.')(input)?;
-    let (input, name) = character::complete::alpha1(input)?;
-    Ok((input, String::from(name)))
+fn newline<'a>() -> impl Parser<&'a str> {
+    combine::choice((char::crlf(), char::newline()))
 }
 
-fn keyword_char(input: &str, allow_digit: bool) -> IResult<&str, char> {
-    let (input, c) = character::complete::anychar(input)?;
-    if c.is_alphabetic() || c == '.' || (allow_digit && c.is_digit(10u32)) {
-        Ok((input, c))
-    } else {
-        Err(nom::Err::Error(make_error(input, ErrorKind::Alpha))) // TODO: More specific error kind for keyword character.
-    }
+fn whitespace_or_comments<'a>() -> impl Parser<&'a str> {
+    combine::choice((newline(), newline()))
 }
 
-fn keyword(input: &str) -> IResult<&str, String> {
-    let (input, first_char) = keyword_char(input, false)?;
-    let (input, mut remaining_chars) = multi::many0(|input| keyword_char(input, true))(input)?;
-    remaining_chars.insert(0, first_char);
-    Ok((input, remaining_chars.into_iter().collect()))
+fn directive<'a>() -> impl Parser<&'a str, Output = String> {
+    period().with(combine::many1::<String, _, _>(char::alpha_num()))
 }
 
-fn whitespace_or_comments(input: &str) -> IResult<&str, ()> {
-    ignore_parser(multi::many0(ignore_parser(
-        character::complete::multispace1,
-    )))(input)
+fn keyword<'a>() -> impl Parser<&'a str, Output = String> {
+    combine::satisfy::<&str, _>(|c| c.is_alphabetic()).then(|first: char| {
+        combine::parser::<&str, String, _>(move |input| {
+            let mut buffer = String::new();
+            buffer.push(first);
+            let mut iterator =
+                combine::satisfy(|c: char| c.is_alphanumeric() || c == '.').iter(input);
+            buffer.extend(&mut iterator);
+            iterator.into_result(buffer.clone())
+        })
+    })
 }
 
-fn literal_integer_dec(input: &str) -> IResult<&str, i128> {
-    let (input, negative) = combinator::opt(character::complete::char('-'))(input)?;
-    let (input, value) = combinator::map_res(character::complete::digit1, |digits: &str| {
-        i128::from_str_radix(digits, 10)
-    })(input)?;
-    Ok((input, value * (if negative.is_some() { -1 } else { 1 })))
+fn literal_integer_separator<'a>() -> impl Parser<&'a str> {
+    combine::skip_many(char::char('_'))
 }
 
-//fn literal_integer_hex
-
-fn literal_integer(input: &str) -> IResult<&str, i128> {
-    literal_integer_dec(input)
+fn literal_integer_digits<'a, D: Parser<&'a str, Output = char>>(
+    radix: u32,
+    digit_parser: D,
+) -> impl Parser<&'a str, Output = i128> {
+    combine::sep_by1::<String, _, D, _>(digit_parser, combine::skip_many(char::char('_')))
+        .map(move |digits: String| i128::from_str_radix(&digits, radix).unwrap())
 }
 
-fn character_token<'a>(c: char, token: Token) -> impl FnMut(&'a str) -> IResult<&'a str, Token> {
-    combinator::value(token, character::complete::char(c))
+fn literal_integer<'a>() -> impl Parser<&'a str, Output = i128> {
+    combine::choice((
+        char::string("0x").with(literal_integer_digits(16, char::hex_digit())),
+        char::string("0b").with(literal_integer_digits(2, combine::one_of("01".chars()))),
+        (
+            combine::optional(char::char('-')).map(|neg| neg.is_some()),
+            literal_integer_digits(10, char::digit()),
+        )
+            .map(|(is_negative, value)| if is_negative { value * -1 } else { value }),
+    ))
 }
 
-fn token<'a>(input: &'a str) -> IResult<&'a str, Token> {
-    branch::alt((
-        combinator::map(directive, Token::Directive),
-        combinator::map(keyword, Token::Keyword),
-        combinator::map(literal_integer, Token::LiteralInteger),
+fn character_token<'a>(c: char, token: Token) -> impl Parser<&'a str, Output = Token> {
+    char::char(c).with(combine::value(token))
+}
+
+fn token<'a>() -> impl Parser<&'a str, Output = Token> {
+    combine::choice((
+        directive().map(Token::Directive),
+        keyword().map(Token::Keyword),
+        literal_integer().map(Token::LiteralInteger),
         character_token(';', Token::Semicolon),
         character_token('{', Token::OpenBracket),
         character_token('}', Token::CloseBracket),
         character_token('(', Token::OpenParenthesis),
         character_token(')', Token::CloseParenthesis),
-        combinator::value(Token::Unknown, character::complete::anychar),
-    ))(input)
+        combine::any().with(combine::value(Token::Unknown)), // TODO: To reduce memory usage, try to maximize number of unknown chars parsed.
+    ))
 }
 
-//fn positioned_token
-
-fn token_sequence<'a>(input: &'a str) -> IResult<&'a str, Vec<Token>> {
-    let (input, ()) = whitespace_or_comments(input)?;
-    multi::many0(|input: &'a str| {
-        let (input, token) = token(input)?;
-        let (input, ()) = whitespace_or_comments(input)?;
-        Ok((input, token))
-    })(input)
+fn positioned_token<'a>() -> impl Parser<&'a str, Output = PositionedToken> {
+    (combine::position(),
+    token())
+    .map(|(position, token)| PositionedToken { token,  })
 }
 
 pub fn lex(input: &str) -> Vec<Token> {
-    match nom::Finish::finish(token_sequence(input)).unwrap() {
-        ("", tokens) => tokens,
-        (remaining, _) => panic!("unable to lex remaining input {}", remaining),
-    }
+    unimplemented!()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::{token, token_sequence, Token};
-
-    #[test]
-    fn keyword_test() {
-        let instruction: &str = "obj.arr.new";
-        assert_eq!(
-            token(instruction),
-            Ok(("", Token::Keyword(String::from(instruction))))
-        );
-    }
+    use crate::lexer::{lex, Token};
 
     #[test]
     fn basic_sequence_test() {
         assert_eq!(
-            token_sequence("{ret;42"),
-            Ok((
-                "",
-                vec![
-                    Token::OpenBracket,
-                    Token::Keyword(String::from("ret")),
-                    Token::Semicolon,
-                    Token::LiteralInteger(42),
-                ]
-            ))
+            lex("{ret;42"),
+            vec![
+                Token::OpenBracket,
+                Token::Keyword(String::from("ret")),
+                Token::Semicolon,
+                Token::LiteralInteger(42),
+            ]
         );
     }
 
     #[test]
     fn format_directive_tokens_test() {
         assert_eq!(
-            token_sequence(".format { .major 0; .minor 1; }"),
-            Ok((
-                "",
-                vec![
-                    Token::Directive(String::from("format")),
-                    Token::OpenBracket,
-                    Token::Directive(String::from("major")),
-                    Token::LiteralInteger(0),
-                    Token::Semicolon,
-                    Token::Directive(String::from("minor")),
-                    Token::LiteralInteger(1),
-                    Token::Semicolon,
-                    Token::CloseBracket,
-                ]
-            ))
+            lex(".format { .major 0; .minor 0x1; }"),
+            vec![
+                Token::Directive(String::from("format")),
+                Token::OpenBracket,
+                Token::Directive(String::from("major")),
+                Token::LiteralInteger(0),
+                Token::Semicolon,
+                Token::Directive(String::from("minor")),
+                Token::LiteralInteger(1),
+                Token::Semicolon,
+                Token::CloseBracket,
+            ]
         );
     }
 }
