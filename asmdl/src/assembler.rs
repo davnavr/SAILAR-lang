@@ -53,7 +53,7 @@ impl std::fmt::Display for Error {
 fn assemble_module_header(
     errors: &mut Vec<Error>,
     default_module_name: &format::Identifier,
-    declarations: &Vec<ast::Positioned<ast::ModuleDeclaration>>,
+    declarations: &[ast::Positioned<ast::ModuleDeclaration>],
 ) -> format::ModuleHeader {
     let mut module_name = None;
     let mut module_version = None;
@@ -88,8 +88,8 @@ fn assemble_module_header(
 
     format::ModuleHeader {
         identifier: format::ModuleIdentifier {
-            name: module_name.unwrap_or(format::Identifier::clone(default_module_name)),
-            version: module_version.unwrap_or(format::VersionNumbers::default()),
+            name: module_name.unwrap_or_else(|| format::Identifier::clone(default_module_name)),
+            version: module_version.unwrap_or_default(),
         },
     }
 }
@@ -125,7 +125,7 @@ pub fn assemble_declarations(
 
     if errors.is_empty() {
         Ok(format::Module {
-            format_version: module_format.unwrap_or(format::FormatVersion::default()),
+            format_version: module_format.unwrap_or_default(),
             header: format::ByteLengthEncoded(module_header.unwrap()),
             // TODO: Add other things
             identifiers: format::ByteLengthEncoded(format::LengthEncodedVector::default()),

@@ -107,7 +107,7 @@ fn literal_integer<'a>() -> impl Parser<ParserInput<'a>, Output = i128> {
             combine::optional(char::char('-')).map(|neg| neg.is_some()),
             literal_integer_digits(10, char::digit()),
         )
-            .map(|(is_negative, value)| if is_negative { value * -1 } else { value }),
+            .map(|(is_negative, value)| if is_negative { -value } else { value }),
     ))
     .expected("integer literal")
 }
@@ -161,7 +161,7 @@ fn positioned_token_sequence<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<
         .skip(combine::eof())
 }
 
-fn lexer_input<'a>(input: &'a str) -> ParserInput<'a> {
+fn lexer_input(input: &str) -> ParserInput<'_> {
     combine::stream::easy::Stream(combine::stream::position::Stream::new(input))
 }
 

@@ -38,7 +38,7 @@ impl<'a> combine::StreamOnce for TokenStream<'a> {
 
     fn uncons(&mut self) -> Result<Self::Token, StreamErrorFor<Self>> {
         match self.tokens.split_first() {
-            Some((ref parsed, remaining)) => {
+            Some((parsed, remaining)) => {
                 self.tokens = remaining;
                 Ok(parsed)
             }
@@ -49,7 +49,7 @@ impl<'a> combine::StreamOnce for TokenStream<'a> {
 
 impl<'a> combine::Positioned for TokenStream<'a> {
     fn position(&self) -> Self::Position {
-        self.tokens.first().map(|token| token.position.clone())
+        self.tokens.first().map(|token| token.position)
     }
 }
 

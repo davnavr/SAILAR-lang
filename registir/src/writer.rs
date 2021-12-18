@@ -27,7 +27,7 @@ trait BinWrite {
 
 impl<T: BinWrite + Copy> BinWrite for &T {
     fn write<W: std::io::Write>(self, out: &mut W) -> WriteResult {
-        self.clone().write(out)
+        (*self).write(out)
     }
 }
 
@@ -253,11 +253,11 @@ impl BinWrite for Opcode {
         let mut value = self as usize;
 
         (value as u8).write(out)?;
-        value = value - Opcode::Continuation as usize;
+        value -= Opcode::Continuation as usize;
 
         while value > 0 {
             (value as u8).write(out)?;
-            value = value - Opcode::Continuation as usize;
+            value -= Opcode::Continuation as usize;
         }
 
         Ok(())
@@ -451,7 +451,7 @@ impl BinWrite for &format::TypeDefinitionLayout {
 }
 
 /// Writes a binary module.
-pub fn write<'t, W: std::io::Write>(module: &'t format::Module, out: &mut W) -> WriteResult {
+pub fn write<W: std::io::Write>(module: &format::Module, out: &mut W) -> WriteResult {
     format::MAGIC.write(out)?;
     // NOTE: For all top level byte encoding things, could share Vec<u8> to reduce allocations.
     module.format_version.write(out)?;

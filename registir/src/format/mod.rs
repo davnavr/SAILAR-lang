@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 /// The magic number for `binmdl` files.
-pub static MAGIC: &'static [u8] = "reg\0".as_bytes();
+pub static MAGIC: &[u8] = "reg\0".as_bytes();
 
 /// Represents a variable-length unsigned integer.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
@@ -629,6 +629,10 @@ impl<T> ByteLengthEncoded<T> {
 impl<T> LengthEncodedVector<T> {
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

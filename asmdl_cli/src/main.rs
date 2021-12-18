@@ -55,7 +55,7 @@ impl Error for asmdl::assembler::Error {
     type Description = asmdl::assembler::Error;
 
     fn error(&self) -> &Self::Description {
-        &self
+        self
     }
 
     fn position(&self) -> Option<asmdl::ast::Position> {
@@ -84,7 +84,7 @@ fn assemble(args: &Arguments) -> Result<(), Vec<Box<dyn std::error::Error>>> {
             .flatten()
             .map(|name| registir::format::Identifier::try_from(name).ok())
             .flatten()
-            .unwrap_or(registir::format::Identifier::try_from("module").unwrap()),
+            .unwrap_or_else(|| registir::format::Identifier::try_from("module").unwrap()),
     )
     .map_err::<Vec<Box<dyn std::error::Error>>, _>(|errors| {
         errors
