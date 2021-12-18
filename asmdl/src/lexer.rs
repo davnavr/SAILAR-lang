@@ -12,6 +12,7 @@ pub enum Token {
     Directive(String),
     GlobalIdentifier(ast::Identifier),
     LocalIdentifier(ast::Identifier),
+    RegisterIdentifier(ast::Identifier),
     LiteralInteger(i128),
     /// A string enclosed in quotation marks.
     LiteralString(ast::LiteralString),
@@ -122,6 +123,17 @@ fn literal_string<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LiteralStr
     .map(ast::LiteralString)
 }
 
+fn identifier<'a, K: Fn(ast::Identifier) -> Token>(
+    c: char,
+    kind: K,
+) -> impl Parser<ParserInput<'a>, Output = Token> {
+    char::char(c)
+        .with(combine::many1::<String, _, _>(combine::satisfy(
+            |c: char| c.is_alphanumeric() || c == '_',
+        )))
+        .map(move |id| kind(ast::Identifier::try_from(id).unwrap()))
+}
+
 fn character_token<'a>(c: char, token: Token) -> impl Parser<ParserInput<'a>, Output = Token> {
     char::char(c).with(combine::value(token))
 }
@@ -132,6 +144,9 @@ fn token<'a>() -> impl Parser<ParserInput<'a>, Output = Token> {
         keyword().map(Token::Keyword),
         literal_integer().map(Token::LiteralInteger),
         literal_string().map(Token::LiteralString),
+        identifier('@', Token::GlobalIdentifier),
+        identifier('$', Token::LocalIdentifier),
+        identifier('%', Token::RegisterIdentifier),
         character_token(';', Token::Semicolon),
         character_token('{', Token::OpenBracket),
         character_token('}', Token::CloseBracket),
@@ -154,7 +169,7 @@ fn positioned_token<'a>() -> impl Parser<ParserInput<'a>, Output = PositionedTok
 
 fn positioned_token_sequence<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<PositionedToken>> {
     whitespace_or_comments()
-        .with(combine::sep_by::<Vec<_>, _, _, _>(
+        .with(combine::sep_end_by::<Vec<_>, _, _, _>(
             positioned_token(),
             whitespace_or_comments(),
         ))
