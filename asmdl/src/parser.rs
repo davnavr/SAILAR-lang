@@ -125,7 +125,7 @@ fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = as
 
 fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::ModuleDeclaration> {
     combine::choice((
-        directive("name", literal_string()).map(ast::ModuleDeclaration::Name),
+        directive("name", positioned(literal_string())).map(ast::ModuleDeclaration::Name),
         directive(
             "version",
             combine::many::<Vec<_>, _, _>(literal_integer_sized::<u64>()),
@@ -186,12 +186,22 @@ mod tests {
     #[test]
     fn module_declaration_test() {
         assert_eq!(
-            parser::parse(&lexer::lex(".module {\n    .name \"Hey\"; .version 1 0 0;\n};")),
+            parser::parse(&lexer::lex(
+                ".module {\n    .name \"Hey\"; .version 1 0 0;\n};"
+            )),
             Ok(vec![ast::Positioned::new(
                 0,
                 0,
                 ast::TopLevelDeclaration::Module(vec![
-                    ast::Positioned::new(1, 4, ast::ModuleDeclaration::Name(ast::LiteralString::from("Hey"))),
+                    ast::Positioned::new(
+                        1,
+                        4,
+                        ast::ModuleDeclaration::Name(ast::Positioned::new(
+                            1,
+                            9,
+                            ast::LiteralString::from("Hey")
+                        ))
+                    ),
                     ast::Positioned::new(1, 17, ast::ModuleDeclaration::Version(vec![1, 0, 0]))
                 ])
             )])

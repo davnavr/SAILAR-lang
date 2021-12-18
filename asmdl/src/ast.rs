@@ -57,6 +57,15 @@ impl<T> Positioned<T> {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisterSymbol(pub Positioned<Identifier>);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalSymbol(pub Positioned<Identifier>);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GlobalSymbol(pub Positioned<Identifier>);
+
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct LiteralString(pub Vec<char>);
 
@@ -81,6 +90,70 @@ impl From<&str> for LiteralString {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum TypeSignature {
+    Primitive(registir::format::PrimitiveType),
+    Array(Box<TypeSignature>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Statement {
+    pub registers: Vec<RegisterSymbol>,
+    //pub instruction: Vec<Positioned<Instruction>>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum CodeDeclaration {
+    Entry(LocalSymbol),
+    Block {
+        name: LocalSymbol,
+        arguments: Vec<RegisterSymbol>,
+        instructions: Vec<Statement>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MethodModifier {
+    Public,
+    Private,
+    Instance,
+    Initializer,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum TypeModifier {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MethodBodyDeclaration {
+    Defined(GlobalSymbol),
+    External {
+        library: Positioned<LiteralString>,
+        name: Positioned<LiteralString>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MethodDeclaration {
+    Name(Positioned<LiteralString>),
+    Body(MethodBodyDeclaration),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum TypeDeclaration {
+    Name(Positioned<LiteralString>),
+    Namespace(Vec<Positioned<LiteralString>>),
+    Method {
+        symbol: GlobalSymbol,
+        parameter_types: Vec<TypeSignature>,
+        return_types: Vec<TypeSignature>,
+        modifiers: MethodModifier,
+        declarations: Vec<Positioned<MethodDeclaration>>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
     Major(u8),
     Minor(u8),
@@ -88,7 +161,7 @@ pub enum FormatDeclaration {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ModuleDeclaration {
-    Name(LiteralString),
+    Name(Positioned<LiteralString>),
     Version(Vec<u64>),
 }
 
@@ -96,4 +169,13 @@ pub enum ModuleDeclaration {
 pub enum TopLevelDeclaration {
     Format(Vec<Positioned<FormatDeclaration>>),
     Module(Vec<Positioned<ModuleDeclaration>>),
+    Code {
+        symbol: GlobalSymbol,
+        declarations: Vec<Positioned<CodeDeclaration>>,
+    },
+    Type {
+        symbol: GlobalSymbol,
+        modifiers: Vec<Positioned<TypeModifier>>,
+        declarations: Vec<Positioned<TypeDeclaration>>,
+    },
 }

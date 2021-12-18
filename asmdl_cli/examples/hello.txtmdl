@@ -22,7 +22,7 @@
         .body defined @code_main;
     };
 
-    .method @method_print_line (char32[]) private {
+    .method @method_print_line ([char32]) private {
         .name "PrintLine";
         .body external "ExamplePrintLine" from "runmdl";
     };
