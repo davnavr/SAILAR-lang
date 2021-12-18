@@ -169,7 +169,7 @@ mod tests {
     use crate::{ast, lexer, parser};
 
     #[test]
-    fn module_declaration_test() {
+    fn format_declaration_test() {
         assert_eq!(
             parser::parse(&lexer::lex(".format { .major 0; .minor 1; };")),
             Ok(vec![ast::Positioned::new(
@@ -177,7 +177,22 @@ mod tests {
                 0,
                 ast::TopLevelDeclaration::Format(vec![
                     ast::Positioned::new(0, 10, ast::FormatDeclaration::Major(0)),
-                    ast::Positioned::new(0, 20, ast::FormatDeclaration::Major(1))
+                    ast::Positioned::new(0, 20, ast::FormatDeclaration::Minor(1))
+                ])
+            )])
+        )
+    }
+
+    #[test]
+    fn module_declaration_test() {
+        assert_eq!(
+            parser::parse(&lexer::lex(".module {\n    .name \"Hey\"; .version 1 0 0;\n};")),
+            Ok(vec![ast::Positioned::new(
+                0,
+                0,
+                ast::TopLevelDeclaration::Module(vec![
+                    ast::Positioned::new(1, 4, ast::ModuleDeclaration::Name(ast::LiteralString::from("Hey"))),
+                    ast::Positioned::new(1, 17, ast::ModuleDeclaration::Version(vec![1, 0, 0]))
                 ])
             )])
         )
