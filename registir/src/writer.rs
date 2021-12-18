@@ -1,11 +1,23 @@
 use crate::format::instruction_set::{Instruction, Opcode};
 use crate::{format, format::instruction_set};
 
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum WriteError {
     VectorTooLarge(usize),
     IoError(std::io::Error),
 }
+
+impl std::fmt::Display for WriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::VectorTooLarge(size) => write!(f, "{} is not a valid size for a vector", size),
+            Self::IoError(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for WriteError {}
 
 pub type WriteResult = Result<(), WriteError>;
 

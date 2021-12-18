@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 asmdl = { path = "../asmdl" }
+structopt = "0.3.25"
+registir = { path = "../registir" }
+
+[[bin]]
+name = "asmdl"
+path = "src/main.rs"

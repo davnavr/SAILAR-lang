@@ -17,6 +17,39 @@ pub enum Error {
     MissingModuleDeclaration,
 }
 
+impl Error {
+    pub fn position(&self) -> Option<ast::Position> {
+        match self {
+            Self::DuplicateModuleDeclaration(position)
+            | Self::DuplicateModuleVersion(position)
+            | Self::InvalidModuleName(position, _) => Some(*position),
+            Self::MissingModuleDeclaration => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateModuleDeclaration(_) => {
+                f.write_str("a module declaration already exists")
+            }
+            Self::DuplicateModuleVersion(_) => {
+                f.write_str("the module version was already declared")
+            }
+            Self::InvalidModuleName(_, NameError::Duplicate) => {
+                write!(f, "the module name was already declared")
+            }
+            Self::InvalidModuleName(_, NameError::Empty) => {
+                write!(f, "the module name cannot be empty")
+            }
+            Self::MissingModuleDeclaration => f.write_str(
+                "missing module declaration, declare a module with the `.module` directive",
+            ),
+        }
+    }
+}
+
 fn assemble_module_header(
     errors: &mut Vec<Error>,
     default_module_name: &format::Identifier,
