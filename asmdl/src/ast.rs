@@ -111,10 +111,12 @@ pub enum CodeDeclaration {
     },
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum DataKind {
-    Bytes(Vec<Positioned<ByteDataDeclaration>>),
+    //Bytes(Vec<Positioned<ByteDataDeclaration>>),
     String {
-        content: String
+        content: LiteralString,
+        //encoding: StringDataEncoding,
     }
 }
 
@@ -183,7 +185,7 @@ pub enum TopLevelDeclaration {
     Data {
         symbol: GlobalSymbol,
         kind: DataKind,
-    }
+    },
     Type {
         symbol: GlobalSymbol,
         modifiers: Vec<Positioned<TypeModifier>>,

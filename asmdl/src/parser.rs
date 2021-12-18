@@ -83,6 +83,17 @@ fn positioned<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     })
 }
 
+fn global_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::GlobalSymbol> {
+    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
+        lexer::Token::GlobalIdentifier(id) => Some(ast::GlobalSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        _ => None,
+    })
+}
+
+fn keyword<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
+    expect_token(lexer::Token::Keyword(String::from(name)))
+}
+
 fn directive<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     name: &'static str,
     parser: P,
@@ -146,6 +157,13 @@ fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Module
     ))
 }
 
+fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind> {
+    combine::choice((
+        keyword("bytes").map(|_| unimplemented!()),
+        keyword("string").with(literal_string().map(|content| ast::DataKind::String { content }))
+    ))
+}
+
 fn declaration_block<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<T>>> {
@@ -159,6 +177,7 @@ fn top_level_declaration<'a>(
             .map(ast::TopLevelDeclaration::Format),
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
+        directive("data", (global_symbol(), data_declaration()).map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind }))
     ))
 }
 
