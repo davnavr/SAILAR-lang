@@ -66,16 +66,16 @@ index_type!(TypeLayoutIndex, "An index into the module's type layouts, which spe
 pub struct ByteLengthEncoded<T>(pub T);
 
 /// Represents an array preceded by an variable-length unsigned integer indicating the number of items.
-#[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct LengthEncodedVector<T>(pub Vec<T>);
 
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VersionNumbers(pub LengthEncodedVector<uvarint>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
-#[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct Identifier(LengthEncodedVector<u8>);
+#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
+pub struct Identifier(String);
 
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub enum PrimitiveType {
@@ -574,7 +574,7 @@ pub struct Module {
     pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>,
     /// An array containing the method bodies of the module.
     pub method_bodies: ByteLengthEncoded<LengthEncodedVector<Code>>,
-    pub data_arrays: ByteLengthEncoded<DataArray>,
+    pub data_arrays: ByteLengthEncoded<LengthEncodedVector<DataArray>>,
     pub imports: ByteLengthEncoded<ModuleImports>,
     pub definitions: ByteLengthEncoded<ModuleDefinitions>,
     /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
@@ -584,28 +584,61 @@ pub struct Module {
     //pub debugging_information: ByteLengthEncoded<>
 }
 
-impl Identifier {
-    pub fn with_bytes(bytes: Vec<u8>) -> Identifier {
-        Identifier(LengthEncodedVector(bytes))
+impl<T: Into<u64>> From<T> for uvarint {
+    fn from(value: T) -> Self {
+        Self(value.into())
     }
+}
 
-    pub fn bytes(&self) -> &Vec<u8> {
-        let Identifier(LengthEncodedVector(bytes)) = self;
-        bytes
+impl Identifier {
+    pub fn bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl TryFrom<&Vec<char>> for Identifier {
+    type Error = ();
+
+    fn try_from(chars: &Vec<char>) -> Result<Self, Self::Error> {
+        if chars.is_empty() {
+            Err(())
+        } else {
+            Ok(Self(chars.iter().collect::<String>()))
+        }
+    }
+}
+
+impl TryFrom<&str> for Identifier {
+    type Error = ();
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        if s.is_empty() {
+            Err(())
+        } else {
+            Ok(Self(String::from(s)))
+        }
     }
 }
 
 impl<T> ByteLengthEncoded<T> {
     pub fn data(&self) -> &T {
-        let ByteLengthEncoded(data) = self;
-        data
+        &self.0
     }
 }
 
 impl<T> LengthEncodedVector<T> {
     pub fn len(&self) -> usize {
-        let LengthEncodedVector(items) = self;
-        items.len()
+        self.0.len()
+    }
+}
+
+impl<T: Into<uvarint>> std::iter::FromIterator<T> for VersionNumbers {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut numbers = Vec::new();
+        for i in iter {
+            numbers.push(i.into())
+        }
+        Self(LengthEncodedVector(numbers))
     }
 }
 

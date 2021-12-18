@@ -3,14 +3,14 @@ use combine::{stream::easy, stream::StreamErrorFor, Parser};
 
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum ParserError {
+pub enum Error {
     InvalidFormatVersion(i128),
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PositionedParserError {
     pub position: Option<ast::Position>,
-    pub error: ParserError,
+    pub error: Error,
 }
 
 #[derive(Clone, Debug)]
@@ -150,9 +150,10 @@ fn top_level_declaration<'a>(
     ))
 }
 
-pub fn parse(
-    tokens: &[lexer::PositionedToken],
-) -> Result<Vec<ast::Positioned<ast::TopLevelDeclaration>>, Vec<PositionedParserError>> {
+pub type ParseResult =
+    Result<Vec<ast::Positioned<ast::TopLevelDeclaration>>, Vec<PositionedParserError>>;
+
+pub fn parse_tokens(tokens: &[lexer::PositionedToken]) -> ParseResult {
     match combine::many::<Vec<_>, _, _>(positioned(top_level_declaration())).parse(
         combine::stream::state::Stream {
             stream: TokenStream { tokens },
@@ -164,14 +165,18 @@ pub fn parse(
     }
 }
 
+pub fn parse(declarations: &str) -> ParseResult {
+    parse_tokens(&lexer::lex(declarations))
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{ast, lexer, parser};
+    use crate::{ast, parser};
 
     #[test]
     fn format_declaration_test() {
         assert_eq!(
-            parser::parse(&lexer::lex(".format { .major 0; .minor 1; };")),
+            parser::parse(".format { .major 0; .minor 1; };"),
             Ok(vec![ast::Positioned::new(
                 0,
                 0,
@@ -186,9 +191,7 @@ mod tests {
     #[test]
     fn module_declaration_test() {
         assert_eq!(
-            parser::parse(&lexer::lex(
-                ".module {\n    .name \"Hey\"; .version 1 0 0;\n};"
-            )),
+            parser::parse(".module {\n    .name \"Hey\"; .version 1 0 0;\n};"),
             Ok(vec![ast::Positioned::new(
                 0,
                 0,
@@ -198,7 +201,7 @@ mod tests {
                         4,
                         ast::ModuleDeclaration::Name(ast::Positioned::new(
                             1,
-                            9,
+                            10,
                             ast::LiteralString::from("Hey")
                         ))
                     ),

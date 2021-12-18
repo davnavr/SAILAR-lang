@@ -44,8 +44,8 @@ impl TryFrom<String> for Identifier {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Positioned<T> {
-    pub position: Position,
     pub value: T,
+    pub position: Position,
 }
 
 impl<T> Positioned<T> {
