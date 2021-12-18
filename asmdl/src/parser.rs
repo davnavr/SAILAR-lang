@@ -123,8 +123,8 @@ fn between_brackets<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     )
 }
 
-fn format_version<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = u8> {
-    directive(name, literal_integer_sized::<u8>())
+fn format_version<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = registir::format::uvarint> {
+    directive(name, literal_integer_sized::<u64>()).map(registir::format::uvarint)
 }
 
 fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = ast::FormatDeclaration>
@@ -193,8 +193,8 @@ mod tests {
                 0,
                 0,
                 ast::TopLevelDeclaration::Format(vec![
-                    ast::Positioned::new(0, 10, ast::FormatDeclaration::Major(0)),
-                    ast::Positioned::new(0, 20, ast::FormatDeclaration::Minor(1))
+                    ast::Positioned::new(0, 10, ast::FormatDeclaration::Major(registir::format::uvarint(0))),
+                    ast::Positioned::new(0, 20, ast::FormatDeclaration::Minor(registir::format::uvarint(1)))
                 ])
             )])
         )

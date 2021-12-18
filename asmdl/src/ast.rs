@@ -111,6 +111,13 @@ pub enum CodeDeclaration {
     },
 }
 
+pub enum DataKind {
+    Bytes(Vec<Positioned<ByteDataDeclaration>>),
+    String {
+        content: String
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum MethodModifier {
     Public,
@@ -155,8 +162,8 @@ pub enum TypeDeclaration {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
-    Major(u8),
-    Minor(u8),
+    Major(registir::format::uvarint),
+    Minor(registir::format::uvarint),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -173,6 +180,10 @@ pub enum TopLevelDeclaration {
         symbol: GlobalSymbol,
         declarations: Vec<Positioned<CodeDeclaration>>,
     },
+    Data {
+        symbol: GlobalSymbol,
+        kind: DataKind,
+    }
     Type {
         symbol: GlobalSymbol,
         modifiers: Vec<Positioned<TypeModifier>>,

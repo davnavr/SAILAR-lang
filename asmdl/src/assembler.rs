@@ -11,6 +11,9 @@ pub enum NameError {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    DuplicateFormatDeclaration(ast::Position),
+    DuplicateMajorVersion(ast::Position),
+    DuplicateMinorVersion(ast::Position),
     DuplicateModuleDeclaration(ast::Position),
     DuplicateModuleVersion(ast::Position),
     InvalidModuleName(ast::Position, NameError),
@@ -20,7 +23,10 @@ pub enum Error {
 impl Error {
     pub fn position(&self) -> Option<ast::Position> {
         match self {
-            Self::DuplicateModuleDeclaration(position)
+            Self::DuplicateFormatDeclaration(position)
+            | Self::DuplicateMajorVersion(position)
+            | Self::DuplicateMinorVersion(position)
+            | Self::DuplicateModuleDeclaration(position)
             | Self::DuplicateModuleVersion(position)
             | Self::InvalidModuleName(position, _) => Some(*position),
             Self::MissingModuleDeclaration => None,
@@ -31,6 +37,15 @@ impl Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DuplicateFormatDeclaration(_) => {
+                f.write_str("the module format was already specified")
+            }
+            Self::DuplicateMajorVersion(_) => {
+                f.write_str("the module format major version was already specified")
+            }
+            Self::DuplicateMinorVersion(_) => {
+                f.write_str("the module format minor version was already specified")
+            }
             Self::DuplicateModuleDeclaration(_) => {
                 f.write_str("a module declaration already exists")
             }
@@ -49,6 +64,8 @@ impl std::fmt::Display for Error {
         }
     }
 }
+
+//trait AssembleFrom<Node, T>
 
 fn assemble_module_header(
     errors: &mut Vec<Error>,
@@ -94,6 +111,33 @@ fn assemble_module_header(
     }
 }
 
+fn assemble_module_format(errors: &mut Vec<Error>, declarations: &[ast::Positioned<ast::FormatDeclaration>]) -> format::FormatVersion {
+    let mut major_version = None;
+    let mut minor_version = None;
+
+    for node in declarations {
+        match &node.value {
+            ast::FormatDeclaration::Major(major) => {
+                match major_version {
+                    None => major_version = Some(*major),
+                    Some(_) => errors.push(Error::DuplicateMajorVersion(node.position)),
+                }
+            }
+            ast::FormatDeclaration::Minor(minor) => {
+                match minor_version {
+                    None => minor_version = Some(*minor),
+                    Some(_) => errors.push(Error::DuplicateMinorVersion(node.position)),
+                }
+            }
+        }
+    }
+
+    format::FormatVersion {
+        major: major_version.unwrap_or_default(),
+        minor: minor_version.unwrap_or_default(),
+    }
+}
+
 pub fn assemble_declarations(
     declarations: &[ast::Positioned<ast::TopLevelDeclaration>],
     default_module_name: format::Identifier,
@@ -113,6 +157,12 @@ pub fn assemble_declarations(
                     ))
                 } else {
                     errors.push(Error::DuplicateModuleDeclaration(node.position))
+                }
+            }
+            ast::TopLevelDeclaration::Format(ref format_versions) => {
+                match module_format {
+                    None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
+                    Some(_) => errors.push(Error::DuplicateFormatDeclaration(node.position))
                 }
             }
             _ => unimplemented!(),
