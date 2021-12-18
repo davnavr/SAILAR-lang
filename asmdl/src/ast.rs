@@ -42,10 +42,19 @@ impl TryFrom<String> for Identifier {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Symbol {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Positioned<T> {
     pub position: Position,
-    pub name: Identifier,
+    pub value: T,
+}
+
+impl<T> Positioned<T> {
+    pub fn new(line: u32, column: u32, value: T) -> Positioned<T> {
+        Self {
+            position: Position { line, column },
+            value,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
@@ -71,20 +80,20 @@ impl From<&str> for LiteralString {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
     Major(u8),
     Minor(u8),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ModuleDeclaration {
     Name(LiteralString),
     Version(Vec<u64>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum TopLevelDeclaration {
-    Format(Vec<FormatDeclaration>),
-    Module(Vec<ModuleDeclaration>),
+    Format(Vec<Positioned<FormatDeclaration>>),
+    Module(Vec<Positioned<ModuleDeclaration>>),
 }
