@@ -77,7 +77,7 @@ pub struct VersionNumbers(pub LengthEncodedVector<uvarint>);
 #[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum PrimitiveType {
     U8 = 0,
     S8,

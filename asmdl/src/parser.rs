@@ -90,6 +90,20 @@ fn global_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::GlobalSymbo
     })
 }
 
+fn local_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LocalSymbol> {
+    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
+        lexer::Token::LocalIdentifier(id) => Some(ast::LocalSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        _ => None,
+    })
+}
+
+fn register_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::RegisterSymbol> {
+    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
+        lexer::Token::RegisterIdentifier(id) => Some(ast::RegisterSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        _ => None,
+    })
+}
+
 fn keyword<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
     expect_token(lexer::Token::Keyword(String::from(name)))
 }
@@ -124,14 +138,24 @@ fn literal_string<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LiteralStr
     })
 }
 
+fn between_tokens<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
+    parser: P,
+    open: lexer::Token,
+    close: lexer::Token,
+) -> impl Parser<ParserInput<'a>, Output = T> {
+    combine::between(expect_token(open), expect_token(close), parser)
+}
+
 fn between_brackets<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = T> {
-    combine::between(
-        expect_token(lexer::Token::OpenBracket),
-        expect_token(lexer::Token::CloseBracket),
-        parser,
-    )
+    between_tokens(parser, lexer::Token::OpenBracket, lexer::Token::CloseBracket)
+}
+
+fn between_parenthesis<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
+    parser: P,
+) -> impl Parser<ParserInput<'a>, Output = T> {
+    between_tokens(parser, lexer::Token::OpenParenthesis, lexer::Token::CloseParenthesis)
 }
 
 fn format_version<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = registir::format::uvarint> {
@@ -164,6 +188,45 @@ fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind
     ))
 }
 
+fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveType> {
+    combine::choice((
+        keyword("u32").with(combine::value(ast::PrimitiveType::U32)),
+        keyword("s32").with(combine::value(ast::PrimitiveType::S32)),
+    ))
+}
+
+fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
+    (
+        combine::optional(combine::sep_by1::<Vec<_>, _, _, _>(register_symbol(), expect_token(lexer::Token::Comma)).skip(expect_token(lexer::Token::Equals))).map(Option::unwrap_or_default),
+        positioned(combine::choice((
+            keyword("nop").with(combine::value(ast::Instruction::Nop)),
+            keyword("ret").with(combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma)).map(ast::Instruction::Ret)),
+            keyword("const.zero").with(primitive_type().map(ast::Instruction::ConstZero)),
+        )))
+    )
+    .map(|(registers, instruction)| ast::Statement { registers, instruction })
+    .skip(expect_token(lexer::Token::Semicolon))
+}
+
+fn code_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::CodeDeclaration> {
+    combine::choice((
+        directive("entry", local_symbol()).map(ast::CodeDeclaration::Entry),
+        directive("block",
+            (
+                local_symbol(),
+                combine::optional(
+                    between_parenthesis(combine::sep_by::<Vec<_>, _, _, _>(register_symbol(), expect_token(lexer::Token::Comma)))
+                ),
+                between_brackets(combine::many(code_statement())))
+            )
+            .map(|(name, arguments, instructions)| ast::CodeDeclaration::Block {
+                name,
+                arguments: arguments.unwrap_or_default(),
+                instructions
+            })
+    ))
+}
+
 fn declaration_block<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<T>>> {
@@ -177,7 +240,8 @@ fn top_level_declaration<'a>(
             .map(ast::TopLevelDeclaration::Format),
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
-        directive("data", (global_symbol(), data_declaration()).map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind }))
+        directive("data", (global_symbol(), data_declaration()).map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind })),
+        directive("code", (global_symbol(), declaration_block(code_declaration())).map(|(symbol, declarations)| ast::TopLevelDeclaration::Code { symbol, declarations }))
     ))
 }
 

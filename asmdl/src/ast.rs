@@ -1,3 +1,5 @@
+pub use registir::format::PrimitiveType;
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
     pub line: u32,
@@ -91,18 +93,37 @@ impl From<&str> for LiteralString {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum TypeSignature {
-    Primitive(registir::format::PrimitiveType),
+    Primitive(PrimitiveType),
     Array(Box<TypeSignature>),
+}
+
+/// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Instruction {
+    Nop,
+    ConstZero(PrimitiveType),
+    Ret(Vec<RegisterSymbol>),
+}
+
+impl Instruction {
+    /// Returns the number of registers that should be on the left side of the `=` sign.
+    pub fn return_count(&self) -> u8 {
+        match self {
+            Self::Nop | Self::Ret(_) => 0,
+            Self::ConstZero(_) => 1,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Statement {
     pub registers: Vec<RegisterSymbol>,
-    //pub instruction: Vec<Positioned<Instruction>>,
+    pub instruction: Positioned<Instruction>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum CodeDeclaration {
+    /// Specifies the block that is the entry block.
     Entry(LocalSymbol),
     Block {
         name: LocalSymbol,

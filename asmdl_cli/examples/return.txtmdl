@@ -1,0 +1,20 @@
+.format { .major 0; .minor 0; };
+.module { .name "Return"; .version 1 0 0; };
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %l_exit = const.zero s32;
+        ret %l_exit;
+    };
+};
+
+.type @class_hello public {
+    .name "Return";
+    .namespace "Example";
+
+    .method @method_main () returns (i32) public {
+        .name "Main";
+        .body defined @code_main;
+    };
+};
