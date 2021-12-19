@@ -91,7 +91,7 @@ impl From<&str> for LiteralString {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeSignature {
     Primitive(PrimitiveType),
     Array(Box<TypeSignature>),
@@ -141,7 +141,7 @@ pub enum DataKind {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MethodModifier {
     Public,
     Private,
@@ -149,7 +149,7 @@ pub enum MethodModifier {
     Initializer,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TypeModifier {
     Public,
     Private,
@@ -176,9 +176,9 @@ pub enum TypeDeclaration {
     Namespace(Vec<Positioned<LiteralString>>),
     Method {
         symbol: GlobalSymbol,
-        parameter_types: Vec<TypeSignature>,
-        return_types: Vec<TypeSignature>,
-        modifiers: MethodModifier,
+        parameter_types: Vec<Positioned<TypeSignature>>,
+        return_types: Vec<Positioned<TypeSignature>>,
+        modifiers: Vec<Positioned<MethodModifier>>,
         declarations: Vec<Positioned<MethodDeclaration>>,
     },
 }

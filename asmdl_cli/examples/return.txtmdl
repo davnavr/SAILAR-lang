@@ -13,7 +13,7 @@
     .name "Return";
     .namespace "Example";
 
-    .method @method_main () returns (i32) public {
+    .method @method_main () returns (s32) public {
         .name "Main";
         .body defined @code_main;
     };

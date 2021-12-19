@@ -170,9 +170,13 @@ fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = as
     ))
 }
 
+fn name_directive<'a, D, N: Fn(ast::Positioned<ast::LiteralString>) -> D>(name_mapper: N) -> impl Parser<ParserInput<'a>, Output = D> {
+    directive("name", positioned(literal_string())).map(name_mapper)
+}
+
 fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::ModuleDeclaration> {
     combine::choice((
-        directive("name", positioned(literal_string())).map(ast::ModuleDeclaration::Name),
+        name_directive(ast::ModuleDeclaration::Name),
         directive(
             "version",
             combine::many::<Vec<_>, _, _>(literal_integer_sized::<u64>()),
@@ -192,6 +196,12 @@ fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveT
     combine::choice((
         keyword("u32").with(combine::value(ast::PrimitiveType::U32)),
         keyword("s32").with(combine::value(ast::PrimitiveType::S32)),
+    ))
+}
+
+fn type_signature<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeSignature> {
+    combine::choice((
+        primitive_type().map(ast::TypeSignature::Primitive),
     ))
 }
 
@@ -227,6 +237,50 @@ fn code_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::CodeDecl
     ))
 }
 
+fn type_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeModifier> {
+    combine::choice((
+        keyword("public").with(combine::value(ast::TypeModifier::Public)),
+        keyword("private").with(combine::value(ast::TypeModifier::Private)),
+    ))
+}
+
+fn method_types<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<ast::TypeSignature>>> {
+    between_parenthesis(combine::sep_by(positioned(type_signature()), expect_token(lexer::Token::Comma)))
+}
+
+fn method_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodModifier> {
+    combine::choice((
+        keyword("public").with(combine::value(ast::MethodModifier::Public)),
+        keyword("private").with(combine::value(ast::MethodModifier::Private)),
+        keyword("instance").with(combine::value(ast::MethodModifier::Instance)),
+        keyword("initializer").with(combine::value(ast::MethodModifier::Initializer)),
+    ))
+}
+
+
+fn method_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodDeclaration> {
+    combine::choice((
+        name_directive(ast::MethodDeclaration::Name),
+    ))
+}
+
+fn type_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeDeclaration> {
+    combine::choice((
+        name_directive(ast::TypeDeclaration::Name),
+        directive("namespace", combine::many(positioned(literal_string()))).map(ast::TypeDeclaration::Namespace),
+        directive("method", (
+            global_symbol(),
+            method_types(),
+            combine::optional(keyword("returns").with(method_types())).map(Option::unwrap_or_default),
+            combine::many::<Vec<_>, _, _>(positioned(method_modifier())),
+            declaration_block(method_declaration()),
+        ))
+        .map(|(symbol, parameter_types, return_types, modifiers, declarations)| ast::TypeDeclaration::Method {
+            symbol, parameter_types, return_types, modifiers, declarations
+        })
+    ))
+}
+
 fn declaration_block<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<T>>> {
@@ -241,7 +295,8 @@ fn top_level_declaration<'a>(
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
         directive("data", (global_symbol(), data_declaration()).map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind })),
-        directive("code", (global_symbol(), declaration_block(code_declaration())).map(|(symbol, declarations)| ast::TopLevelDeclaration::Code { symbol, declarations }))
+        directive("code", (global_symbol(), declaration_block(code_declaration())).map(|(symbol, declarations)| ast::TopLevelDeclaration::Code { symbol, declarations })),
+        directive("type", (global_symbol(), combine::many::<Vec<_>, _, _>(positioned(type_modifier())), declaration_block(type_declaration())).map(|(symbol, modifiers, declarations)| ast::TopLevelDeclaration::Type { symbol, modifiers, declarations }))
     ))
 }
 
