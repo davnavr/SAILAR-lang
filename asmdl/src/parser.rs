@@ -1,10 +1,11 @@
 use crate::{ast, lexer};
 use combine::{stream::easy, stream::StreamErrorFor, Parser};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     InvalidFormatVersion(i128),
+    ParseFailed(Vec<easy::Error<Box<lexer::Token>, Box<lexer::Token>>>),
 }
 
 impl std::fmt::Display for Error {
@@ -15,11 +16,17 @@ impl std::fmt::Display for Error {
                 "{} is not a valid format version, since it cannot be represented in a single byte",
                 value
             ),
+            Self::ParseFailed(error) => {
+                for e in error {
+                    std::fmt::Display::fmt(e, f)?;
+                }
+                Ok(())
+            }
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct PositionedParserError {
     pub position: Option<ast::Position>,
     pub error: Error,
@@ -32,7 +39,7 @@ pub struct TokenStream<'a> {
 
 impl<'a> combine::StreamOnce for TokenStream<'a> {
     type Token = &'a lexer::PositionedToken;
-    type Range = &'a [lexer::PositionedToken];
+    type Range = Self::Token;
     type Position = Option<ast::Position>;
     type Error = easy::Errors<Self::Token, Self::Range, Self::Position>;
 
@@ -85,26 +92,37 @@ fn positioned<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
 
 fn global_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::GlobalSymbol> {
     combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::GlobalIdentifier(id) => Some(ast::GlobalSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        lexer::Token::GlobalIdentifier(id) => Some(ast::GlobalSymbol(ast::Positioned {
+            position: token.position,
+            value: id.clone(),
+        })),
         _ => None,
     })
 }
 
 fn local_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LocalSymbol> {
     combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::LocalIdentifier(id) => Some(ast::LocalSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        lexer::Token::LocalIdentifier(id) => Some(ast::LocalSymbol(ast::Positioned {
+            position: token.position,
+            value: id.clone(),
+        })),
         _ => None,
     })
 }
 
 fn register_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::RegisterSymbol> {
     combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::RegisterIdentifier(id) => Some(ast::RegisterSymbol(ast::Positioned { position: token.position, value: id.clone() })),
+        lexer::Token::RegisterIdentifier(id) => Some(ast::RegisterSymbol(ast::Positioned {
+            position: token.position,
+            value: id.clone(),
+        })),
         _ => None,
     })
 }
 
-fn keyword<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
+fn keyword<'a>(
+    name: &'static str,
+) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
     expect_token(lexer::Token::Keyword(String::from(name)))
 }
 
@@ -149,16 +167,26 @@ fn between_tokens<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
 fn between_brackets<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = T> {
-    between_tokens(parser, lexer::Token::OpenBracket, lexer::Token::CloseBracket)
+    between_tokens(
+        parser,
+        lexer::Token::OpenBracket,
+        lexer::Token::CloseBracket,
+    )
 }
 
 fn between_parenthesis<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
     parser: P,
 ) -> impl Parser<ParserInput<'a>, Output = T> {
-    between_tokens(parser, lexer::Token::OpenParenthesis, lexer::Token::CloseParenthesis)
+    between_tokens(
+        parser,
+        lexer::Token::OpenParenthesis,
+        lexer::Token::CloseParenthesis,
+    )
 }
 
-fn format_version<'a>(name: &'static str) -> impl Parser<ParserInput<'a>, Output = registir::format::uvarint> {
+fn format_version<'a>(
+    name: &'static str,
+) -> impl Parser<ParserInput<'a>, Output = registir::format::uvarint> {
     directive(name, literal_integer_sized::<u64>()).map(registir::format::uvarint)
 }
 
@@ -170,7 +198,9 @@ fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = as
     ))
 }
 
-fn name_directive<'a, D, N: Fn(ast::Positioned<ast::LiteralString>) -> D>(name_mapper: N) -> impl Parser<ParserInput<'a>, Output = D> {
+fn name_directive<'a, D, N: Fn(ast::Positioned<ast::LiteralString>) -> D>(
+    name_mapper: N,
+) -> impl Parser<ParserInput<'a>, Output = D> {
     directive("name", positioned(literal_string())).map(name_mapper)
 }
 
@@ -188,7 +218,7 @@ fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Module
 fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind> {
     combine::choice((
         keyword("bytes").map(|_| unimplemented!()),
-        keyword("string").with(literal_string().map(|content| ast::DataKind::String { content }))
+        keyword("string").with(literal_string().map(|content| ast::DataKind::String { content })),
     ))
 }
 
@@ -200,40 +230,56 @@ fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveT
 }
 
 fn type_signature<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeSignature> {
-    combine::choice((
-        primitive_type().map(ast::TypeSignature::Primitive),
-    ))
+    combine::choice((primitive_type().map(ast::TypeSignature::Primitive),))
 }
 
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
     (
-        combine::optional(combine::sep_by1::<Vec<_>, _, _, _>(register_symbol(), expect_token(lexer::Token::Comma)).skip(expect_token(lexer::Token::Equals))).map(Option::unwrap_or_default),
+        combine::optional(
+            combine::sep_by1::<Vec<_>, _, _, _>(
+                register_symbol(),
+                expect_token(lexer::Token::Comma),
+            )
+            .skip(expect_token(lexer::Token::Equals)),
+        )
+        .map(Option::unwrap_or_default),
         positioned(combine::choice((
             keyword("nop").with(combine::value(ast::Instruction::Nop)),
-            keyword("ret").with(combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma)).map(ast::Instruction::Ret)),
+            keyword("ret").with(
+                combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
+                    .map(ast::Instruction::Ret),
+            ),
             keyword("const.zero").with(primitive_type().map(ast::Instruction::ConstZero)),
-        )))
+        ))),
     )
-    .map(|(registers, instruction)| ast::Statement { registers, instruction })
-    .skip(expect_token(lexer::Token::Semicolon))
+        .map(|(registers, instruction)| ast::Statement {
+            registers,
+            instruction,
+        })
+        .skip(expect_token(lexer::Token::Semicolon))
 }
 
 fn code_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::CodeDeclaration> {
     combine::choice((
         directive("entry", local_symbol()).map(ast::CodeDeclaration::Entry),
-        directive("block",
+        directive(
+            "block",
             (
                 local_symbol(),
-                combine::optional(
-                    between_parenthesis(combine::sep_by::<Vec<_>, _, _, _>(register_symbol(), expect_token(lexer::Token::Comma)))
-                ),
-                between_brackets(combine::many(code_statement())))
-            )
-            .map(|(name, arguments, instructions)| ast::CodeDeclaration::Block {
+                combine::optional(between_parenthesis(combine::sep_by::<Vec<_>, _, _, _>(
+                    register_symbol(),
+                    expect_token(lexer::Token::Comma),
+                ))),
+                between_brackets(combine::many(code_statement())),
+            ),
+        )
+        .map(
+            |(name, arguments, instructions)| ast::CodeDeclaration::Block {
                 name,
                 arguments: arguments.unwrap_or_default(),
-                instructions
-            })
+                instructions,
+            },
+        ),
     ))
 }
 
@@ -244,8 +290,12 @@ fn type_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeModifie
     ))
 }
 
-fn method_types<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<ast::TypeSignature>>> {
-    between_parenthesis(combine::sep_by(positioned(type_signature()), expect_token(lexer::Token::Comma)))
+fn method_types<'a>(
+) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<ast::TypeSignature>>> {
+    between_parenthesis(combine::sep_by(
+        positioned(type_signature()),
+        expect_token(lexer::Token::Comma),
+    ))
 }
 
 fn method_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodModifier> {
@@ -257,30 +307,46 @@ fn method_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodMod
     ))
 }
 
-
 fn method_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodDeclaration> {
     combine::choice((
         name_directive(ast::MethodDeclaration::Name),
-        directive("body", combine::choice((
-            keyword("defined").with(global_symbol()).map(ast::MethodBodyDeclaration::Defined),
-        ))).map(ast::MethodDeclaration::Body),
+        directive(
+            "body",
+            combine::choice((keyword("defined")
+                .with(global_symbol())
+                .map(ast::MethodBodyDeclaration::Defined),)),
+        )
+        .map(ast::MethodDeclaration::Body),
     ))
 }
 
 fn type_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeDeclaration> {
     combine::choice((
         name_directive(ast::TypeDeclaration::Name),
-        directive("namespace", combine::many(positioned(literal_string()))).map(ast::TypeDeclaration::Namespace),
-        directive("method", (
-            global_symbol(),
-            method_types(),
-            combine::optional(keyword("returns").with(method_types())).map(Option::unwrap_or_default),
-            combine::many::<Vec<_>, _, _>(positioned(method_modifier())),
-            declaration_block(method_declaration()),
-        ))
-        .map(|(symbol, parameter_types, return_types, modifiers, declarations)| ast::TypeDeclaration::Method {
-            symbol, parameter_types, return_types, modifiers, declarations
-        }),
+        directive("namespace", combine::many(positioned(literal_string())))
+            .map(ast::TypeDeclaration::Namespace),
+        directive(
+            "method",
+            (
+                global_symbol(),
+                method_types(),
+                combine::optional(keyword("returns").with(method_types()))
+                    .map(Option::unwrap_or_default),
+                combine::many::<Vec<_>, _, _>(positioned(method_modifier())),
+                declaration_block(method_declaration()),
+            ),
+        )
+        .map(
+            |(symbol, parameter_types, return_types, modifiers, declarations)| {
+                ast::TypeDeclaration::Method {
+                    symbol,
+                    parameter_types,
+                    return_types,
+                    modifiers,
+                    declarations,
+                }
+            },
+        ),
     ))
 }
 
@@ -297,9 +363,35 @@ fn top_level_declaration<'a>(
             .map(ast::TopLevelDeclaration::Format),
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
-        directive("data", (global_symbol(), data_declaration()).map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind })),
-        directive("code", (global_symbol(), declaration_block(code_declaration())).map(|(symbol, declarations)| ast::TopLevelDeclaration::Code { symbol, declarations })),
-        directive("type", (global_symbol(), combine::many::<Vec<_>, _, _>(positioned(type_modifier())), declaration_block(type_declaration())).map(|(symbol, modifiers, declarations)| ast::TopLevelDeclaration::Type { symbol, modifiers, declarations }))
+        directive(
+            "data",
+            (global_symbol(), data_declaration())
+                .map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind }),
+        ),
+        directive(
+            "code",
+            (global_symbol(), declaration_block(code_declaration())).map(
+                |(symbol, declarations)| ast::TopLevelDeclaration::Code {
+                    symbol,
+                    declarations,
+                },
+            ),
+        ),
+        directive(
+            "type",
+            (
+                global_symbol(),
+                combine::many::<Vec<_>, _, _>(positioned(type_modifier())),
+                declaration_block(type_declaration()),
+            )
+                .map(|(symbol, modifiers, declarations)| {
+                    ast::TopLevelDeclaration::Type {
+                        symbol,
+                        modifiers,
+                        declarations,
+                    }
+                }),
+        ),
     ))
 }
 
@@ -314,7 +406,20 @@ pub fn parse_tokens(tokens: &[lexer::PositionedToken]) -> ParseResult {
         },
     ) {
         Ok((declarations, _)) => Ok(declarations),
-        Err(error) => panic!("{:?}", error),
+        // A good parser should return more than one error, but for now, this is good enough.
+        Err(error) => Err(vec![PositionedParserError {
+            error: Error::ParseFailed(
+                error
+                    .errors
+                    .into_iter()
+                    .map(|e| {
+                        e.map_token(|token| Box::new(token.token.clone()))
+                            .map_range(|token| Box::new(token.token.clone()))
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            position: error.position,
+        }]),
     }
 }
 
@@ -329,23 +434,31 @@ mod tests {
     #[test]
     fn format_declaration_test() {
         assert_eq!(
-            parser::parse(".format { .major 0; .minor 1; };"),
-            Ok(vec![ast::Positioned::new(
+            parser::parse(".format { .major 0; .minor 1; };").unwrap(),
+            vec![ast::Positioned::new(
                 0,
                 0,
                 ast::TopLevelDeclaration::Format(vec![
-                    ast::Positioned::new(0, 10, ast::FormatDeclaration::Major(registir::format::uvarint(0))),
-                    ast::Positioned::new(0, 20, ast::FormatDeclaration::Minor(registir::format::uvarint(1)))
+                    ast::Positioned::new(
+                        0,
+                        10,
+                        ast::FormatDeclaration::Major(registir::format::uvarint(0))
+                    ),
+                    ast::Positioned::new(
+                        0,
+                        20,
+                        ast::FormatDeclaration::Minor(registir::format::uvarint(1))
+                    )
                 ])
-            )])
+            )]
         )
     }
 
     #[test]
     fn module_declaration_test() {
         assert_eq!(
-            parser::parse(".module {\n    .name \"Hey\"; .version 1 0 0;\n};"),
-            Ok(vec![ast::Positioned::new(
+            parser::parse(".module {\n    .name \"Hey\"; .version 1 0 0;\n};").unwrap(),
+            vec![ast::Positioned::new(
                 0,
                 0,
                 ast::TopLevelDeclaration::Module(vec![
@@ -360,7 +473,7 @@ mod tests {
                     ),
                     ast::Positioned::new(1, 17, ast::ModuleDeclaration::Version(vec![1, 0, 0]))
                 ])
-            )])
+            )]
         )
     }
 }

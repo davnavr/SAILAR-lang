@@ -191,6 +191,28 @@ pub fn lex(input: &str) -> Vec<PositionedToken> {
     }
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unknown => Ok(()),
+            Self::Comma => f.write_str(","),
+            Self::Semicolon => f.write_str(";"),
+            Self::Equals => f.write_str("="),
+            Self::OpenBracket => f.write_str("{"),
+            Self::CloseBracket => f.write_str("}"),
+            Self::OpenParenthesis => f.write_str("("),
+            Self::CloseParenthesis => f.write_str(")"),
+            Self::Directive(name) => write!(f, ".{}", name),
+            Self::GlobalIdentifier(name) => write!(f, "@{}", name),
+            Self::LocalIdentifier(name) => write!(f, "${}", name),
+            Self::RegisterIdentifier(name) => write!(f, "%{}", name),
+            Self::LiteralInteger(value) => std::fmt::Display::fmt(value, f),
+            Self::LiteralString(value) => value.fmt(f),
+            Self::Keyword(keyword) => std::fmt::Display::fmt(keyword, f),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ast;

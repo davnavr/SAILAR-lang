@@ -111,24 +111,23 @@ fn assemble_module_header(
     }
 }
 
-fn assemble_module_format(errors: &mut Vec<Error>, declarations: &[ast::Positioned<ast::FormatDeclaration>]) -> format::FormatVersion {
+fn assemble_module_format(
+    errors: &mut Vec<Error>,
+    declarations: &[ast::Positioned<ast::FormatDeclaration>],
+) -> format::FormatVersion {
     let mut major_version = None;
     let mut minor_version = None;
 
     for node in declarations {
         match &node.value {
-            ast::FormatDeclaration::Major(major) => {
-                match major_version {
-                    None => major_version = Some(*major),
-                    Some(_) => errors.push(Error::DuplicateMajorVersion(node.position)),
-                }
-            }
-            ast::FormatDeclaration::Minor(minor) => {
-                match minor_version {
-                    None => minor_version = Some(*minor),
-                    Some(_) => errors.push(Error::DuplicateMinorVersion(node.position)),
-                }
-            }
+            ast::FormatDeclaration::Major(major) => match major_version {
+                None => major_version = Some(*major),
+                Some(_) => errors.push(Error::DuplicateMajorVersion(node.position)),
+            },
+            ast::FormatDeclaration::Minor(minor) => match minor_version {
+                None => minor_version = Some(*minor),
+                Some(_) => errors.push(Error::DuplicateMinorVersion(node.position)),
+            },
         }
     }
 
@@ -159,12 +158,10 @@ pub fn assemble_declarations(
                     errors.push(Error::DuplicateModuleDeclaration(node.position))
                 }
             }
-            ast::TopLevelDeclaration::Format(ref format_versions) => {
-                match module_format {
-                    None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
-                    Some(_) => errors.push(Error::DuplicateFormatDeclaration(node.position))
-                }
-            }
+            ast::TopLevelDeclaration::Format(ref format_versions) => match module_format {
+                None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
+                Some(_) => errors.push(Error::DuplicateFormatDeclaration(node.position)),
+            },
             _ => unimplemented!(),
         }
     }
