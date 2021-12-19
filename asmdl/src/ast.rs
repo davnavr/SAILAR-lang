@@ -155,7 +155,7 @@ pub enum TypeModifier {
     Private,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MethodBodyDeclaration {
     Defined(GlobalSymbol),
     External {
@@ -164,7 +164,7 @@ pub enum MethodBodyDeclaration {
     },
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MethodDeclaration {
     Name(Positioned<LiteralString>),
     Body(MethodBodyDeclaration),

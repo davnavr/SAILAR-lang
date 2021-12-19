@@ -261,6 +261,9 @@ fn method_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodMod
 fn method_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodDeclaration> {
     combine::choice((
         name_directive(ast::MethodDeclaration::Name),
+        directive("body", combine::choice((
+            keyword("defined").with(global_symbol()).map(ast::MethodBodyDeclaration::Defined),
+        ))).map(ast::MethodDeclaration::Body),
     ))
 }
 
@@ -277,7 +280,7 @@ fn type_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeDecl
         ))
         .map(|(symbol, parameter_types, return_types, modifiers, declarations)| ast::TypeDeclaration::Method {
             symbol, parameter_types, return_types, modifiers, declarations
-        })
+        }),
     ))
 }
 
