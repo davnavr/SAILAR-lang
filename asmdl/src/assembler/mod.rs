@@ -6,94 +6,87 @@ mod indexed;
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
+pub enum Declaration {
+    Code,
+    TypeDefinition,
+    Module,
+    Format,
+    Name,
+    /// A module or format version.
+    Version,
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum NameError {
     Duplicate,
     Empty,
-    //Missing,
+    Missing,
 }
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    DuplicateCodeDeclaration(ast::GlobalSymbol),
-    DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol),
-    DuplicateFormatDeclaration(ast::Position),
-    DuplicateMajorVersion(ast::Position),
-    DuplicateMinorVersion(ast::Position),
-    DuplicateModuleDeclaration(ast::Position),
-    DuplicateModuleVersion(ast::Position),
-    InvalidModuleName(ast::Position, NameError),
-    MissingModuleDeclaration,
+    DuplicateNamedDeclaration(ast::GlobalSymbol, Declaration),
+    DuplicateDeclaration(ast::Position, Declaration),
+    InvalidNameDeclaration(ast::Position, Declaration, NameError),
+    MissingDeclaration(Option<ast::Position>, Declaration),
 }
 
 impl Error {
-    pub fn position(&self) -> Option<ast::Position> {
+    pub fn position(&self) -> Option<&ast::Position> {
         match self {
-            Self::DuplicateCodeDeclaration(ast::GlobalSymbol(ast::Positioned {
-                position, ..
-            }))
-            | Self::DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol(ast::Positioned {
-                position,
-                ..
-            }))
-            | Self::DuplicateFormatDeclaration(position)
-            | Self::DuplicateMajorVersion(position)
-            | Self::DuplicateMinorVersion(position)
-            | Self::DuplicateModuleDeclaration(position)
-            | Self::DuplicateModuleVersion(position)
-            | Self::InvalidModuleName(position, _) => Some(*position),
-            Self::MissingModuleDeclaration => None,
+            Self::DuplicateNamedDeclaration(
+                ast::GlobalSymbol(ast::Positioned { position, .. }),
+                _,
+            )
+            | Self::DuplicateDeclaration(position, _)
+            | Self::InvalidNameDeclaration(position, _, _) => Some(position),
+            Self::MissingDeclaration(position, _) => position.as_ref(),
         }
+    }
+}
+
+impl std::fmt::Display for Declaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Name => "name",
+            Self::TypeDefinition => "type definition",
+            Self::Code => "code",
+            Self::Module => "module",
+            Self::Format => "format",
+            Self::Version => "version",
+        })
+    }
+}
+
+impl std::fmt::Display for NameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Duplicate => "duplicate",
+            Self::Missing => "missing",
+            Self::Empty => "empty",
+        })
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DuplicateCodeDeclaration(ast::GlobalSymbol(ast::Positioned {
-                value: name,
-                ..
-            })) => {
-                write!(
-                    f,
-                    "a code declaration with the name @{} was already defined",
-                    name
-                )
-            }
-            Self::DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol(ast::Positioned {
-                value: name,
-                ..
-            })) => {
-                write!(
-                    f,
-                    "a type definition with the name @{} was already declared",
-                    name
-                )
-            }
-            Self::DuplicateFormatDeclaration(_) => {
-                f.write_str("the module format was already specified")
-            }
-            Self::DuplicateMajorVersion(_) => {
-                f.write_str("the module format major version was already specified")
-            }
-            Self::DuplicateMinorVersion(_) => {
-                f.write_str("the module format minor version was already specified")
-            }
-            Self::DuplicateModuleDeclaration(_) => {
-                f.write_str("a module declaration already exists")
-            }
-            Self::DuplicateModuleVersion(_) => {
-                f.write_str("the module version was already declared")
-            }
-            Self::InvalidModuleName(_, NameError::Duplicate) => {
-                write!(f, "the module name was already declared")
-            }
-            Self::InvalidModuleName(_, NameError::Empty) => {
-                write!(f, "the module name cannot be empty")
-            }
-            Self::MissingModuleDeclaration => f.write_str(
-                "missing module declaration, declare a module with the `.module` directive",
+            Self::DuplicateNamedDeclaration(symbol, declaration) => write!(
+                f,
+                "a {} declaration corresponding to the symbol @{} already exists",
+                declaration, symbol.0.value
             ),
+            Self::DuplicateDeclaration(_, declaration) => {
+                write!(f, "a {} declaration already exists", declaration)
+            }
+            Self::InvalidNameDeclaration(_, declaration, error) => {
+                write!(f, "{} name for {} declaration", error, declaration)
+            }
+            Self::MissingDeclaration(_, declaration) => {
+                write!(f, "missing {} declaration", declaration)
+            }
         }
     }
 }
@@ -104,10 +97,10 @@ fn assemble_module_header(
     declarations: &[ast::Positioned<ast::ModuleDeclaration>],
 ) -> format::ModuleHeader {
     let mut module_name = declare::Once::new(|name: &ast::Positioned<_>, _| {
-        Error::InvalidModuleName(name.position, NameError::Duplicate)
+        Error::InvalidNameDeclaration(name.position, Declaration::Module, NameError::Duplicate)
     });
     let mut module_version = declare::Once::new(|version: ast::Positioned<_>, _| {
-        Error::DuplicateModuleVersion(version.position)
+        Error::DuplicateDeclaration(version.position, Declaration::Version)
     });
 
     for node in declarations {
@@ -117,7 +110,11 @@ fn assemble_module_header(
                     set_name(match format::Identifier::try_from(&name.value.0) {
                         Ok(id) => Some(id),
                         Err(_) => {
-                            errors.push(Error::InvalidModuleName(name.position, NameError::Empty));
+                            errors.push(Error::InvalidNameDeclaration(
+                                name.position,
+                                Declaration::Module,
+                                NameError::Empty,
+                            ));
                             None
                         }
                     })
@@ -147,25 +144,27 @@ fn assemble_module_format(
     errors: &mut Vec<Error>,
     declarations: &[ast::Positioned<ast::FormatDeclaration>],
 ) -> format::FormatVersion {
-    let mut major_version = None;
-    let mut minor_version = None;
+    fn declare_version<'a>() -> declare::Once<'a, ast::Position, format::uvarint, impl Fn(ast::Position, &format::uvarint) -> Error> {
+        declare::Once::new(|position, _| Error::DuplicateDeclaration(position, Declaration::Version))
+    }
+
+    let mut major_version = declare_version();
+    let mut minor_version = declare_version();
 
     for node in declarations {
         match &node.value {
-            ast::FormatDeclaration::Major(major) => match major_version {
-                None => major_version = Some(*major),
-                Some(_) => errors.push(Error::DuplicateMajorVersion(node.position)),
+            ast::FormatDeclaration::Major(major) => if let Some(set_version) = major_version.declare(errors, node.position) {
+                set_version(*major)
             },
-            ast::FormatDeclaration::Minor(minor) => match minor_version {
-                None => minor_version = Some(*minor),
-                Some(_) => errors.push(Error::DuplicateMinorVersion(node.position)),
+            ast::FormatDeclaration::Minor(minor) => if let Some(set_version) = minor_version.declare(errors, node.position) {
+                set_version(*minor)
             },
         }
     }
 
     format::FormatVersion {
-        major: major_version.unwrap_or_default(),
-        minor: minor_version.unwrap_or_default(),
+        major: major_version.value().unwrap_or_default(),
+        minor: minor_version.value().unwrap_or_default(),
     }
 }
 
@@ -183,11 +182,15 @@ impl<'a> TypeDefinitionAssembler<'a> {
         errors: &mut Vec<Error>,
         identifiers: &IdentifierLookup,
     ) -> format::TypeDefinition {
-        let mut visibility = None;
+        //let mut type_name = declare::Once
+        let mut visibility =
+            declare::Once::new(|modifier: &ast::Positioned<_>, _| unimplemented!());
         let mut flags = format::TypeDefinitionFlags::default();
 
         for declaration in self.declarations {
-            match &declaration.value {}
+            match &declaration.value {
+                _ => unimplemented!(),
+            }
         }
 
         format::TypeDefinition {
@@ -219,19 +222,19 @@ pub fn assemble_declarations(
                         module_nodes,
                     ))
                 } else {
-                    errors.push(Error::DuplicateModuleDeclaration(node.position))
+                    errors.push(Error::DuplicateDeclaration(node.position, Declaration::Module))
                 }
             }
             ast::TopLevelDeclaration::Format(ref format_versions) => match module_format {
                 None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
-                Some(_) => errors.push(Error::DuplicateFormatDeclaration(node.position)),
+                Some(_) => errors.push(Error::DuplicateDeclaration(node.position, Declaration::Format)),
             },
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
             } => match method_bodies.try_add(symbol, declarations) {
                 Some(_) => (),
-                None => errors.push(Error::DuplicateCodeDeclaration(symbol.clone())),
+                None => errors.push(Error::DuplicateNamedDeclaration(symbol.clone(), Declaration::Code)),
             },
             ast::TopLevelDeclaration::Type {
                 ref symbol,
@@ -245,14 +248,14 @@ pub fn assemble_declarations(
                 },
             ) {
                 Some(_) => (),
-                None => errors.push(Error::DuplicateTypeDefinitionDeclaration(symbol.clone())),
+                None => errors.push(Error::DuplicateNamedDeclaration(symbol.clone(), Declaration::TypeDefinition)),
             },
             ref unknown => unimplemented!("{:?}", unknown),
         }
     }
 
     if module_header.is_none() {
-        errors.push(Error::MissingModuleDeclaration)
+        errors.push(Error::MissingDeclaration(None, Declaration::Module))
     }
 
     if errors.is_empty() {

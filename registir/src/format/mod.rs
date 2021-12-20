@@ -310,6 +310,12 @@ pub enum Visibility {
     Private = 2,
 }
 
+impl Default for Visibility {
+    fn default() -> Self {
+        Visibility::Unspecified
+    }
+}
+
 bitflags! {
     #[repr(transparent)]
     pub struct FieldFlags: u8 {
