@@ -42,7 +42,7 @@ where
 
 #[derive(Debug)]
 pub struct Set<I, T> {
-    values: std::collections::HashMap<T, I>,
+    lookup: std::collections::HashMap<T, I>,
 }
 
 impl<I: TryFrom<usize> + Copy, T: Eq + std::hash::Hash> Set<I, T>
@@ -51,15 +51,29 @@ where
 {
     pub fn new() -> Self {
         Self {
-            values: std::collections::HashMap::new(),
+            lookup: std::collections::HashMap::new(),
         }
     }
 
     pub fn add(&mut self, value: T) -> I {
-        let index = I::try_from(self.values.len()).unwrap();
-        match self.values.insert(value, index) {
+        let index = I::try_from(self.lookup.len()).unwrap();
+        match self.lookup.insert(value, index) {
             None => index,
             Some(existing) => existing,
         }
+    }
+}
+
+impl<I: TryInto<usize>, T: Clone> From<Set<I, T>> for Vec<T>
+where
+    <I as TryInto<usize>>::Error: std::error::Error,
+{
+    fn from(values: Set<I, T>) -> Self {
+        let mut items = Vec::with_capacity(values.lookup.len());
+        items.set_len(items.capacity());
+        for (ref value, index) in values.lookup {
+            items.insert(index.try_into().unwrap(), value.clone())
+        }
+        items
     }
 }

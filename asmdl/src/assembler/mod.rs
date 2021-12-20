@@ -12,6 +12,7 @@ pub enum Declaration {
     Module,
     Format,
     Name,
+    Namespace,
     /// A module or format version.
     Version,
 }
@@ -53,6 +54,7 @@ impl std::fmt::Display for Declaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Name => "name",
+            Self::Namespace => "namespace",
             Self::TypeDefinition => "type definition",
             Self::Code => "code",
             Self::Module => "module",
@@ -100,7 +102,7 @@ fn assemble_module_header(
     errors: &mut Vec<Error>,
     default_module_name: &format::Identifier,
     declarations: &[ast::Positioned<ast::ModuleDeclaration>],
-) -> format::ModuleHeader {
+) -> Option<format::ModuleHeader> {
     let mut module_name = declare::Once::new(|name: &ast::Positioned<_>, _| {
         Error::InvalidNameDeclaration(name.position, Declaration::Module, NameError::Duplicate)
     });
@@ -136,12 +138,16 @@ fn assemble_module_header(
     }
 
     match module_name.value().flatten() {
-        Some(name) => format::ModuleHeader {
+        Some(name) => Some(format::ModuleHeader {
             identifier: format::ModuleIdentifier {
                 name,
                 version: module_version.value().unwrap_or_default(),
             },
-        },
+        }),
+        None => {
+            errors.push(Error::MissingDeclaration(None, Declaration::Name));
+            None
+        }
     }
 }
 
@@ -182,6 +188,8 @@ fn assemble_module_format(
 
 type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier>;
 
+type NamespaceLookup = indexed::Set<format::NamespaceIndex, format::Namespace>;
+
 type MethodDefinitionLookup<'a, 'b> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, usize, MethodDefinitionAssembler<'b>>;
 
@@ -211,6 +219,17 @@ fn name_declaration<'a, 'b>() -> NameDeclaration<
     })
 }
 
+fn add_identifier_from(
+    errors: &mut Vec<Error>,
+    identifiers: &IdentifierLookup,
+    declarer: Declaration,
+    name: &ast::Positioned<ast::LiteralString>,
+) -> Result<format::IdentifierIndex, Error> {
+    format::Identifier::try_from(&name.value.0)
+        .map(|id| identifiers.add(id))
+        .map_err(|()| Error::InvalidNameDeclaration(name.position, declarer, NameError::Empty))
+}
+
 fn declare_name<
     'a,
     'b,
@@ -223,13 +242,9 @@ fn declare_name<
     name: &'b ast::Positioned<ast::LiteralString>,
 ) {
     if let Some(setter) = declaration.declare(errors, name) {
-        match format::Identifier::try_from(&name.value.0) {
-            Ok(id) => setter(identifiers.add(id)),
-            Err(()) => errors.push(Error::InvalidNameDeclaration(
-                name.position,
-                declarer,
-                NameError::Empty,
-            )),
+        match add_identifier_from(errors, identifiers, declarer, name) {
+            Ok(id) => setter(id),
+            Err(error) => errors.push(error),
         }
     }
 }
@@ -257,6 +272,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
         &self,
         errors: &mut Vec<Error>,
         identifiers: &IdentifierLookup,
+        namespaces: &NamespaceLookup,
     ) -> format::TypeDefinition {
         let mut visibility = visibility_declaration();
         let mut flags = format::TypeDefinitionFlags::default();
@@ -277,6 +293,9 @@ impl<'a> TypeDefinitionAssembler<'a> {
         }
 
         let mut type_name = name_declaration();
+        let mut type_namespace = declare::Once::new(|position: ast::Position, _| {
+            Error::DuplicateDeclaration(position, Declaration::Namespace)
+        });
 
         for declaration in self.declarations {
             match &declaration.value {
@@ -287,15 +306,43 @@ impl<'a> TypeDefinitionAssembler<'a> {
                     Declaration::TypeDefinition,
                     name,
                 ),
+                ast::TypeDeclaration::Namespace(namespace) => {
+                    if let Some(set_namespace) =
+                        type_namespace.declare(errors, declaration.position)
+                    {
+                        let mut indices = Vec::with_capacity(namespace.len());
+                        let mut success = true;
+                        for name in namespace {
+                            match add_identifier_from(
+                                errors,
+                                identifiers,
+                                Declaration::TypeDefinition,
+                                name,
+                            ) {
+                                Ok(id) => indices.push(id),
+                                Err(error) => {
+                                    errors.push(error);
+                                    success = false;
+                                }
+                            }
+                        }
+
+                        if success {
+                            set_namespace(namespaces.add(format::LengthEncodedVector(indices)))
+                        }
+                    }
+                }
                 _ => unimplemented!(),
             }
         }
 
-        match (type_name.value()) {
-            Some((name)) => format::TypeDefinition {
+        match (type_name.value(), type_namespace.value()) {
+            (Some(name), Some(namespace)) => format::TypeDefinition {
                 name,
+                namespace,
                 visibility: visibility.value().unwrap_or_default(),
                 flags,
+                layout: format::TypeLayoutIndex(format::uvarint(0)), // TODO: Until .layout directives are supported, type layouts will be hard coded.
             },
         }
     }
@@ -309,6 +356,7 @@ pub fn assemble_declarations(
     let mut module_header = None;
     let mut module_format = None;
     let mut identifiers = IdentifierLookup::new();
+    let mut namespaces = NamespaceLookup::new();
     let mut method_bodies = indexed::SymbolMap::<ast::GlobalSymbol, format::CodeIndex, _>::new();
     let mut type_definitions =
         indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler>::new();
@@ -368,6 +416,10 @@ pub fn assemble_declarations(
         }
     }
 
+    let mut validated_type_definitions = Vec::<format::TypeDefinition>::with_capacity(type_definitions.items().len());
+
+    //for type_definition 
+
     if module_header.is_none() {
         errors.push(Error::MissingDeclaration(None, Declaration::Module))
     }
@@ -375,10 +427,15 @@ pub fn assemble_declarations(
     if errors.is_empty() {
         Ok(format::Module {
             format_version: module_format.unwrap_or_default(),
-            header: format::ByteLengthEncoded(module_header.unwrap()),
+            // Some(None) would mean that the module header had no name, but an unwrap is safe here as an error should have been generated.
+            header: format::ByteLengthEncoded(module_header.flatten().unwrap()),
             // TODO: Add other things
-            identifiers: format::ByteLengthEncoded(format::LengthEncodedVector::default()),
-            namespaces: format::ByteLengthEncoded(format::LengthEncodedVector::default()),
+            identifiers: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::from(
+                identifiers,
+            ))),
+            namespaces: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::from(
+                namespaces,
+            ))),
             type_signatures: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
             method_signatures: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
             method_bodies: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
@@ -392,12 +449,14 @@ pub fn assemble_declarations(
                 ),
             }),
             definitions: format::ByteLengthEncoded(format::ModuleDefinitions {
-                defined_types: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
+                defined_types: format::ByteLengthEncoded(format::LengthEncodedVector(validated_type_definitions)),
                 defined_fields: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
                 defined_methods: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
             }),
             entry_point: format::ByteLengthEncoded(None),
-            type_layouts: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
+            type_layouts: format::ByteLengthEncoded(format::LengthEncodedVector(vec![
+                format::TypeDefinitionLayout::Unspecified,
+            ])),
         })
     } else {
         Err(errors)

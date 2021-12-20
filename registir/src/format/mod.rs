@@ -4,12 +4,12 @@ use bitflags::bitflags;
 pub static MAGIC: &[u8] = "reg\0".as_bytes();
 
 /// Represents a variable-length unsigned integer.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub struct uvarint(pub u64);
 
 /// Represents a variable-length signed integer.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub struct varint(pub u128);
 
@@ -36,6 +36,14 @@ macro_rules! index_type {
 
             fn try_from(value: usize) -> Result<Self, Self::Error> {
                 u64::try_from(value).map(|index| Self(uvarint(index)))
+            }
+        }
+
+        impl TryFrom<$name> for usize {
+            type Error = std::num::TryFromIntError;
+
+            fn try_from(index: $name) -> Result<Self, Self::Error> {
+                usize::try_from(index.0 .0)
             }
         }
     };
@@ -79,7 +87,7 @@ index_type!(TypeLayoutIndex, "An index into the module's type layouts, which spe
 pub struct ByteLengthEncoded<T>(pub T);
 
 /// Represents an array preceded by an variable-length unsigned integer indicating the number of items.
-#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct LengthEncodedVector<T>(pub Vec<T>);
 
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
@@ -579,6 +587,8 @@ impl ModuleHeader {
 pub static MIN_MODULE_DATA_COUNT: uvarint = uvarint(1);
 pub static MAX_MODULE_DATA_COUNT: uvarint = uvarint(11);
 
+pub type Namespace = LengthEncodedVector<IdentifierIndex>;
+
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
 pub struct Module {
@@ -589,7 +599,7 @@ pub struct Module {
     /// An array containing the names of the types, namespaces, fields, and methods.
     pub identifiers: ByteLengthEncoded<LengthEncodedVector<Identifier>>,
     /// An array of the namespaces containing the imported and defined types.
-    pub namespaces: ByteLengthEncoded<LengthEncodedVector<LengthEncodedVector<IdentifierIndex>>>,
+    pub namespaces: ByteLengthEncoded<LengthEncodedVector<Namespace>>,
     pub type_signatures: ByteLengthEncoded<LengthEncodedVector<AnyType>>,
     pub method_signatures: ByteLengthEncoded<LengthEncodedVector<MethodSignature>>,
     /// An array containing the method bodies of the module.
