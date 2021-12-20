@@ -21,8 +21,21 @@ macro_rules! index_type {
 
         impl $name {
             pub fn index(self) -> uvarint {
-                let $name(value) = self;
-                value
+                self.0
+            }
+        }
+
+        impl From<uvarint> for $name {
+            fn from(index: uvarint) -> Self {
+                Self(index)
+            }
+        }
+
+        impl TryFrom<usize> for $name {
+            type Error = std::num::TryFromIntError;
+
+            fn try_from(value: usize) -> Result<Self, Self::Error> {
+                u64::try_from(value).map(|index| Self(uvarint(index)))
             }
         }
     };
@@ -74,7 +87,7 @@ pub struct LengthEncodedVector<T>(pub Vec<T>);
 pub struct VersionNumbers(pub LengthEncodedVector<uvarint>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
-#[derive(Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, std::hash::Hash, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]

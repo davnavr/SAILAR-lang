@@ -1,16 +1,21 @@
 use crate::ast;
 use registir::format;
 
+mod indexed;
+
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum NameError {
     Duplicate,
     Empty,
+    //Missing,
 }
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    DuplicateCodeDeclaration(ast::GlobalSymbol),
+    DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol),
     DuplicateFormatDeclaration(ast::Position),
     DuplicateMajorVersion(ast::Position),
     DuplicateMinorVersion(ast::Position),
@@ -23,7 +28,14 @@ pub enum Error {
 impl Error {
     pub fn position(&self) -> Option<ast::Position> {
         match self {
-            Self::DuplicateFormatDeclaration(position)
+            Self::DuplicateCodeDeclaration(ast::GlobalSymbol(ast::Positioned {
+                position, ..
+            }))
+            | Self::DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol(ast::Positioned {
+                position,
+                ..
+            }))
+            | Self::DuplicateFormatDeclaration(position)
             | Self::DuplicateMajorVersion(position)
             | Self::DuplicateMinorVersion(position)
             | Self::DuplicateModuleDeclaration(position)
@@ -37,6 +49,26 @@ impl Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DuplicateCodeDeclaration(ast::GlobalSymbol(ast::Positioned {
+                value: name,
+                ..
+            })) => {
+                write!(
+                    f,
+                    "a code declaration with the name @{} was already defined",
+                    name
+                )
+            }
+            Self::DuplicateTypeDefinitionDeclaration(ast::GlobalSymbol(ast::Positioned {
+                value: name,
+                ..
+            })) => {
+                write!(
+                    f,
+                    "a type definition with the name @{} was already declared",
+                    name
+                )
+            }
             Self::DuplicateFormatDeclaration(_) => {
                 f.write_str("the module format was already specified")
             }
@@ -65,7 +97,30 @@ impl std::fmt::Display for Error {
     }
 }
 
-//trait AssembleFrom<Node, T>
+#[derive(Debug)]
+struct DeclareOnce<N, T, E> {
+    value: Option<T>,
+    error: E,
+}
+
+impl<N, T, E: Fn(N, &T) -> Error> DeclareOnce<N, T, E> {
+    fn new(error: E) -> Self {
+        Self {
+            value: None,
+            error
+        }
+    }
+
+    fn declare(&mut self, errors: &mut Vec<Error>, node: N) -> Option<impl FnOnce(T) -> ()> {
+        match self.value {
+            None => Some(|value| self.value = Some(value)),
+            Some(ref existing) => {
+                errors.push((self.error)(node, existing));
+                None
+            }
+        }
+    }
+}
 
 fn assemble_module_header(
     errors: &mut Vec<Error>,
@@ -137,16 +192,44 @@ fn assemble_module_format(
     }
 }
 
+type IdentifierLookup = indexed::Set::<format::IdentifierIndex, format::Identifier>;
+
+#[derive(Debug)]
+struct TypeDefinitionAssembler<'a> {
+    modifiers: &'a [ast::Positioned<ast::TypeModifier>],
+    declarations: &'a [ast::Positioned<ast::TypeDeclaration>],
+}
+
+impl<'a> TypeDefinitionAssembler<'a> {
+    fn assemble(&self, errors: &mut Vec<Error>, identifiers: &IdentifierLookup) -> format::TypeDefinition {
+        let mut visibility = None;
+
+        for declaration in self.declarations {
+            match &declaration.value {
+
+            }
+        }
+
+        format::TypeDefinition {
+            visibility: visibility.unwrap_or_default(),
+        }
+    }
+}
+
 pub fn assemble_declarations(
     declarations: &[ast::Positioned<ast::TopLevelDeclaration>],
-    default_module_name: format::Identifier,
+    default_module_name: format::Identifier, // TODO: Remove default module name and just add an error for missing module name.
 ) -> Result<format::Module, Vec<Error>> {
     let mut errors = Vec::new();
     let mut module_header = None;
     let mut module_format = None;
+    let mut identifiers = IdentifierLookup::new();
+    let mut method_bodies = indexed::SymbolMap::<ast::GlobalSymbol, format::CodeIndex, _>::new();
+    let mut type_definitions =
+        indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler<'_>>::new();
 
     for node in declarations {
-        match node.value {
+        match &node.value {
             ast::TopLevelDeclaration::Module(ref module_nodes) => {
                 if module_header.is_none() {
                     module_header = Some(assemble_module_header(
@@ -162,7 +245,28 @@ pub fn assemble_declarations(
                 None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
                 Some(_) => errors.push(Error::DuplicateFormatDeclaration(node.position)),
             },
-            _ => unimplemented!(),
+            ast::TopLevelDeclaration::Code {
+                ref symbol,
+                declarations,
+            } => match method_bodies.try_add(symbol, declarations) {
+                Some(_) => (),
+                None => errors.push(Error::DuplicateCodeDeclaration(symbol.clone())),
+            },
+            ast::TopLevelDeclaration::Type {
+                ref symbol,
+                modifiers,
+                declarations,
+            } => match type_definitions.try_add(
+                symbol,
+                TypeDefinitionAssembler {
+                    modifiers,
+                    declarations,
+                },
+            ) {
+                Some(_) => (),
+                None => errors.push(Error::DuplicateTypeDefinitionDeclaration(symbol.clone())),
+            },
+            ref unknown => unimplemented!("{:?}", unknown),
         }
     }
 

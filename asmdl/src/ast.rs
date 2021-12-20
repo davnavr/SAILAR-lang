@@ -12,7 +12,7 @@ impl Position {
     }
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 impl Identifier {
@@ -73,6 +73,26 @@ pub struct LocalSymbol(pub Positioned<Identifier>);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GlobalSymbol(pub Positioned<Identifier>);
+
+macro_rules! symbol_from_identifier {
+    ($symbol_type: ty) => {
+        impl From<$symbol_type> for Identifier {
+            fn from(identifier: $symbol_type) -> Identifier {
+                identifier.0.value
+            }
+        }
+
+        impl<'a> From<&'a $symbol_type> for &'a Identifier {
+            fn from(id: &'a $symbol_type) -> Self {
+                &id.0.value
+            }
+        }
+    };
+}
+
+symbol_from_identifier!(RegisterSymbol);
+symbol_from_identifier!(LocalSymbol);
+symbol_from_identifier!(GlobalSymbol);
 
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct LiteralString(pub Vec<char>);
