@@ -263,6 +263,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
 
 #[derive(Debug)]
 struct TypeDefinitionAssembler<'a> {
+    origin: ast::Position,
     modifiers: &'a [ast::Positioned<ast::TypeModifier>],
     declarations: &'a [ast::Positioned<ast::TypeDeclaration>],
 }
@@ -273,7 +274,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
         errors: &mut Vec<Error>,
         identifiers: &IdentifierLookup,
         namespaces: &NamespaceLookup,
-    ) -> format::TypeDefinition {
+    ) -> Option<format::TypeDefinition> {
         let mut visibility = visibility_declaration();
         let mut flags = format::TypeDefinitionFlags::default();
 
@@ -336,14 +337,30 @@ impl<'a> TypeDefinitionAssembler<'a> {
             }
         }
 
+        if !type_name.is_set() {
+            errors.push(Error::InvalidNameDeclaration(
+                self.origin,
+                Declaration::TypeDefinition,
+                NameError::Missing,
+            ))
+        }
+
+        if !type_namespace.is_set() {
+            errors.push(Error::MissingDeclaration(
+                Some(self.origin),
+                Declaration::Namespace,
+            ))
+        }
+
         match (type_name.value(), type_namespace.value()) {
-            (Some(name), Some(namespace)) => format::TypeDefinition {
+            (Some(name), Some(namespace)) => Some(format::TypeDefinition {
                 name,
                 namespace,
                 visibility: visibility.value().unwrap_or_default(),
                 flags,
                 layout: format::TypeLayoutIndex(format::uvarint(0)), // TODO: Until .layout directives are supported, type layouts will be hard coded.
-            },
+            }),
+            (_, _) => None, // Errors were already added
         }
     }
 }
@@ -402,6 +419,7 @@ pub fn assemble_declarations(
             } => match type_definitions.try_add(
                 symbol,
                 TypeDefinitionAssembler {
+                    origin: node.position,
                     modifiers,
                     declarations,
                 },
@@ -416,9 +434,22 @@ pub fn assemble_declarations(
         }
     }
 
-    let mut validated_type_definitions = Vec::<format::TypeDefinition>::with_capacity(type_definitions.items().len());
+    let mut validated_type_definitions =
+        Vec::<format::TypeDefinition>::with_capacity(type_definitions.items().len());
 
-    //for type_definition 
+    {
+        let mut commit = true;
+        for definition in type_definitions.items() {
+            match definition.assemble(&mut errors, &identifiers, &namespaces) {
+                Some(result) => {
+                    if commit {
+                        validated_type_definitions.push(result)
+                    }
+                }
+                None => commit = false,
+            }
+        }
+    }
 
     if module_header.is_none() {
         errors.push(Error::MissingDeclaration(None, Declaration::Module))
@@ -449,7 +480,9 @@ pub fn assemble_declarations(
                 ),
             }),
             definitions: format::ByteLengthEncoded(format::ModuleDefinitions {
-                defined_types: format::ByteLengthEncoded(format::LengthEncodedVector(validated_type_definitions)),
+                defined_types: format::ByteLengthEncoded(format::LengthEncodedVector(
+                    validated_type_definitions,
+                )),
                 defined_fields: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
                 defined_methods: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
             }),

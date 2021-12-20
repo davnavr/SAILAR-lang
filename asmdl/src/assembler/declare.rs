@@ -16,6 +16,10 @@ impl<'a, N, T, E: Fn(N, &T) -> Error> Once<'a, N, T, E> {
         }
     }
 
+    pub fn is_set(&self) -> bool {
+        self.value.is_some()
+    }
+
     pub fn value(self) -> Option<T> {
         self.value
     }
