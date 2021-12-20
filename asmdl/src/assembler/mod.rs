@@ -128,7 +128,13 @@ fn assemble_module_header(
                 }
             }
             ast::ModuleDeclaration::Version(version) => {
-                if let Some(set_version) = module_version.declare(errors, node.map(|_| version)) {
+                if let Some(set_version) = module_version.declare(
+                    errors,
+                    ast::Positioned {
+                        value: version,
+                        position: node.position,
+                    },
+                ) {
                     set_version(format::VersionNumbers(format::LengthEncodedVector(
                         version.iter().map(|n| format::uvarint(*n)).collect(),
                     )))
@@ -221,7 +227,7 @@ fn name_declaration<'a, 'b>() -> NameDeclaration<
 
 fn add_identifier_from(
     errors: &mut Vec<Error>,
-    identifiers: &IdentifierLookup,
+    identifiers: &mut IdentifierLookup,
     declarer: Declaration,
     name: &ast::Positioned<ast::LiteralString>,
 ) -> Result<format::IdentifierIndex, Error> {
@@ -235,9 +241,9 @@ fn declare_name<
     'b,
     E: Fn(&'b ast::Positioned<ast::LiteralString>, &format::IdentifierIndex) -> Error,
 >(
-    declaration: &NameDeclaration<'a, 'b, E>,
+    declaration: &mut NameDeclaration<'a, 'b, E>,
     errors: &mut Vec<Error>,
-    identifiers: &IdentifierLookup,
+    identifiers: &mut IdentifierLookup,
     declarer: Declaration,
     name: &'b ast::Positioned<ast::LiteralString>,
 ) {
@@ -256,7 +262,11 @@ struct MethodDefinitionAssembler<'a> {
 }
 
 impl<'a> MethodDefinitionAssembler<'a> {
-    fn assemble() -> format::Method {
+    fn assemble(
+        &self,
+        errors: &mut Vec<Error>,
+        identifiers: &IdentifierLookup,
+    ) -> Option<format::Method> {
         unimplemented!()
     }
 }
@@ -272,8 +282,9 @@ impl<'a> TypeDefinitionAssembler<'a> {
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
-        identifiers: &IdentifierLookup,
-        namespaces: &NamespaceLookup,
+        identifiers: &mut IdentifierLookup,
+        namespaces: &mut NamespaceLookup,
+        //methods:
     ) -> Option<format::TypeDefinition> {
         let mut visibility = visibility_declaration();
         let mut flags = format::TypeDefinitionFlags::default();
@@ -298,10 +309,14 @@ impl<'a> TypeDefinitionAssembler<'a> {
             Error::DuplicateDeclaration(position, Declaration::Namespace)
         });
 
+        // Field and method imports have been assembled, so it is safe to refer to these with the proper index types.
+        let mut field_indices = Vec::<format::FieldIndex>::new();
+        let mut method_indices = Vec::<format::MethodIndex>::new();
+
         for declaration in self.declarations {
             match &declaration.value {
                 ast::TypeDeclaration::Name(name) => declare_name(
-                    &type_name,
+                    &mut type_name,
                     errors,
                     identifiers,
                     Declaration::TypeDefinition,
@@ -358,7 +373,11 @@ impl<'a> TypeDefinitionAssembler<'a> {
                 namespace,
                 visibility: visibility.value().unwrap_or_default(),
                 flags,
-                layout: format::TypeLayoutIndex(format::uvarint(0)), // TODO: Until .layout directives are supported, type layouts will be hard coded.
+                layout: format::TypeLayoutIndex(format::uvarint(0)), // TODO: Until `.layout` directives are supported, type layouts will be hard coded.
+                inherited_types: format::LengthEncodedVector::default(),
+                fields: format::LengthEncodedVector(field_indices),
+                methods: format::LengthEncodedVector(method_indices),
+                vtable: format::LengthEncodedVector(Vec::new()),
             }),
             (_, _) => None, // Errors were already added
         }
@@ -440,7 +459,7 @@ pub fn assemble_declarations(
     {
         let mut commit = true;
         for definition in type_definitions.items() {
-            match definition.assemble(&mut errors, &identifiers, &namespaces) {
+            match definition.assemble(&mut errors, &mut identifiers, &mut namespaces) {
                 Some(result) => {
                     if commit {
                         validated_type_definitions.push(result)

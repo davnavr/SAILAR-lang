@@ -37,9 +37,8 @@ impl<'a, N, T, E: Fn(N, &T) -> Error> Once<'a, N, T, E> {
     }
 
     pub fn declare_and_set(&mut self, errors: &mut Vec<Error>, node: N, value: T) {
-        match self.declare(errors, node) {
-            Some(setter) => setter(value),
-            None => (),
+        if let Some(setter) = self.declare(errors, node) {
+            setter(value)
         }
     }
 }

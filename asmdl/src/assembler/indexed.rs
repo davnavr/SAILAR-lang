@@ -70,9 +70,11 @@ where
 {
     fn from(values: Set<I, T>) -> Self {
         let mut items = Vec::with_capacity(values.lookup.len());
-        items.set_len(items.capacity());
-        for (ref value, index) in values.lookup {
-            items.insert(index.try_into().unwrap(), value.clone())
+        unsafe {
+            items.set_len(items.capacity());
+            for (ref value, index) in values.lookup {
+                items.insert(index.try_into().unwrap(), value.clone())
+            }
         }
         items
     }

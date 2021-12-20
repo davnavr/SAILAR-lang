@@ -59,7 +59,7 @@ impl Error for asmdl::assembler::Error {
     }
 
     fn position(&self) -> Option<asmdl::ast::Position> {
-        asmdl::assembler::Error::position(self)
+        asmdl::assembler::Error::position(self).cloned()
     }
 }
 
