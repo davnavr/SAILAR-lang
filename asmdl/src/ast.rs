@@ -124,6 +124,12 @@ impl From<&str> for LiteralString {
     }
 }
 
+impl From<LiteralString> for String {
+    fn from(s: LiteralString) -> Self {
+        s.0.iter().collect()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeSignature {
     Primitive(PrimitiveType),

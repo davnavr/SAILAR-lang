@@ -15,7 +15,7 @@ pub struct varint(pub u128);
 
 macro_rules! index_type {
     ($name: ident, $description: literal) => {
-        #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
+        #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
         #[doc = $description]
         pub struct $name(pub uvarint);
 

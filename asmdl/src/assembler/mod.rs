@@ -29,6 +29,7 @@ pub enum NameError {
 pub enum Error {
     DuplicateNamedDeclaration(ast::GlobalSymbol, Declaration),
     DuplicateDeclaration(ast::Position, Declaration),
+    DuplicateModifier(ast::Position, &'static str),
     InvalidNameDeclaration(ast::Position, Declaration, NameError),
     MissingDeclaration(Option<ast::Position>, Declaration),
 }
@@ -41,6 +42,7 @@ impl Error {
                 _,
             )
             | Self::DuplicateDeclaration(position, _)
+            | Self::DuplicateModifier(position, _)
             | Self::InvalidNameDeclaration(position, _, _) => Some(position),
             Self::MissingDeclaration(position, _) => position.as_ref(),
         }
@@ -80,6 +82,9 @@ impl std::fmt::Display for Error {
             ),
             Self::DuplicateDeclaration(_, declaration) => {
                 write!(f, "a {} declaration already exists", declaration)
+            }
+            Self::DuplicateModifier(_, name) => {
+                write!(f, "the {} modifier was already specified", name)
             }
             Self::InvalidNameDeclaration(_, declaration, error) => {
                 write!(f, "{} name for {} declaration", error, declaration)
@@ -144,8 +149,15 @@ fn assemble_module_format(
     errors: &mut Vec<Error>,
     declarations: &[ast::Positioned<ast::FormatDeclaration>],
 ) -> format::FormatVersion {
-    fn declare_version<'a>() -> declare::Once<'a, ast::Position, format::uvarint, impl Fn(ast::Position, &format::uvarint) -> Error> {
-        declare::Once::new(|position, _| Error::DuplicateDeclaration(position, Declaration::Version))
+    fn declare_version<'a>() -> declare::Once<
+        'a,
+        ast::Position,
+        format::uvarint,
+        impl Fn(ast::Position, &format::uvarint) -> Error,
+    > {
+        declare::Once::new(|position, _| {
+            Error::DuplicateDeclaration(position, Declaration::Version)
+        })
     }
 
     let mut major_version = declare_version();
@@ -153,12 +165,12 @@ fn assemble_module_format(
 
     for node in declarations {
         match &node.value {
-            ast::FormatDeclaration::Major(major) => if let Some(set_version) = major_version.declare(errors, node.position) {
-                set_version(*major)
-            },
-            ast::FormatDeclaration::Minor(minor) => if let Some(set_version) = minor_version.declare(errors, node.position) {
-                set_version(*minor)
-            },
+            ast::FormatDeclaration::Major(major) => {
+                major_version.declare_and_set(errors, node.position, *major)
+            }
+            ast::FormatDeclaration::Minor(minor) => {
+                major_version.declare_and_set(errors, node.position, *minor)
+            }
         }
     }
 
@@ -169,6 +181,70 @@ fn assemble_module_format(
 }
 
 type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier>;
+
+type MethodDefinitionLookup<'a, 'b> =
+    indexed::SymbolMap<'a, ast::GlobalSymbol, usize, MethodDefinitionAssembler<'b>>;
+
+fn visibility_declaration<'a>() -> declare::Once<
+    'a,
+    ast::Position,
+    format::Visibility,
+    impl Fn(ast::Position, &format::Visibility) -> Error,
+> {
+    declare::Once::new(|position, _| Error::DuplicateModifier(position, "visibility"))
+}
+
+type NameDeclaration<'a, 'b, E> =
+    declare::Once<'a, &'b ast::Positioned<ast::LiteralString>, format::IdentifierIndex, E>;
+
+fn name_declaration<'a, 'b>() -> NameDeclaration<
+    'a,
+    'b,
+    impl Fn(&'b ast::Positioned<ast::LiteralString>, &format::IdentifierIndex) -> Error,
+> {
+    declare::Once::new(|node: &ast::Positioned<_>, _| {
+        Error::InvalidNameDeclaration(
+            node.position,
+            Declaration::TypeDefinition,
+            NameError::Duplicate,
+        )
+    })
+}
+
+fn declare_name<
+    'a,
+    'b,
+    E: Fn(&'b ast::Positioned<ast::LiteralString>, &format::IdentifierIndex) -> Error,
+>(
+    declaration: &NameDeclaration<'a, 'b, E>,
+    errors: &mut Vec<Error>,
+    identifiers: &IdentifierLookup,
+    declarer: Declaration,
+    name: &'b ast::Positioned<ast::LiteralString>,
+) {
+    if let Some(setter) = declaration.declare(errors, name) {
+        match format::Identifier::try_from(&name.value.0) {
+            Ok(id) => setter(identifiers.add(id)),
+            Err(()) => errors.push(Error::InvalidNameDeclaration(
+                name.position,
+                declarer,
+                NameError::Empty,
+            )),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MethodDefinitionAssembler<'a> {
+    modifiers: &'a [ast::Positioned<ast::MethodModifier>],
+    declarations: &'a [ast::Positioned<ast::MethodDeclaration>],
+}
+
+impl<'a> MethodDefinitionAssembler<'a> {
+    fn assemble() -> format::Method {
+        unimplemented!()
+    }
+}
 
 #[derive(Debug)]
 struct TypeDefinitionAssembler<'a> {
@@ -182,20 +258,45 @@ impl<'a> TypeDefinitionAssembler<'a> {
         errors: &mut Vec<Error>,
         identifiers: &IdentifierLookup,
     ) -> format::TypeDefinition {
-        //let mut type_name = declare::Once
-        let mut visibility =
-            declare::Once::new(|modifier: &ast::Positioned<_>, _| unimplemented!());
+        let mut visibility = visibility_declaration();
         let mut flags = format::TypeDefinitionFlags::default();
+
+        for modifier in self.modifiers {
+            match &modifier.value {
+                ast::TypeModifier::Public => visibility.declare_and_set(
+                    errors,
+                    modifier.position,
+                    format::Visibility::Public,
+                ),
+                ast::TypeModifier::Private => visibility.declare_and_set(
+                    errors,
+                    modifier.position,
+                    format::Visibility::Private,
+                ),
+            }
+        }
+
+        let mut type_name = name_declaration();
 
         for declaration in self.declarations {
             match &declaration.value {
+                ast::TypeDeclaration::Name(name) => declare_name(
+                    &type_name,
+                    errors,
+                    identifiers,
+                    Declaration::TypeDefinition,
+                    name,
+                ),
                 _ => unimplemented!(),
             }
         }
 
-        format::TypeDefinition {
-            visibility: visibility.unwrap_or_default(),
-            flags,
+        match (type_name.value()) {
+            Some((name)) => format::TypeDefinition {
+                name,
+                visibility: visibility.value().unwrap_or_default(),
+                flags,
+            },
         }
     }
 }
@@ -210,7 +311,8 @@ pub fn assemble_declarations(
     let mut identifiers = IdentifierLookup::new();
     let mut method_bodies = indexed::SymbolMap::<ast::GlobalSymbol, format::CodeIndex, _>::new();
     let mut type_definitions =
-        indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler<'_>>::new();
+        indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler>::new();
+    let mut method_definitions = MethodDefinitionLookup::new();
 
     for node in declarations {
         match &node.value {
@@ -222,19 +324,28 @@ pub fn assemble_declarations(
                         module_nodes,
                     ))
                 } else {
-                    errors.push(Error::DuplicateDeclaration(node.position, Declaration::Module))
+                    errors.push(Error::DuplicateDeclaration(
+                        node.position,
+                        Declaration::Module,
+                    ))
                 }
             }
             ast::TopLevelDeclaration::Format(ref format_versions) => match module_format {
                 None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
-                Some(_) => errors.push(Error::DuplicateDeclaration(node.position, Declaration::Format)),
+                Some(_) => errors.push(Error::DuplicateDeclaration(
+                    node.position,
+                    Declaration::Format,
+                )),
             },
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
             } => match method_bodies.try_add(symbol, declarations) {
                 Some(_) => (),
-                None => errors.push(Error::DuplicateNamedDeclaration(symbol.clone(), Declaration::Code)),
+                None => errors.push(Error::DuplicateNamedDeclaration(
+                    symbol.clone(),
+                    Declaration::Code,
+                )),
             },
             ast::TopLevelDeclaration::Type {
                 ref symbol,
@@ -248,7 +359,10 @@ pub fn assemble_declarations(
                 },
             ) {
                 Some(_) => (),
-                None => errors.push(Error::DuplicateNamedDeclaration(symbol.clone(), Declaration::TypeDefinition)),
+                None => errors.push(Error::DuplicateNamedDeclaration(
+                    symbol.clone(),
+                    Declaration::TypeDefinition,
+                )),
             },
             ref unknown => unimplemented!("{:?}", unknown),
         }
