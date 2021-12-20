@@ -333,6 +333,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Default)]
     #[repr(transparent)]
     pub struct TypeDefinitionFlags: u8 {
         const FINAL = 0;

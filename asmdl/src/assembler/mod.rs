@@ -1,6 +1,7 @@
 use crate::ast;
 use registir::format;
 
+mod declare;
 mod indexed;
 
 #[derive(Clone, Debug)]
@@ -97,71 +98,47 @@ impl std::fmt::Display for Error {
     }
 }
 
-#[derive(Debug)]
-struct DeclareOnce<N, T, E> {
-    value: Option<T>,
-    error: E,
-}
-
-impl<N, T, E: Fn(N, &T) -> Error> DeclareOnce<N, T, E> {
-    fn new(error: E) -> Self {
-        Self {
-            value: None,
-            error
-        }
-    }
-
-    fn declare(&mut self, errors: &mut Vec<Error>, node: N) -> Option<impl FnOnce(T) -> ()> {
-        match self.value {
-            None => Some(|value| self.value = Some(value)),
-            Some(ref existing) => {
-                errors.push((self.error)(node, existing));
-                None
-            }
-        }
-    }
-}
-
 fn assemble_module_header(
     errors: &mut Vec<Error>,
     default_module_name: &format::Identifier,
     declarations: &[ast::Positioned<ast::ModuleDeclaration>],
 ) -> format::ModuleHeader {
-    let mut module_name = None;
-    let mut module_version = None;
+    let mut module_name = declare::Once::new(|name: &ast::Positioned<_>, _| {
+        Error::InvalidModuleName(name.position, NameError::Duplicate)
+    });
+    let mut module_version = declare::Once::new(|version: ast::Positioned<_>, _| {
+        Error::DuplicateModuleVersion(version.position)
+    });
 
     for node in declarations {
         match &node.value {
             ast::ModuleDeclaration::Name(name) => {
-                if module_name.is_none() {
-                    match format::Identifier::try_from(&name.value.0) {
-                        Ok(id) => module_name = Some(id),
+                if let Some(set_name) = module_name.declare(errors, name) {
+                    set_name(match format::Identifier::try_from(&name.value.0) {
+                        Ok(id) => Some(id),
                         Err(_) => {
-                            errors.push(Error::InvalidModuleName(name.position, NameError::Empty))
+                            errors.push(Error::InvalidModuleName(name.position, NameError::Empty));
+                            None
                         }
-                    }
-                } else {
-                    errors.push(Error::InvalidModuleName(
-                        node.position,
-                        NameError::Duplicate,
-                    ))
+                    })
                 }
             }
-            ast::ModuleDeclaration::Version(version) => match module_version {
-                None => {
-                    module_version = Some(format::VersionNumbers(format::LengthEncodedVector(
+            ast::ModuleDeclaration::Version(version) => {
+                if let Some(set_version) = module_version.declare(errors, node.map(|_| version)) {
+                    set_version(format::VersionNumbers(format::LengthEncodedVector(
                         version.iter().map(|n| format::uvarint(*n)).collect(),
                     )))
                 }
-                Some(_) => errors.push(Error::DuplicateModuleVersion(node.position)),
-            },
+            }
         }
     }
 
-    format::ModuleHeader {
-        identifier: format::ModuleIdentifier {
-            name: module_name.unwrap_or_else(|| format::Identifier::clone(default_module_name)),
-            version: module_version.unwrap_or_default(),
+    match module_name.value().flatten() {
+        Some(name) => format::ModuleHeader {
+            identifier: format::ModuleIdentifier {
+                name,
+                version: module_version.value().unwrap_or_default(),
+            },
         },
     }
 }
@@ -192,7 +169,7 @@ fn assemble_module_format(
     }
 }
 
-type IdentifierLookup = indexed::Set::<format::IdentifierIndex, format::Identifier>;
+type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier>;
 
 #[derive(Debug)]
 struct TypeDefinitionAssembler<'a> {
@@ -201,17 +178,21 @@ struct TypeDefinitionAssembler<'a> {
 }
 
 impl<'a> TypeDefinitionAssembler<'a> {
-    fn assemble(&self, errors: &mut Vec<Error>, identifiers: &IdentifierLookup) -> format::TypeDefinition {
+    fn assemble(
+        &self,
+        errors: &mut Vec<Error>,
+        identifiers: &IdentifierLookup,
+    ) -> format::TypeDefinition {
         let mut visibility = None;
+        let mut flags = format::TypeDefinitionFlags::default();
 
         for declaration in self.declarations {
-            match &declaration.value {
-
-            }
+            match &declaration.value {}
         }
 
         format::TypeDefinition {
             visibility: visibility.unwrap_or_default(),
+            flags,
         }
     }
 }

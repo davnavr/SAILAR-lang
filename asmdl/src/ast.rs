@@ -63,6 +63,13 @@ impl<T> Positioned<T> {
             value,
         }
     }
+
+    pub fn map<U, F: FnOnce(T) -> U>(self, mapper: F) -> Positioned<U> {
+        Positioned {
+            position: self.position,
+            value: mapper(self.value),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
