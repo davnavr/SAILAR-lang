@@ -346,7 +346,7 @@ impl TypeDefinitionLayout {
     }
 }
 
-/// Describes the features that a module makes use of.
+/// Specifies what version of the module format is being used, placed after the module's integer size field.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct FormatVersion {
     pub major: numeric::UInteger,
@@ -382,6 +382,7 @@ pub type Namespace = structures::LengthEncodedVector<indices::Identifier>;
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 #[derive(Debug)]
 pub struct Module {
+    pub integer_size: numeric::IntegerSize,
     pub format_version: FormatVersion,
     //pub data_count: (),
     /// The header, which identifies and describes the module.
