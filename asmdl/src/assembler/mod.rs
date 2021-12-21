@@ -185,7 +185,7 @@ fn assemble_module_format(
                 major_version.declare_and_set(errors, node.position, *major)
             }
             ast::FormatDeclaration::Minor(minor) => {
-                major_version.declare_and_set(errors, node.position, *minor)
+                minor_version.declare_and_set(errors, node.position, *minor)
             }
         }
     }
@@ -199,6 +199,8 @@ fn assemble_module_format(
 type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier>;
 
 type NamespaceLookup = indexed::Set<format::NamespaceIndex, format::Namespace>;
+
+type MethodSignatureLookup = indexed::Set<format::MethodSignatureIndex, format::MethodSignature>;
 
 type MethodBodyLookup<'a, 'b> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, format::CodeIndex, MethodBodyAssembler<'b>>;
@@ -281,6 +283,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         &self,
         errors: &mut Vec<Error>,
         identifiers: &mut IdentifierLookup,
+        method_signatures: &mut MethodSignatureLookup,
         method_bodies: &mut MethodBodyLookup,
         owner: format::TypeDefinitionIndex,
     ) -> Option<format::Method> {
@@ -314,15 +317,18 @@ impl<'a> MethodDefinitionAssembler<'a> {
                 ast::MethodDeclaration::Name(name) => declare_name(
                     &mut method_name,
                     errors,
-                    &mut identifiers,
+                    identifiers,
                     Declaration::MethodDefinition,
                     name,
                 ),
                 ast::MethodDeclaration::Body(body) => {
                     if let Some(set_body) = method_body.declare(errors, declaration.position) {
                         set_body(match body {
-                            ast::MethodBodyDeclaration::Defined(name) => {
-                                method_bodies.index_of(name).map(format::MethodBody::Defined)
+                            ast::MethodBodyDeclaration::Defined(name) => method_bodies
+                                .index_of(name)
+                                .map(format::MethodBody::Defined),
+                            ast::MethodBodyDeclaration::External { name, library } => {
+                                unimplemented!()
                             }
                         })
                     }
@@ -331,22 +337,33 @@ impl<'a> MethodDefinitionAssembler<'a> {
         }
 
         if !method_name.is_set() {
-            errors.push(Error::InvalidNameDeclaration(self.origin, Declaration::MethodDefinition, NameError::Missing))
+            errors.push(Error::InvalidNameDeclaration(
+                self.origin,
+                Declaration::MethodDefinition,
+                NameError::Missing,
+            ))
         }
 
         if !method_body.is_set() {
-            errors.push(Error::MissingDeclaration(Some(self.origin), Declaration::MethodBody))
+            errors.push(Error::MissingDeclaration(
+                Some(self.origin),
+                Declaration::MethodBody,
+            ))
         }
 
-        if let (Some(name), Some(body)) = (method_name.value(), method_body.value().map(|body| body.unwrap_or_default())) {
-            Some(format::Method {
-                owner,
-                name,
-                visibility: visibility.value().unwrap_or_default(),
-                flags,
-                //signature:
-                body,
-            })
+        if let (Some(name), Some(body)) = (
+            method_name.value(),
+            method_body.value().map(|body| body.unwrap_or_default()),
+        ) {
+            // Some(format::Method {
+            //     owner,
+            //     name,
+            //     visibility: visibility.value().unwrap_or_default(),
+            //     flags,
+            //     //signature:
+            //     body,
+            // })
+            unimplemented!()
         } else {
             None
         }
@@ -430,7 +447,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
                         }
                     }
                 }
-                _ => unimplemented!(),
+                _ => (), // TOOD: For methods, add MethodAssembler to method lookup
             }
         }
 
@@ -476,6 +493,7 @@ pub fn assemble_declarations(
     let mut module_format = None;
     let mut identifiers = IdentifierLookup::new();
     let mut namespaces = NamespaceLookup::new();
+    let mut method_signatures = MethodSignatureLookup::new();
     let mut method_bodies = MethodBodyLookup::new();
     let mut type_definitions =
         indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler>::new();

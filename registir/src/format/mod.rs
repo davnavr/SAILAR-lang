@@ -227,7 +227,7 @@ impl TypeTagged for HeapType {
 }
 
 /// Describes the return types and parameter types of a method.
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct MethodSignature {
     /// The types of the values returned by the method.
     pub return_types: LengthEncodedVector<TypeSignatureIndex>,
