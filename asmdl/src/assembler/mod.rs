@@ -9,6 +9,8 @@ mod indexed;
 pub enum Declaration {
     Code,
     TypeDefinition,
+    MethodDefinition,
+    MethodBody,
     Module,
     Format,
     Name,
@@ -56,6 +58,8 @@ impl std::fmt::Display for Declaration {
             Self::Name => "name",
             Self::Namespace => "namespace",
             Self::TypeDefinition => "type definition",
+            Self::MethodDefinition => "method definition",
+            Self::MethodBody => "method body",
             Self::Code => "code",
             Self::Module => "module",
             Self::Format => "format",
@@ -196,6 +200,9 @@ type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier
 
 type NamespaceLookup = indexed::Set<format::NamespaceIndex, format::Namespace>;
 
+type MethodBodyLookup<'a, 'b> =
+    indexed::SymbolMap<'a, ast::GlobalSymbol, format::CodeIndex, MethodBodyAssembler<'b>>;
+
 type MethodDefinitionLookup<'a, 'b> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, usize, MethodDefinitionAssembler<'b>>;
 
@@ -256,7 +263,15 @@ fn declare_name<
 }
 
 #[derive(Debug)]
+struct MethodBodyAssembler<'a> {
+    declarations: &'a [ast::Positioned<ast::CodeDeclaration>],
+}
+
+#[derive(Debug)]
 struct MethodDefinitionAssembler<'a> {
+    origin: ast::Position,
+    parameter_types: &'a [ast::Positioned<ast::TypeSignature>],
+    return_types: &'a [ast::Positioned<ast::TypeSignature>],
     modifiers: &'a [ast::Positioned<ast::MethodModifier>],
     declarations: &'a [ast::Positioned<ast::MethodDeclaration>],
 }
@@ -265,9 +280,76 @@ impl<'a> MethodDefinitionAssembler<'a> {
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
-        identifiers: &IdentifierLookup,
+        identifiers: &mut IdentifierLookup,
+        method_bodies: &mut MethodBodyLookup,
+        owner: format::TypeDefinitionIndex,
     ) -> Option<format::Method> {
-        unimplemented!()
+        let mut visibility = visibility_declaration();
+        let mut flags = format::MethodFlags::default();
+
+        for modifier in self.modifiers {
+            match &modifier.value {
+                ast::MethodModifier::Public => visibility.declare_and_set(
+                    errors,
+                    modifier.position,
+                    format::Visibility::Public,
+                ),
+                ast::MethodModifier::Private => visibility.declare_and_set(
+                    errors,
+                    modifier.position,
+                    format::Visibility::Private,
+                ),
+                ast::MethodModifier::Instance => unimplemented!(),
+                ast::MethodModifier::Initializer => unimplemented!(),
+            }
+        }
+
+        let mut method_name = name_declaration();
+        let mut method_body = declare::Once::new(|position, _| {
+            Error::DuplicateDeclaration(position, Declaration::MethodBody)
+        });
+
+        for declaration in self.declarations {
+            match &declaration.value {
+                ast::MethodDeclaration::Name(name) => declare_name(
+                    &mut method_name,
+                    errors,
+                    &mut identifiers,
+                    Declaration::MethodDefinition,
+                    name,
+                ),
+                ast::MethodDeclaration::Body(body) => {
+                    if let Some(set_body) = method_body.declare(errors, declaration.position) {
+                        set_body(match body {
+                            ast::MethodBodyDeclaration::Defined(name) => {
+                                method_bodies.index_of(name).map(format::MethodBody::Defined)
+                            }
+                        })
+                    }
+                }
+            }
+        }
+
+        if !method_name.is_set() {
+            errors.push(Error::InvalidNameDeclaration(self.origin, Declaration::MethodDefinition, NameError::Missing))
+        }
+
+        if !method_body.is_set() {
+            errors.push(Error::MissingDeclaration(Some(self.origin), Declaration::MethodBody))
+        }
+
+        if let (Some(name), Some(body)) = (method_name.value(), method_body.value().map(|body| body.unwrap_or_default())) {
+            Some(format::Method {
+                owner,
+                name,
+                visibility: visibility.value().unwrap_or_default(),
+                flags,
+                //signature:
+                body,
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -367,8 +449,8 @@ impl<'a> TypeDefinitionAssembler<'a> {
             ))
         }
 
-        match (type_name.value(), type_namespace.value()) {
-            (Some(name), Some(namespace)) => Some(format::TypeDefinition {
+        if let (Some(name), Some(namespace)) = (type_name.value(), type_namespace.value()) {
+            Some(format::TypeDefinition {
                 name,
                 namespace,
                 visibility: visibility.value().unwrap_or_default(),
@@ -378,8 +460,9 @@ impl<'a> TypeDefinitionAssembler<'a> {
                 fields: format::LengthEncodedVector(field_indices),
                 methods: format::LengthEncodedVector(method_indices),
                 vtable: format::LengthEncodedVector(Vec::new()),
-            }),
-            (_, _) => None, // Errors were already added
+            })
+        } else {
+            None // Errors were already added
         }
     }
 }
@@ -393,7 +476,7 @@ pub fn assemble_declarations(
     let mut module_format = None;
     let mut identifiers = IdentifierLookup::new();
     let mut namespaces = NamespaceLookup::new();
-    let mut method_bodies = indexed::SymbolMap::<ast::GlobalSymbol, format::CodeIndex, _>::new();
+    let mut method_bodies = MethodBodyLookup::new();
     let mut type_definitions =
         indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler>::new();
     let mut method_definitions = MethodDefinitionLookup::new();
@@ -424,7 +507,7 @@ pub fn assemble_declarations(
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
-            } => match method_bodies.try_add(symbol, declarations) {
+            } => match method_bodies.try_add(symbol, MethodBodyAssembler { declarations }) {
                 Some(_) => (),
                 None => errors.push(Error::DuplicateNamedDeclaration(
                     symbol.clone(),

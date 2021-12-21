@@ -335,6 +335,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Default)]
     #[repr(transparent)]
     pub struct MethodFlags: u8 {
         const FINAL = 0;
@@ -453,6 +454,12 @@ pub enum MethodBody {
     },
 }
 
+impl Default for MethodBody {
+    fn default() -> Self {
+        Self::Abstract
+    }
+}
+
 bitflags! {
     #[repr(transparent)]
     pub struct MethodImplementationFlags: u8 {
@@ -468,9 +475,9 @@ flags_helpers!(MethodImplementationFlags);
 impl MethodBody {
     pub fn flags(&self) -> MethodImplementationFlags {
         match self {
-            MethodBody::Defined(_) => MethodImplementationFlags::DEFINED,
-            MethodBody::Abstract => MethodImplementationFlags::NONE,
-            MethodBody::External { .. } => MethodImplementationFlags::EXTERNAL,
+            Self::Defined(_) => MethodImplementationFlags::DEFINED,
+            Self::Abstract => MethodImplementationFlags::NONE,
+            Self::External { .. } => MethodImplementationFlags::EXTERNAL,
         }
     }
 }

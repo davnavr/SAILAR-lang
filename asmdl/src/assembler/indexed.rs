@@ -38,6 +38,10 @@ where
             Some(_) => None,
         }
     }
+
+    pub fn index_of(&self, symbol: &'a S) -> Option<I> {
+        self.lookup.get(symbol.into()).cloned()
+    }
 }
 
 #[derive(Debug)]
