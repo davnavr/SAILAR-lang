@@ -2,6 +2,9 @@ use bitflags::bitflags;
 
 /// Contains types representing indices to various structures within the module file.
 pub mod indices;
+/// Contains type representing the integer types used within the module file.
+///
+/// Unless specified otherwise, all unsigned and signed integers are in little-endian order.
 pub mod numeric;
 /// Contains representations of common structures found within the module file.
 pub mod structures;
@@ -87,7 +90,7 @@ pub struct Code {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct DataArray(pub Vec<u8>);
+pub struct DataArray(pub structures::LengthEncodedVector<u8>);
 
 /// Indicates whether or not a type, field, or method can be imported by another module.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
@@ -185,7 +188,7 @@ pub struct MethodImport {
 /// Contains the types, fields, and methods imported by a module.
 #[derive(Debug)]
 pub struct ModuleImports {
-    pub imported_modules: structures::LengthEncodedVector<ModuleIdentifier>,
+    pub imported_modules: structures::LengthEncodedVector<ModuleIdentifier>, // TODO: Could also add byte length for module imports.
     pub imported_types: structures::DoubleLengthEncodedVector<TypeDefinitionImport>,
     pub imported_fields: structures::DoubleLengthEncodedVector<FieldImport>,
     pub imported_methods: structures::DoubleLengthEncodedVector<MethodImport>,

@@ -6,18 +6,9 @@ macro_rules! index_type {
         #[doc = $description]
         pub struct $name(pub UInteger);
 
-        impl $name {
-            pub fn index(self) -> UInteger {
-                self.0
-            }
-        }
-
-        impl<T> From<T> for $name
-        where
-            UInteger: From<T>,
-        {
-            fn from(index: T) -> Self {
-                Self(UInteger::from(index))
+        impl From<$name> for UInteger {
+            fn from(index: $name) -> Self {
+                index.0
             }
         }
     };

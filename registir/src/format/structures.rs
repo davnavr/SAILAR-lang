@@ -12,6 +12,10 @@ impl<T> ByteLengthEncoded<T> {
     pub fn data(&self) -> &T {
         &self.0
     }
+
+    pub fn as_ref(&self) -> ByteLengthEncoded<&T> {
+        ByteLengthEncoded(&self.0)
+    }
 }
 
 impl<T> LengthEncodedVector<T> {

@@ -4,7 +4,7 @@ pub struct UInteger(pub u32);
 
 /// Represents a signed integer.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
-pub struct SInteger(pub i64);
+pub struct SInteger(pub i32);
 
 /// Specifies the size of integers and indices in the module file.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
@@ -37,7 +37,7 @@ macro_rules! integer_conversions {
 }
 
 integer_conversions!(UInteger, u32);
-integer_conversions!(SInteger, i64);
+integer_conversions!(SInteger, i32);
 
 impl TryFrom<u8> for IntegerSize {
     type Error = ();
