@@ -139,9 +139,14 @@ fn assemble_module_header(
                         position: node.position,
                     },
                 ) {
-                    set_version(format::VersionNumbers(format::LengthEncodedVector(
-                        version.iter().map(|n| format::uvarint(*n)).collect(),
-                    )))
+                    set_version(format::VersionNumbers(
+                        format::structures::LengthEncodedVector(
+                            version
+                                .iter()
+                                .map(|n| format::numeric::UInteger(*n))
+                                .collect(),
+                        ),
+                    ))
                 }
             }
         }
@@ -168,8 +173,8 @@ fn assemble_module_format(
     fn declare_version<'a>() -> declare::Once<
         'a,
         ast::Position,
-        format::uvarint,
-        impl Fn(ast::Position, &format::uvarint) -> Error,
+        format::numeric::UInteger,
+        impl Fn(ast::Position, &format::numeric::UInteger) -> Error,
     > {
         declare::Once::new(|position, _| {
             Error::DuplicateDeclaration(position, Declaration::Version)
@@ -196,14 +201,15 @@ fn assemble_module_format(
     }
 }
 
-type IdentifierLookup = indexed::Set<format::IdentifierIndex, format::Identifier>;
+type IdentifierLookup = indexed::Set<format::indices::Identifier, format::Identifier>;
 
-type NamespaceLookup = indexed::Set<format::NamespaceIndex, format::Namespace>;
+type NamespaceLookup = indexed::Set<format::indices::Namespace, format::Namespace>;
 
-type MethodSignatureLookup = indexed::Set<format::MethodSignatureIndex, format::MethodSignature>;
+type MethodSignatureLookup =
+    indexed::Set<format::indices::MethodSignature, format::MethodSignature>;
 
 type MethodBodyLookup<'a, 'b> =
-    indexed::SymbolMap<'a, ast::GlobalSymbol, format::CodeIndex, MethodBodyAssembler<'b>>;
+    indexed::SymbolMap<'a, ast::GlobalSymbol, format::indices::Code, MethodBodyAssembler<'b>>;
 
 type MethodDefinitionLookup<'a, 'b> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, usize, MethodDefinitionAssembler<'b>>;
@@ -218,12 +224,12 @@ fn visibility_declaration<'a>() -> declare::Once<
 }
 
 type NameDeclaration<'a, 'b, E> =
-    declare::Once<'a, &'b ast::Positioned<ast::LiteralString>, format::IdentifierIndex, E>;
+    declare::Once<'a, &'b ast::Positioned<ast::LiteralString>, format::indices::Identifier, E>;
 
 fn name_declaration<'a, 'b>() -> NameDeclaration<
     'a,
     'b,
-    impl Fn(&'b ast::Positioned<ast::LiteralString>, &format::IdentifierIndex) -> Error,
+    impl Fn(&'b ast::Positioned<ast::LiteralString>, &format::indices::Identifier) -> Error,
 > {
     declare::Once::new(|node: &ast::Positioned<_>, _| {
         Error::InvalidNameDeclaration(
@@ -239,7 +245,7 @@ fn add_identifier_from(
     identifiers: &mut IdentifierLookup,
     declarer: Declaration,
     name: &ast::Positioned<ast::LiteralString>,
-) -> Result<format::IdentifierIndex, Error> {
+) -> Result<format::indices::Identifier, Error> {
     format::Identifier::try_from(&name.value.0)
         .map(|id| identifiers.add(id))
         .map_err(|()| Error::InvalidNameDeclaration(name.position, declarer, NameError::Empty))
@@ -248,7 +254,7 @@ fn add_identifier_from(
 fn declare_name<
     'a,
     'b,
-    E: Fn(&'b ast::Positioned<ast::LiteralString>, &format::IdentifierIndex) -> Error,
+    E: Fn(&'b ast::Positioned<ast::LiteralString>, &format::indices::Identifier) -> Error,
 >(
     declaration: &mut NameDeclaration<'a, 'b, E>,
     errors: &mut Vec<Error>,
@@ -285,7 +291,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         identifiers: &mut IdentifierLookup,
         method_signatures: &mut MethodSignatureLookup,
         method_bodies: &mut MethodBodyLookup,
-        owner: format::TypeDefinitionIndex,
+        owner: format::indices::TypeDefinition,
     ) -> Option<format::Method> {
         let mut visibility = visibility_declaration();
         let mut flags = format::MethodFlags::default();
@@ -409,8 +415,8 @@ impl<'a> TypeDefinitionAssembler<'a> {
         });
 
         // Field and method imports have been assembled, so it is safe to refer to these with the proper index types.
-        let mut field_indices = Vec::<format::FieldIndex>::new();
-        let mut method_indices = Vec::<format::MethodIndex>::new();
+        let mut field_indices = Vec::<format::indices::Field>::new();
+        let mut method_indices = Vec::<format::indices::Method>::new();
 
         for declaration in self.declarations {
             match &declaration.value {
@@ -443,7 +449,9 @@ impl<'a> TypeDefinitionAssembler<'a> {
                         }
 
                         if success {
-                            set_namespace(namespaces.add(format::LengthEncodedVector(indices)))
+                            set_namespace(
+                                namespaces.add(format::structures::LengthEncodedVector(indices)),
+                            )
                         }
                     }
                 }
@@ -472,11 +480,11 @@ impl<'a> TypeDefinitionAssembler<'a> {
                 namespace,
                 visibility: visibility.value().unwrap_or_default(),
                 flags,
-                layout: format::TypeLayoutIndex(format::uvarint(0)), // TODO: Until `.layout` directives are supported, type layouts will be hard coded.
-                inherited_types: format::LengthEncodedVector::default(),
-                fields: format::LengthEncodedVector(field_indices),
-                methods: format::LengthEncodedVector(method_indices),
-                vtable: format::LengthEncodedVector(Vec::new()),
+                layout: format::indices::TypeLayout(format::numeric::UInteger(0)), // TODO: Until `.layout` directives are supported, type layouts will be hard coded.
+                inherited_types: format::structures::LengthEncodedVector::default(),
+                fields: format::structures::LengthEncodedVector(field_indices),
+                methods: format::structures::LengthEncodedVector(method_indices),
+                vtable: format::structures::LengthEncodedVector(Vec::new()),
             })
         } else {
             None // Errors were already added
@@ -577,39 +585,58 @@ pub fn assemble_declarations(
 
     if errors.is_empty() {
         Ok(format::Module {
+            integer_size: format::numeric::IntegerSize::I4,
             format_version: module_format.unwrap_or_default(),
             // Some(None) would mean that the module header had no name, but an unwrap is safe here as an error should have been generated.
-            header: format::ByteLengthEncoded(module_header.flatten().unwrap()),
+            header: format::structures::ByteLengthEncoded(module_header.flatten().unwrap()),
             // TODO: Add other things
-            identifiers: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::from(
-                identifiers,
-            ))),
-            namespaces: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::from(
-                namespaces,
-            ))),
-            type_signatures: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-            method_signatures: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-            method_bodies: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-            data_arrays: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-            imports: format::ByteLengthEncoded(format::ModuleImports {
-                imported_modules: format::LengthEncodedVector(Vec::new()),
-                imported_types: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-                imported_fields: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-                imported_methods: format::ByteLengthEncoded(
-                    format::LengthEncodedVector(Vec::new()),
+            identifiers: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::from(identifiers)),
+            ),
+            namespaces: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::from(namespaces)),
+            ),
+            type_signatures: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::new()),
+            ),
+            method_signatures: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::new()),
+            ),
+            method_bodies: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::new()),
+            ),
+            data_arrays: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(Vec::new()),
+            ),
+            imports: format::structures::ByteLengthEncoded(format::ModuleImports {
+                imported_modules: format::structures::LengthEncodedVector(Vec::new()),
+                imported_types: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
+                ),
+                imported_fields: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
+                ),
+                imported_methods: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
                 ),
             }),
-            definitions: format::ByteLengthEncoded(format::ModuleDefinitions {
-                defined_types: format::ByteLengthEncoded(format::LengthEncodedVector(
-                    validated_type_definitions,
-                )),
-                defined_fields: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
-                defined_methods: format::ByteLengthEncoded(format::LengthEncodedVector(Vec::new())),
+            definitions: format::structures::ByteLengthEncoded(format::ModuleDefinitions {
+                defined_types: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(validated_type_definitions),
+                ),
+                defined_fields: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
+                ),
+                defined_methods: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
+                ),
             }),
-            entry_point: format::ByteLengthEncoded(None),
-            type_layouts: format::ByteLengthEncoded(format::LengthEncodedVector(vec![
-                format::TypeDefinitionLayout::Unspecified,
-            ])),
+            entry_point: format::structures::ByteLengthEncoded(None),
+            type_layouts: format::structures::ByteLengthEncoded(
+                format::structures::LengthEncodedVector(vec![
+                    format::TypeDefinitionLayout::Unspecified,
+                ]),
+            ),
         })
     } else {
         Err(errors)
@@ -637,7 +664,7 @@ mod tests {
         );
         assert_eq!(
             header.identifier.version,
-            format::VersionNumbers::from_iter(vec![1u64, 2, 3].into_iter())
+            format::VersionNumbers::from_iter(vec![1u32, 2, 3].into_iter())
         );
     }
 }

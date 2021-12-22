@@ -1,4 +1,4 @@
-pub use registir::format::PrimitiveType;
+pub use registir::format::type_system::PrimitiveType;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
@@ -224,14 +224,14 @@ pub enum TypeDeclaration {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
-    Major(registir::format::uvarint),
-    Minor(registir::format::uvarint),
+    Major(registir::format::numeric::UInteger),
+    Minor(registir::format::numeric::UInteger),
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ModuleDeclaration {
     Name(Positioned<LiteralString>),
-    Version(Vec<u64>),
+    Version(Vec<u32>),
 }
 
 #[derive(Debug, Eq, PartialEq)]

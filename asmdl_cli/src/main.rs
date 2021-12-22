@@ -100,7 +100,7 @@ fn assemble(args: &Arguments) -> Result<(), Vec<Box<dyn std::error::Error>>> {
     )
     .map_err(|error| vec![Box::new(error) as Box<dyn std::error::Error>])?;
 
-    registir::writer::write(&module, &mut output)
+    registir::writer::write_module(&module, &mut output)
         .map_err(|error| vec![Box::new(error) as Box<dyn std::error::Error>])
 }
 

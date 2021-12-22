@@ -584,7 +584,7 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
         &buffers,
         |out, header, _| module_header(out, header, module.integer_size),
     )?;
-    
+
     double_length_encoded_vector(
         out,
         module.identifiers.as_ref(),

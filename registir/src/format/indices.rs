@@ -11,6 +11,22 @@ macro_rules! index_type {
                 index.0
             }
         }
+
+        impl TryFrom<$name> for usize {
+            type Error = std::num::TryFromIntError;
+
+            fn try_from(index: $name) -> Result<Self, Self::Error> {
+                usize::try_from(index.0.0)
+            }
+        }
+
+        impl TryFrom<usize> for $name {
+            type Error = std::num::TryFromIntError;
+
+            fn try_from(value: usize) -> Result<Self, Self::Error> {
+                u32::try_from(value).map(|index| Self(UInteger(index)))
+            }
+        }
     };
 }
 
@@ -49,6 +65,7 @@ index_type!(
     "`0` refers to the current module, while the remaining indices refer to the module imports."
 );
 
+// TODO: Make this an enum.
 index_type!(
     TypeDefinition,
     "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types."

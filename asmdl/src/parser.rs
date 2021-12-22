@@ -186,8 +186,8 @@ fn between_parenthesis<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
 
 fn format_version<'a>(
     name: &'static str,
-) -> impl Parser<ParserInput<'a>, Output = registir::format::uvarint> {
-    directive(name, literal_integer_sized::<u64>()).map(registir::format::uvarint)
+) -> impl Parser<ParserInput<'a>, Output = registir::format::numeric::UInteger> {
+    directive(name, literal_integer_sized::<u32>()).map(registir::format::numeric::UInteger)
 }
 
 fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = ast::FormatDeclaration>
@@ -209,7 +209,7 @@ fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Module
         name_directive(ast::ModuleDeclaration::Name),
         directive(
             "version",
-            combine::many::<Vec<_>, _, _>(literal_integer_sized::<u64>()),
+            combine::many::<Vec<_>, _, _>(literal_integer_sized::<u32>()),
         )
         .map(ast::ModuleDeclaration::Version),
     ))
@@ -442,12 +442,12 @@ mod tests {
                     ast::Positioned::new(
                         0,
                         10,
-                        ast::FormatDeclaration::Major(registir::format::uvarint(0))
+                        ast::FormatDeclaration::Major(registir::format::numeric::UInteger(0))
                     ),
                     ast::Positioned::new(
                         0,
                         20,
-                        ast::FormatDeclaration::Minor(registir::format::uvarint(1))
+                        ast::FormatDeclaration::Minor(registir::format::numeric::UInteger(1))
                     )
                 ])
             )]
