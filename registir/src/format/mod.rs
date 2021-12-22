@@ -275,13 +275,21 @@ impl MethodBody {
 ///
 /// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
 /// restrictions regarding valid constructors.
+/// 
+/// # Structure
+/// - [`Method::owner`]
+/// - [`Method::name`]
+/// - [`Method::visibility`]
+/// - [`Method::flags`]
+/// - [`Method::implementation_flags()`]
+/// - [`Method::signature`]
+/// - [`Method::body`]
 #[derive(Debug)]
 pub struct Method {
     pub owner: indices::TypeDefinition,
     pub name: indices::Identifier,
     pub visibility: Visibility,
     pub flags: MethodFlags,
-    //pub implementation_flags: MethodImplementationFlags,
     pub signature: indices::MethodSignature,
     /// The method body, in the binary format, this is where the structure for external methods would go.
     pub body: MethodBody,
@@ -290,7 +298,7 @@ pub struct Method {
 }
 
 impl Method {
-    /// Flags that describe how the method is implemented, placed after the [`flags`] field.
+    /// Flags that describe how the method is implemented, placed after the [`Method::flags`] field.
     pub fn implementation_flags(&self) -> MethodImplementationFlags {
         self.body.flags()
     }
@@ -383,11 +391,26 @@ pub static MAX_MODULE_DATA_COUNT: numeric::UInteger = numeric::UInteger(11);
 pub type Namespace = structures::LengthEncodedVector<indices::Identifier>;
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
+/// 
+/// # Structure
+/// - [`Module::integer_size`]
+/// - [`Module::format_version`]
+/// - [`Module::data_count()`]
+/// - [`Module::header`]
+/// - [`Module::identifiers`]
+/// - [`Module::namespaces`]
+/// - [`Module::type_signatures`]
+/// - [`Module::method_signatures`]
+/// - [`Module::method_bodies`]
+/// - [`Module::data_arrays`]
+/// - [`Module::imports`]
+/// - [`Module::definitions`]
+/// - [`Module::entry_point`]
+/// - [`Module::type_layouts`]
 #[derive(Debug)]
 pub struct Module {
     pub integer_size: numeric::IntegerSize,
     pub format_version: FormatVersion,
-    //pub data_count: (),
     /// The header, which identifies and describes the module.
     pub header: structures::ByteLengthEncoded<ModuleHeader>,
     /// An array containing the names of the types, namespaces, fields, and methods.
