@@ -97,64 +97,66 @@ fn format_version<W: std::io::Write>(
 }
 
 struct BufferPool {
-    buffers: Vec<std::cell::RefCell<Vec<u8>>>,
-    rent_count: usize,
+    buffers: std::cell::RefCell<Vec<std::cell::RefCell<Vec<u8>>>>,
+    rent_count: std::rc::Rc<std::cell::Cell<usize>>,
 }
 
 struct RentedBuffer<'a> {
-    buffer: std::cell::RefMut<'a, Vec<u8>>,
-    rent_count: &'a mut usize,
+    buffer: std::cell::RefMut<'a, std::cell::RefCell<Vec<u8>>>,
+    rent_count: std::rc::Rc<std::cell::Cell<usize>>,
 }
 
 impl<'a> RentedBuffer<'a> {
     fn buffer(&mut self) -> &mut Vec<u8> {
-        std::ops::DerefMut::deref_mut(&mut self.buffer)
+        self.buffer.get_mut()
     }
 }
 
 impl<'a> Drop for RentedBuffer<'a> {
     fn drop(&mut self) {
-        *self.rent_count -= 1;
+        self.rent_count.set(self.rent_count.get() - 1);
     }
 }
 
 impl BufferPool {
     pub fn new() -> Self {
         Self {
-            rent_count: 0,
-            buffers: Vec::new(),
+            rent_count: std::rc::Rc::new(std::cell::Cell::new(0)),
+            buffers: std::cell::RefCell::new(Vec::new()),
         }
     }
 
-    pub fn rent(&mut self) -> RentedBuffer<'_> {
-        if self.rent_count >= self.buffers.len() {
-            self.buffers.push(std::cell::RefCell::new(Vec::new()))
+    pub fn rent(&self) -> RentedBuffer<'_> {
+        let index = self.rent_count.get();
+        let mut buffers = self.buffers.borrow_mut();
+
+        if index >= std::ops::Deref::deref(&buffers).len() {
+            std::ops::DerefMut::deref_mut(&mut buffers).push(std::cell::RefCell::new(Vec::new()))
         }
 
-        let index = self.rent_count;
-        self.rent_count += 1;
-        let mut buffer = self.buffers[index].borrow_mut();
-        std::ops::DerefMut::deref_mut(&mut buffer).clear();
+        self.rent_count.set(index + 1);
+        let mut buffer = std::cell::RefMut::map(buffers, |buffers| &mut buffers[index]);
+        buffer.get_mut().clear();
         RentedBuffer {
             buffer,
-            rent_count: &mut self.rent_count,
+            rent_count: self.rent_count.clone(),
         }
     }
 }
 
 fn byte_length_encoded<
     D,
-    R: FnOnce(&mut Vec<u8>, &D, &mut BufferPool) -> WriteResult,
+    R: FnOnce(&mut Vec<u8>, &D, &BufferPool) -> WriteResult,
     W: std::io::Write,
 >(
     out: &mut W,
     structures::ByteLengthEncoded(data): structures::ByteLengthEncoded<&D>,
     size: numeric::IntegerSize,
-    buffer_pool: &mut BufferPool,
+    buffer_pool: &BufferPool,
     writer: R,
 ) -> WriteResult {
     let mut buffer = buffer_pool.rent();
-    let mut bytes = buffer.buffer();
+    let bytes = buffer.buffer();
     writer(bytes, data, buffer_pool)?;
     unsigned_length(out, bytes.len(), size)?;
     write_bytes(out, &bytes)
@@ -162,13 +164,13 @@ fn byte_length_encoded<
 
 fn byte_length_optional<
     D,
-    R: FnOnce(&mut Vec<u8>, &D, &mut BufferPool) -> WriteResult,
+    R: FnOnce(&mut Vec<u8>, &D, &BufferPool) -> WriteResult,
     W: std::io::Write,
 >(
     out: &mut W,
     structures::ByteLengthEncoded(ref wrapped): structures::ByteLengthEncoded<&Option<D>>,
     size: numeric::IntegerSize,
-    buffer_pool: &mut BufferPool,
+    buffer_pool: &BufferPool,
     writer: R,
 ) -> WriteResult {
     match wrapped {
@@ -403,7 +405,7 @@ fn double_length_encoded_vector<T, R: FnMut(&mut Vec<u8>, &T) -> WriteResult, W:
     out: &mut W,
     items: structures::ByteLengthEncoded<&structures::LengthEncodedVector<T>>,
     size: numeric::IntegerSize,
-    buffer_pool: &mut BufferPool,
+    buffer_pool: &BufferPool,
     writer: R,
 ) -> WriteResult {
     byte_length_encoded(out, items, size, buffer_pool, |out, v, _| {
@@ -415,7 +417,7 @@ fn module_imports<W: std::io::Write>(
     out: &mut W,
     imports: &format::ModuleImports,
     size: numeric::IntegerSize,
-    buffer_pool: &mut BufferPool,
+    buffer_pool: &BufferPool,
 ) -> WriteResult {
     length_encoded_vector(out, &imports.imported_modules, size, |out, id| {
         module_identifier(out, id, size)
@@ -510,7 +512,7 @@ fn module_definitions<W: std::io::Write>(
     out: &mut W,
     definitions: &format::ModuleDefinitions,
     size: numeric::IntegerSize,
-    buffer_pool: &mut BufferPool,
+    buffer_pool: &BufferPool,
 ) -> WriteResult {
     double_length_encoded_vector(
         out,
@@ -573,86 +575,97 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
     format_version(out, &module.format_version, module.integer_size)?;
     unsigned_integer(out, module.data_count(), module.integer_size)?;
 
-    let mut buffers = BufferPool::new();
+    let buffers = BufferPool::new();
 
     byte_length_encoded(
         out,
         module.header.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, header, _| module_header(out, header, module.integer_size),
     )?;
+    
     double_length_encoded_vector(
         out,
         module.identifiers.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, id| identifier(out, id, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.namespaces.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, indices| length_encoded_indices(out, indices, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.type_signatures.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, signature| any_type(out, signature, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.method_signatures.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, signature| method_signature(out, signature, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.method_bodies.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, code| method_body(out, code, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.data_arrays.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, data| data_array(out, data, module.integer_size),
     )?;
+
     byte_length_encoded(
         out,
         module.imports.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, imports, buffers| module_imports(out, imports, module.integer_size, buffers),
     )?;
+
     byte_length_encoded(
         out,
         module.definitions.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, definitions, buffers| {
             module_definitions(out, definitions, module.integer_size, buffers)
         },
     )?;
+
     byte_length_optional(
         out,
         module.entry_point.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, main_index, _| unsigned_index(out, *main_index, module.integer_size),
     )?;
+
     double_length_encoded_vector(
         out,
         module.type_layouts.as_ref(),
         module.integer_size,
-        &mut buffers,
+        &buffers,
         |out, layout| type_layout(out, layout, module.integer_size),
     )?;
+
     Ok(())
 }
