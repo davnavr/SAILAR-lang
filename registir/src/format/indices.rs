@@ -16,7 +16,7 @@ macro_rules! index_type {
             type Error = std::num::TryFromIntError;
 
             fn try_from(index: $name) -> Result<Self, Self::Error> {
-                usize::try_from(index.0.0)
+                usize::try_from(index.0 .0)
             }
         }
 

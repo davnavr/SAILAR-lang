@@ -1,5 +1,5 @@
 use crate::{
-    format,
+    buffers, format,
     format::{instruction_set, numeric, structures, type_system},
 };
 
@@ -96,81 +96,33 @@ fn format_version<W: std::io::Write>(
     unsigned_integer(out, version.minor, size)
 }
 
-struct BufferPool {
-    buffers: std::cell::RefCell<Vec<std::cell::RefCell<Vec<u8>>>>,
-    rent_count: std::rc::Rc<std::cell::Cell<usize>>,
-}
-
-struct RentedBuffer<'a> {
-    buffer: std::cell::RefMut<'a, std::cell::RefCell<Vec<u8>>>,
-    rent_count: std::rc::Rc<std::cell::Cell<usize>>,
-}
-
-impl<'a> RentedBuffer<'a> {
-    fn buffer(&mut self) -> &mut Vec<u8> {
-        self.buffer.get_mut()
-    }
-}
-
-impl<'a> Drop for RentedBuffer<'a> {
-    fn drop(&mut self) {
-        self.rent_count.set(self.rent_count.get() - 1);
-    }
-}
-
-impl BufferPool {
-    pub fn new() -> Self {
-        Self {
-            rent_count: std::rc::Rc::new(std::cell::Cell::new(0)),
-            buffers: std::cell::RefCell::new(Vec::new()),
-        }
-    }
-
-    pub fn rent(&self) -> RentedBuffer<'_> {
-        let index = self.rent_count.get();
-        let mut buffers = self.buffers.borrow_mut();
-
-        if index >= std::ops::Deref::deref(&buffers).len() {
-            std::ops::DerefMut::deref_mut(&mut buffers).push(std::cell::RefCell::new(Vec::new()))
-        }
-
-        self.rent_count.set(index + 1);
-        let mut buffer = std::cell::RefMut::map(buffers, |buffers| &mut buffers[index]);
-        buffer.get_mut().clear();
-        RentedBuffer {
-            buffer,
-            rent_count: self.rent_count.clone(),
-        }
-    }
-}
-
 fn byte_length_encoded<
     D,
-    R: FnOnce(&mut Vec<u8>, &D, &BufferPool) -> WriteResult,
+    R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> WriteResult,
     W: std::io::Write,
 >(
     out: &mut W,
     structures::ByteLengthEncoded(data): structures::ByteLengthEncoded<&D>,
     size: numeric::IntegerSize,
-    buffer_pool: &BufferPool,
+    buffer_pool: &buffers::BufferPool,
     writer: R,
 ) -> WriteResult {
     let mut buffer = buffer_pool.rent();
-    let bytes = buffer.buffer();
+    let bytes: &mut Vec<u8> = &mut buffer;
     writer(bytes, data, buffer_pool)?;
     unsigned_length(out, bytes.len(), size)?;
-    write_bytes(out, &bytes)
+    write_bytes(out, bytes)
 }
 
 fn byte_length_optional<
     D,
-    R: FnOnce(&mut Vec<u8>, &D, &BufferPool) -> WriteResult,
+    R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> WriteResult,
     W: std::io::Write,
 >(
     out: &mut W,
     structures::ByteLengthEncoded(ref wrapped): structures::ByteLengthEncoded<&Option<D>>,
     size: numeric::IntegerSize,
-    buffer_pool: &BufferPool,
+    buffer_pool: &buffers::BufferPool,
     writer: R,
 ) -> WriteResult {
     match wrapped {
@@ -405,7 +357,7 @@ fn double_length_encoded_vector<T, R: FnMut(&mut Vec<u8>, &T) -> WriteResult, W:
     out: &mut W,
     items: structures::ByteLengthEncoded<&structures::LengthEncodedVector<T>>,
     size: numeric::IntegerSize,
-    buffer_pool: &BufferPool,
+    buffer_pool: &buffers::BufferPool,
     writer: R,
 ) -> WriteResult {
     byte_length_encoded(out, items, size, buffer_pool, |out, v, _| {
@@ -417,7 +369,7 @@ fn module_imports<W: std::io::Write>(
     out: &mut W,
     imports: &format::ModuleImports,
     size: numeric::IntegerSize,
-    buffer_pool: &BufferPool,
+    buffer_pool: &buffers::BufferPool,
 ) -> WriteResult {
     length_encoded_vector(out, &imports.imported_modules, size, |out, id| {
         module_identifier(out, id, size)
@@ -512,7 +464,7 @@ fn module_definitions<W: std::io::Write>(
     out: &mut W,
     definitions: &format::ModuleDefinitions,
     size: numeric::IntegerSize,
-    buffer_pool: &BufferPool,
+    buffer_pool: &buffers::BufferPool,
 ) -> WriteResult {
     double_length_encoded_vector(
         out,
@@ -575,7 +527,7 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
     format_version(out, &module.format_version, module.integer_size)?;
     unsigned_integer(out, module.data_count(), module.integer_size)?;
 
-    let buffers = BufferPool::new();
+    let buffers = buffers::BufferPool::new();
 
     byte_length_encoded(
         out,
