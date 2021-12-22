@@ -2,5 +2,7 @@
 members = [
     "asmdl",
     "asmdl_cli",
+    "dasmdl",
+    "dasmdl_cli",
     "registir",
 ]

@@ -1,0 +1,12 @@
+[package]
+name = "dasmdl_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dasmdl = { path = "../dasmdl" }
+registir = { path = "../registir" }
+
+[[bin]]
+name = "dasmdl"
+path = "src/main.rs"
