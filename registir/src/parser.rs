@@ -262,6 +262,13 @@ fn method_body<R: std::io::Read>(
     })
 }
 
+fn data_array<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::DataArray> {
+    many_bytes(src, ulength(src, size)?).map(|data| format::DataArray(structures::LengthEncodedVector(data)))
+}
+
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
@@ -352,6 +359,11 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             5,
             || structures::LengthEncodedVector(Vec::new()),
             |mut data| length_encoded_vector(&mut data, size, |src| method_body(src, size)),
+        )?,
+        data_arrays: module_data_or_default(
+            &data_vectors,
+            6,
+            |mut data| length_encoded_vector(&mut data, size, |src| data_array(src, size)),
         )?,
     })
 }
