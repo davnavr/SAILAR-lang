@@ -275,7 +275,7 @@ impl MethodBody {
 ///
 /// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
 /// restrictions regarding valid constructors.
-/// 
+///
 /// # Structure
 /// - [`Method::owner`]
 /// - [`Method::name`]
@@ -370,7 +370,8 @@ pub struct ModuleIdentifier {
     pub version: VersionNumbers,
 }
 
-pub static MAX_HEADER_FIELD_COUNT: numeric::UInteger = numeric::UInteger(1);
+pub static MIN_HEADER_FIELD_COUNT: numeric::UInteger = numeric::UInteger(1);
+pub static MAX_HEADER_FIELD_COUNT: numeric::UInteger = MIN_HEADER_FIELD_COUNT;
 
 /// # Structure
 /// - [`ModuleHeader::field_count()`]
@@ -393,7 +394,7 @@ pub static MAX_MODULE_DATA_COUNT: numeric::UInteger = numeric::UInteger(11);
 pub type Namespace = structures::LengthEncodedVector<indices::Identifier>;
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
-/// 
+///
 /// # Structure
 /// - [`Module::integer_size`]
 /// - [`Module::format_version`]
