@@ -93,6 +93,13 @@ fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: std::io::Read
     Ok(structures::LengthEncodedVector(buffer))
 }
 
+fn length_encoded_indices<I: From<numeric::UInteger>, R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<structures::LengthEncodedVector<I>> {
+    length_encoded_vector(src, size, |src| uinteger(src, size).map(I::from))
+}
+
 fn version_numbers<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -144,6 +151,27 @@ fn integer_size<R: std::io::Read>(src: &mut R) -> ParseResult<numeric::IntegerSi
     })
 }
 
+fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
+    data_vectors: &Vec<Vec<u8>>,
+    index: usize,
+    default: D,
+    parser: F,
+) -> ParseResult<structures::ByteLengthEncoded<T>> {
+    data_vectors
+        .get(index)
+        .map(|data| parser(&data.as_slice()))
+        .unwrap_or_else(|| Ok(default()))
+        .map(structures::ByteLengthEncoded)
+}
+
+fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> ParseResult<T>>(
+    data_vectors: &Vec<Vec<u8>>,
+    index: usize,
+    parser: F,
+) -> ParseResult<structures::ByteLengthEncoded<T>> {
+    module_data(data_vectors, index, T::default, parser)
+}
+
 /// Parses a binary module.
 pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Module> {
     magic_bytes(input, format::MAGIC, ParseError::InvalidModuleMagic)?;
@@ -175,11 +203,11 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &mut data_vectors[0].as_slice(),
             size,
         )?),
-        identifiers: structures::ByteLengthEncoded(match data_vectors.get(1) {
-            Some(data) => {
-                length_encoded_vector(&mut data.as_slice(), size, |src| identifier(src, size))?
-            }
-            None => structures::LengthEncodedVector::default(),
-        }),
+        identifiers: module_data_or_default(&data_vectors, 1, |mut data| {
+            length_encoded_vector(&mut data, size, |src| identifier(src, size))
+        })?,
+        namespaces: module_data_or_default(&data_vectors, 2, |mut data| {
+            length_encoded_vector(&mut data, size, |src| length_encoded_indices(src, size))
+        })?,
     })
 }

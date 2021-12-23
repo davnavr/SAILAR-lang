@@ -13,7 +13,7 @@ struct Arguments {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Arguments::from_args();
-    
+
     println!("Hello, world!");
     Ok(())
 }

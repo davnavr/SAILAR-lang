@@ -12,6 +12,12 @@ macro_rules! index_type {
             }
         }
 
+        impl From<UInteger> for $name {
+            fn from(value: UInteger) -> Self {
+                Self(value)
+            }
+        }
+
         impl TryFrom<$name> for usize {
             type Error = std::num::TryFromIntError;
 
