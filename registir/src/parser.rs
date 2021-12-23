@@ -1,6 +1,6 @@
 use crate::{
     format,
-    format::{numeric, structures},
+    format::{numeric, structures, type_system},
 };
 
 #[derive(Debug)]
@@ -12,6 +12,7 @@ pub enum ParseError {
     InvalidHeaderFieldCount(numeric::UInteger),
     InvalidIdentifierCharacter(std::string::FromUtf8Error),
     EmptyIdentifier,
+    InvalidTypeSignatureTag(u8),
     InputOutputError(std::io::Error),
 }
 
@@ -133,6 +134,37 @@ fn module_header<R: std::io::Read>(
     Ok(format::ModuleHeader { identifier: id })
 }
 
+fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveType> {
+    match tag {
+        type_system::TypeTag::S16 => Some(type_system::PrimitiveType::S16),
+        type_system::TypeTag::U16 => Some(type_system::PrimitiveType::U16),
+        type_system::TypeTag::S32 => Some(type_system::PrimitiveType::S32),
+        type_system::TypeTag::U32 => Some(type_system::PrimitiveType::U32),
+        type_system::TypeTag::S64 => Some(type_system::PrimitiveType::S64),
+        type_system::TypeTag::U64 => Some(type_system::PrimitiveType::U64),
+        _ => None,
+    }
+}
+
+// fn heap_type(tag: type_system::TypeTag) -> ParseResult<Option<type_system::HeapType>> {
+//     simple_type(tag)
+//         .map(|t| Ok(Some(type_system::HeapType::Val(t))))
+//         .unwrap_or_else(|| {
+//             todo!()
+//         })
+// }
+
+fn type_signature<R: std::io::Read>(src: &mut R) -> ParseResult<type_system::AnyType> {
+    let tag: type_system::TypeTag = unsafe { std::mem::transmute(byte(src)?) }; // TODO: Define a conversion function going from u8 to TypeTag.
+    primitive_type(tag)
+        .map(|p| {
+            Ok(type_system::AnyType::Heap(type_system::HeapType::Val(
+                type_system::SimpleType::Primitive(p),
+            )))
+        })
+        .unwrap_or_else(|| Err(ParseError::InvalidTypeSignatureTag(tag as u8)))
+}
+
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
@@ -209,5 +241,11 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
         namespaces: module_data_or_default(&data_vectors, 2, |mut data| {
             length_encoded_vector(&mut data, size, |src| length_encoded_indices(src, size))
         })?,
+        type_signatures: module_data(
+            &data_vectors,
+            3,
+            || structures::LengthEncodedVector(Vec::new()),
+            |mut data| length_encoded_vector(&mut data, size, |src| type_signature(src)),
+        )?,
     })
 }
