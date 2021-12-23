@@ -7,14 +7,14 @@ use crate::{
 #[non_exhaustive]
 pub enum WriteError {
     VectorTooLarge(usize),
-    IoError(std::io::Error),
+    InputOutputError(std::io::Error),
 }
 
 impl std::fmt::Display for WriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::VectorTooLarge(size) => write!(f, "{} is not a valid size for a vector", size),
-            Self::IoError(error) => error.fmt(f),
+            Self::InputOutputError(error) => error.fmt(f),
         }
     }
 }
@@ -26,7 +26,7 @@ pub type WriteResult = Result<(), WriteError>;
 fn write_bytes<W: std::io::Write>(out: &mut W, bytes: &[u8]) -> WriteResult {
     match out.write_all(bytes) {
         Ok(()) => Ok(()),
-        Err(err) => Err(WriteError::IoError(err)),
+        Err(err) => Err(WriteError::InputOutputError(err)),
     }
 }
 
@@ -82,7 +82,7 @@ fn identifier<W: std::io::Write>(
     id: &format::Identifier,
     size: numeric::IntegerSize,
 ) -> WriteResult {
-    let bytes = id.bytes();
+    let bytes = id.as_bytes();
     unsigned_length(out, bytes.len(), size)?;
     write_bytes(out, bytes)
 }

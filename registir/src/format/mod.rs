@@ -372,9 +372,11 @@ pub struct ModuleIdentifier {
 
 pub static MAX_HEADER_FIELD_COUNT: numeric::UInteger = numeric::UInteger(1);
 
+/// # Structure
+/// - [`ModuleHeader::field_count()`]
+/// - [`ModuleHeader::identifier`]
 #[derive(Debug)]
 pub struct ModuleHeader {
-    //pub field_count: (),
     pub identifier: ModuleIdentifier,
 }
 
@@ -432,8 +434,12 @@ pub struct Module {
 }
 
 impl Identifier {
-    pub fn bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
