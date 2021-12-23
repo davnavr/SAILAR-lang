@@ -28,7 +28,7 @@ impl RegisterIndex {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u16)]
+#[repr(u32)]
 pub enum Opcode {
     Nop = 0,
     Ret = 1,
@@ -66,6 +66,18 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+        }
+    }
+}
+
+impl TryFrom<u32> for Opcode {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value < Self::Ret as u32 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
         }
     }
 }

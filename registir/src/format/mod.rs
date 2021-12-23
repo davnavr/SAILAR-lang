@@ -50,10 +50,14 @@ bitflags! {
     }
 }
 
+/// # Structure
+/// - [`CodeBlock::flags()`]
+/// - [`CodeBlock::input_register_count`]
+/// - [`CodeBlock::exception_handler`]
+/// - [`CodeBlock::instructions`]
 #[derive(Debug)]
 pub struct CodeBlock {
-    //pub flags: (),
-    /// A variable-length integer preceding the flags indicating the number of input registers for this block.
+    /// A variable-length integer placed after the flags indicating the number of input registers for this block.
     ///
     /// For the entry block's count, this should match the number of arguments of the method.
     pub input_register_count: numeric::UInteger,

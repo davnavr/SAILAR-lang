@@ -1,6 +1,10 @@
 use crate::{
     format,
-    format::{numeric, structures, type_system},
+    format::{
+        instruction_set,
+        instruction_set::{Instruction, Opcode},
+        numeric, structures, type_system,
+    },
 };
 
 #[derive(Debug)]
@@ -13,6 +17,8 @@ pub enum ParseError {
     InvalidIdentifierCharacter(std::string::FromUtf8Error),
     EmptyIdentifier,
     InvalidTypeSignatureTag(u8),
+    InvalidCodeBlockFlags(u8),
+    InvalidOpcode(u32),
     InputOutputError(std::io::Error),
 }
 
@@ -175,6 +181,87 @@ fn method_signature<R: std::io::Read>(
     })
 }
 
+fn opcode<R: std::io::Read>(src: &mut R) -> ParseResult<Opcode> {
+    let mut opcode = 0u32;
+    loop {
+        let value = byte(src)?;
+        opcode += u32::from(value);
+        if value != Opcode::Continuation as u8 {
+            break Opcode::try_from(opcode).map_err(|()| ParseError::InvalidOpcode(opcode));
+        }
+    }
+}
+
+fn register<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+    input_register_count: numeric::UInteger,
+) -> ParseResult<instruction_set::RegisterIndex> {
+    let index = uinteger(src, size)?;
+    Ok(if index < input_register_count {
+        instruction_set::RegisterIndex::Input(index)
+    } else {
+        instruction_set::RegisterIndex::Temporary(numeric::UInteger(
+            index.0 - input_register_count.0,
+        ))
+    })
+}
+
+fn length_encoded_registers<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+    input_register_count: numeric::UInteger,
+) -> ParseResult<structures::LengthEncodedVector<instruction_set::RegisterIndex>> {
+    length_encoded_vector(src, size, |src| register(src, size, input_register_count))
+}
+
+fn instruction<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+    input_register_count: numeric::UInteger,
+) -> ParseResult<Instruction> {
+    match opcode(src)? {
+        Opcode::Nop => Ok(Instruction::Nop),
+        Opcode::Ret => Ok(Instruction::Ret(length_encoded_registers(src, size, input_register_count)?)),
+    }
+}
+
+fn code_block<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::CodeBlock> {
+    let flags = {
+        let bits = byte(src)?;
+        format::CodeBlockFlags::from_bits(bits)
+            .ok_or_else(|| ParseError::InvalidCodeBlockFlags(bits))
+    }?;
+
+    let input_register_count = uinteger(src, size)?;
+
+    Ok(format::CodeBlock {
+        input_register_count,
+        exception_handler: if flags.is_empty() { None } else { todo!() },
+        instructions: {
+            let buffer = many_bytes(src, ulength(src, size)?)?;
+            structures::ByteLengthEncoded(length_encoded_vector(
+                &mut buffer.as_slice(),
+                size,
+                |src| instruction(src, size, input_register_count),
+            )?)
+        },
+    })
+}
+
+fn method_body<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::Code> {
+    Ok(format::Code {
+        entry_block: code_block(src, size)?,
+        blocks: length_encoded_vector(src, size, |src| code_block(src, size))?,
+    })
+}
+
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
@@ -260,5 +347,11 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
         method_signatures: module_data_or_default(&data_vectors, 4, |mut data| {
             length_encoded_vector(&mut data, size, |src| method_signature(src, size))
         })?,
+        method_bodies: module_data(
+            &data_vectors,
+            5,
+            || structures::LengthEncodedVector(Vec::new()),
+            |mut data| length_encoded_vector(&mut data, size, |src| method_body(src, size)),
+        )?,
     })
 }
