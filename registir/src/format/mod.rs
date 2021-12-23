@@ -23,7 +23,7 @@ pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>
 pub struct Identifier(String);
 
 /// Describes the return types and parameter types of a method.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct MethodSignature {
     /// The types of the values returned by the method.
     pub return_types: structures::LengthEncodedVector<indices::TypeSignature>,

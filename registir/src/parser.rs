@@ -165,6 +165,16 @@ fn type_signature<R: std::io::Read>(src: &mut R) -> ParseResult<type_system::Any
         .unwrap_or_else(|| Err(ParseError::InvalidTypeSignatureTag(tag as u8)))
 }
 
+fn method_signature<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::MethodSignature> {
+    Ok(format::MethodSignature {
+        return_types: length_encoded_indices(src, size)?,
+        parameter_types: length_encoded_indices(src, size)?,
+    })
+}
+
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
@@ -247,5 +257,8 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             || structures::LengthEncodedVector(Vec::new()),
             |mut data| length_encoded_vector(&mut data, size, |src| type_signature(src)),
         )?,
+        method_signatures: module_data_or_default(&data_vectors, 4, |mut data| {
+            length_encoded_vector(&mut data, size, |src| method_signature(src, size))
+        })?,
     })
 }
