@@ -611,7 +611,9 @@ pub fn assemble_declarations(
                 format::structures::LengthEncodedVector(Vec::new()),
             ),
             imports: format::structures::ByteLengthEncoded(format::ModuleImports {
-                imported_modules: format::structures::LengthEncodedVector(Vec::new()),
+                imported_modules: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(Vec::new()),
+                ),
                 imported_types: format::structures::ByteLengthEncoded(
                     format::structures::LengthEncodedVector(Vec::new()),
                 ),
@@ -635,9 +637,7 @@ pub fn assemble_declarations(
             }),
             entry_point: format::structures::ByteLengthEncoded(None),
             type_layouts: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(vec![
-                    format::TypeLayout::Unspecified,
-                ]),
+                format::structures::LengthEncodedVector(vec![format::TypeLayout::Unspecified]),
             ),
         })
     } else {

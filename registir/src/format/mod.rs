@@ -202,12 +202,12 @@ pub struct MethodImport {
 }
 
 /// Contains the types, fields, and methods imported by a module.
-/// 
+///
 /// Note that both field and method imports allow their owner to be a defined type instead of an imported type, to allow usage
 /// of generics in the future.
 #[derive(Debug)]
 pub struct ModuleImports {
-    pub imported_modules: structures::LengthEncodedVector<ModuleIdentifier>, // TODO: Could also add byte length for module imports.
+    pub imported_modules: structures::DoubleLengthEncodedVector<ModuleIdentifier>,
     pub imported_types: structures::DoubleLengthEncodedVector<TypeImport>,
     pub imported_fields: structures::DoubleLengthEncodedVector<FieldImport>,
     pub imported_methods: structures::DoubleLengthEncodedVector<MethodImport>,

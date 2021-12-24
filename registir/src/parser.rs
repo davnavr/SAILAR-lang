@@ -562,7 +562,9 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &data_vectors,
             7,
             || format::ModuleImports {
-                imported_modules: structures::LengthEncodedVector(Vec::new()),
+                imported_modules: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
                 imported_types: structures::ByteLengthEncoded(structures::LengthEncodedVector(
                     Vec::new(),
                 )),
@@ -575,7 +577,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             },
             |mut data| {
                 Ok(format::ModuleImports {
-                    imported_modules: length_encoded_vector(&mut data, size, |src| {
+                    imported_modules: double_length_encoded(&mut data, size, &buffers, |src| {
                         module_identifier(src, size, &buffers)
                     })?,
                     imported_types: double_length_encoded(

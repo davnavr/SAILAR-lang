@@ -371,9 +371,13 @@ fn module_imports<W: std::io::Write>(
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
 ) -> WriteResult {
-    length_encoded_vector(out, &imports.imported_modules, size, |out, id| {
-        module_identifier(out, id, size)
-    })?;
+    double_length_encoded_vector(
+        out,
+        imports.imported_modules.as_ref(),
+        size,
+        buffer_pool,
+        |out, id| module_identifier(out, id, size),
+    )?;
     double_length_encoded_vector(
         out,
         imports.imported_types.as_ref(),
@@ -505,11 +509,8 @@ fn type_layout<W: std::io::Write>(
 ) -> WriteResult {
     write(out, layout.flags() as u8)?;
     match layout {
-        format::TypeLayout::Unspecified
-        | format::TypeLayout::Sequential(None) => Ok(()),
-        format::TypeLayout::Sequential(Some(type_size)) => {
-            unsigned_index(out, *type_size, size)
-        }
+        format::TypeLayout::Unspecified | format::TypeLayout::Sequential(None) => Ok(()),
+        format::TypeLayout::Sequential(Some(type_size)) => unsigned_index(out, *type_size, size),
         format::TypeLayout::Explicit {
             size: type_size,
             field_offsets,
