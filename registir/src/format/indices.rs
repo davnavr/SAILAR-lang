@@ -12,6 +12,12 @@ macro_rules! index_type {
             }
         }
 
+        impl From<UInteger> for $name {
+            fn from(value: UInteger) -> Self {
+                Self(value)
+            }
+        }
+
         impl TryFrom<$name> for usize {
             type Error = std::num::TryFromIntError;
 
@@ -25,6 +31,12 @@ macro_rules! index_type {
 
             fn try_from(value: usize) -> Result<Self, Self::Error> {
                 u32::try_from(value).map(|index| Self(UInteger(index)))
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
             }
         }
     };

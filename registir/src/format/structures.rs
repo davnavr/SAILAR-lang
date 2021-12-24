@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 /// Represents data that is preceded by an unsigned integer indicating the byte length of the following data.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct ByteLengthEncoded<T>(pub T);
@@ -25,5 +27,21 @@ impl<T> LengthEncodedVector<T> {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+impl<T> Deref for LengthEncodedVector<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Deref for ByteLengthEncoded<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

@@ -41,10 +41,10 @@ pub enum HeapType {
 /// Represents the type of a parameter or a method return type.
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub enum AnyType {
-    Val(SimpleType),
     /// A pointer to a field, array element, or the stack that is tracked by the garbage collector.
     GargbageCollectedPointer(Box<AnyType>),
-    /// An object reference or a pointer to a field or array element that is tracked by the garbage collector.
+    /// An value type, native pointer type, object reference, or a pointer to a field or array element that is tracked by the
+    /// garbage collector.
     Heap(HeapType),
 }
 

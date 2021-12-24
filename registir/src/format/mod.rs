@@ -19,11 +19,11 @@ pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
 pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
-#[derive(Clone, Debug, Default, Eq, std::hash::Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, std::hash::Hash, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 /// Describes the return types and parameter types of a method.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct MethodSignature {
     /// The types of the values returned by the method.
     pub return_types: structures::LengthEncodedVector<indices::TypeSignature>,
@@ -50,10 +50,14 @@ bitflags! {
     }
 }
 
+/// # Structure
+/// - [`CodeBlock::flags()`]
+/// - [`CodeBlock::input_register_count`]
+/// - [`CodeBlock::exception_handler`]
+/// - [`CodeBlock::instructions`]
 #[derive(Debug)]
 pub struct CodeBlock {
-    //pub flags: (),
-    /// A variable-length integer preceding the flags indicating the number of input registers for this block.
+    /// A variable-length integer placed after the flags indicating the number of input registers for this block.
     ///
     /// For the entry block's count, this should match the number of arguments of the method.
     pub input_register_count: numeric::UInteger,
@@ -107,6 +111,18 @@ pub enum Visibility {
 impl Default for Visibility {
     fn default() -> Self {
         Visibility::Unspecified
+    }
+}
+
+impl TryFrom<u8> for Visibility {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value < Visibility::Private as u8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -275,7 +291,7 @@ impl MethodBody {
 ///
 /// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
 /// restrictions regarding valid constructors.
-/// 
+///
 /// # Structure
 /// - [`Method::owner`]
 /// - [`Method::name`]
@@ -328,6 +344,18 @@ pub enum TypeLayoutFlags {
     ExplicitSize = 3,
 }
 
+impl TryFrom<u8> for TypeLayoutFlags {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value <= Self::ExplicitSize as u8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FieldOffset {
     pub field: indices::Field,
@@ -335,6 +363,11 @@ pub struct FieldOffset {
 }
 
 /// Describes how the fields are a type are layout, starting with a flag byte indicating whether or not the type has an explicit layout.
+///
+/// # Structure
+/// - [`TypeDefinitionLayout::flags()`]
+/// - Size (optional)
+/// - Field Offsets (optional)
 #[derive(Debug)]
 pub enum TypeDefinitionLayout {
     Unspecified,
@@ -370,11 +403,14 @@ pub struct ModuleIdentifier {
     pub version: VersionNumbers,
 }
 
-pub static MAX_HEADER_FIELD_COUNT: numeric::UInteger = numeric::UInteger(1);
+pub static MIN_HEADER_FIELD_COUNT: numeric::UInteger = numeric::UInteger(1);
+pub static MAX_HEADER_FIELD_COUNT: numeric::UInteger = MIN_HEADER_FIELD_COUNT;
 
+/// # Structure
+/// - [`ModuleHeader::field_count()`]
+/// - [`ModuleHeader::identifier`]
 #[derive(Debug)]
 pub struct ModuleHeader {
-    //pub field_count: (),
     pub identifier: ModuleIdentifier,
 }
 
@@ -391,7 +427,7 @@ pub static MAX_MODULE_DATA_COUNT: numeric::UInteger = numeric::UInteger(11);
 pub type Namespace = structures::LengthEncodedVector<indices::Identifier>;
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
-/// 
+///
 /// # Structure
 /// - [`Module::integer_size`]
 /// - [`Module::format_version`]
@@ -432,8 +468,12 @@ pub struct Module {
 }
 
 impl Identifier {
-    pub fn bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 

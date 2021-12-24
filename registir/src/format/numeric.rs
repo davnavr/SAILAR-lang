@@ -15,7 +15,7 @@ pub enum IntegerSize {
     I4,
 }
 
-macro_rules! integer_conversions {
+macro_rules! integer_traits {
     ($t: ty, $backing_type: ty) => {
         impl<T> From<T> for $t
         where
@@ -33,11 +33,33 @@ macro_rules! integer_conversions {
                 usize::try_from(value.0)
             }
         }
+
+        impl std::fmt::Display for $t {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl std::fmt::UpperHex for $t {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::UpperHex::fmt(&self.0, f)
+            }
+        }
     };
 }
 
-integer_conversions!(UInteger, u32);
-integer_conversions!(SInteger, i32);
+integer_traits!(UInteger, u32);
+integer_traits!(SInteger, i32);
+
+impl IntegerSize {
+    pub fn size(self) -> u8 {
+        match self {
+            Self::I1 => 1,
+            Self::I2 => 2,
+            Self::I4 => 4,
+        }
+    }
+}
 
 impl TryFrom<u8> for IntegerSize {
     type Error = ();
@@ -49,5 +71,15 @@ impl TryFrom<u8> for IntegerSize {
             2 => Ok(Self::I4),
             _ => Err(()),
         }
+    }
+}
+
+impl std::fmt::Display for IntegerSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::I1 => "1",
+            Self::I2 => "2",
+            Self::I4 => "4",
+        })
     }
 }

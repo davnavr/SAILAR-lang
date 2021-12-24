@@ -241,7 +241,6 @@ fn name_declaration<'a, 'b>() -> NameDeclaration<
 }
 
 fn add_identifier_from(
-    errors: &mut Vec<Error>,
     identifiers: &mut IdentifierLookup,
     declarer: Declaration,
     name: &ast::Positioned<ast::LiteralString>,
@@ -263,7 +262,7 @@ fn declare_name<
     name: &'b ast::Positioned<ast::LiteralString>,
 ) {
     if let Some(setter) = declaration.declare(errors, name) {
-        match add_identifier_from(errors, identifiers, declarer, name) {
+        match add_identifier_from(identifiers, declarer, name) {
             Ok(id) => setter(id),
             Err(error) => errors.push(error),
         }
@@ -435,7 +434,6 @@ impl<'a> TypeDefinitionAssembler<'a> {
                         let mut success = true;
                         for name in namespace {
                             match add_identifier_from(
-                                errors,
                                 identifiers,
                                 Declaration::TypeDefinition,
                                 name,

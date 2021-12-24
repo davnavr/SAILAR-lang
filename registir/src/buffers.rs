@@ -30,6 +30,22 @@ impl BufferPool {
             },
         }
     }
+
+    pub fn rent_with_capacity(&self, capacity: usize) -> RentedBuffer<'_> {
+        let mut buffer = self.rent();
+        if buffer.capacity() < capacity {
+            // The buffer is empty, so reserve will ensure the capacity is at least as many bytes as requested.
+            buffer.reserve(capacity);
+        }
+        buffer
+    }
+
+    pub fn rent_with_length(&self, length: usize) -> RentedBuffer<'_> {
+        let mut buffer = self.rent_with_capacity(length);
+        // Buffer was already cleared, so changing length should be safe.
+        unsafe { buffer.set_len(length) }
+        buffer
+    }
 }
 
 impl<'a> std::ops::Deref for RentedBuffer<'a> {
