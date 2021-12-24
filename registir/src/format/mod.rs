@@ -152,7 +152,7 @@ bitflags! {
 bitflags! {
     #[derive(Default)]
     #[repr(transparent)]
-    pub struct TypeDefinitionFlags: u8 {
+    pub struct TypeFlags: u8 {
         const FINAL = 0;
         /// The type can be inherited from.
         const NOT_FINAL = 0b0000_0001;
@@ -173,10 +173,10 @@ macro_rules! flags_helpers {
 
 flags_helpers!(FieldFlags);
 flags_helpers!(MethodFlags);
-flags_helpers!(TypeDefinitionFlags);
+flags_helpers!(TypeFlags);
 
 #[derive(Debug)]
-pub struct TypeDefinitionImport {
+pub struct TypeImport {
     /// Indicates the module that the type was imported from.
     pub module: indices::Module,
     pub name: indices::Identifier,
@@ -186,7 +186,7 @@ pub struct TypeDefinitionImport {
 
 #[derive(Debug)]
 pub struct FieldImport {
-    pub owner: indices::TypeDefinition,
+    pub owner: indices::Type,
     pub name: indices::Identifier,
     //pub flags: FieldFlags,
     pub signature: indices::TypeSignature,
@@ -194,7 +194,7 @@ pub struct FieldImport {
 
 #[derive(Debug)]
 pub struct MethodImport {
-    pub owner: indices::TypeDefinition,
+    pub owner: indices::Type,
     pub name: indices::Identifier, // TODO: How to handle importing constructors, use flags?
     //pub flags: MethodFlags,
     pub signature: indices::MethodSignature,
@@ -202,10 +202,13 @@ pub struct MethodImport {
 }
 
 /// Contains the types, fields, and methods imported by a module.
+/// 
+/// Note that both field and method imports allow their owner to be a defined type instead of an imported type, to allow usage
+/// of generics in the future.
 #[derive(Debug)]
 pub struct ModuleImports {
     pub imported_modules: structures::LengthEncodedVector<ModuleIdentifier>, // TODO: Could also add byte length for module imports.
-    pub imported_types: structures::DoubleLengthEncodedVector<TypeDefinitionImport>,
+    pub imported_types: structures::DoubleLengthEncodedVector<TypeImport>,
     pub imported_fields: structures::DoubleLengthEncodedVector<FieldImport>,
     pub imported_methods: structures::DoubleLengthEncodedVector<MethodImport>,
 }
@@ -215,19 +218,19 @@ pub struct MethodOverride {
     /// Specifies the method to override.
     pub declaration: indices::Method,
     /// Specifies the new implementation of the method, the method must be defined in the current type.
-    pub implementation: indices::Method, // TODO: Could optimize implementation index by just having 0 be current type's first method since the method vector is just before the vtable field.
+    pub implementation: indices::MethodDefinition,
 }
 
 #[derive(Debug)]
-pub struct TypeDefinition {
+pub struct Type {
     pub name: indices::Identifier,
     pub namespace: indices::Namespace,
     pub visibility: Visibility,
-    pub flags: TypeDefinitionFlags,
+    pub flags: TypeFlags,
     pub layout: indices::TypeLayout,
-    pub inherited_types: structures::LengthEncodedVector<indices::TypeDefinition>,
-    pub fields: structures::LengthEncodedVector<indices::Field>,
-    pub methods: structures::LengthEncodedVector<indices::Method>,
+    pub inherited_types: structures::LengthEncodedVector<indices::Type>,
+    pub fields: structures::LengthEncodedVector<indices::FieldDefinition>,
+    pub methods: structures::LengthEncodedVector<indices::MethodDefinition>,
     pub vtable: structures::LengthEncodedVector<MethodOverride>,
     //pub annotations: LengthEncodedVector<>,
     //pub type_parameters: (),
@@ -326,7 +329,7 @@ impl Method {
 /// index of the type that defines it. These indices must exactly match in order for the module to be valid.
 #[derive(Debug)]
 pub struct ModuleDefinitions {
-    pub defined_types: structures::DoubleLengthEncodedVector<TypeDefinition>,
+    pub defined_types: structures::DoubleLengthEncodedVector<Type>,
     pub defined_fields: structures::DoubleLengthEncodedVector<Field>,
     pub defined_methods: structures::DoubleLengthEncodedVector<Method>,
 }
@@ -365,11 +368,11 @@ pub struct FieldOffset {
 /// Describes how the fields are a type are layout, starting with a flag byte indicating whether or not the type has an explicit layout.
 ///
 /// # Structure
-/// - [`TypeDefinitionLayout::flags()`]
+/// - [`TypeLayout::flags()`]
 /// - Size (optional)
 /// - Field Offsets (optional)
 #[derive(Debug)]
-pub enum TypeDefinitionLayout {
+pub enum TypeLayout {
     Unspecified,
     Sequential(Option<numeric::UInteger>),
     Explicit {
@@ -378,7 +381,7 @@ pub enum TypeDefinitionLayout {
     },
 }
 
-impl TypeDefinitionLayout {
+impl TypeLayout {
     /// Flags at the beginning of the structure indicating the kind of layout used by a type's instances.
     pub fn flags(&self) -> TypeLayoutFlags {
         match self {
@@ -463,7 +466,7 @@ pub struct Module {
     /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
     /// compiler or runtime to determine if the signature of the entry point method is valid.
     pub entry_point: structures::ByteLengthEncoded<Option<indices::Method>>,
-    pub type_layouts: structures::DoubleLengthEncodedVector<TypeDefinitionLayout>,
+    pub type_layouts: structures::DoubleLengthEncodedVector<TypeLayout>,
     //pub debugging_information: ByteLengthEncoded<>
 }
 

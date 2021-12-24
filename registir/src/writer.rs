@@ -325,7 +325,7 @@ fn data_array<W: std::io::Write>(
 
 fn type_import<W: std::io::Write>(
     out: &mut W,
-    import: &format::TypeDefinitionImport,
+    import: &format::TypeImport,
     size: numeric::IntegerSize,
 ) -> WriteResult {
     unsigned_index(out, import.module, size)?;
@@ -408,7 +408,7 @@ fn method_override<W: std::io::Write>(
 
 fn type_definition<W: std::io::Write>(
     out: &mut W,
-    definition: &format::TypeDefinition,
+    definition: &format::Type,
     size: numeric::IntegerSize,
 ) -> WriteResult {
     unsigned_index(out, definition.name, size)?;
@@ -500,17 +500,17 @@ fn field_offset<W: std::io::Write>(
 
 fn type_layout<W: std::io::Write>(
     out: &mut W,
-    layout: &format::TypeDefinitionLayout,
+    layout: &format::TypeLayout,
     size: numeric::IntegerSize,
 ) -> WriteResult {
     write(out, layout.flags() as u8)?;
     match layout {
-        format::TypeDefinitionLayout::Unspecified
-        | format::TypeDefinitionLayout::Sequential(None) => Ok(()),
-        format::TypeDefinitionLayout::Sequential(Some(type_size)) => {
+        format::TypeLayout::Unspecified
+        | format::TypeLayout::Sequential(None) => Ok(()),
+        format::TypeLayout::Sequential(Some(type_size)) => {
             unsigned_index(out, *type_size, size)
         }
-        format::TypeDefinitionLayout::Explicit {
+        format::TypeLayout::Explicit {
             size: type_size,
             field_offsets,
         } => {

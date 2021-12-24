@@ -20,7 +20,7 @@ pub enum PrimitiveType {
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum SimpleType {
     Primitive(PrimitiveType),
-    Defined(indices::TypeDefinition),
+    Defined(indices::Type),
     NativePointer(Box<SimpleType>),
 }
 

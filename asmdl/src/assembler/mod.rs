@@ -293,7 +293,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         identifiers: &mut IdentifierLookup,
         method_signatures: &mut MethodSignatureLookup,
         method_bodies: &mut MethodBodyLookup,
-        owner: format::indices::TypeDefinition,
+        owner: format::indices::Type,
     ) -> Option<format::Method> {
         let mut visibility = visibility_declaration();
         let mut flags = format::MethodFlags::default();
@@ -392,9 +392,9 @@ impl<'a> TypeDefinitionAssembler<'a> {
         identifiers: &mut IdentifierLookup,
         namespaces: &mut NamespaceLookup,
         //methods:
-    ) -> Option<format::TypeDefinition> {
+    ) -> Option<format::Type> {
         let mut visibility = visibility_declaration();
-        let mut flags = format::TypeDefinitionFlags::default();
+        let mut flags = format::TypeFlags::default();
 
         for modifier in self.modifiers {
             match &modifier.value {
@@ -417,8 +417,8 @@ impl<'a> TypeDefinitionAssembler<'a> {
         });
 
         // Field and method imports have been assembled, so it is safe to refer to these with the proper index types.
-        let mut field_indices = Vec::<format::indices::Field>::new();
-        let mut method_indices = Vec::<format::indices::Method>::new();
+        let mut field_indices = Vec::new();
+        let mut method_indices = Vec::new();
 
         for declaration in self.declarations {
             match &declaration.value {
@@ -476,7 +476,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
         }
 
         if let (Some(name), Some(namespace)) = (type_name.value(), type_namespace.value()) {
-            Some(format::TypeDefinition {
+            Some(format::Type {
                 name,
                 namespace,
                 visibility: visibility.value().unwrap_or_default(),
@@ -565,7 +565,7 @@ pub fn assemble_declarations(
     }
 
     let mut validated_type_definitions =
-        Vec::<format::TypeDefinition>::with_capacity(type_definitions.items().len());
+        Vec::<format::Type>::with_capacity(type_definitions.items().len());
 
     {
         let mut commit = true;
@@ -636,7 +636,7 @@ pub fn assemble_declarations(
             entry_point: format::structures::ByteLengthEncoded(None),
             type_layouts: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(vec![
-                    format::TypeDefinitionLayout::Unspecified,
+                    format::TypeLayout::Unspecified,
                 ]),
             ),
         })

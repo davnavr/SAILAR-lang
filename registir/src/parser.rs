@@ -355,14 +355,14 @@ fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> ParseError, R: std::io::Read>(
 fn type_definition<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::TypeDefinition> {
-    Ok(format::TypeDefinition {
+) -> ParseResult<format::Type> {
+    Ok(format::Type {
         name: unsigned_index(src, size)?,
         namespace: unsigned_index(src, size)?,
         visibility: byte_enum(src, ParseError::InvalidVisibilityFlags)?,
         flags: byte_flags(
             src,
-            format::TypeDefinitionFlags::from_bits,
+            format::TypeFlags::from_bits,
             ParseError::InvalidTypeDefinitionFlags,
         )?,
         layout: unsigned_index(src, size)?,
@@ -421,14 +421,14 @@ fn method_definition<R: std::io::Read>(
 fn type_layout<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::TypeDefinitionLayout> {
+) -> ParseResult<format::TypeLayout> {
     Ok(
         match byte_flags(
             src,
             |bits| format::TypeLayoutFlags::try_from(bits).ok(),
             ParseError::InvalidTypeLayoutFlags,
         )? {
-            format::TypeLayoutFlags::Unspecified => format::TypeDefinitionLayout::Unspecified,
+            format::TypeLayoutFlags::Unspecified => format::TypeLayout::Unspecified,
             _ => todo!("Parsing of specific type layouts is not yet supported"),
         },
     )

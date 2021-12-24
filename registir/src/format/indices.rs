@@ -77,7 +77,23 @@ index_type!(
     "`0` refers to the current module, while the remaining indices refer to the module imports."
 );
 
-// types, fields, and methods
+index_type!(TypeDefinition, "An index into the module's defined types.");
+
+index_type!(TypeImport, "An index into the module's imported types.");
+
+index_type!(
+    MethodDefinition,
+    "An index into the module's defined methods."
+);
+
+index_type!(MethodImport, "An index into the module's imported methods.");
+
+index_type!(
+    FieldDefinition,
+    "An index into the module's defined fields."
+);
+
+index_type!(FieldImport, "An index into the module's imported fields.");
 
 index_type!(
     TypeLayout,
@@ -100,12 +116,12 @@ index_type!(
 );
 
 macro_rules! imported_or_defined_index_type {
-    ($name: ident, $description: literal) => {
+    ($name: ident, $description: literal, $defined_case: ty, $imported_case: ty) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
         #[doc = $description]
         pub enum $name {
-            Defined(UInteger),
-            Imported(UInteger),
+            Defined($defined_case),
+            Imported($imported_case),
         }
 
         impl $name {
@@ -116,10 +132,10 @@ macro_rules! imported_or_defined_index_type {
                 }
             }
 
-            pub fn index(self) -> UInteger {
+            fn index(self) -> UInteger {
                 UInteger(match self {
-                    Self::Defined(UInteger(value)) => value << 1,
-                    Self::Imported(UInteger(value)) => (value << 1) & 1,
+                    Self::Defined(value) => UInteger::from(value).0 << 1,
+                    Self::Imported(value) => (UInteger::from(value).0 << 1) & 1,
                 })
             }
         }
@@ -135,9 +151,9 @@ macro_rules! imported_or_defined_index_type {
                 let UInteger(value) = index;
                 let shifted = UInteger(value >> 1);
                 if value & 1u32 == 1u32 {
-                    Self::Defined(shifted)
+                    Self::Defined(<$defined_case>::from(shifted))
                 } else {
-                    Self::Imported(shifted)
+                    Self::Imported(<$imported_case>::from(shifted))
                 }
             }
         }
@@ -152,18 +168,23 @@ macro_rules! imported_or_defined_index_type {
     };
 }
 
-// TODO: Make this an enum.
 imported_or_defined_index_type!(
+    Type,
+    "An index into the module's imported types or defined types.",
     TypeDefinition,
-    "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types."
+    TypeImport
 );
 
 imported_or_defined_index_type!(
     Field,
-    "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields."
+    "An index into the module's field imports or defined fields.",
+    FieldDefinition,
+    FieldImport
 );
 
 imported_or_defined_index_type!(
     Method,
-    "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods."
+    "An index into the module's method imports or defined methods.",
+    MethodDefinition,
+    MethodImport
 );
