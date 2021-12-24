@@ -250,9 +250,7 @@ fn code_block<O: Write>(
         out.write_str(ENTRY_BLOCK_NAME)?;
     }
     out.write_str(" (")?;
-    for _ in 0..block.input_register_count.0 {
-
-    }
+    out.write_join(", ", 0..block.input_register_count.0, |out, i| out.write_fmt(format_args!("$arg_{}", i)))?;
     out.write_str_ln(") {")?;
     out.indent();
     out.dedent();
@@ -285,12 +283,40 @@ fn module_method_bodies<O: Write>(
 fn indexed_namespace<O: Write>(
     out: &mut Output<'_, O>,
     index: format::indices::Namespace,
-    identifiers: &Vec<format::Identifier>,
-    namespaces: &Vec<format::structures::LengthEncodedVector<format::indices::Identifier>>,
+    identifiers: &[format::Identifier],
+    namespaces: &[format::Namespace],
 ) -> Result<()> {
     indexed(out, index, &namespaces, |out, ns| {
         quoted_namespace(out, identifiers, ns)
     })
+}
+
+fn visibility<O: Write>(out: &mut Output<'_, O>, visibility: format::Visibility) -> Result<()> {
+    out.write_str(match visibility {
+        format::Visibility::Unspecified => " ",
+        format::Visibility::Public => " public",
+        format::Visibility::Private => " private",
+    })
+}
+
+fn module_definitions<O: Write>(
+    out: &mut Output<'_, O>,
+    identifiers: &[format::Identifier],
+    namespaces: &[format::Namespace],
+    definitions: &format::ModuleDefinitions,
+) -> Result<()> {
+    for (index, type_definition) in definitions.defined_types.iter().enumerate() {
+        out.write_fmt(format_args!(".type @type_{}", index))?;
+        visibility(out, type_definition.visibility)?;
+        // TODO: Print other type attributes.
+        out.write_str_ln(" {")?;
+        out.indent();
+        directive(out, "name", |out| indexed_identifier(out, type_definition.name, identifiers))?;
+        directive(out, "namespace", |out| indexed_namespace(out, type_definition.namespace, identifiers, namespaces))?;
+        out.dedent();
+        out.write_str_ln("};")?;
+    }
+    Ok(())
 }
 
 pub fn disassemble<O: Write>(
@@ -333,6 +359,6 @@ pub fn disassemble<O: Write>(
     out.write_ln()?;
     // TODO: Print imports.
     out.write_ln()?;
-    
+    module_definitions(&mut out, &module.identifiers, &module.namespaces, &module.definitions)?;
     out.write_ln()
 }
