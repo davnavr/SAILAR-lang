@@ -1,5 +1,5 @@
 use crate::{
-    format,
+    buffers, format,
     format::{
         instruction_set,
         instruction_set::{Instruction, Opcode},
@@ -14,7 +14,7 @@ pub enum ParseError {
     InvalidIntegerSize(u8),
     InvalidDataVectorCount(numeric::UInteger),
     InvalidHeaderFieldCount(numeric::UInteger),
-    InvalidIdentifierCharacter(std::string::FromUtf8Error),
+    InvalidIdentifierCharacter(std::str::Utf8Error),
     EmptyIdentifier,
     InvalidTypeSignatureTag(u8),
     InvalidCodeBlockFlags(u8),
@@ -59,11 +59,13 @@ impl std::error::Error for ParseError {}
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
+fn fill_buffer(src: &mut impl std::io::Read, buffer: &mut [u8]) -> ParseResult<()> {
+    src.read_exact(buffer).map_err(ParseError::InputOutputError)
+}
+
 fn fixed_bytes<R: std::io::Read, const L: usize>(src: &mut R) -> ParseResult<[u8; L]> {
     let mut buffer = [0u8; L];
-    src.read_exact(&mut buffer)
-        .map(|()| buffer)
-        .map_err(ParseError::InputOutputError)
+    fill_buffer(src, &mut buffer).map(|()| buffer)
 }
 
 fn byte<R: std::io::Read>(src: &mut R) -> ParseResult<u8> {
@@ -72,9 +74,7 @@ fn byte<R: std::io::Read>(src: &mut R) -> ParseResult<u8> {
 
 fn many_bytes<R: std::io::Read>(src: &mut R, length: usize) -> ParseResult<Vec<u8>> {
     let mut buffer = vec![0u8; length];
-    src.read_exact(buffer.as_mut_slice())
-        .map(|()| buffer)
-        .map_err(ParseError::InputOutputError)
+    fill_buffer(src, buffer.as_mut_slice()).map(|()| buffer)
 }
 
 fn uinteger<R: std::io::Read>(
@@ -98,14 +98,14 @@ fn ulength<R: std::io::Read>(src: &mut R, size: numeric::IntegerSize) -> ParseRe
 fn identifier<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
 ) -> ParseResult<format::Identifier> {
     let length = ulength(src, size)?;
-    let buffer = many_bytes(src, length)?;
-    String::from_utf8(buffer)
+    let mut buffer = buffer_pool.rent_with_length(length);
+    fill_buffer(src, &mut buffer)?;
+    std::str::from_utf8(&buffer)
         .map_err(ParseError::InvalidIdentifierCharacter)
-        .and_then(|s| {
-            format::Identifier::try_from(s.as_str()).map_err(|_| ParseError::EmptyIdentifier)
-        })
+        .and_then(|s| format::Identifier::try_from(s).map_err(|_| ParseError::EmptyIdentifier))
 }
 
 fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: std::io::Read>(
@@ -141,9 +141,10 @@ fn version_numbers<R: std::io::Read>(
 fn module_identifier<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
 ) -> ParseResult<format::ModuleIdentifier> {
     Ok(format::ModuleIdentifier {
-        name: identifier(src, size)?,
+        name: identifier(src, size, buffer_pool)?,
         version: version_numbers(src, size)?,
     })
 }
@@ -151,15 +152,16 @@ fn module_identifier<R: std::io::Read>(
 fn module_header<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
 ) -> ParseResult<format::ModuleHeader> {
     let field_count = uinteger(src, size)?;
 
     if field_count < format::MIN_HEADER_FIELD_COUNT || field_count > format::MAX_HEADER_FIELD_COUNT
     {
-        Err(ParseError::InvalidHeaderFieldCount(field_count))?;
+        return Err(ParseError::InvalidHeaderFieldCount(field_count));
     }
 
-    let id = module_identifier(src, size)?;
+    let id = module_identifier(src, size, buffer_pool)?;
 
     Ok(format::ModuleHeader { identifier: id })
 }
@@ -261,8 +263,7 @@ fn code_block<R: std::io::Read>(
 ) -> ParseResult<format::CodeBlock> {
     let flags = {
         let bits = byte(src)?;
-        format::CodeBlockFlags::from_bits(bits)
-            .ok_or_else(|| ParseError::InvalidCodeBlockFlags(bits))
+        format::CodeBlockFlags::from_bits(bits).ok_or(ParseError::InvalidCodeBlockFlags(bits))
     }?;
 
     let input_register_count = uinteger(src, size)?;
@@ -318,8 +319,27 @@ fn integer_size<R: std::io::Read>(src: &mut R) -> ParseResult<numeric::IntegerSi
     })
 }
 
+fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> ParseResult<T>, R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
+    parser: F,
+) -> ParseResult<structures::DoubleLengthEncodedVector<T>> {
+    let length = ulength(src, size)?;
+    Ok(structures::ByteLengthEncoded(
+        if length > 0usize {
+            let mut buffer = buffer_pool.rent_with_length(length);
+            fill_buffer(src, &mut buffer)?;
+            let mut buffer_slice: &[u8] = &mut buffer;
+            length_encoded_vector(&mut buffer_slice, size, parser)?
+        } else {
+            structures::LengthEncodedVector(Vec::new())
+        },
+    ))
+}
+
 fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
-    data_vectors: &Vec<Vec<u8>>,
+    data_vectors: &[Vec<u8>],
     index: usize,
     default: D,
     parser: F,
@@ -330,7 +350,7 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
             if data.is_empty() {
                 None
             } else {
-                Some(parser(&data.as_slice()))
+                Some(parser(data.as_slice()))
             }
         })
         .unwrap_or_else(|| Ok(default()))
@@ -338,7 +358,7 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
 }
 
 fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> ParseResult<T>>(
-    data_vectors: &Vec<Vec<u8>>,
+    data_vectors: &[Vec<u8>],
     index: usize,
     parser: F,
 ) -> ParseResult<structures::ByteLengthEncoded<T>> {
@@ -357,16 +377,17 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
     let data_count = uinteger(input, size)?;
 
     if data_count < format::MIN_MODULE_DATA_COUNT || data_count > format::MAX_MODULE_DATA_COUNT {
-        Err(ParseError::InvalidDataVectorCount(data_count))?;
+        return Err(ParseError::InvalidDataVectorCount(data_count));
     }
 
     let mut data_vectors: Vec<Vec<u8>> = Vec::with_capacity(data_count.try_into().unwrap());
 
     for _ in 0u32..(data_count.0) {
         let length = ulength(input, size)?;
-        let buffer = many_bytes(input, length)?;
-        data_vectors.push(buffer);
+        data_vectors.push(many_bytes(input, length)?);
     }
+
+    let buffers = buffers::BufferPool::new();
 
     Ok(format::Module {
         integer_size: size,
@@ -375,12 +396,15 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
         header: structures::ByteLengthEncoded(module_header(
             &mut data_vectors[0].as_slice(),
             size,
+            &buffers,
         )?),
         identifiers: module_data(
             &data_vectors,
             1,
             || structures::LengthEncodedVector(Vec::new()),
-            |mut data| length_encoded_vector(&mut data, size, |src| identifier(src, size)),
+            |mut data| {
+                length_encoded_vector(&mut data, size, |src| identifier(src, size, &buffers))
+            },
         )?,
         namespaces: module_data_or_default(&data_vectors, 2, |mut data| {
             length_encoded_vector(&mut data, size, |src| length_encoded_indices(src, size))
@@ -418,7 +442,14 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
                     Vec::new(),
                 )),
             },
-            |mut data| todo!(),
+            |mut data| {
+                Ok(format::ModuleImports {
+                    imported_modules: length_encoded_vector(&mut data, size, |src| module_identifier(src, size, &buffers))?,
+                    imported_types: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+                    imported_fields: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+                    imported_methods: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+                })
+            },
         )?,
         definitions: module_data(
             &data_vectors,
@@ -434,7 +465,11 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
                     Vec::new(),
                 )),
             },
-            |mut data| todo!(),
+            |mut data| Ok(format::ModuleDefinitions {
+                defined_types: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+                defined_fields: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+                defined_methods: double_length_encoded(&mut data, size, &buffers, |src| todo!())?,
+            }),
         )?,
         entry_point: module_data(
             &data_vectors,
