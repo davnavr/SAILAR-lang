@@ -271,6 +271,11 @@ fn module_method_bodies<O: Write>(
         out.write_str(ENTRY_BLOCK_NAME)?;
         out.write_char_ln(';')?;
         code_block(out, &body.entry_block, None)?;
+        out.write_ln()?;
+        for (block_index, block) in body.blocks.iter().enumerate() {
+            code_block(out, block, Some(block_index + 1))?;
+            out.write_ln()?;
+        }
         out.dedent();
         out.write_str_ln("};")?;
     }
@@ -323,5 +328,11 @@ pub fn disassemble<O: Write>(
     // TODO: Print method signatures.
     out.write_ln()?;
     module_method_bodies(&mut out, &module.method_bodies)?;
+    out.write_ln()?;
+    // TODO: Print data arrays.
+    out.write_ln()?;
+    // TODO: Print imports.
+    out.write_ln()?;
+    
     out.write_ln()
 }
