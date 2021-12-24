@@ -205,6 +205,9 @@ type IdentifierLookup = indexed::Set<format::indices::Identifier, format::Identi
 
 type NamespaceLookup = indexed::Set<format::indices::Namespace, format::Namespace>;
 
+type TypeSignatureLookup =
+    indexed::Set<format::indices::TypeSignature, format::type_system::AnyType>;
+
 type MethodSignatureLookup =
     indexed::Set<format::indices::MethodSignature, format::MethodSignature>;
 
@@ -479,7 +482,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
                 visibility: visibility.value().unwrap_or_default(),
                 flags,
                 layout: format::indices::TypeLayout(format::numeric::UInteger(0)), // TODO: Until `.layout` directives are supported, type layouts will be hard coded.
-                inherited_types: format::structures::LengthEncodedVector::default(),
+                inherited_types: format::structures::LengthEncodedVector(Vec::new()),
                 fields: format::structures::LengthEncodedVector(field_indices),
                 methods: format::structures::LengthEncodedVector(method_indices),
                 vtable: format::structures::LengthEncodedVector(Vec::new()),
@@ -499,6 +502,7 @@ pub fn assemble_declarations(
     let mut module_format = None;
     let mut identifiers = IdentifierLookup::new();
     let mut namespaces = NamespaceLookup::new();
+    let mut type_signatures = TypeSignatureLookup::new();
     let mut method_signatures = MethodSignatureLookup::new();
     let mut method_bodies = MethodBodyLookup::new();
     let mut type_definitions =

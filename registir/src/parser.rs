@@ -634,9 +634,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &data_vectors,
             9,
             || None,
-            |mut data| {
-                unsigned_integer(&mut data, size).map(|index| Some(format::indices::Method(index)))
-            },
+            |mut data| unsigned_index(&mut data, size).map(Some),
         )?,
         type_layouts: module_data(
             &data_vectors,

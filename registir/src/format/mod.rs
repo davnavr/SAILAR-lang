@@ -19,7 +19,7 @@ pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
 pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
-#[derive(Clone, Debug, Eq, std::hash::Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 /// Describes the return types and parameter types of a method.

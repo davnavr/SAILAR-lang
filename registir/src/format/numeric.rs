@@ -1,9 +1,11 @@
 /// Represents an unsigned integer.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct UInteger(pub u32);
 
 /// Represents a signed integer.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct SInteger(pub i32);
 
 /// Specifies the size of integers and indices in the module file.

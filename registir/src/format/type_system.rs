@@ -1,6 +1,6 @@
 use crate::format::indices;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum PrimitiveType {
     U8 = 0,
     S8,
@@ -17,7 +17,7 @@ pub enum PrimitiveType {
 }
 
 /// A value type or native pointer type.
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum SimpleType {
     Primitive(PrimitiveType),
     Defined(indices::TypeDefinition),
@@ -25,7 +25,7 @@ pub enum SimpleType {
 }
 
 /// Union of all types in the type system that do not represent pointers to the stack that are tracked by the garbage collector.
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum HeapType {
     /// An untyped object reference, similar to `System.Object` or `java.lang.Object`.
     AnyRef,
@@ -39,7 +39,7 @@ pub enum HeapType {
 }
 
 /// Represents the type of a parameter or a method return type.
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum AnyType {
     /// A pointer to a field, array element, or the stack that is tracked by the garbage collector.
     GargbageCollectedPointer(Box<AnyType>),

@@ -77,21 +77,7 @@ index_type!(
     "`0` refers to the current module, while the remaining indices refer to the module imports."
 );
 
-// TODO: Make this an enum.
-index_type!(
-    TypeDefinition,
-    "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types."
-);
-
-index_type!(
-    Field,
-    "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields."
-);
-
-index_type!(
-    Method,
-    "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods."
-);
+// types, fields, and methods
 
 index_type!(
     TypeLayout,
@@ -111,4 +97,73 @@ index_type!(
 index_type!(
     TemporaryRegister,
     "An index corresponding to the temporary registers of a code block."
+);
+
+macro_rules! imported_or_defined_index_type {
+    ($name: ident, $description: literal) => {
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
+        #[doc = $description]
+        pub enum $name {
+            Defined(UInteger),
+            Imported(UInteger),
+        }
+
+        impl $name {
+            pub fn is_import(self) -> bool {
+                match self {
+                    Self::Defined(_) => false,
+                    Self::Imported(_) => true,
+                }
+            }
+
+            pub fn index(self) -> UInteger {
+                UInteger(match self {
+                    Self::Defined(UInteger(value)) => value << 1,
+                    Self::Imported(UInteger(value)) => (value << 1) & 1,
+                })
+            }
+        }
+
+        impl From<$name> for UInteger {
+            fn from(index: $name) -> Self {
+                index.index()
+            }
+        }
+
+        impl From<UInteger> for $name {
+            fn from(index: UInteger) -> Self {
+                let UInteger(value) = index;
+                let shifted = UInteger(value >> 1);
+                if value & 1u32 == 1u32 {
+                    Self::Defined(shifted)
+                } else {
+                    Self::Imported(shifted)
+                }
+            }
+        }
+
+        impl TryFrom<$name> for usize {
+            type Error = std::num::TryFromIntError;
+
+            fn try_from(index: $name) -> Result<usize, Self::Error> {
+                usize::try_from(UInteger::from(index))
+            }
+        }
+    };
+}
+
+// TODO: Make this an enum.
+imported_or_defined_index_type!(
+    TypeDefinition,
+    "An index into the module's imported types then defined types, with the index of the first defined type equal to the number of imported types."
+);
+
+imported_or_defined_index_type!(
+    Field,
+    "An index into the module's field imports then defined fields, with the index of the first field definition equal to the number of imported fields."
+);
+
+imported_or_defined_index_type!(
+    Method,
+    "An index into the module's method imports then defined methods, with the index of the first method definition equal to the number of imported methods."
 );

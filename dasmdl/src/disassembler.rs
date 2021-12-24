@@ -196,11 +196,7 @@ where
     writer(out, &items[i]) // TODO: Print error message if index is invalid.
 }
 
-fn data_header<O: Write>(
-    out: &mut Output<'_, O>,
-    header: &str,
-    length: usize,
-) -> Result<()> {
+fn data_header<O: Write>(out: &mut Output<'_, O>, header: &str, length: usize) -> Result<()> {
     out.write_str("// ")?;
     out.write_str_ln(header)?;
     out.write_fmt_ln(format_args!("// Length = {}", length))
@@ -249,7 +245,9 @@ fn type_signature<O: Write>(
     use format::type_system::*;
 
     match signature {
-        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => out.write_fmt(format_args!("{:?}", t)),
+        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => {
+            out.write_fmt(format_args!("{:?}", t))
+        }
         _ => todo!(),
     }
 }
@@ -272,7 +270,9 @@ fn code_block<O: Write>(
         out.write_str(ENTRY_BLOCK_NAME)?;
     }
     out.write_str(" (")?;
-    out.write_join(", ", 0..block.input_register_count.0, |out, i| out.write_fmt(format_args!("$arg_{}", i)))?;
+    out.write_join(", ", 0..block.input_register_count.0, |out, i| {
+        out.write_fmt(format_args!("$arg_{}", i))
+    })?;
     out.write_str_ln(") {")?;
     out.indent();
     out.dedent();
@@ -334,8 +334,12 @@ fn module_definitions<O: Write>(
         out.write_str_ln(" {")?;
         out.indent();
 
-        directive(out, "name", |out| indexed_identifier(out, type_definition.name, identifiers))?;
-        directive(out, "namespace", |out| indexed_namespace(out, type_definition.namespace, identifiers, namespaces))?;
+        directive(out, "name", |out| {
+            indexed_identifier(out, type_definition.name, identifiers)
+        })?;
+        directive(out, "namespace", |out| {
+            indexed_namespace(out, type_definition.namespace, identifiers, namespaces)
+        })?;
         out.write_ln()?;
 
         data_header(out, "Fields", type_definition.fields.len())?;
@@ -354,7 +358,9 @@ fn module_definitions<O: Write>(
             out.write_str_ln(" {")?;
             out.indent();
 
-            directive(out, "name", |out| indexed_identifier(out, method.name, identifiers))?;
+            directive(out, "name", |out| {
+                indexed_identifier(out, method.name, identifiers)
+            })?;
 
             out.dedent();
             out.write_str_ln("};")?;
@@ -397,9 +403,12 @@ pub fn disassemble<O: Write>(
         quoted_namespace(out, &module.identifiers, ns)
     })?;
     out.write_ln()?;
-    commented_module_data(&mut out, &module.type_signatures, "Type Signatures", |out, signature| {
-        type_signature(out, signature)
-    })?;
+    commented_module_data(
+        &mut out,
+        &module.type_signatures,
+        "Type Signatures",
+        |out, signature| type_signature(out, signature),
+    )?;
     out.write_ln()?;
     // TODO: Print method signatures.
     out.write_ln()?;
@@ -408,11 +417,28 @@ pub fn disassemble<O: Write>(
     // TODO: Print data arrays.
     out.write_ln()?;
     // TODO: Print imports.
-    data_header(&mut out, "Module Imports", module.imports.imported_modules.len())?;
+    data_header(
+        &mut out,
+        "Module Imports",
+        module.imports.imported_modules.len(),
+    )?;
     out.write_ln()?;
-    data_header(&mut out, "Type Imports", module.imports.imported_types.len())?;
+    data_header(
+        &mut out,
+        "Type Imports",
+        module.imports.imported_types.len(),
+    )?;
     out.write_ln()?;
-    data_header(&mut out, "Type Definitions", module.definitions.defined_types.len())?;
-    module_definitions(&mut out, &module.identifiers, &module.namespaces, &module.definitions)?;
+    data_header(
+        &mut out,
+        "Type Definitions",
+        module.definitions.defined_types.len(),
+    )?;
+    module_definitions(
+        &mut out,
+        &module.identifiers,
+        &module.namespaces,
+        &module.definitions,
+    )?;
     out.write_ln()
 }
