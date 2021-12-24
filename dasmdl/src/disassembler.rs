@@ -196,15 +196,23 @@ where
     writer(out, &items[i]) // TODO: Print error message if index is invalid.
 }
 
+fn data_header<O: Write>(
+    out: &mut Output<'_, O>,
+    header: &str,
+    length: usize,
+) -> Result<()> {
+    out.write_str("// ")?;
+    out.write_str_ln(header)?;
+    out.write_fmt_ln(format_args!("// Length = {}", length))
+}
+
 fn commented_module_data<T, P: FnMut(&mut Output<'_, O>, &T) -> Result<()>, O: Write>(
     out: &mut Output<'_, O>,
     items: &[T],
     header: &str,
     mut printer: P,
 ) -> Result<()> {
-    out.write_str("// ")?;
-    out.write_str_ln(header)?;
-    out.write_fmt_ln(format_args!("// Length = {}", items.len()))?;
+    data_header(out, header, items.len())?;
     // TODO: Pad index integers.
     for (index, i) in items.iter().enumerate() {
         out.write_fmt(format_args!("// {} - ", index))?;
@@ -311,8 +319,34 @@ fn module_definitions<O: Write>(
         // TODO: Print other type attributes.
         out.write_str_ln(" {")?;
         out.indent();
+
         directive(out, "name", |out| indexed_identifier(out, type_definition.name, identifiers))?;
         directive(out, "namespace", |out| indexed_namespace(out, type_definition.namespace, identifiers, namespaces))?;
+        out.write_ln()?;
+
+        data_header(out, "Fields", type_definition.fields.len())?;
+        out.write_ln()?;
+
+        data_header(out, "Methods", type_definition.methods.len())?;
+        for method_index in type_definition.methods.iter() {
+            // TODO: Check that method index is in bounds, and that owner is correct.
+            let method = &definitions.defined_methods[usize::try_from(*method_index).unwrap()];
+            out.write_fmt(format_args!(".method @method_{} (", method_index))?;
+            // TODO: Write signature things.
+            out.write_str(") returns (")?;
+            out.write_str(") ")?;
+            visibility(out, method.visibility)?;
+            // TODO: Write other method attributes.
+            out.write_str_ln(" {")?;
+            out.indent();
+
+            directive(out, "name", |out| indexed_identifier(out, method.name, identifiers))?;
+
+            out.dedent();
+            out.write_str_ln("};")?;
+        }
+        out.write_ln()?;
+
         out.dedent();
         out.write_str_ln("};")?;
     }
@@ -358,7 +392,11 @@ pub fn disassemble<O: Write>(
     // TODO: Print data arrays.
     out.write_ln()?;
     // TODO: Print imports.
+    data_header(&mut out, "Module Imports", module.imports.imported_modules.len())?;
     out.write_ln()?;
+    data_header(&mut out, "Type Imports", module.imports.imported_types.len())?;
+    out.write_ln()?;
+    data_header(&mut out, "Type Definitions", module.definitions.defined_types.len())?;
     module_definitions(&mut out, &module.identifiers, &module.namespaces, &module.definitions)?;
     out.write_ln()
 }
