@@ -143,8 +143,19 @@ fn directive<W: FnOnce(&mut Output<'_, O>) -> Result<()>, O: Write>(
     out.write_char_ln(';')
 }
 
-fn identifier<O: Write>(out: &mut Output<'_, O>, id: &format::Identifier) -> Result<()> {
-    out.write_str(id.as_str())
+fn quoted_identifier<O: Write>(out: &mut Output<'_, O>, id: &format::Identifier) -> Result<()> {
+    out.write_char('\"')?;
+    for c in id.as_str().chars() {
+        match c {
+            '\n' => out.write_str("\\n")?,
+            '\t' => out.write_str("\\t")?,
+            '\"' => out.write_str("\\\"")?,
+            '\\' => out.write_str("\\\\")?,
+            _ if c.is_control() => out.write_fmt(format_args!("\\u{:04X}", u32::from(c)))?,
+            _ => out.write_char(c)?,
+        }
+    }
+    out.write_char('\"')
 }
 
 fn version_numbers<O: Write>(
@@ -160,7 +171,7 @@ fn module_header<O: Write>(out: &mut Output<'_, O>, header: &format::ModuleHeade
     out.write_str_ln(".module {")?;
     out.indent();
     out.write_fmt_ln(format_args!("// FieldCount: {}", header.field_count()))?;
-    directive(out, "name", |out| identifier(out, &header.identifier.name))?;
+    directive(out, "name", |out| quoted_identifier(out, &header.identifier.name))?;
     directive(out, "version", |out| {
         version_numbers(out, &header.identifier.version)
     })?;
@@ -189,10 +200,11 @@ fn indexed_identifier<O: Write>(
 ) -> Result<()> {
     indexed(out, id, identifiers, |out, id| {
         out.write_char('\"')?;
-        out.write_str(id.as_str())?; // TODO: Add escape sequences.
+        quoted_identifier(out, id)?;
         out.write_char('\"')
     })
 }
+
 
 pub fn disassemble<O: Write>(
     output: &mut O,
@@ -212,5 +224,8 @@ pub fn disassemble<O: Write>(
     ))?;
     out.write_ln()?;
     module_header(&mut out, &module.header.0)?;
+    out.write_ln()?;
+    // TODO: Option to omit identifiers.
+
     out.write_ln()
 }
