@@ -51,6 +51,16 @@ macro_rules! integer_traits {
 integer_traits!(UInteger, u32);
 integer_traits!(SInteger, i32);
 
+impl IntegerSize {
+    pub fn size(self) -> u8 {
+        match self {
+            Self::I1 => 1,
+            Self::I2 => 2,
+            Self::I4 => 4,
+        }
+    }
+}
+
 impl TryFrom<u8> for IntegerSize {
     type Error = ();
 

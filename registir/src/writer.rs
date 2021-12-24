@@ -39,7 +39,7 @@ fn unsigned_integer<W: std::io::Write>(
     numeric::UInteger(value): numeric::UInteger,
     size: numeric::IntegerSize,
 ) -> WriteResult {
-    write_bytes(out, &u32::to_le_bytes(value)[..(size as usize)])
+    write_bytes(out, &u32::to_le_bytes(value)[..(size.size() as usize)])
 }
 
 fn unsigned_index<W: std::io::Write, I: Into<numeric::UInteger>>(
