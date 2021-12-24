@@ -114,6 +114,18 @@ impl Default for Visibility {
     }
 }
 
+impl TryFrom<u8> for Visibility {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value < Visibility::Private as u8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(())
+        }
+    }
+}
+
 bitflags! {
     #[repr(transparent)]
     pub struct FieldFlags: u8 {
