@@ -63,21 +63,17 @@ impl std::fmt::Display for ParseError {
                 "{:#02X} is not a valid type definition flags combination",
                 flag
             ),
-            Self::InvalidMethodFlags(flag) => write!(
-                f,
-                "{:#02X} is not a valid method flags combination",
-                flag
-            ),
+            Self::InvalidMethodFlags(flag) => {
+                write!(f, "{:#02X} is not a valid method flags combination", flag)
+            }
             Self::InvalidMethodImplementationFlags(flag) => write!(
                 f,
                 "{:#02X} is not a valid method implementation flags combination",
                 flag
             ),
-            Self::InvalidTypeLayoutFlags(flag) => write!(
-                f,
-                "{:#02X} is not a valid type layout",
-                flag
-            ),
+            Self::InvalidTypeLayoutFlags(flag) => {
+                write!(f, "{:#02X} is not a valid type layout", flag)
+            }
             Self::InputOutputError(error) => error.fmt(f),
         }
     }
@@ -391,8 +387,16 @@ fn method_definition<R: std::io::Read>(
     let owner = unsigned_index(src, size)?;
     let name = unsigned_index(src, size)?;
     let visibility = byte_enum(src, ParseError::InvalidVisibilityFlags)?;
-    let flags = byte_flags(src, format::MethodFlags::from_bits, ParseError::InvalidMethodFlags)?;
-    let implementation_flags = byte_flags(src, format::MethodImplementationFlags::from_bits, ParseError::InvalidMethodImplementationFlags)?;
+    let flags = byte_flags(
+        src,
+        format::MethodFlags::from_bits,
+        ParseError::InvalidMethodFlags,
+    )?;
+    let implementation_flags = byte_flags(
+        src,
+        format::MethodImplementationFlags::from_bits,
+        ParseError::InvalidMethodImplementationFlags,
+    )?;
 
     Ok(format::Method {
         owner,
@@ -414,11 +418,20 @@ fn method_definition<R: std::io::Read>(
     })
 }
 
-fn type_layout<R: std::io::Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::TypeDefinitionLayout> {
-    Ok(match byte_flags(src, |bits| format::TypeLayoutFlags::try_from(bits).ok(), ParseError::InvalidTypeLayoutFlags)? {
-        format::TypeLayoutFlags::Unspecified => format::TypeDefinitionLayout::Unspecified,
-        _ => todo!("Parsing of specific type layouts is not yet supported"),
-    })
+fn type_layout<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::TypeDefinitionLayout> {
+    Ok(
+        match byte_flags(
+            src,
+            |bits| format::TypeLayoutFlags::try_from(bits).ok(),
+            ParseError::InvalidTypeLayoutFlags,
+        )? {
+            format::TypeLayoutFlags::Unspecified => format::TypeDefinitionLayout::Unspecified,
+            _ => todo!("Parsing of specific type layouts is not yet supported"),
+        },
+    )
 }
 
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
@@ -602,19 +615,18 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             },
             |mut data| {
                 Ok(format::ModuleDefinitions {
-                    defined_types: double_length_encoded(&mut data, size, &buffers, |src| type_definition(src, size))?,
+                    defined_types: double_length_encoded(&mut data, size, &buffers, |src| {
+                        type_definition(src, size)
+                    })?,
                     defined_fields: double_length_encoded(
                         &mut data,
                         size,
                         &buffers,
                         |src| todo!(),
                     )?,
-                    defined_methods: double_length_encoded(
-                        &mut data,
-                        size,
-                        &buffers,
-                        |src| method_definition(src, size),
-                    )?,
+                    defined_methods: double_length_encoded(&mut data, size, &buffers, |src| {
+                        method_definition(src, size)
+                    })?,
                 })
             },
         )?,

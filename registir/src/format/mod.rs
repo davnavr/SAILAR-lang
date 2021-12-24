@@ -350,8 +350,7 @@ impl TryFrom<u8> for TypeLayoutFlags {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value <= Self::ExplicitSize as u8 {
             Ok(unsafe { std::mem::transmute(value) })
-        }
-        else {
+        } else {
             Err(())
         }
     }

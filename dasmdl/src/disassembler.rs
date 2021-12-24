@@ -171,7 +171,9 @@ fn module_header<O: Write>(out: &mut Output<'_, O>, header: &format::ModuleHeade
     out.write_str_ln(".module {")?;
     out.indent();
     out.write_fmt_ln(format_args!("// FieldCount: {}", header.field_count()))?;
-    directive(out, "name", |out| quoted_identifier(out, &header.identifier.name))?;
+    directive(out, "name", |out| {
+        quoted_identifier(out, &header.identifier.name)
+    })?;
     directive(out, "version", |out| {
         version_numbers(out, &header.identifier.version)
     })?;
@@ -179,6 +181,7 @@ fn module_header<O: Write>(out: &mut Output<'_, O>, header: &format::ModuleHeade
     out.write_char_ln('}')
 }
 
+// TODO: Pad indices.
 fn indexed<I: TryInto<usize>, T, W: FnOnce(&mut Output<'_, O>, &T) -> Result<()>, O: Write>(
     out: &mut Output<'_, O>,
     index: I,
@@ -205,14 +208,33 @@ fn indexed_identifier<O: Write>(
     })
 }
 
+fn unsigned_length<O: Write>(out: &mut Output<'_, O>, length: usize) -> Result<()> {
+    out.write_fmt_ln(format_args!("// Length = {}", length))
+}
+
+fn module_identifiers<O: Write>(
+    out: &mut Output<'_, O>,
+    identifiers: &format::structures::LengthEncodedVector<format::Identifier>,
+) -> Result<()> {
+    out.write_str_ln("// Identifiers")?;
+    unsigned_length(out, identifiers.0.len())?;
+    // TODO: Pad index integers so first character of identifier is aligned with others.
+    for (index, name) in identifiers.0.iter().enumerate() {
+        out.write_fmt(format_args!("// {} ", index))?;
+        quoted_identifier(out, name)?;
+        out.write_ln()?;
+    }
+    Ok(())
+}
 
 pub fn disassemble<O: Write>(
     output: &mut O,
     module: &format::Module,
     indentation: Indentation,
+    // TODO: Have option to have indices be in base 10 or hex.
 ) -> Result<()> {
     let mut out = Output::new(output, indentation);
-    out.write_str_ln("// binmdl")?;
+    out.write_str_ln("// Disassembled by dasmdl")?;
     out.write_fmt_ln(format_args!(
         "// IntegerSize: {} bytes",
         module.integer_size
@@ -226,6 +248,8 @@ pub fn disassemble<O: Write>(
     module_header(&mut out, &module.header.0)?;
     out.write_ln()?;
     // TODO: Option to omit identifiers.
+    module_identifiers(&mut out, &module.identifiers.0)?;
+    out.write_ln()?;
 
     out.write_ln()
 }
