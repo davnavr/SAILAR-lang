@@ -339,6 +339,11 @@ pub struct FieldOffset {
 }
 
 /// Describes how the fields are a type are layout, starting with a flag byte indicating whether or not the type has an explicit layout.
+///
+/// # Structure
+/// - [`TypeDefinitionLayout::flags()`]
+/// - Size (optional)
+/// - Field Offsets (optional)
 #[derive(Debug)]
 pub enum TypeDefinitionLayout {
     Unspecified,

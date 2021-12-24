@@ -222,7 +222,11 @@ fn instruction<R: std::io::Read>(
 ) -> ParseResult<Instruction> {
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
-        Opcode::Ret => Ok(Instruction::Ret(length_encoded_registers(src, size, input_register_count)?)),
+        Opcode::Ret => Ok(Instruction::Ret(length_encoded_registers(
+            src,
+            size,
+            input_register_count,
+        )?)),
     }
 }
 
@@ -266,7 +270,8 @@ fn data_array<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<format::DataArray> {
-    many_bytes(src, ulength(src, size)?).map(|data| format::DataArray(structures::LengthEncodedVector(data)))
+    many_bytes(src, ulength(src, size)?)
+        .map(|data| format::DataArray(structures::LengthEncodedVector(data)))
 }
 
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
@@ -295,7 +300,13 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
 ) -> ParseResult<structures::ByteLengthEncoded<T>> {
     data_vectors
         .get(index)
-        .map(|data| parser(&data.as_slice()))
+        .and_then(|data| {
+            if data.is_empty() {
+                None
+            } else {
+                Some(parser(&data.as_slice()))
+            }
+        })
         .unwrap_or_else(|| Ok(default()))
         .map(structures::ByteLengthEncoded)
 }
@@ -360,10 +371,53 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             || structures::LengthEncodedVector(Vec::new()),
             |mut data| length_encoded_vector(&mut data, size, |src| method_body(src, size)),
         )?,
-        data_arrays: module_data_or_default(
+        data_arrays: module_data_or_default(&data_vectors, 6, |mut data| {
+            length_encoded_vector(&mut data, size, |src| data_array(src, size))
+        })?,
+        imports: module_data(
             &data_vectors,
-            6,
-            |mut data| length_encoded_vector(&mut data, size, |src| data_array(src, size)),
+            7,
+            || format::ModuleImports {
+                imported_modules: structures::LengthEncodedVector(Vec::new()),
+                imported_types: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+                imported_fields: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+                imported_methods: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+            },
+            |mut data| todo!(),
+        )?,
+        definitions: module_data(
+            &data_vectors,
+            8,
+            || format::ModuleDefinitions {
+                defined_types: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+                defined_fields: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+                defined_methods: structures::ByteLengthEncoded(structures::LengthEncodedVector(
+                    Vec::new(),
+                )),
+            },
+            |mut data| todo!(),
+        )?,
+        entry_point: module_data(
+            &data_vectors,
+            9,
+            || None,
+            |mut data| uinteger(&mut data, size).map(|index| Some(format::indices::Method(index))),
+        )?,
+        type_layouts: module_data(
+            &data_vectors,
+            10,
+            || structures::LengthEncodedVector(Vec::new()),
+            |mut data| todo!(),
         )?,
     })
 }
