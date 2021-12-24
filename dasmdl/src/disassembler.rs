@@ -185,7 +185,7 @@ fn module_header<O: Write>(out: &mut Output<'_, O>, header: &format::ModuleHeade
 fn indexed<I: TryInto<usize>, T, W: FnOnce(&mut Output<'_, O>, &T) -> Result<()>, O: Write>(
     out: &mut Output<'_, O>,
     index: I,
-    items: &Vec<T>,
+    items: &[T],
     writer: W,
 ) -> Result<()>
 where
@@ -200,16 +200,19 @@ fn unsigned_length<O: Write>(out: &mut Output<'_, O>, length: usize) -> Result<(
     out.write_fmt_ln(format_args!("// Length = {}", length))
 }
 
-fn module_identifiers<O: Write>(
+fn commented_module_data<T, P: FnMut(&mut Output<'_, O>, &T) -> Result<()>, O: Write>(
     out: &mut Output<'_, O>,
-    identifiers: &Vec<format::Identifier>,
+    items: &[T],
+    header: &str,
+    mut printer: P,
 ) -> Result<()> {
-    out.write_str_ln("// Identifiers")?;
-    unsigned_length(out, identifiers.len())?;
-    // TODO: Pad index integers so first character of identifier is aligned with others.
-    for (index, name) in identifiers.iter().enumerate() {
+    out.write_str("// ")?;
+    out.write_str_ln(header)?;
+    unsigned_length(out, items.len())?;
+    // TODO: Pad index integers.
+    for (index, i) in items.iter().enumerate() {
         out.write_fmt(format_args!("// {} - ", index))?;
-        quoted_identifier(out, name)?;
+        printer(out, i)?;
         out.write_ln()?;
     }
     Ok(())
@@ -218,7 +221,7 @@ fn module_identifiers<O: Write>(
 fn indexed_identifier<O: Write>(
     out: &mut Output<'_, O>,
     index: format::indices::Identifier,
-    identifiers: &Vec<format::Identifier>,
+    identifiers: &[format::Identifier],
 ) -> Result<()> {
     indexed(out, index, identifiers, |out, id| {
         quoted_identifier(out, id)
@@ -227,28 +230,12 @@ fn indexed_identifier<O: Write>(
 
 fn quoted_namespace<O: Write>(
     out: &mut Output<'_, O>,
-    identifiers: &Vec<format::Identifier>,
+    identifiers: &[format::Identifier],
     namespace: &format::structures::LengthEncodedVector<format::indices::Identifier>,
 ) -> Result<()> {
     out.write_join(", ", &namespace.0, |out, id| {
         indexed_identifier(out, **id, identifiers)
     })
-}
-
-fn module_namespaces<O: Write>(
-    out: &mut Output<'_, O>,
-    identifiers: &Vec<format::Identifier>,
-    namespaces: &Vec<format::structures::LengthEncodedVector<format::indices::Identifier>>,
-) -> Result<()> {
-    out.write_str_ln("// Namespaces")?;
-    unsigned_length(out, namespaces.len())?;
-    // TODO: Pad index integers so first character of identifier is aligned with others.
-    for (index, ns) in namespaces.iter().enumerate() {
-        out.write_fmt(format_args!("// {} - ", index))?;
-        quoted_namespace(out, identifiers, ns)?;
-        out.write_ln()?;
-    }
-    Ok(())
 }
 
 fn indexed_namespace<O: Write>(
@@ -283,10 +270,14 @@ pub fn disassemble<O: Write>(
     module_header(&mut out, &module.header.0)?;
     out.write_ln()?;
     // TODO: Option to omit identifiers.
-    module_identifiers(&mut out, &module.identifiers.0 .0)?;
+    commented_module_data(&mut out, &module.identifiers, "Identifiers", |out, name| {
+        quoted_identifier(out, name)
+    })?;
     out.write_ln()?;
     // TODO: Option to omit namespaces.
-    module_namespaces(&mut out, &module.identifiers.0 .0, &module.namespaces.0 .0)?;
+    commented_module_data(&mut out, &module.namespaces, "Namespaces", |out, ns| {
+        quoted_namespace(out, &module.identifiers.0 .0, ns)
+    })?;
     out.write_ln()?;
     out.write_ln()
 }
