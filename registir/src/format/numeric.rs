@@ -39,6 +39,12 @@ macro_rules! integer_traits {
                 std::fmt::Display::fmt(&self.0, f)
             }
         }
+
+        impl std::fmt::UpperHex for $t {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::UpperHex::fmt(&self.0, f)
+            }
+        }
     };
 }
 

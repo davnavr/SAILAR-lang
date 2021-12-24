@@ -226,7 +226,6 @@ fn any_type<W: std::io::Write>(
     size: numeric::IntegerSize,
 ) -> WriteResult {
     match t {
-        type_system::AnyType::Val(t) => simple_type(out, t, size),
         type_system::AnyType::Heap(t) => heap_type(out, t, size),
         type_system::AnyType::GargbageCollectedPointer(element_type) => {
             write(out, type_system::TypeTag::GarbageCollectedPointer as u8)?;

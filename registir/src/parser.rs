@@ -28,6 +28,14 @@ impl std::fmt::Display for ParseError {
             Self::InvalidModuleMagic => {
                 f.write_str("The file magic indicates that it is not a valid binary module")
             }
+            Self::InvalidIntegerSize(value) => write!(f, "{:#02X} is not a valid integer size value", value),
+            Self::InvalidDataVectorCount(count) => write!(f, "{} is not a valid data vector count", count),
+            Self::InvalidHeaderFieldCount(count) => write!(f, "{} is not a valid number of fields for the module header", count),
+            Self::EmptyIdentifier => f.write_str("Identifiers must not be empty"),
+            Self::InvalidIdentifierCharacter(error) => error.fmt(f),
+            Self::InvalidTypeSignatureTag(tag) => write!(f, "{:#02X} is not a valid type signature tag", tag),
+            Self::InvalidCodeBlockFlags(flags) => write!(f, "{:#02X} is not a valid combination of code block flags", flags),
+            Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
             Self::InputOutputError(error) => error.fmt(f),
         }
     }
@@ -77,7 +85,8 @@ fn identifier<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<format::Identifier> {
-    let buffer = many_bytes(src, ulength(src, size)?)?;
+    let length = ulength(src, size)?;
+    let buffer = many_bytes(src, length)?;
     String::from_utf8(buffer)
         .map_err(ParseError::InvalidIdentifierCharacter)
         .and_then(|s| {
@@ -88,13 +97,14 @@ fn identifier<R: std::io::Read>(
 fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-    parser: P,
+    mut parser: P,
 ) -> ParseResult<structures::LengthEncodedVector<T>> {
     let length = ulength(src, size)?;
-    let buffer = Vec::<T>::with_capacity(length);
+    let mut buffer = Vec::<T>::with_capacity(length);
 
     for _ in 0..length {
-        buffer.push(parser(src)?);
+        let item = parser(src)?;
+        buffer.push(item);
     }
 
     Ok(structures::LengthEncodedVector(buffer))
@@ -227,6 +237,7 @@ fn instruction<R: std::io::Read>(
             size,
             input_register_count,
         )?)),
+        Opcode::Continuation => unreachable!(),
     }
 }
 
@@ -246,7 +257,8 @@ fn code_block<R: std::io::Read>(
         input_register_count,
         exception_handler: if flags.is_empty() { None } else { todo!() },
         instructions: {
-            let buffer = many_bytes(src, ulength(src, size)?)?;
+            let length = ulength(src, size)?;
+            let buffer = many_bytes(src, length)?;
             structures::ByteLengthEncoded(length_encoded_vector(
                 &mut buffer.as_slice(),
                 size,
@@ -270,8 +282,8 @@ fn data_array<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<format::DataArray> {
-    many_bytes(src, ulength(src, size)?)
-        .map(|data| format::DataArray(structures::LengthEncodedVector(data)))
+    let length = ulength(src, size)?;
+    many_bytes(src, length).map(|data| format::DataArray(structures::LengthEncodedVector(data)))
 }
 
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
