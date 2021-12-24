@@ -23,6 +23,7 @@ pub enum ParseError {
     InvalidTypeDefinitionFlags(u8),
     InvalidMethodFlags(u8),
     InvalidMethodImplementationFlags(u8),
+    InvalidTypeLayoutFlags(u8),
     InputOutputError(std::io::Error),
 }
 
@@ -59,17 +60,22 @@ impl std::fmt::Display for ParseError {
             }
             Self::InvalidTypeDefinitionFlags(flag) => write!(
                 f,
-                "{:#02X} is not a type definition flags combination",
+                "{:#02X} is not a valid type definition flags combination",
                 flag
             ),
             Self::InvalidMethodFlags(flag) => write!(
                 f,
-                "{:#02X} is not a method flags combination",
+                "{:#02X} is not a valid method flags combination",
                 flag
             ),
             Self::InvalidMethodImplementationFlags(flag) => write!(
                 f,
-                "{:#02X} is not a method implementation flags combination",
+                "{:#02X} is not a valid method implementation flags combination",
+                flag
+            ),
+            Self::InvalidTypeLayoutFlags(flag) => write!(
+                f,
+                "{:#02X} is not a valid type layout",
                 flag
             ),
             Self::InputOutputError(error) => error.fmt(f),
@@ -408,6 +414,13 @@ fn method_definition<R: std::io::Read>(
     })
 }
 
+fn type_layout<R: std::io::Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::TypeDefinitionLayout> {
+    Ok(match byte_flags(src, |bits| format::TypeLayoutFlags::try_from(bits).ok(), ParseError::InvalidTypeLayoutFlags)? {
+        format::TypeLayoutFlags::Unspecified => format::TypeDefinitionLayout::Unspecified,
+        _ => todo!("Parsing of specific type layouts is not yet supported"),
+    })
+}
+
 fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
@@ -617,7 +630,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &data_vectors,
             10,
             || structures::LengthEncodedVector(Vec::new()),
-            |mut data| todo!(),
+            |mut data| length_encoded_vector(&mut data, size, |src| type_layout(src, size)),
         )?,
     })
 }
