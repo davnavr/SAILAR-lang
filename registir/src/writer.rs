@@ -83,6 +83,7 @@ fn identifier<W: std::io::Write>(
     size: numeric::IntegerSize,
 ) -> WriteResult {
     let bytes = id.as_bytes();
+    debug_assert!(!bytes.is_empty());
     unsigned_length(out, bytes.len(), size)?;
     write_bytes(out, bytes)
 }

@@ -9,7 +9,7 @@ pub struct SymbolMap<'a, S, I, T> {
 }
 
 impl<'a, S, I, T> SymbolMap<'a, S, I, T> {
-    pub fn items(&self) -> &Vec<T> {
+    pub fn items(&self) -> &[T] {
         &self.values
     }
 
@@ -68,16 +68,18 @@ where
     }
 }
 
-impl<I: TryInto<usize>, T: Clone> From<Set<I, T>> for Vec<T>
+impl<I: TryInto<usize> + std::fmt::Debug, T: Clone> From<Set<I, T>> for Vec<T>
 where
     <I as TryInto<usize>>::Error: std::error::Error,
 {
     fn from(values: Set<I, T>) -> Self {
-        let mut items = Vec::with_capacity(values.lookup.len());
+        let length = values.lookup.len();
+        let mut items = Vec::with_capacity(length);
         unsafe {
-            items.set_len(items.capacity());
+            // Some items are unitialized, but the loop below should insert the items into the appropriate positions.
+            items.set_len(length);
             for (ref value, index) in values.lookup {
-                items.insert(index.try_into().unwrap(), value.clone())
+                items[index.try_into().unwrap()] = value.clone()
             }
         }
         items

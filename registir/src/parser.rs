@@ -28,13 +28,27 @@ impl std::fmt::Display for ParseError {
             Self::InvalidModuleMagic => {
                 f.write_str("The file magic indicates that it is not a valid binary module")
             }
-            Self::InvalidIntegerSize(value) => write!(f, "{:#02X} is not a valid integer size value", value),
-            Self::InvalidDataVectorCount(count) => write!(f, "{} is not a valid data vector count", count),
-            Self::InvalidHeaderFieldCount(count) => write!(f, "{} is not a valid number of fields for the module header", count),
+            Self::InvalidIntegerSize(value) => {
+                write!(f, "{:#02X} is not a valid integer size value", value)
+            }
+            Self::InvalidDataVectorCount(count) => {
+                write!(f, "{} is not a valid data vector count", count)
+            }
+            Self::InvalidHeaderFieldCount(count) => write!(
+                f,
+                "{} is not a valid number of fields for the module header",
+                count
+            ),
             Self::EmptyIdentifier => f.write_str("Identifiers must not be empty"),
             Self::InvalidIdentifierCharacter(error) => error.fmt(f),
-            Self::InvalidTypeSignatureTag(tag) => write!(f, "{:#02X} is not a valid type signature tag", tag),
-            Self::InvalidCodeBlockFlags(flags) => write!(f, "{:#02X} is not a valid combination of code block flags", flags),
+            Self::InvalidTypeSignatureTag(tag) => {
+                write!(f, "{:#02X} is not a valid type signature tag", tag)
+            }
+            Self::InvalidCodeBlockFlags(flags) => write!(
+                f,
+                "{:#02X} is not a valid combination of code block flags",
+                flags
+            ),
             Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
             Self::InputOutputError(error) => error.fmt(f),
         }
@@ -362,9 +376,12 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &mut data_vectors[0].as_slice(),
             size,
         )?),
-        identifiers: module_data_or_default(&data_vectors, 1, |mut data| {
-            length_encoded_vector(&mut data, size, |src| identifier(src, size))
-        })?,
+        identifiers: module_data(
+            &data_vectors,
+            1,
+            || structures::LengthEncodedVector(Vec::new()),
+            |mut data| length_encoded_vector(&mut data, size, |src| identifier(src, size)),
+        )?,
         namespaces: module_data_or_default(&data_vectors, 2, |mut data| {
             length_encoded_vector(&mut data, size, |src| length_encoded_indices(src, size))
         })?,
