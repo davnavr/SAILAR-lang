@@ -242,6 +242,20 @@ fn quoted_namespace<O: Write>(
     })
 }
 
+fn type_signature<O: Write>(
+    out: &mut Output<'_, O>,
+    signature: &format::type_system::AnyType,
+) -> Result<()> {
+    use format::type_system::*;
+
+    match signature {
+        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => out.write_fmt(format_args!("{:?}", t)),
+        _ => todo!(),
+    }
+}
+
+// method_signature
+
 const BLOCK_NAME_PREFIX: &str = "BLOCK_";
 const ENTRY_BLOCK_NAME: &str = "ENTRY";
 
@@ -383,7 +397,9 @@ pub fn disassemble<O: Write>(
         quoted_namespace(out, &module.identifiers, ns)
     })?;
     out.write_ln()?;
-    // TODO: Print type signatures.
+    commented_module_data(&mut out, &module.type_signatures, "Type Signatures", |out, signature| {
+        type_signature(out, signature)
+    })?;
     out.write_ln()?;
     // TODO: Print method signatures.
     out.write_ln()?;
