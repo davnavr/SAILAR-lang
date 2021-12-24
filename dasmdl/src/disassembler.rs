@@ -178,7 +178,7 @@ fn module_header<O: Write>(out: &mut Output<'_, O>, header: &format::ModuleHeade
         version_numbers(out, &header.identifier.version)
     })?;
     out.dedent();
-    out.write_char_ln('}')
+    out.write_str_ln("}")
 }
 
 // TODO: Pad indices.
@@ -196,10 +196,6 @@ where
     writer(out, &items[i]) // TODO: Print error message if index is invalid.
 }
 
-fn unsigned_length<O: Write>(out: &mut Output<'_, O>, length: usize) -> Result<()> {
-    out.write_fmt_ln(format_args!("// Length = {}", length))
-}
-
 fn commented_module_data<T, P: FnMut(&mut Output<'_, O>, &T) -> Result<()>, O: Write>(
     out: &mut Output<'_, O>,
     items: &[T],
@@ -208,7 +204,7 @@ fn commented_module_data<T, P: FnMut(&mut Output<'_, O>, &T) -> Result<()>, O: W
 ) -> Result<()> {
     out.write_str("// ")?;
     out.write_str_ln(header)?;
-    unsigned_length(out, items.len())?;
+    out.write_fmt_ln(format_args!("// Length = {}", items.len()))?;
     // TODO: Pad index integers.
     for (index, i) in items.iter().enumerate() {
         out.write_fmt(format_args!("// {} - ", index))?;
@@ -238,6 +234,49 @@ fn quoted_namespace<O: Write>(
     })
 }
 
+const BLOCK_NAME_PREFIX: &str = "BLOCK_";
+const ENTRY_BLOCK_NAME: &str = "ENTRY";
+
+fn code_block<O: Write>(
+    out: &mut Output<'_, O>,
+    block: &format::CodeBlock,
+    index: Option<usize>,
+) -> Result<()> {
+    out.write_str(".block $")?;
+    out.write_str(BLOCK_NAME_PREFIX)?;
+    if let Some(i) = index {
+        out.write_fmt(format_args!("{}", i))?;
+    } else {
+        out.write_str(ENTRY_BLOCK_NAME)?;
+    }
+    out.write_str(" (")?;
+    for _ in 0..block.input_register_count.0 {
+
+    }
+    out.write_str_ln(") {")?;
+    out.indent();
+    out.dedent();
+    out.write_str_ln("};")
+}
+
+fn module_method_bodies<O: Write>(
+    out: &mut Output<'_, O>,
+    method_bodies: &[format::Code],
+) -> Result<()> {
+    for (index, body) in method_bodies.iter().enumerate() {
+        out.write_fmt(format_args!(".code @code_{} {{", index))?;
+        out.indent();
+        out.write_str(".entry $")?;
+        out.write_str(BLOCK_NAME_PREFIX)?;
+        out.write_str(ENTRY_BLOCK_NAME)?;
+        out.write_char_ln(';')?;
+        code_block(out, &body.entry_block, None)?;
+        out.dedent();
+        out.write_str_ln("};")?;
+    }
+    Ok(())
+}
+
 fn indexed_namespace<O: Write>(
     out: &mut Output<'_, O>,
     index: format::indices::Namespace,
@@ -263,7 +302,7 @@ pub fn disassemble<O: Write>(
     ))?;
     out.write_ln()?;
     out.write_fmt_ln(format_args!(
-        ".format {{ .major {}; .minor {}; }}",
+        ".format {{ .major {}; .minor {}; }};",
         module.format_version.major, module.format_version.minor
     ))?;
     out.write_ln()?;
@@ -276,8 +315,13 @@ pub fn disassemble<O: Write>(
     out.write_ln()?;
     // TODO: Option to omit namespaces.
     commented_module_data(&mut out, &module.namespaces, "Namespaces", |out, ns| {
-        quoted_namespace(out, &module.identifiers.0 .0, ns)
+        quoted_namespace(out, &module.identifiers, ns)
     })?;
     out.write_ln()?;
+    // TODO: Print type signatures.
+    out.write_ln()?;
+    // TODO: Print method signatures.
+    out.write_ln()?;
+    module_method_bodies(&mut out, &module.method_bodies)?;
     out.write_ln()
 }
