@@ -5,27 +5,7 @@ use crate::format::{indices, numeric, structures::LengthEncodedVector};
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct BlockOffset(pub numeric::SInteger);
 
-/// An index into a code block's registers, starting with the input registers then temporary registers.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub enum RegisterIndex {
-    Input(numeric::UInteger),
-    Temporary(numeric::UInteger),
-}
-
-impl RegisterIndex {
-    pub fn index(
-        &self,
-        numeric::UInteger(input_register_count): numeric::UInteger,
-    ) -> numeric::UInteger {
-        match self {
-            // TODO: What if Input(index) is > input_register_count
-            RegisterIndex::Input(index) => *index,
-            RegisterIndex::Temporary(numeric::UInteger(index)) => {
-                numeric::UInteger(index + input_register_count)
-            }
-        }
-    }
-}
+pub use indices::RegisterIndex;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u32)]

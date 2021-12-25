@@ -261,17 +261,6 @@ fn instruction_opcode<W: std::io::Write>(
     Ok(())
 }
 
-fn length_encoded_registers<W: std::io::Write>(
-    out: &mut W,
-    registers: &structures::LengthEncodedVector<instruction_set::RegisterIndex>,
-    input_register_count: numeric::UInteger,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    length_encoded_vector(out, registers, size, |out, index| {
-        unsigned_integer(out, index.index(input_register_count), size)
-    })
-}
-
 fn code_block<W: std::io::Write>(
     out: &mut W,
     block: &format::CodeBlock,
@@ -295,7 +284,7 @@ fn code_block<W: std::io::Write>(
         match instruction {
             instruction_set::Instruction::Nop => (),
             instruction_set::Instruction::Ret(registers) => {
-                length_encoded_registers(out, registers, block.input_register_count, size)?
+                length_encoded_indices(out, registers, size)?
             }
         };
     }

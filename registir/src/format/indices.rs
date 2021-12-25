@@ -4,7 +4,10 @@ pub trait SimpleIndex: TryFrom<usize> {
     fn index(self) -> Result<usize, std::num::TryFromIntError>;
 }
 
-impl<T: TryFrom<usize>> SimpleIndex for T where usize: TryFrom<T, Error = std::num::TryFromIntError> {
+impl<T: TryFrom<usize>> SimpleIndex for T
+where
+    usize: TryFrom<T, Error = std::num::TryFromIntError>,
+{
     fn index(self) -> Result<usize, std::num::TryFromIntError> {
         usize::try_from(self)
     }
@@ -125,27 +128,20 @@ index_type!(
     "An index corresponding to the temporary registers of a code block."
 );
 
-macro_rules! imported_or_defined_index_type {
-    ($name: ident, $description: literal, $defined_case: ty, $imported_case: ty) => {
+macro_rules! double_index_type {
+    ($name: ident, $description: literal, $case_name_1: ident, $case_value_1: ty, $case_name_2: ident, $case_value_2: ty) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
         #[doc = $description]
         pub enum $name {
-            Defined($defined_case),
-            Imported($imported_case),
+            $case_name_1($case_value_1),
+            $case_name_2($case_value_2),
         }
 
         impl $name {
-            pub fn is_import(self) -> bool {
-                match self {
-                    Self::Defined(_) => false,
-                    Self::Imported(_) => true,
-                }
-            }
-
             fn index(self) -> UInteger {
                 UInteger(match self {
-                    Self::Defined(value) => UInteger::from(value).0 << 1,
-                    Self::Imported(value) => (UInteger::from(value).0 << 1) & 1,
+                    Self::$case_name_1(value) => UInteger::from(value).0 << 1,
+                    Self::$case_name_2(value) => (UInteger::from(value).0 << 1) & 1,
                 })
             }
         }
@@ -161,9 +157,9 @@ macro_rules! imported_or_defined_index_type {
                 let UInteger(value) = index;
                 let shifted = UInteger(value >> 1);
                 if value & 1u32 == 1u32 {
-                    Self::Defined(<$defined_case>::from(shifted))
+                    Self::$case_name_2(<$case_value_2>::from(shifted))
                 } else {
-                    Self::Imported(<$imported_case>::from(shifted))
+                    Self::$case_name_1(<$case_value_1>::from(shifted))
                 }
             }
         }
@@ -173,6 +169,37 @@ macro_rules! imported_or_defined_index_type {
 
             fn try_from(index: $name) -> Result<usize, Self::Error> {
                 usize::try_from(UInteger::from(index))
+            }
+        }
+    };
+}
+
+double_index_type!(
+    RegisterIndex,
+    "An index into a code block's input registers or temporary registers.",
+    Temporary,
+    TemporaryRegister,
+    Input,
+    InputRegister
+);
+
+macro_rules! imported_or_defined_index_type {
+    ($name: ident, $description: literal, $defined_case: ty, $imported_case: ty) => {
+        double_index_type!(
+            $name,
+            $description,
+            Defined,
+            $defined_case,
+            Imported,
+            $imported_case
+        );
+
+        impl $name {
+            pub fn is_import(self) -> bool {
+                match self {
+                    Self::Defined(_) => false,
+                    Self::Imported(_) => true,
+                }
             }
         }
     };

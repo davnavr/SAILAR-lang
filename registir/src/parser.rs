@@ -252,41 +252,13 @@ fn opcode<R: std::io::Read>(src: &mut R) -> ParseResult<Opcode> {
     }
 }
 
-fn register<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-    input_register_count: numeric::UInteger,
-) -> ParseResult<instruction_set::RegisterIndex> {
-    let index = unsigned_integer(src, size)?;
-    Ok(if index < input_register_count {
-        instruction_set::RegisterIndex::Input(index)
-    } else {
-        instruction_set::RegisterIndex::Temporary(numeric::UInteger(
-            index.0 - input_register_count.0,
-        ))
-    })
-}
-
-fn length_encoded_registers<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-    input_register_count: numeric::UInteger,
-) -> ParseResult<structures::LengthEncodedVector<instruction_set::RegisterIndex>> {
-    length_encoded_vector(src, size, |src| register(src, size, input_register_count))
-}
-
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-    input_register_count: numeric::UInteger,
 ) -> ParseResult<Instruction> {
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
-        Opcode::Ret => Ok(Instruction::Ret(length_encoded_registers(
-            src,
-            size,
-            input_register_count,
-        )?)),
+        Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
         Opcode::Continuation => unreachable!(),
     }
 }
@@ -321,7 +293,7 @@ fn code_block<R: std::io::Read>(
             structures::ByteLengthEncoded(length_encoded_vector(
                 &mut buffer.as_slice(),
                 size,
-                |src| instruction(src, size, input_register_count),
+                |src| instruction(src, size),
             )?)
         },
     })
