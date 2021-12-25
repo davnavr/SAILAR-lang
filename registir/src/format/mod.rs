@@ -22,6 +22,8 @@ pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>
 #[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
+pub use type_system::AnyType as TypeSignature;
+
 /// Describes the return types and parameter types of a method.
 #[derive(Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct MethodSignature {

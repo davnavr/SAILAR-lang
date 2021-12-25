@@ -48,6 +48,12 @@ pub enum AnyType {
     Heap(HeapType),
 }
 
+impl AnyType {
+    pub fn primitive(primitive_type: PrimitiveType) -> Self {
+        Self::Heap(HeapType::Val(SimpleType::Primitive(primitive_type)))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum TypeTag {

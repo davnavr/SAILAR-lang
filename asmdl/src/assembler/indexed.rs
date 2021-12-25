@@ -29,19 +29,23 @@ where
     &'a S: Into<&'a ast::Identifier>,
     <I as TryFrom<usize>>::Error: std::error::Error,
 {
-    pub fn try_add(&mut self, symbol: &'a S, value: T) -> Option<I> {
+    pub fn try_add_with<F: FnOnce(I) -> T>(&mut self, symbol: &'a S, f: F) -> Option<I> {
         let index = I::try_from(self.values.len()).unwrap();
         match self.lookup.insert(symbol.into(), index) {
             None => {
-                self.values.push(value);
+                self.values.push(f(index));
                 Some(index)
             }
             Some(_) => None,
         }
     }
 
+    pub fn try_add(&mut self, symbol: &'a S, value: T) -> Option<I> {
+        self.try_add_with(symbol, |_| value)
+    }
+
     pub fn index_of(&self, symbol: &'a S) -> Option<I> {
-        self.lookup.get(symbol.into()).cloned()
+        self.lookup.get(symbol.into()).copied()
     }
 }
 

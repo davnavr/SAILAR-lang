@@ -211,11 +211,15 @@ type TypeSignatureLookup =
 type MethodSignatureLookup =
     indexed::Set<format::indices::MethodSignature, format::MethodSignature>;
 
-type MethodBodyLookup<'a, 'b> =
-    indexed::SymbolMap<'a, ast::GlobalSymbol, format::indices::Code, MethodBodyAssembler<'b>>;
+type MethodBodyLookup<'a> =
+    indexed::SymbolMap<'a, ast::GlobalSymbol, format::indices::Code, MethodBodyAssembler<'a>>;
 
-type MethodDefinitionLookup<'a, 'b> =
-    indexed::SymbolMap<'a, ast::GlobalSymbol, usize, MethodDefinitionAssembler<'b>>;
+type MethodDefinitionLookup<'a> = indexed::SymbolMap<
+    'a,
+    ast::GlobalSymbol,
+    format::indices::MethodDefinition,
+    MethodDefinitionAssembler<'a>,
+>;
 
 fn visibility_declaration<'a>() -> declare::Once<
     'a,
@@ -272,6 +276,57 @@ fn declare_name<
     }
 }
 
+fn assemble_type_signature(
+    #[allow(unused_mut)] errors: &mut Vec<Error>,
+    signature: &ast::Positioned<ast::TypeSignature>,
+) -> Option<format::TypeSignature> {
+    match signature.value {
+        ast::TypeSignature::Primitive(primitive_type) => {
+            Some(format::TypeSignature::primitive(primitive_type))
+        }
+        ast::TypeSignature::Array(_) => todo!("Array types are not yet supported by asmdl"),
+    }
+}
+
+fn collect_type_signatures(
+    errors: &mut Vec<Error>,
+    type_signatures: &mut TypeSignatureLookup,
+    types: &[ast::Positioned<ast::TypeSignature>],
+) -> Option<format::structures::LengthEncodedVector<format::indices::TypeSignature>> {
+    let mut collected = Vec::with_capacity(types.len());
+    let mut success = true;
+
+    for signature in types {
+        if let Some(assembled) = assemble_type_signature(errors, signature) {
+            if success {
+                collected.push(type_signatures.add(assembled));
+            }
+        } else {
+            success = false;
+        }
+    }
+
+    if success {
+        Some(format::structures::LengthEncodedVector(collected))
+    } else {
+        None
+    }
+}
+
+fn assemble_method_signature(
+    errors: &mut Vec<Error>,
+    type_signatures: &mut TypeSignatureLookup,
+    parameter_types: &[ast::Positioned<ast::TypeSignature>],
+    return_types: &[ast::Positioned<ast::TypeSignature>],
+) -> Option<format::MethodSignature> {
+    let parameters_signature = collect_type_signatures(errors, type_signatures, parameter_types);
+    let return_signature = collect_type_signatures(errors, type_signatures, parameter_types);
+    Some(format::MethodSignature {
+        return_types: return_signature?,
+        parameter_types: parameters_signature?,
+    })
+}
+
 #[derive(Debug)]
 struct MethodBodyAssembler<'a> {
     declarations: &'a [ast::Positioned<ast::CodeDeclaration>],
@@ -280,6 +335,7 @@ struct MethodBodyAssembler<'a> {
 #[derive(Debug)]
 struct MethodDefinitionAssembler<'a> {
     origin: ast::Position,
+    owner: format::indices::TypeDefinition,
     parameter_types: &'a [ast::Positioned<ast::TypeSignature>],
     return_types: &'a [ast::Positioned<ast::TypeSignature>],
     modifiers: &'a [ast::Positioned<ast::MethodModifier>],
@@ -291,9 +347,9 @@ impl<'a> MethodDefinitionAssembler<'a> {
         &self,
         errors: &mut Vec<Error>,
         identifiers: &mut IdentifierLookup,
+        type_signatures: &mut TypeSignatureLookup,
         method_signatures: &mut MethodSignatureLookup,
         method_bodies: &mut MethodBodyLookup,
-        owner: format::indices::Type,
     ) -> Option<format::Method> {
         let mut visibility = visibility_declaration();
         let mut flags = format::MethodFlags::default();
@@ -363,15 +419,19 @@ impl<'a> MethodDefinitionAssembler<'a> {
             method_name.value(),
             method_body.value().map(|body| body.unwrap_or_default()),
         ) {
-            // Some(format::Method {
-            //     owner,
-            //     name,
-            //     visibility: visibility.value().unwrap_or_default(),
-            //     flags,
-            //     //signature:
-            //     body,
-            // })
-            unimplemented!()
+            Some(format::Method {
+                owner: self.owner,
+                name,
+                visibility: visibility.value().unwrap_or_default(),
+                flags,
+                signature: method_signatures.add(assemble_method_signature(
+                    errors,
+                    type_signatures,
+                    self.parameter_types,
+                    self.return_types,
+                )?),
+                body,
+            })
         } else {
             None
         }
@@ -381,19 +441,21 @@ impl<'a> MethodDefinitionAssembler<'a> {
 #[derive(Debug)]
 struct TypeDefinitionAssembler<'a> {
     origin: ast::Position,
+    index: format::indices::TypeDefinition,
     modifiers: &'a [ast::Positioned<ast::TypeModifier>],
     declarations: &'a [ast::Positioned<ast::TypeDeclaration>],
 }
 
 impl<'a> TypeDefinitionAssembler<'a> {
-    fn assemble<'b>(
+    fn assemble(
         &self,
         errors: &mut Vec<Error>,
         identifiers: &mut IdentifierLookup,
         namespaces: &mut NamespaceLookup,
-        //methods:
+        methods: &mut MethodDefinitionLookup<'a>,
     ) -> Option<format::Type> {
         let mut visibility = visibility_declaration();
+        #[allow(unused_mut)]
         let mut flags = format::TypeFlags::default();
 
         for modifier in self.modifiers {
@@ -416,7 +478,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
             Error::DuplicateDeclaration(position, Declaration::Namespace)
         });
 
-        // Field and method imports have been assembled, so it is safe to refer to these with the proper index types.
+        #[allow(unused_mut)]
         let mut field_indices = Vec::new();
         let mut method_indices = Vec::new();
 
@@ -456,7 +518,27 @@ impl<'a> TypeDefinitionAssembler<'a> {
                         }
                     }
                 }
-                _ => (), // TOOD: For methods, add MethodAssembler to method lookup
+                ast::TypeDeclaration::Method {
+                    symbol,
+                    parameter_types,
+                    return_types,
+                    modifiers,
+                    declarations,
+                } => {
+                    if let Some(index) = methods.try_add(
+                        symbol,
+                        MethodDefinitionAssembler {
+                            origin: declaration.position,
+                            owner: self.index,
+                            modifiers,
+                            declarations,
+                            parameter_types,
+                            return_types,
+                        },
+                    ) {
+                        method_indices.push(index);
+                    }
+                }
             }
         }
 
@@ -549,14 +631,12 @@ pub fn assemble_declarations(
                 ref symbol,
                 modifiers,
                 declarations,
-            } => match type_definitions.try_add(
-                symbol,
-                TypeDefinitionAssembler {
-                    origin: node.position,
-                    modifiers,
-                    declarations,
-                },
-            ) {
+            } => match type_definitions.try_add_with(symbol, |index| TypeDefinitionAssembler {
+                origin: node.position,
+                index,
+                modifiers,
+                declarations,
+            }) {
                 Some(_) => (),
                 None => errors.push(Error::DuplicateNamedDeclaration(
                     symbol.clone(),
@@ -567,22 +647,44 @@ pub fn assemble_declarations(
         }
     }
 
-    let mut validated_type_definitions =
-        Vec::<format::Type>::with_capacity(type_definitions.items().len());
-
-    {
+    fn assemble_definitions<D, T, A: FnMut(&D) -> Option<T>>(
+        definitions: &[D],
+        mut assemble: A,
+    ) -> Vec<T> {
+        let mut assembled = Vec::with_capacity(definitions.len());
         let mut commit = true;
-        for definition in type_definitions.items() {
-            match definition.assemble(&mut errors, &mut identifiers, &mut namespaces) {
+        for definition in definitions {
+            match assemble(definition) {
                 Some(result) => {
                     if commit {
-                        validated_type_definitions.push(result)
+                        assembled.push(result)
                     }
                 }
                 None => commit = false,
             }
         }
+        assembled
     }
+
+    let assembled_type_definitions = assemble_definitions(type_definitions.items(), |definition| {
+        definition.assemble(
+            &mut errors,
+            &mut identifiers,
+            &mut namespaces,
+            &mut method_definitions,
+        )
+    });
+
+    let assembled_method_definitions =
+        assemble_definitions(method_definitions.items(), |definition| {
+            definition.assemble(
+                &mut errors,
+                &mut identifiers,
+                &mut type_signatures,
+                &mut method_signatures,
+                &mut method_bodies,
+            )
+        });
 
     if module_header.is_none() {
         errors.push(Error::MissingDeclaration(None, Declaration::Module))
@@ -602,10 +704,10 @@ pub fn assemble_declarations(
                 format::structures::LengthEncodedVector(namespaces.take_items()),
             ),
             type_signatures: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(Vec::new()),
+                format::structures::LengthEncodedVector(type_signatures.take_items()),
             ),
             method_signatures: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(Vec::new()),
+                format::structures::LengthEncodedVector(method_signatures.take_items()),
             ),
             method_bodies: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(Vec::new()),
@@ -629,13 +731,13 @@ pub fn assemble_declarations(
             }),
             definitions: format::structures::ByteLengthEncoded(format::ModuleDefinitions {
                 defined_types: format::structures::ByteLengthEncoded(
-                    format::structures::LengthEncodedVector(validated_type_definitions),
+                    format::structures::LengthEncodedVector(assembled_type_definitions),
                 ),
                 defined_fields: format::structures::ByteLengthEncoded(
                     format::structures::LengthEncodedVector(Vec::new()),
                 ),
                 defined_methods: format::structures::ByteLengthEncoded(
-                    format::structures::LengthEncodedVector(Vec::new()),
+                    format::structures::LengthEncodedVector(assembled_method_definitions),
                 ),
             }),
             entry_point: format::structures::ByteLengthEncoded(None),
