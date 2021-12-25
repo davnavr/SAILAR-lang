@@ -442,7 +442,8 @@ fn method_definition<W: std::io::Write>(
     unsigned_index(out, definition.signature, size)?;
 
     match definition.body {
-        format::MethodBody::Defined(_) | format::MethodBody::Abstract => Ok(()),
+        format::MethodBody::Defined(body) => unsigned_index(out, body, size),
+        format::MethodBody::Abstract => Ok(()),
         format::MethodBody::External {
             library,
             entry_point_name,

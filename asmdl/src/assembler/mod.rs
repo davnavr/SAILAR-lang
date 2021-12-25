@@ -675,6 +675,8 @@ pub fn assemble_declarations(
         assembled
     }
 
+    let assembled_method_bodies = assemble_definitions(method_bodies.items(), |body| todo!());
+
     let assembled_type_definitions = assemble_definitions(type_definitions.items(), |definition| {
         definition.assemble(
             &mut errors,
@@ -719,7 +721,7 @@ pub fn assemble_declarations(
                 format::structures::LengthEncodedVector(method_signatures.take_items()),
             ),
             method_bodies: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(Vec::new()),
+                format::structures::LengthEncodedVector(assembled_method_bodies),
             ),
             data_arrays: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(Vec::new()),

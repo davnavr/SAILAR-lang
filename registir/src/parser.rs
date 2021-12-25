@@ -13,6 +13,7 @@ pub enum ParseError {
     InvalidModuleMagic,
     InvalidIntegerSize(u8),
     InvalidDataVectorCount(numeric::UInteger),
+    InvalidByteLength { expected: usize, actual: usize },
     InvalidHeaderFieldCount(numeric::UInteger),
     InvalidIdentifierCharacter(std::str::Utf8Error),
     EmptyIdentifier,
@@ -31,13 +32,16 @@ impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidModuleMagic => {
-                f.write_str("The file magic indicates that it is not a valid binary module")
+                f.write_str("the file magic indicates that it is not a valid binary module")
             }
             Self::InvalidIntegerSize(value) => {
                 write!(f, "{:#02X} is not a valid integer size value", value)
             }
             Self::InvalidDataVectorCount(count) => {
                 write!(f, "{} is not a valid data vector count", count)
+            }
+            Self::InvalidByteLength { expected, actual } => {
+                write!(f, "expected to read {} bytes but got {}", expected, actual)
             }
             Self::InvalidHeaderFieldCount(count) => write!(
                 f,
@@ -79,12 +83,25 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-impl std::error::Error for ParseError {}
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InputOutputError(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
 fn fill_buffer(src: &mut impl std::io::Read, buffer: &mut [u8]) -> ParseResult<()> {
-    src.read_exact(buffer).map_err(ParseError::InputOutputError)
+    let count = src.read(buffer).map_err(ParseError::InputOutputError)?;
+    if count == buffer.len() {
+        Ok(())
+    }
+    else {
+        Err(ParseError::InvalidByteLength { expected: buffer.len(), actual: count })
+    }
 }
 
 fn fixed_bytes<R: std::io::Read, const L: usize>(src: &mut R) -> ParseResult<[u8; L]> {
