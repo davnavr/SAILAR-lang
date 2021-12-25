@@ -1,5 +1,15 @@
 use crate::format::numeric::UInteger;
 
+pub trait SimpleIndex: TryFrom<usize> {
+    fn index(self) -> Result<usize, std::num::TryFromIntError>;
+}
+
+impl<T: TryFrom<usize>> SimpleIndex for T where usize: TryFrom<T, Error = std::num::TryFromIntError> {
+    fn index(self) -> Result<usize, std::num::TryFromIntError> {
+        usize::try_from(self)
+    }
+}
+
 macro_rules! index_type {
     ($name: ident, $description: literal) => {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]

@@ -1,4 +1,5 @@
 use crate::ast;
+use registir::format::indices::SimpleIndex;
 
 #[derive(Debug)]
 pub struct SymbolMap<'a, S, I, T> {
@@ -23,7 +24,7 @@ impl<'a, S, I, T> SymbolMap<'a, S, I, T> {
     }
 }
 
-impl<'a, S, I: TryFrom<usize> + Copy, T> SymbolMap<'a, S, I, T>
+impl<'a, S, I: SimpleIndex + Copy, T> SymbolMap<'a, S, I, T>
 where
     &'a S: Into<&'a ast::Identifier>,
     <I as TryFrom<usize>>::Error: std::error::Error,
@@ -44,44 +45,69 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct Set<I, T> {
-    lookup: std::collections::HashMap<T, I>,
+#[derive(Debug, Eq)]
+struct SetKey<T> {
+    items: std::rc::Rc<std::cell::RefCell<Vec<T>>>,
+    index: usize,
 }
 
-impl<I: TryFrom<usize> + Copy, T: Eq + std::hash::Hash> Set<I, T>
+impl<T> SetKey<T> {
+    fn get(&self) -> std::cell::Ref<'_, T> {
+        std::cell::Ref::map(self.items.borrow(), |items| items.get(self.index).unwrap())
+    }
+}
+
+impl<T> std::cmp::PartialEq for SetKey<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+            && Vec::as_ptr(&self.items.borrow()) == Vec::as_ptr(&other.items.borrow())
+    }
+}
+
+impl<T: std::hash::Hash> std::hash::Hash for SetKey<T> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        std::hash::Hash::hash(std::ops::Deref::deref(&self.get()), state)
+    }
+}
+
+#[derive(Debug)]
+pub struct Set<I, T> {
+    items: std::rc::Rc<std::cell::RefCell<Vec<T>>>,
+    lookup: std::collections::HashMap<SetKey<T>, I>,
+}
+
+impl<I: SimpleIndex + Copy, T: Eq + std::hash::Hash> Set<I, T>
 where
     <I as TryFrom<usize>>::Error: std::error::Error,
 {
     pub fn new() -> Self {
         Self {
+            items: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
             lookup: std::collections::HashMap::new(),
         }
     }
 
-    pub fn add(&mut self, value: T) -> I {
-        let index = I::try_from(self.lookup.len()).unwrap();
-        match self.lookup.insert(value, index) {
-            None => index,
-            Some(existing) => existing,
-        }
+    pub fn take_items(&mut self) -> Vec<T> {
+        self.lookup.clear();
+        self.items.replace(Vec::new())
     }
-}
 
-impl<I: TryInto<usize> + std::fmt::Debug, T: Clone> From<Set<I, T>> for Vec<T>
-where
-    <I as TryInto<usize>>::Error: std::error::Error,
-{
-    fn from(values: Set<I, T>) -> Self {
-        let length = values.lookup.len();
-        let mut items = Vec::with_capacity(length);
-        unsafe {
-            // Some items are unitialized, but the loop below should insert the items into the appropriate positions.
-            items.set_len(length);
-            for (ref value, index) in values.lookup {
-                items[index.try_into().unwrap()] = value.clone()
+    pub fn add(&mut self, value: T) -> I {
+        use std::collections::hash_map::Entry;
+        let index = self.items.borrow().len();
+        self.items.borrow_mut().push(value);
+        match self.lookup.entry(SetKey {
+            items: self.items.clone(),
+            index,
+        }) {
+            Entry::Occupied(entry) => {
+                self.items.borrow_mut().pop();
+                *(entry.get())
             }
+            Entry::Vacant(entry) => *entry.insert(I::try_from(index).unwrap()),
         }
-        items
     }
 }

@@ -386,7 +386,7 @@ struct TypeDefinitionAssembler<'a> {
 }
 
 impl<'a> TypeDefinitionAssembler<'a> {
-    fn assemble(
+    fn assemble<'b>(
         &self,
         errors: &mut Vec<Error>,
         identifiers: &mut IdentifierLookup,
@@ -505,8 +505,11 @@ pub fn assemble_declarations(
     let mut type_signatures = TypeSignatureLookup::new();
     let mut method_signatures = MethodSignatureLookup::new();
     let mut method_bodies = MethodBodyLookup::new();
-    let mut type_definitions =
-        indexed::SymbolMap::<ast::GlobalSymbol, usize, TypeDefinitionAssembler>::new();
+    let mut type_definitions = indexed::SymbolMap::<
+        ast::GlobalSymbol,
+        format::indices::TypeDefinition,
+        TypeDefinitionAssembler,
+    >::new();
     let mut method_definitions = MethodDefinitionLookup::new();
 
     for node in declarations {
@@ -593,10 +596,10 @@ pub fn assemble_declarations(
             header: format::structures::ByteLengthEncoded(module_header.flatten().unwrap()),
             // TODO: Add other things
             identifiers: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(Vec::from(identifiers)),
+                format::structures::LengthEncodedVector(identifiers.take_items()),
             ),
             namespaces: format::structures::ByteLengthEncoded(
-                format::structures::LengthEncodedVector(Vec::from(namespaces)),
+                format::structures::LengthEncodedVector(namespaces.take_items()),
             ),
             type_signatures: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(Vec::new()),
