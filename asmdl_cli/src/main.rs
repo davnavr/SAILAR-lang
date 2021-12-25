@@ -76,22 +76,13 @@ fn assemble(args: &Arguments) -> Result<(), Vec<Box<dyn std::error::Error>>> {
         },
     )?;
 
-    let module = asmdl::assembler::assemble_declarations(
-        &input,
-        args.input
-            .file_name()
-            .map(|name| name.to_str())
-            .flatten()
-            .map(|name| registir::format::Identifier::try_from(name).ok())
-            .flatten()
-            .unwrap_or_else(|| registir::format::Identifier::try_from("module").unwrap()),
-    )
-    .map_err::<Vec<Box<dyn std::error::Error>>, _>(|errors| {
-        errors
-            .into_iter()
-            .map(|error| Box::new(WrappedError(error)) as Box<dyn std::error::Error>)
-            .collect()
-    })?;
+    let module = asmdl::assembler::assemble_declarations(&input)
+        .map_err::<Vec<Box<dyn std::error::Error>>, _>(|errors| {
+            errors
+                .into_iter()
+                .map(|error| Box::new(WrappedError(error)) as Box<dyn std::error::Error>)
+                .collect()
+        })?;
 
     let mut output = std::fs::File::create(
         args.output

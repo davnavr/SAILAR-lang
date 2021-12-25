@@ -34,7 +34,9 @@ pub enum Error {
     DuplicateDeclaration(ast::Position, Declaration),
     DuplicateModifier(ast::Position, &'static str),
     InvalidNameDeclaration(ast::Position, Declaration, NameError),
+    /// Used when a declaration that is required to be present, such as the module header, was not defined.
     MissingDeclaration(Option<ast::Position>, Declaration),
+    UndefinedGlobalSymbol(ast::GlobalSymbol, Declaration),
 }
 
 impl Error {
@@ -44,6 +46,7 @@ impl Error {
                 ast::GlobalSymbol(ast::Positioned { position, .. }),
                 _,
             )
+            | Self::UndefinedGlobalSymbol(ast::GlobalSymbol(ast::Positioned { position, .. }), _)
             | Self::DuplicateDeclaration(position, _)
             | Self::DuplicateModifier(position, _)
             | Self::InvalidNameDeclaration(position, _, _) => Some(position),
@@ -98,13 +101,17 @@ impl std::fmt::Display for Error {
             Self::MissingDeclaration(_, declaration) => {
                 write!(f, "missing {} declaration", declaration)
             }
+            Self::UndefinedGlobalSymbol(symbol, declaration) => write!(
+                f,
+                "a {} corresponding to the symbol @{} could not be found",
+                declaration, symbol.0.value
+            ),
         }
     }
 }
 
 fn assemble_module_header(
     errors: &mut Vec<Error>,
-    default_module_name: &format::Identifier,
     declarations: &[ast::Positioned<ast::ModuleDeclaration>],
 ) -> Option<format::ModuleHeader> {
     let mut module_name = declare::Once::new(|name: &ast::Positioned<_>, _| {
@@ -320,7 +327,7 @@ fn assemble_method_signature(
     return_types: &[ast::Positioned<ast::TypeSignature>],
 ) -> Option<format::MethodSignature> {
     let parameters_signature = collect_type_signatures(errors, type_signatures, parameter_types);
-    let return_signature = collect_type_signatures(errors, type_signatures, parameter_types);
+    let return_signature = collect_type_signatures(errors, type_signatures, return_types);
     Some(format::MethodSignature {
         return_types: return_signature?,
         parameter_types: parameters_signature?,
@@ -352,6 +359,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         method_bodies: &mut MethodBodyLookup,
     ) -> Option<format::Method> {
         let mut visibility = visibility_declaration();
+        #[allow(unused_mut)]
         let mut flags = format::MethodFlags::default();
 
         for modifier in self.modifiers {
@@ -366,8 +374,8 @@ impl<'a> MethodDefinitionAssembler<'a> {
                     modifier.position,
                     format::Visibility::Private,
                 ),
-                ast::MethodModifier::Instance => unimplemented!(),
-                ast::MethodModifier::Initializer => unimplemented!(),
+                ast::MethodModifier::Instance => todo!(),
+                ast::MethodModifier::Initializer => todo!(),
             }
         }
 
@@ -388,9 +396,18 @@ impl<'a> MethodDefinitionAssembler<'a> {
                 ast::MethodDeclaration::Body(body) => {
                     if let Some(set_body) = method_body.declare(errors, declaration.position) {
                         set_body(match body {
-                            ast::MethodBodyDeclaration::Defined(name) => method_bodies
-                                .index_of(name)
-                                .map(format::MethodBody::Defined),
+                            ast::MethodBodyDeclaration::Defined(name) => {
+                                match method_bodies.index_of(name) {
+                                    Some(index) => Some(format::MethodBody::Defined(index)),
+                                    None => {
+                                        errors.push(Error::UndefinedGlobalSymbol(
+                                            name.clone(),
+                                            Declaration::MethodBody,
+                                        ));
+                                        None
+                                    }
+                                }
+                            }
                             ast::MethodBodyDeclaration::External { name, library } => {
                                 unimplemented!()
                             }
@@ -415,10 +432,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
             ))
         }
 
-        if let (Some(name), Some(body)) = (
-            method_name.value(),
-            method_body.value().map(|body| body.unwrap_or_default()),
-        ) {
+        if let (Some(name), Some(body)) = (method_name.value(), method_body.value().flatten()) {
             Some(format::Method {
                 owner: self.owner,
                 name,
@@ -577,7 +591,6 @@ impl<'a> TypeDefinitionAssembler<'a> {
 
 pub fn assemble_declarations(
     declarations: &[ast::Positioned<ast::TopLevelDeclaration>],
-    default_module_name: format::Identifier, // TODO: Remove default module name and just add an error for missing module name.
 ) -> Result<format::Module, Vec<Error>> {
     let mut errors = Vec::new();
     let mut module_header = None;
@@ -598,11 +611,7 @@ pub fn assemble_declarations(
         match &node.value {
             ast::TopLevelDeclaration::Module(ref module_nodes) => {
                 if module_header.is_none() {
-                    module_header = Some(assemble_module_header(
-                        &mut errors,
-                        &default_module_name,
-                        module_nodes,
-                    ))
+                    module_header = Some(assemble_module_header(&mut errors, module_nodes))
                 } else {
                     errors.push(Error::DuplicateDeclaration(
                         node.position,
@@ -758,12 +767,9 @@ mod tests {
     #[test]
     fn module_header_test() {
         let declarations = parser::parse(".module { .name \"Test\"; .version 1 2 3; };").unwrap();
-        let header = assembler::assemble_declarations(
-            &declarations,
-            format::Identifier::try_from("a").unwrap(),
-        )
-        .map(|module| module.header.0)
-        .unwrap();
+        let header = assembler::assemble_declarations(&declarations)
+            .map(|module| module.header.0)
+            .unwrap();
 
         assert_eq!(
             Ok(header.identifier.name),
