@@ -249,7 +249,7 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
                 combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
                     .map(ast::Instruction::Ret),
             ),
-            keyword("const.zero").with(primitive_type().map(ast::Instruction::ConstZero)),
+            keyword("const.i").with((primitive_type(), literal_integer()).map(|(ty, value)| ast::Instruction::ConstI(ty, value))),
         ))),
     )
         .map(|(registers, instruction)| ast::Statement {

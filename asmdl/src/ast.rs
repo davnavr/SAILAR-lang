@@ -140,7 +140,7 @@ pub enum TypeSignature {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
-    ConstZero(PrimitiveType),
+    ConstI(PrimitiveType, i128),
     Ret(Vec<RegisterSymbol>),
 }
 
@@ -149,7 +149,7 @@ impl Instruction {
     pub fn return_count(&self) -> u8 {
         match self {
             Self::Nop | Self::Ret(_) => 0,
-            Self::ConstZero(_) => 1,
+            Self::ConstI(_, _) => 1,
         }
     }
 }

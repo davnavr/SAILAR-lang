@@ -1,17 +1,83 @@
 use crate::format::{indices, numeric, structures::LengthEncodedVector};
 
+pub use crate::format::type_system::PrimitiveType;
+pub use indices::Register as RegisterIndex;
+
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
 /// if the target branch is taken, with `0` refering to the current block.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct BlockOffset(pub numeric::SInteger);
 
-pub use indices::Register as RegisterIndex;
+/// Represents an integer constant, whose value is stored in little-endian order.
+///
+/// # Structure
+/// - [`Opcode`]
+/// - [`PrimitiveType`]
+/// - [`IntegerConstant::value()`]
+#[derive(Clone, Copy, Debug, Eq)]
+pub enum IntegerConstant {
+    U8(u8),
+    S8(i8),
+    U16(u16),
+    S16(i16),
+    U32(u32),
+    S32(i32),
+    U64(u64),
+    S64(i64),
+}
 
+impl IntegerConstant {
+    pub fn value(self) -> i128 {
+        match self {
+            Self::U8(value) => value.into(),
+            Self::S8(value) => value.into(),
+            Self::U16(value) => value.into(),
+            Self::S16(value) => value.into(),
+            Self::U32(value) => value.into(),
+            Self::S32(value) => value.into(),
+            Self::U64(value) => value.into(),
+            Self::S64(value) => value.into(),
+        }
+    }
+}
+
+impl std::cmp::PartialEq for IntegerConstant {
+    fn eq(&self, other: &Self) -> bool {
+        self.value() == other.value()
+    }
+}
+
+// See https://github.com/davnavr/ubyte/blob/c-like-language/src/UByte.Format/Model.fsi#L180
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum Opcode {
     Nop = 0,
-    Ret = 1,
+    Ret,
+    Phi,
+    Select,
+    //Switch = 4,
+    Br,
+    BrIf,
+    Call,
+    CallVirt,
+    //CallIndr,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    And,
+    Or,
+    Not,
+    Xor,
+    Rem,
+    //StoresBothDivisionResultAndRemainder,
+    //ShiftIntegerBitsLeft,
+    //ShiftIntegerBitsRight,
+    Rotl,
+    Rotr,
+    ConstI,
+    ConstS,
+    ConstF,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
     Continuation = 0xFF,
 }
@@ -23,22 +89,26 @@ pub enum Opcode {
 ///
 /// For instructions that call another method, such as `call` or `call.virt`, the number of registers used as
 /// arguments must exactly match the number of arguments specified by the signature of the method. Additionally, the number
-/// of temporary registers introduced is equal to the number of return values.
+/// of temporary registers introduced is equal to the number of return values in the method's signature.
 #[derive(Debug)]
 pub enum Instruction {
-    // NOTE: If efficiency is needed, could theoretically omit length integers from Ret and Call instructions
     /// ```txt
-    /// nop
+    /// nop;
     /// ```
     /// Does absolutely nothing.
     Nop,
     /// ```txt
-    /// ret (<values>)
+    /// ret <value1>, <value2>, ...;
     /// ```
     /// Returns the values in the specified registers and transfers control back to the calling method.
     ///
-    /// Must be the last instruction in a block.
+    /// Should be the last instruction in a block.
     Ret(LengthEncodedVector<RegisterIndex>),
+    /// ```txt
+    /// <result> = const.i <integer type> <value>;
+    /// ```
+    /// Returns an integer of the specified type.
+    ConstI(IntegerConstant),
 }
 
 impl Instruction {
@@ -46,6 +116,7 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::ConstI(_) => Opcode::ConstI,
         }
     }
 }

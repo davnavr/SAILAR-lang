@@ -280,12 +280,49 @@ fn code_block<W: std::io::Write>(
     let structures::ByteLengthEncoded(structures::LengthEncodedVector(code)) = &block.instructions;
 
     for instruction in code {
+        use instruction_set::{Instruction, IntegerConstant, PrimitiveType};
+
         instruction_opcode(out, instruction.opcode())?;
+
         match instruction {
-            instruction_set::Instruction::Nop => (),
-            instruction_set::Instruction::Ret(registers) => {
-                length_encoded_indices(out, registers, size)?
-            }
+            Instruction::Nop => (),
+            Instruction::Ret(registers) => length_encoded_indices(out, registers, size)?,
+            Instruction::ConstI(constant) => match constant {
+                IntegerConstant::S8(value) => {
+                    write(out, PrimitiveType::S8 as u8)?;
+                    write(out, *value as u8)?;
+                }
+                IntegerConstant::U8(value) => {
+                    write(out, PrimitiveType::U8 as u8)?;
+                    write(out, *value)?;
+                }
+                IntegerConstant::S16(value) => {
+                    write(out, PrimitiveType::S16 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+                IntegerConstant::U16(value) => {
+                    write(out, PrimitiveType::U16 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+                IntegerConstant::S32(value) => {
+                    write(out, PrimitiveType::S32 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+                IntegerConstant::U32(value) => {
+                    write(out, PrimitiveType::U32 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+                IntegerConstant::S64(value) => {
+                    write(out, PrimitiveType::S64 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+                IntegerConstant::U64(value) => {
+                    write(out, PrimitiveType::U64 as u8)?;
+                    write_bytes(out, &value.to_le_bytes())?;
+                }
+            },
+            #[allow(unreachable_patterns)]
+            _ => todo!("TODO: Add support for writing of more instructions"),
         };
     }
 

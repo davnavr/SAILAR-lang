@@ -18,6 +18,8 @@ pub enum ParseError {
     InvalidIdentifierCharacter(std::str::Utf8Error),
     EmptyIdentifier,
     InvalidTypeSignatureTag(u8),
+    InvalidPrimitiveType(u8),
+    InvalidIntegerConstantType(type_system::PrimitiveType),
     InvalidCodeBlockFlags(u8),
     InvalidOpcode(u32),
     InvalidVisibilityFlags(u8),
@@ -52,6 +54,12 @@ impl std::fmt::Display for ParseError {
             Self::InvalidIdentifierCharacter(error) => error.fmt(f),
             Self::InvalidTypeSignatureTag(tag) => {
                 write!(f, "{:#02X} is not a valid type signature tag", tag)
+            }
+            Self::InvalidPrimitiveType(tag) => {
+                write!(f, "{:#02X} is not a valid primitive type", tag)
+            }
+            Self::InvalidIntegerConstantType(tag) => {
+                write!(f, "{:?} is not a constant integer type", tag)
             }
             Self::InvalidCodeBlockFlags(flags) => write!(
                 f,
@@ -271,6 +279,32 @@ fn opcode<R: std::io::Read>(src: &mut R) -> ParseResult<Opcode> {
     }
 }
 
+fn constant_integer<R: std::io::Read>(
+    src: &mut R,
+) -> ParseResult<instruction_set::IntegerConstant> {
+    use instruction_set::IntegerConstant;
+    use type_system::PrimitiveType;
+
+    let tag = byte(src)?;
+    let integer_type = primitive_type(unsafe { std::mem::transmute(tag) })
+        .ok_or(ParseError::InvalidPrimitiveType(tag))?;
+
+    match integer_type {
+        PrimitiveType::U8 => Ok(IntegerConstant::U8(byte(src)?)),
+        PrimitiveType::S8 => Ok(IntegerConstant::S8(byte(src)? as i8)),
+        PrimitiveType::S16 => Ok(IntegerConstant::S16(i16::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::U16 => Ok(IntegerConstant::U16(u16::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::S32 => Ok(IntegerConstant::S32(i32::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::U32 => Ok(IntegerConstant::U32(u32::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::S64 => Ok(IntegerConstant::S64(i64::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::U64 => Ok(IntegerConstant::U64(u64::from_le_bytes(fixed_bytes(src)?))),
+        PrimitiveType::UNative
+        | PrimitiveType::SNative
+        | PrimitiveType::F32
+        | PrimitiveType::F64 => Err(ParseError::InvalidIntegerConstantType(integer_type)),
+    }
+}
+
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -278,7 +312,9 @@ fn instruction<R: std::io::Read>(
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
+        Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Continuation => unreachable!(),
+        _ => todo!("TODO: Add support for parsing of more instructions"),
     }
 }
 

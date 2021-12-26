@@ -483,18 +483,21 @@ impl<'a> MethodBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
+            use format::instruction_set::Instruction;
+
             let return_count = usize::from(statement.instruction.value.return_count());
 
             if statement.registers.len() <= return_count {
                 match &statement.instruction.value {
+                    ast::Instruction::Nop => instructions.push(Instruction::Nop),
                     ast::Instruction::Ret(registers) => {
                         if let Some(indices) =
                             Self::lookup_register_indices(errors, register_lookup, registers)
                         {
-                            instructions.push(format::instruction_set::Instruction::Ret(indices));
+                            instructions.push(Instruction::Ret(indices));
                         }
                     }
-                    _ => todo!(),
+                    _ => todo!("Attempt to assemble unsupported instruction"),
                 }
 
                 for name in &statement.registers {
