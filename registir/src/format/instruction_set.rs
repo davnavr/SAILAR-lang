@@ -125,7 +125,7 @@ impl TryFrom<u32> for Opcode {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value < Self::Ret as u32 {
+        if value < Self::ConstF as u32 {
             Ok(unsafe { std::mem::transmute(value) })
         } else {
             Err(())
