@@ -52,6 +52,8 @@ pub enum Error {
         expected: u8,
         actual: usize,
     },
+    InvalidConstantIntegerType(ast::Positioned<format::type_system::PrimitiveType>),
+    PrimitiveConstantOutOfRange(format::type_system::PrimitiveType, ast::Positioned<i128>),
 }
 
 impl Error {
@@ -70,6 +72,8 @@ impl Error {
                 ..
             }))
             | Self::InvalidReturnRegisterCount { position, .. }
+            | Self::InvalidConstantIntegerType(ast::Positioned { position, .. })
+            | Self::PrimitiveConstantOutOfRange(_, ast::Positioned { position, .. })
             | Self::UndefinedRegister(ast::RegisterSymbol(ast::Positioned { position, .. }))
             | Self::UndefinedGlobalSymbol(ast::GlobalSymbol(ast::Positioned { position, .. }), _)
             | Self::UndefinedLocalSymbol(ast::LocalSymbol(ast::Positioned { position, .. }), _)
@@ -166,6 +170,17 @@ impl std::fmt::Display for Error {
                 "expected at least {} temporary registers to contain the results of this instruction but got {}",
                 expected,
                 actual
+            ),
+            Self::InvalidConstantIntegerType(ast::Positioned { value: primitive_type, .. }) => write!(
+                f,
+                "{:?} is not a valid constant integer type",
+                primitive_type
+            ),
+            Self::PrimitiveConstantOutOfRange(integer_type, ast::Positioned { value, .. }) => write!(
+                f,
+                "{} is not a valid {:?} constant",
+                value,
+                integer_type
             ),
         }
     }
@@ -463,6 +478,36 @@ impl<'a> MethodBlockAssembler<'a> {
         }
     }
 
+    fn convert_integer_constant<T, F: FnOnce(T) -> format::instruction_set::IntegerConstant>(
+        value: &ast::Positioned<i128>,
+        integer_type: format::instruction_set::PrimitiveType,
+        constant: F,
+    ) -> Result<format::instruction_set::IntegerConstant, Error>
+    where
+        T: TryFrom<i128, Error = std::num::TryFromIntError>,
+    {
+        T::try_from(value.value)
+            .map(constant)
+            .map_err(|_| Error::PrimitiveConstantOutOfRange(integer_type, value.clone()))
+    }
+
+    fn define_integer_constant(
+        primitive_type: &ast::Positioned<format::instruction_set::PrimitiveType>,
+        value: &ast::Positioned<i128>,
+    ) -> Result<format::instruction_set::IntegerConstant, Error> {
+        use format::instruction_set::{IntegerConstant, PrimitiveType};
+        let integer_type = primitive_type.value;
+        match integer_type {
+            PrimitiveType::S32 => {
+                Self::convert_integer_constant(value, integer_type, IntegerConstant::S32)
+            }
+            PrimitiveType::U32 => {
+                Self::convert_integer_constant(value, integer_type, IntegerConstant::U32)
+            }
+            _ => Err(Error::InvalidConstantIntegerType(primitive_type.clone())),
+        }
+    }
+
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
@@ -497,7 +542,12 @@ impl<'a> MethodBlockAssembler<'a> {
                             instructions.push(Instruction::Ret(indices));
                         }
                     }
-                    _ => todo!("Attempt to assemble unsupported instruction"),
+                    ast::Instruction::ConstI(integer_type, value) => {
+                        match Self::define_integer_constant(integer_type, value) {
+                            Ok(constant) => instructions.push(Instruction::ConstI(constant)),
+                            Err(error) => errors.push(error),
+                        }
+                    }
                 }
 
                 for name in &statement.registers {

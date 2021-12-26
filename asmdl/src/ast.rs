@@ -140,7 +140,7 @@ pub enum TypeSignature {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
-    ConstI(PrimitiveType, i128),
+    ConstI(Positioned<PrimitiveType>, Positioned<i128>),
     Ret(Vec<RegisterSymbol>),
 }
 
