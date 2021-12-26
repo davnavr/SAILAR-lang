@@ -250,15 +250,16 @@ fn instruction_opcode<W: std::io::Write>(
 ) -> WriteResult {
     let mut value = opcode as usize;
 
-    write(out, value as u8)?;
-    value -= instruction_set::Opcode::Continuation as usize;
-
-    while value > 0 {
+    loop {
         write(out, value as u8)?;
-        value -= instruction_set::Opcode::Continuation as usize;
-    }
+        value -= std::cmp::min(value, instruction_set::Opcode::Continuation as usize);
 
-    Ok(())
+        if value > 0 {
+            continue;
+        } else {
+            return Ok(());
+        }
+    }
 }
 
 fn code_block<W: std::io::Write>(
