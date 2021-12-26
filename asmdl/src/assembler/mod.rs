@@ -594,7 +594,8 @@ impl<'a> MethodBodyAssembler<'a> {
 
                         // Entry block is moved to last index, so lookup has to be adjusted.
                         let previous_entry_block_index = entry_block.insert(last_block_index);
-                        *block_lookup.get_mut(last_block_name).unwrap() = previous_entry_block_index;
+                        *block_lookup.get_mut(last_block_name).unwrap() =
+                            previous_entry_block_index;
 
                         let mut assembled_blocks = assemble_definitions(blocks, |block| {
                             // Reused when blocks are assembled.

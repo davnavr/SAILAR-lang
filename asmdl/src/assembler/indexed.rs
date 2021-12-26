@@ -193,15 +193,18 @@ impl<'a> RegisterLookup<'a> {
         is_input_register: bool,
     ) -> Option<indices::Register> {
         use std::collections::hash_map::Entry;
-
         match self.lookup.entry(&symbol.0.value) {
             Entry::Occupied(_) => None,
             Entry::Vacant(entry) => {
-                if is_input_register {
-                    Some(indices::Register::Input(self.input_counter.next()))
+                let index = if is_input_register {
+                    indices::Register::Input(self.input_counter.next())
                 } else {
-                    Some(indices::Register::Temporary(self.temporary_counter.next()))
-                }
+                    indices::Register::Temporary(self.temporary_counter.next())
+                };
+
+                entry.insert(index);
+
+                Some(index)
             }
         }
     }
