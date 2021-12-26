@@ -274,7 +274,7 @@ fn opcode<R: std::io::Read>(src: &mut R) -> ParseResult<Opcode> {
         let value = byte(src)?;
         opcode += u32::from(value);
         if value != Opcode::Continuation as u8 {
-            break Opcode::try_from(opcode).map_err(|()| ParseError::InvalidOpcode(opcode));
+            return Opcode::try_from(opcode).map_err(|()| ParseError::InvalidOpcode(opcode));
         }
     }
 }

@@ -262,10 +262,62 @@ fn instruction_opcode<W: std::io::Write>(
     }
 }
 
+fn block_instruction<W: std::io::Write>(
+    out: &mut W,
+    instruction: &instruction_set::Instruction,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    use instruction_set::{Instruction, IntegerConstant, PrimitiveType};
+
+    instruction_opcode(out, instruction.opcode())?;
+
+    match instruction {
+        Instruction::Nop => Ok(()),
+        Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
+        Instruction::ConstI(constant) => match constant {
+            IntegerConstant::S8(value) => {
+                write(out, PrimitiveType::S8 as u8)?;
+                write(out, *value as u8)
+            }
+            IntegerConstant::U8(value) => {
+                write(out, PrimitiveType::U8 as u8)?;
+                write(out, *value)
+            }
+            IntegerConstant::S16(value) => {
+                write(out, PrimitiveType::S16 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+            IntegerConstant::U16(value) => {
+                write(out, PrimitiveType::U16 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+            IntegerConstant::S32(value) => {
+                write(out, PrimitiveType::S32 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+            IntegerConstant::U32(value) => {
+                write(out, PrimitiveType::U32 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+            IntegerConstant::S64(value) => {
+                write(out, PrimitiveType::S64 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+            IntegerConstant::U64(value) => {
+                write(out, PrimitiveType::U64 as u8)?;
+                write_bytes(out, &value.to_le_bytes())
+            }
+        },
+        #[allow(unreachable_patterns)]
+        _ => todo!("TODO: Add support for writing of more instructions"),
+    }
+}
+
 fn code_block<W: std::io::Write>(
     out: &mut W,
     block: &format::CodeBlock,
     size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
 ) -> WriteResult {
     write(out, block.flags().bits())?;
     unsigned_integer(out, block.input_register_count, size)?;
@@ -278,66 +330,24 @@ fn code_block<W: std::io::Write>(
         }
     }
 
-    let structures::ByteLengthEncoded(structures::LengthEncodedVector(code)) = &block.instructions;
-
-    for instruction in code {
-        use instruction_set::{Instruction, IntegerConstant, PrimitiveType};
-
-        instruction_opcode(out, instruction.opcode())?;
-
-        match instruction {
-            Instruction::Nop => (),
-            Instruction::Ret(registers) => length_encoded_indices(out, registers, size)?,
-            Instruction::ConstI(constant) => match constant {
-                IntegerConstant::S8(value) => {
-                    write(out, PrimitiveType::S8 as u8)?;
-                    write(out, *value as u8)?;
-                }
-                IntegerConstant::U8(value) => {
-                    write(out, PrimitiveType::U8 as u8)?;
-                    write(out, *value)?;
-                }
-                IntegerConstant::S16(value) => {
-                    write(out, PrimitiveType::S16 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-                IntegerConstant::U16(value) => {
-                    write(out, PrimitiveType::U16 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-                IntegerConstant::S32(value) => {
-                    write(out, PrimitiveType::S32 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-                IntegerConstant::U32(value) => {
-                    write(out, PrimitiveType::U32 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-                IntegerConstant::S64(value) => {
-                    write(out, PrimitiveType::S64 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-                IntegerConstant::U64(value) => {
-                    write(out, PrimitiveType::U64 as u8)?;
-                    write_bytes(out, &value.to_le_bytes())?;
-                }
-            },
-            #[allow(unreachable_patterns)]
-            _ => todo!("TODO: Add support for writing of more instructions"),
-        };
-    }
-
-    Ok(())
+    double_length_encoded_vector(
+        out,
+        block.instructions.as_ref(),
+        size,
+        buffer_pool,
+        |out, instruction| block_instruction(out, instruction, size),
+    )
 }
 
 fn method_body<W: std::io::Write>(
     out: &mut W,
     code: &format::Code,
     size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
 ) -> WriteResult {
-    code_block(out, &code.entry_block, size)?;
+    code_block(out, &code.entry_block, size, buffer_pool)?;
     length_encoded_vector(out, &code.blocks, size, |out, block| {
-        code_block(out, block, size)
+        code_block(out, block, size, buffer_pool)
     })
 }
 
@@ -603,7 +613,7 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
         module.method_bodies.as_ref(),
         module.integer_size,
         &buffers,
-        |out, code| method_body(out, code, module.integer_size),
+        |out, code| method_body(out, code, module.integer_size, &buffers),
     )?;
 
     double_length_encoded_vector(
