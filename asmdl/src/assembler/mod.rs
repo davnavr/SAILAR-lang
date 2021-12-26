@@ -6,17 +6,23 @@ mod indexed;
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum Declaration {
+pub enum GlobalDeclaration {
     Code,
     TypeDefinition,
     MethodDefinition,
     MethodBody,
+    EntryBlock,
     Module,
     Format,
     Name,
     Namespace,
     /// A module or format version.
     Version,
+}
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum LocalDeclaration {
+    CodeBlock,
 }
 
 #[derive(Clone, Debug)]
@@ -30,13 +36,22 @@ pub enum NameError {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    DuplicateNamedDeclaration(ast::GlobalSymbol, Declaration),
-    DuplicateDeclaration(ast::Position, Declaration),
+    DuplicateNamedDeclaration(ast::GlobalSymbol, GlobalDeclaration), // DuplicateGlobalDeclaration
+    DuplicateLocalDeclaration(ast::LocalSymbol, LocalDeclaration),
+    DuplicateRegisterDeclaration(ast::RegisterSymbol),
+    DuplicateDeclaration(ast::Position, GlobalDeclaration),
     DuplicateModifier(ast::Position, &'static str),
-    InvalidNameDeclaration(ast::Position, Declaration, NameError),
+    InvalidNameDeclaration(ast::Position, GlobalDeclaration, NameError),
     /// Used when a declaration that is required to be present, such as the module header, was not defined.
-    MissingDeclaration(Option<ast::Position>, Declaration),
-    UndefinedGlobalSymbol(ast::GlobalSymbol, Declaration),
+    MissingDeclaration(Option<ast::Position>, GlobalDeclaration),
+    UndefinedGlobalSymbol(ast::GlobalSymbol, GlobalDeclaration),
+    UndefinedLocalSymbol(ast::LocalSymbol, LocalDeclaration),
+    UndefinedRegister(ast::RegisterSymbol),
+    InvalidReturnRegisterCount {
+        position: ast::Position,
+        expected: u8,
+        actual: usize,
+    },
 }
 
 impl Error {
@@ -46,7 +61,18 @@ impl Error {
                 ast::GlobalSymbol(ast::Positioned { position, .. }),
                 _,
             )
+            | Self::DuplicateLocalDeclaration(
+                ast::LocalSymbol(ast::Positioned { position, .. }),
+                _,
+            )
+            | Self::DuplicateRegisterDeclaration(ast::RegisterSymbol(ast::Positioned {
+                position,
+                ..
+            }))
+            | Self::InvalidReturnRegisterCount { position, .. }
+            | Self::UndefinedRegister(ast::RegisterSymbol(ast::Positioned { position, .. }))
             | Self::UndefinedGlobalSymbol(ast::GlobalSymbol(ast::Positioned { position, .. }), _)
+            | Self::UndefinedLocalSymbol(ast::LocalSymbol(ast::Positioned { position, .. }), _)
             | Self::DuplicateDeclaration(position, _)
             | Self::DuplicateModifier(position, _)
             | Self::InvalidNameDeclaration(position, _, _) => Some(position),
@@ -55,7 +81,7 @@ impl Error {
     }
 }
 
-impl std::fmt::Display for Declaration {
+impl std::fmt::Display for GlobalDeclaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Name => "name",
@@ -63,10 +89,19 @@ impl std::fmt::Display for Declaration {
             Self::TypeDefinition => "type definition",
             Self::MethodDefinition => "method definition",
             Self::MethodBody => "method body",
+            Self::EntryBlock => "entry block",
             Self::Code => "code",
             Self::Module => "module",
             Self::Format => "format",
             Self::Version => "version",
+        })
+    }
+}
+
+impl std::fmt::Display for LocalDeclaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::CodeBlock => "code block",
         })
     }
 }
@@ -89,6 +124,16 @@ impl std::fmt::Display for Error {
                 "a {} declaration corresponding to the symbol @{} already exists",
                 declaration, symbol.0.value
             ),
+            Self::DuplicateLocalDeclaration(symbol, declaration) => write!(
+                f,
+                "a {} corresponding to the symbol ${} already exists",
+                declaration, symbol.0.value
+            ),
+            Self::DuplicateRegisterDeclaration(symbol) => write!(
+                f,
+                "a register corresponding to the symbol %{} already exists",
+                symbol.0.value
+            ),
             Self::DuplicateDeclaration(_, declaration) => {
                 write!(f, "a {} declaration already exists", declaration)
             }
@@ -106,6 +151,22 @@ impl std::fmt::Display for Error {
                 "a {} corresponding to the symbol @{} could not be found",
                 declaration, symbol.0.value
             ),
+            Self::UndefinedLocalSymbol(symbol, declaration) => write!(
+                f,
+                "a {} corresponding to the symbol ${} could not be found",
+                declaration, symbol.0.value
+            ),
+            Self::UndefinedRegister(symbol) => write!(
+                f,
+                "a register corresponding to the symbol %{} could not be found",
+                symbol.0.value
+            ),
+            Self::InvalidReturnRegisterCount { expected, actual, .. } => write!(
+                f,
+                "expected at least {} temporary registers to contain the results of this instruction but got {}",
+                expected,
+                actual
+            ),
         }
     }
 }
@@ -115,10 +176,14 @@ fn assemble_module_header(
     declarations: &[ast::Positioned<ast::ModuleDeclaration>],
 ) -> Option<format::ModuleHeader> {
     let mut module_name = declare::Once::new(|name: &ast::Positioned<_>, _| {
-        Error::InvalidNameDeclaration(name.position, Declaration::Module, NameError::Duplicate)
+        Error::InvalidNameDeclaration(
+            name.position,
+            GlobalDeclaration::Module,
+            NameError::Duplicate,
+        )
     });
     let mut module_version = declare::Once::new(|version: ast::Positioned<_>, _| {
-        Error::DuplicateDeclaration(version.position, Declaration::Version)
+        Error::DuplicateDeclaration(version.position, GlobalDeclaration::Version)
     });
 
     for node in declarations {
@@ -130,7 +195,7 @@ fn assemble_module_header(
                         Err(_) => {
                             errors.push(Error::InvalidNameDeclaration(
                                 name.position,
-                                Declaration::Module,
+                                GlobalDeclaration::Module,
                                 NameError::Empty,
                             ));
                             None
@@ -167,7 +232,7 @@ fn assemble_module_header(
             },
         }),
         None => {
-            errors.push(Error::MissingDeclaration(None, Declaration::Name));
+            errors.push(Error::MissingDeclaration(None, GlobalDeclaration::Name));
             None
         }
     }
@@ -184,7 +249,7 @@ fn assemble_module_format(
         impl Fn(ast::Position, &format::numeric::UInteger) -> Error,
     > {
         declare::Once::new(|position, _| {
-            Error::DuplicateDeclaration(position, Declaration::Version)
+            Error::DuplicateDeclaration(position, GlobalDeclaration::Version)
         })
     }
 
@@ -248,7 +313,7 @@ fn name_declaration<'a, 'b>() -> NameDeclaration<
     declare::Once::new(|node: &ast::Positioned<_>, _| {
         Error::InvalidNameDeclaration(
             node.position,
-            Declaration::TypeDefinition,
+            GlobalDeclaration::TypeDefinition,
             NameError::Duplicate,
         )
     })
@@ -256,7 +321,7 @@ fn name_declaration<'a, 'b>() -> NameDeclaration<
 
 fn add_identifier_from(
     identifiers: &mut IdentifierLookup,
-    declarer: Declaration,
+    declarer: GlobalDeclaration,
     name: &ast::Positioned<ast::LiteralString>,
 ) -> Result<format::indices::Identifier, Error> {
     format::Identifier::try_from(&name.value.0)
@@ -272,7 +337,7 @@ fn declare_name<
     declaration: &mut NameDeclaration<'a, 'b, E>,
     errors: &mut Vec<Error>,
     identifiers: &mut IdentifierLookup,
-    declarer: Declaration,
+    declarer: GlobalDeclaration,
     name: &'b ast::Positioned<ast::LiteralString>,
 ) {
     if let Some(setter) = declaration.declare(errors, name) {
@@ -284,7 +349,7 @@ fn declare_name<
 }
 
 fn assemble_type_signature(
-    #[allow(unused_mut)] errors: &mut Vec<Error>,
+    #[allow(unused_mut, unused_variables)] errors: &mut Vec<Error>,
     signature: &ast::Positioned<ast::TypeSignature>,
 ) -> Option<format::TypeSignature> {
     match signature.value {
@@ -334,9 +399,232 @@ fn assemble_method_signature(
     })
 }
 
+fn assemble_definitions<D, T, A: FnMut(&D) -> Option<T>>(
+    definitions: &[D],
+    mut assemble: A,
+) -> Vec<T> {
+    let mut assembled = Vec::with_capacity(definitions.len());
+    let mut commit = true;
+    for definition in definitions {
+        match assemble(definition) {
+            Some(result) => {
+                if commit {
+                    assembled.push(result)
+                }
+            }
+            None => commit = false,
+        }
+    }
+    assembled
+}
+
+#[derive(Debug)]
+struct MethodBlockAssembler<'a> {
+    name: &'a ast::Identifier,
+    arguments: &'a [ast::RegisterSymbol],
+    instructions: &'a [ast::Statement],
+}
+
+impl<'a> MethodBlockAssembler<'a> {
+    fn lookup_register_index(
+        errors: &mut Vec<Error>,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        register: &'a ast::RegisterSymbol,
+    ) -> Option<format::indices::Register> {
+        let index = register_lookup.get(register);
+        if index.is_none() {
+            errors.push(Error::UndefinedRegister(register.clone()))
+        }
+        index
+    }
+
+    fn lookup_register_indices(
+        errors: &mut Vec<Error>,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        registers: &'a [ast::RegisterSymbol],
+    ) -> Option<format::structures::LengthEncodedVector<format::indices::Register>> {
+        let mut indices = Vec::with_capacity(registers.len());
+        let mut success = true;
+
+        for name in registers {
+            if let Some(index) = Self::lookup_register_index(errors, register_lookup, name) {
+                if success {
+                    indices.push(index)
+                }
+            } else {
+                success = false;
+            }
+        }
+
+        if success {
+            Some(format::structures::LengthEncodedVector(indices))
+        } else {
+            None
+        }
+    }
+
+    fn assemble(
+        &self,
+        errors: &mut Vec<Error>,
+        #[allow(unused_variables)] block_indices: &std::collections::HashMap<
+            &'a ast::Identifier,
+            usize,
+        >,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+    ) -> Option<format::CodeBlock> {
+        let error_count = errors.len();
+
+        for register in self.arguments {
+            if register_lookup.add_input(register).is_none() {
+                errors.push(Error::DuplicateRegisterDeclaration(register.clone()))
+            }
+        }
+
+        let mut instructions = Vec::with_capacity(self.instructions.len());
+
+        for statement in self.instructions {
+            let return_count = usize::from(statement.instruction.value.return_count());
+
+            if statement.registers.len() <= return_count {
+                match &statement.instruction.value {
+                    ast::Instruction::Ret(registers) => {
+                        if let Some(indices) =
+                            Self::lookup_register_indices(errors, register_lookup, registers)
+                        {
+                            instructions.push(format::instruction_set::Instruction::Ret(indices));
+                        }
+                    }
+                    _ => todo!(),
+                }
+
+                for name in &statement.registers {
+                    if register_lookup.add_temporary(name).is_none() {
+                        errors.push(Error::DuplicateRegisterDeclaration(name.clone()))
+                    }
+                }
+
+                for _ in 0..(return_count - statement.registers.len()) {
+                    register_lookup.ignore_temporary()
+                }
+            } else {
+                errors.push(Error::InvalidReturnRegisterCount {
+                    position: statement.instruction.position,
+                    expected: statement.instruction.value.return_count().into(),
+                    actual: statement.registers.len(),
+                })
+            }
+        }
+
+        if errors.len() <= error_count {
+            Some(format::CodeBlock {
+                input_register_count: format::numeric::UInteger(
+                    u32::try_from(self.arguments.len()).unwrap(),
+                ),
+                exception_handler: None,
+                instructions: format::structures::ByteLengthEncoded(
+                    format::structures::LengthEncodedVector(instructions),
+                ),
+            })
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug)]
 struct MethodBodyAssembler<'a> {
+    origin: ast::Position,
     declarations: &'a [ast::Positioned<ast::CodeDeclaration>],
+}
+
+impl<'a> MethodBodyAssembler<'a> {
+    fn assemble(
+        &self,
+        errors: &mut Vec<Error>,
+        #[allow(unused_variables)] defined_methods: &mut MethodDefinitionLookup,
+        block_lookup: &mut std::collections::HashMap<&'a ast::Identifier, usize>,
+        blocks: &mut Vec<MethodBlockAssembler<'a>>,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+    ) -> Option<format::Code> {
+        block_lookup.clear();
+        blocks.clear();
+
+        let mut entry_block = declare::Once::new(|position: ast::Position, _| {
+            Error::DuplicateDeclaration(position, GlobalDeclaration::EntryBlock)
+        });
+
+        for declaration in self.declarations {
+            match &declaration.value {
+                ast::CodeDeclaration::Entry(symbol) => {
+                    entry_block.declare_and_set(errors, declaration.position, symbol);
+                }
+                ast::CodeDeclaration::Block {
+                    name,
+                    arguments,
+                    instructions,
+                } => {
+                    let block_name = &name.0.value;
+                    if block_lookup.insert(block_name, blocks.len()).is_none() {
+                        blocks.push(MethodBlockAssembler {
+                            name: block_name,
+                            arguments,
+                            instructions,
+                        })
+                    } else {
+                        errors.push(Error::DuplicateLocalDeclaration(
+                            name.clone(),
+                            LocalDeclaration::CodeBlock,
+                        ));
+                    }
+                }
+            }
+        }
+
+        match entry_block.value() {
+            Some(entry_block_name) => {
+                use std::collections::hash_map::Entry;
+
+                match block_lookup.entry(&entry_block_name.0.value) {
+                    Entry::Occupied(mut entry_block) => {
+                        debug_assert!(!blocks.is_empty());
+                        let entry_block_index = *entry_block.get();
+                        let last_block_index = blocks.len() - 1;
+                        let last_block_name = blocks[last_block_index].name;
+                        blocks.swap(entry_block_index, last_block_index);
+
+                        // Entry block is moved to last index, so lookup has to be adjusted.
+                        let previous_entry_block_index = entry_block.insert(last_block_index);
+                        *block_lookup.get_mut(last_block_name).unwrap() = previous_entry_block_index;
+
+                        let mut assembled_blocks = assemble_definitions(blocks, |block| {
+                            // Reused when blocks are assembled.
+                            register_lookup.clear();
+                            block.assemble(errors, &block_lookup, register_lookup)
+                        });
+
+                        Some(format::Code {
+                            entry_block: assembled_blocks.swap_remove(last_block_index),
+                            blocks: format::structures::LengthEncodedVector(assembled_blocks),
+                        })
+                    }
+                    Entry::Vacant(_) => {
+                        errors.push(Error::UndefinedLocalSymbol(
+                            entry_block_name.clone(),
+                            LocalDeclaration::CodeBlock,
+                        ));
+                        None
+                    }
+                }
+            }
+            None => {
+                errors.push(Error::MissingDeclaration(
+                    Some(self.origin),
+                    GlobalDeclaration::EntryBlock,
+                ));
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -381,7 +669,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
 
         let mut method_name = name_declaration();
         let mut method_body = declare::Once::new(|position, _| {
-            Error::DuplicateDeclaration(position, Declaration::MethodBody)
+            Error::DuplicateDeclaration(position, GlobalDeclaration::MethodBody)
         });
 
         for declaration in self.declarations {
@@ -390,7 +678,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
                     &mut method_name,
                     errors,
                     identifiers,
-                    Declaration::MethodDefinition,
+                    GlobalDeclaration::MethodDefinition,
                     name,
                 ),
                 ast::MethodDeclaration::Body(body) => {
@@ -402,7 +690,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
                                     None => {
                                         errors.push(Error::UndefinedGlobalSymbol(
                                             name.clone(),
-                                            Declaration::MethodBody,
+                                            GlobalDeclaration::MethodBody,
                                         ));
                                         None
                                     }
@@ -420,7 +708,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         if !method_name.is_set() {
             errors.push(Error::InvalidNameDeclaration(
                 self.origin,
-                Declaration::MethodDefinition,
+                GlobalDeclaration::MethodDefinition,
                 NameError::Missing,
             ))
         }
@@ -428,7 +716,7 @@ impl<'a> MethodDefinitionAssembler<'a> {
         if !method_body.is_set() {
             errors.push(Error::MissingDeclaration(
                 Some(self.origin),
-                Declaration::MethodBody,
+                GlobalDeclaration::MethodBody,
             ))
         }
 
@@ -489,7 +777,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
 
         let mut type_name = name_declaration();
         let mut type_namespace = declare::Once::new(|position: ast::Position, _| {
-            Error::DuplicateDeclaration(position, Declaration::Namespace)
+            Error::DuplicateDeclaration(position, GlobalDeclaration::Namespace)
         });
 
         #[allow(unused_mut)]
@@ -502,7 +790,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
                     &mut type_name,
                     errors,
                     identifiers,
-                    Declaration::TypeDefinition,
+                    GlobalDeclaration::TypeDefinition,
                     name,
                 ),
                 ast::TypeDeclaration::Namespace(namespace) => {
@@ -514,7 +802,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
                         for name in namespace {
                             match add_identifier_from(
                                 identifiers,
-                                Declaration::TypeDefinition,
+                                GlobalDeclaration::TypeDefinition,
                                 name,
                             ) {
                                 Ok(id) => indices.push(id),
@@ -559,7 +847,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
         if !type_name.is_set() {
             errors.push(Error::InvalidNameDeclaration(
                 self.origin,
-                Declaration::TypeDefinition,
+                GlobalDeclaration::TypeDefinition,
                 NameError::Missing,
             ))
         }
@@ -567,7 +855,7 @@ impl<'a> TypeDefinitionAssembler<'a> {
         if !type_namespace.is_set() {
             errors.push(Error::MissingDeclaration(
                 Some(self.origin),
-                Declaration::Namespace,
+                GlobalDeclaration::Namespace,
             ))
         }
 
@@ -615,7 +903,7 @@ pub fn assemble_declarations(
                 } else {
                     errors.push(Error::DuplicateDeclaration(
                         node.position,
-                        Declaration::Module,
+                        GlobalDeclaration::Module,
                     ))
                 }
             }
@@ -623,17 +911,23 @@ pub fn assemble_declarations(
                 None => module_format = Some(assemble_module_format(&mut errors, format_versions)),
                 Some(_) => errors.push(Error::DuplicateDeclaration(
                     node.position,
-                    Declaration::Format,
+                    GlobalDeclaration::Format,
                 )),
             },
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
-            } => match method_bodies.try_add(symbol, MethodBodyAssembler { declarations }) {
+            } => match method_bodies.try_add(
+                symbol,
+                MethodBodyAssembler {
+                    origin: node.position,
+                    declarations,
+                },
+            ) {
                 Some(_) => (),
                 None => errors.push(Error::DuplicateNamedDeclaration(
                     symbol.clone(),
-                    Declaration::Code,
+                    GlobalDeclaration::Code,
                 )),
             },
             ast::TopLevelDeclaration::Type {
@@ -649,33 +943,29 @@ pub fn assemble_declarations(
                 Some(_) => (),
                 None => errors.push(Error::DuplicateNamedDeclaration(
                     symbol.clone(),
-                    Declaration::TypeDefinition,
+                    GlobalDeclaration::TypeDefinition,
                 )),
             },
             ref unknown => unimplemented!("{:?}", unknown),
         }
     }
 
-    fn assemble_definitions<D, T, A: FnMut(&D) -> Option<T>>(
-        definitions: &[D],
-        mut assemble: A,
-    ) -> Vec<T> {
-        let mut assembled = Vec::with_capacity(definitions.len());
-        let mut commit = true;
-        for definition in definitions {
-            match assemble(definition) {
-                Some(result) => {
-                    if commit {
-                        assembled.push(result)
-                    }
-                }
-                None => commit = false,
-            }
-        }
-        assembled
-    }
+    let assembled_method_bodies = {
+        // These collections are reused as method bodies are assembled.
+        let mut block_lookup = std::collections::HashMap::new();
+        let mut register_lookup = indexed::RegisterLookup::new();
+        let mut blocks = Vec::new();
 
-    let assembled_method_bodies = assemble_definitions(method_bodies.items(), |body| todo!());
+        assemble_definitions(method_bodies.items(), |body| {
+            body.assemble(
+                &mut errors,
+                &mut method_definitions,
+                &mut block_lookup,
+                &mut blocks,
+                &mut register_lookup,
+            )
+        })
+    };
 
     let assembled_type_definitions = assemble_definitions(type_definitions.items(), |definition| {
         definition.assemble(
@@ -698,7 +988,7 @@ pub fn assemble_declarations(
         });
 
     if module_header.is_none() {
-        errors.push(Error::MissingDeclaration(None, Declaration::Module))
+        errors.push(Error::MissingDeclaration(None, GlobalDeclaration::Module))
     }
 
     if errors.is_empty() {

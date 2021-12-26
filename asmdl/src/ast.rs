@@ -145,7 +145,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    /// Returns the number of registers that should be on the left side of the `=` sign.
+    /// Returns the number of temporary registers that contain the results of executing the instruction.
     pub fn return_count(&self) -> u8 {
         match self {
             Self::Nop | Self::Ret(_) => 0,

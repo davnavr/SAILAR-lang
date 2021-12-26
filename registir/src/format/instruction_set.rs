@@ -5,7 +5,7 @@ use crate::format::{indices, numeric, structures::LengthEncodedVector};
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct BlockOffset(pub numeric::SInteger);
 
-pub use indices::RegisterIndex;
+pub use indices::Register as RegisterIndex;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u32)]

@@ -19,6 +19,12 @@ macro_rules! index_type {
         #[doc = $description]
         pub struct $name(pub UInteger);
 
+        impl From<u32> for $name {
+            fn from(value: u32) -> Self {
+                Self(UInteger(value))
+            }
+        }
+
         impl From<$name> for UInteger {
             fn from(index: $name) -> Self {
                 index.0
@@ -114,11 +120,6 @@ index_type!(
 );
 
 index_type!(
-    CodeBlock,
-    "An index corresponding to the input registers of a code block, with `0` refering to the entry block."
-);
-
-index_type!(
     InputRegister,
     "An index corresponding to the input registers of a code block."
 );
@@ -175,7 +176,7 @@ macro_rules! double_index_type {
 }
 
 double_index_type!(
-    RegisterIndex,
+    Register,
     "An index into a code block's input registers or temporary registers.",
     Temporary,
     TemporaryRegister,

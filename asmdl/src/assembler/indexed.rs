@@ -1,12 +1,54 @@
 use crate::ast;
-use registir::format::indices::SimpleIndex;
+use registir::format::indices;
+
+#[derive(Copy, Debug)]
+struct IndexCounter<I, V> {
+    next_value: V,
+    phantom: std::marker::PhantomData<I>,
+}
+
+impl<I, V: Clone> std::clone::Clone for IndexCounter<I, V> {
+    fn clone(&self) -> Self {
+        Self {
+            next_value: self.next_value.clone(),
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<I, V: Default> IndexCounter<I, V> {
+    fn new() -> Self {
+        Self {
+            next_value: V::default(),
+            phantom: std::marker::PhantomData,
+        }
+    }
+
+    fn reset(&mut self) {
+        *self = Self::new();
+    }
+}
+
+impl<I: From<V>, V: std::ops::AddAssign<u32> + Copy> IndexCounter<I, V> {
+    fn with_next(mut self) -> (Self, I) {
+        let index = I::from(self.next_value);
+        self.next_value += 1u32;
+        (self, index)
+    }
+
+    fn next(&mut self) -> I {
+        let (incremented, index) = self.clone().with_next();
+        *self = incremented;
+        index
+    }
+}
 
 #[derive(Debug)]
 pub struct SymbolMap<'a, S, I, T> {
     values: Vec<T>,
+    counter: IndexCounter<I, u32>,
     lookup: std::collections::HashMap<&'a ast::Identifier, I>,
-    phantom_1: std::marker::PhantomData<&'a S>,
-    phantom_2: std::marker::PhantomData<I>,
+    phantom: std::marker::PhantomData<&'a S>,
 }
 
 impl<'a, S, I, T> SymbolMap<'a, S, I, T> {
@@ -17,23 +59,29 @@ impl<'a, S, I, T> SymbolMap<'a, S, I, T> {
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
+            counter: IndexCounter::new(),
             lookup: std::collections::HashMap::new(),
-            phantom_1: std::marker::PhantomData,
-            phantom_2: std::marker::PhantomData,
+            phantom: std::marker::PhantomData,
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.values.clear();
+        self.counter.reset();
+        self.lookup.clear()
     }
 }
 
-impl<'a, S, I: SimpleIndex + Copy, T> SymbolMap<'a, S, I, T>
+impl<'a, S, I: From<u32> + Copy, T> SymbolMap<'a, S, I, T>
 where
     &'a S: Into<&'a ast::Identifier>,
-    <I as TryFrom<usize>>::Error: std::error::Error,
 {
     pub fn try_add_with<F: FnOnce(I) -> T>(&mut self, symbol: &'a S, f: F) -> Option<I> {
-        let index = I::try_from(self.values.len()).unwrap();
+        let (incremented, index) = self.counter.with_next();
         match self.lookup.insert(symbol.into(), index) {
             None => {
                 self.values.push(f(index));
+                self.counter = incremented;
                 Some(index)
             }
             Some(_) => None,
@@ -83,7 +131,7 @@ pub struct Set<I, T> {
     lookup: std::collections::HashMap<SetKey<T>, I>,
 }
 
-impl<I: SimpleIndex + Copy, T: Eq + std::hash::Hash> Set<I, T>
+impl<I: indices::SimpleIndex + Copy, T: Eq + std::hash::Hash> Set<I, T>
 where
     <I as TryFrom<usize>>::Error: std::error::Error,
 {
@@ -101,6 +149,7 @@ where
 
     pub fn add(&mut self, value: T) -> I {
         use std::collections::hash_map::Entry;
+
         let index = self.items.borrow().len();
         self.items.borrow_mut().push(value);
         match self.lookup.entry(SetKey {
@@ -113,5 +162,63 @@ where
             }
             Entry::Vacant(entry) => *entry.insert(I::try_from(index).unwrap()),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct RegisterLookup<'a> {
+    input_counter: IndexCounter<indices::InputRegister, u32>,
+    temporary_counter: IndexCounter<indices::TemporaryRegister, u32>,
+    lookup: std::collections::HashMap<&'a ast::Identifier, indices::Register>,
+}
+
+impl<'a> RegisterLookup<'a> {
+    pub fn new() -> Self {
+        Self {
+            input_counter: IndexCounter::new(),
+            temporary_counter: IndexCounter::new(),
+            lookup: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.input_counter.reset();
+        self.temporary_counter.reset();
+        self.lookup.clear()
+    }
+
+    fn add(
+        &mut self,
+        symbol: &'a ast::RegisterSymbol,
+        is_input_register: bool,
+    ) -> Option<indices::Register> {
+        use std::collections::hash_map::Entry;
+
+        match self.lookup.entry(&symbol.0.value) {
+            Entry::Occupied(_) => None,
+            Entry::Vacant(entry) => {
+                if is_input_register {
+                    Some(indices::Register::Input(self.input_counter.next()))
+                } else {
+                    Some(indices::Register::Temporary(self.temporary_counter.next()))
+                }
+            }
+        }
+    }
+
+    pub fn add_input(&mut self, symbol: &'a ast::RegisterSymbol) -> Option<indices::Register> {
+        self.add(symbol, true)
+    }
+
+    pub fn add_temporary(&mut self, symbol: &'a ast::RegisterSymbol) -> Option<indices::Register> {
+        self.add(symbol, false)
+    }
+
+    pub fn get(&self, symbol: &'a ast::RegisterSymbol) -> Option<indices::Register> {
+        self.lookup.get(&symbol.0.value).copied()
+    }
+
+    pub fn ignore_temporary(&mut self) {
+        self.temporary_counter.next();
     }
 }

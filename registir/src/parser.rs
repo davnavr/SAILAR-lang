@@ -98,9 +98,11 @@ fn fill_buffer(src: &mut impl std::io::Read, buffer: &mut [u8]) -> ParseResult<(
     let count = src.read(buffer).map_err(ParseError::InputOutputError)?;
     if count == buffer.len() {
         Ok(())
-    }
-    else {
-        Err(ParseError::InvalidByteLength { expected: buffer.len(), actual: count })
+    } else {
+        Err(ParseError::InvalidByteLength {
+            expected: buffer.len(),
+            actual: count,
+        })
     }
 }
 
