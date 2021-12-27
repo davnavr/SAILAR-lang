@@ -15,7 +15,7 @@ pub mod type_system;
 pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
 
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
@@ -402,7 +402,7 @@ pub struct FormatVersion {
     pub minor: numeric::UInteger,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ModuleIdentifier {
     pub name: Identifier,
     pub version: VersionNumbers,

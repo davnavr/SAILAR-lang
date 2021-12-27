@@ -4,5 +4,6 @@ members = [
     "asmdl_cli",
     "dasmdl",
     "dasmdl_cli",
+    "getmdl",
     "registir",
 ]
