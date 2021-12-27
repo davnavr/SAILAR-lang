@@ -12,7 +12,7 @@ pub struct BlockOffset(pub numeric::SInteger);
 ///
 /// # Structure
 /// - [`Opcode`]
-/// - [`PrimitiveType`]
+/// - [`IntegerConstant::integer_type()`]
 /// - [`IntegerConstant::value()`]
 #[derive(Clone, Copy, Debug, Eq)]
 pub enum IntegerConstant {
@@ -27,6 +27,19 @@ pub enum IntegerConstant {
 }
 
 impl IntegerConstant {
+    pub fn integer_type(self) -> PrimitiveType {
+        match self {
+            Self::U8(_) => PrimitiveType::U8,
+            Self::S8(_) => PrimitiveType::S8,
+            Self::U16(_) => PrimitiveType::U16,
+            Self::S16(_) => PrimitiveType::S16,
+            Self::U32(_) => PrimitiveType::U32,
+            Self::S32(_) => PrimitiveType::S32,
+            Self::U64(_) => PrimitiveType::U64,
+            Self::S64(_) => PrimitiveType::S64,
+        }
+    }
+
     pub fn value(self) -> i128 {
         match self {
             Self::U8(value) => value.into(),
@@ -117,6 +130,14 @@ impl Instruction {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
             Instruction::ConstI(_) => Opcode::ConstI,
+        }
+    }
+
+    /// The number of temporary registers introduced after execution of the instruction.
+    pub fn return_count(&self) -> u8 {
+        match self {
+            Instruction::Nop | Instruction::Ret(_) => 0,
+            Instruction::ConstI(_) => 1,
         }
     }
 }

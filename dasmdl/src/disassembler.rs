@@ -22,6 +22,7 @@ mod output {
         indentation: String,
         indented: bool,
         indentation_level: u32,
+        format_writer: String,
     }
 
     impl<'a, W: Write> Output<'a, W> {
@@ -36,6 +37,7 @@ mod output {
                 },
                 indented: false,
                 indentation_level: 0,
+                format_writer: String::new(),
             }
         }
 
@@ -79,7 +81,12 @@ mod output {
             if let Some(s) = args.as_str() {
                 self.write_str(s)
             } else {
-                self.write_str(&args.to_string())
+                self.format_writer.clear();
+                std::fmt::Write::write_fmt(&mut self.format_writer, args).unwrap();
+                let formatted = std::mem::take(&mut self.format_writer);
+                self.write_str(&formatted)?;
+                self.format_writer = formatted;
+                Ok(())
             }
         }
 
@@ -90,21 +97,21 @@ mod output {
 
         pub fn write_iter<
             I: std::iter::IntoIterator,
-            F: FnMut(&mut Self, &I::Item) -> Result<()>,
+            F: FnMut(&mut Self, I::Item) -> Result<()>,
         >(
             &mut self,
             iter: I,
             mut writer: F,
         ) -> Result<()> {
             for i in iter {
-                writer(self, &i)?;
+                writer(self, i)?;
             }
             Ok(())
         }
 
         pub fn write_join<
             I: std::iter::IntoIterator,
-            F: FnMut(&mut Self, &I::Item) -> Result<()>,
+            F: FnMut(&mut Self, I::Item) -> Result<()>,
         >(
             &mut self,
             separator: &str,
@@ -112,7 +119,7 @@ mod output {
             mut writer: F,
         ) -> Result<()> {
             self.write_iter(iter.into_iter().enumerate(), |out, (index, i)| {
-                if *index > 0 {
+                if index > 0 {
                     out.write_str(separator)?;
                 }
                 writer(out, i)
@@ -234,7 +241,7 @@ fn quoted_namespace<O: Write>(
     namespace: &format::structures::LengthEncodedVector<format::indices::Identifier>,
 ) -> Result<()> {
     out.write_join(", ", &namespace.0, |out, id| {
-        indexed_identifier(out, **id, identifiers)
+        indexed_identifier(out, *id, identifiers)
     })
 }
 
@@ -257,6 +264,16 @@ fn type_signature<O: Write>(
 const BLOCK_NAME_PREFIX: &str = "BLOCK_";
 const ENTRY_BLOCK_NAME: &str = "ENTRY";
 
+fn code_register<O: Write>(
+    out: &mut Output<'_, O>,
+    register: format::indices::Register,
+) -> Result<()> {
+    match register {
+        format::indices::Register::Input(index) => out.write_fmt(format_args!("%a{}", index)),
+        format::indices::Register::Temporary(index) => out.write_fmt(format_args!("%t{}", index)),
+    }
+}
+
 fn code_block<O: Write>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
@@ -271,10 +288,46 @@ fn code_block<O: Write>(
     }
     out.write_str(" (")?;
     out.write_join(", ", 0..block.input_register_count.0, |out, i| {
-        out.write_fmt(format_args!("$arg_{}", i))
+        out.write_fmt(format_args!("%a{}", i))
     })?;
     out.write_str_ln(") {")?;
     out.indent();
+
+    let mut temporary_count = 0usize;
+
+    for instruction in &block.instructions.0 .0 {
+        use format::instruction_set::Instruction;
+
+        let return_count = instruction.return_count();
+
+        if return_count > 0 {
+            out.write_join(", ", 0..return_count, |out, index| {
+                out.write_fmt(format_args!("%t{}", temporary_count + usize::from(index)))
+            })?;
+            out.write_str(" = ")?;
+        }
+
+        temporary_count += usize::from(return_count);
+
+        match instruction {
+            Instruction::Nop => out.write_str("nop")?,
+            Instruction::Ret(values) => {
+                out.write_str("ret")?;
+                if !values.is_empty() {
+                    out.write_char(' ')?;
+                    out.write_join(", ", &values.0, |out, index| code_register(out, *index))?
+                }
+            }
+            Instruction::ConstI(constant) => out.write_fmt(format_args!(
+                "const.i {} {}",
+                constant.integer_type(),
+                constant.value()
+            ))?,
+        }
+
+        out.write_char_ln(';')?;
+    }
+
     out.dedent();
     out.write_str_ln("};")
 }
@@ -284,7 +337,7 @@ fn module_method_bodies<O: Write>(
     method_bodies: &[format::Code],
 ) -> Result<()> {
     for (index, body) in method_bodies.iter().enumerate() {
-        out.write_fmt(format_args!(".code @code_{} {{", index))?;
+        out.write_fmt_ln(format_args!(".code @code_{} {{", index))?;
         out.indent();
         out.write_str(".entry $")?;
         out.write_str(BLOCK_NAME_PREFIX)?;

@@ -16,6 +16,25 @@ pub enum PrimitiveType {
     F64,
 }
 
+impl std::fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::U8 => "u8",
+            Self::S8 => "s8",
+            Self::U16 => "u16",
+            Self::S16 => "s16",
+            Self::U32 => "u32",
+            Self::S32 => "s32",
+            Self::U64 => "u64",
+            Self::S64 => "s64",
+            Self::UNative => "unative",
+            Self::SNative => "snative",
+            Self::F32 => "F32",
+            Self::F64 => "F64",
+        })
+    }
+}
+
 /// A value type or native pointer type.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum SimpleType {
