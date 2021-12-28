@@ -467,7 +467,7 @@ pub struct Module {
     pub definitions: structures::ByteLengthEncoded<ModuleDefinitions>,
     /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
     /// compiler or runtime to determine if the signature of the entry point method is valid.
-    pub entry_point: structures::ByteLengthEncoded<Option<indices::Method>>,
+    pub entry_point: structures::ByteLengthEncoded<Option<indices::MethodDefinition>>,
     pub type_layouts: structures::DoubleLengthEncodedVector<TypeLayout>,
     //pub debugging_information: ByteLengthEncoded<>
 }
