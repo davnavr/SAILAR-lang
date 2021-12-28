@@ -6,12 +6,12 @@ pub struct Runtime<'l> {
 }
 
 #[derive(Default)]
-pub struct RuntimeInitializer<'l> {
+pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
 }
 
-impl<'l> RuntimeInitializer<'l> {
+impl<'l> Initializer<'l> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -26,7 +26,7 @@ pub enum Error {
 
 impl<'l> Runtime<'l> {
     pub fn initialize(
-        initializer: &'l mut RuntimeInitializer<'l>,
+        initializer: &'l mut Initializer<'l>,
         application: registir::format::Module,
     ) -> &'l Self {
         let (loader, program) = loader::Loader::initialize(&mut initializer.loader, application);
