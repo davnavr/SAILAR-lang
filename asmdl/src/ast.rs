@@ -238,6 +238,7 @@ pub enum ModuleDeclaration {
 pub enum TopLevelDeclaration {
     Format(Vec<Positioned<FormatDeclaration>>),
     Module(Vec<Positioned<ModuleDeclaration>>),
+    Entry(GlobalSymbol),
     Code {
         symbol: GlobalSymbol,
         declarations: Vec<Positioned<CodeDeclaration>>,

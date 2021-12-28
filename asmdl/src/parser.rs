@@ -366,6 +366,7 @@ fn top_level_declaration<'a>(
             .map(ast::TopLevelDeclaration::Format),
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
+        directive("entry", global_symbol()).map(ast::TopLevelDeclaration::Entry),
         directive(
             "data",
             (global_symbol(), data_declaration())

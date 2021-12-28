@@ -12,6 +12,7 @@ pub enum GlobalDeclaration {
     MethodDefinition,
     MethodBody,
     EntryBlock,
+    EntryPoint,
     Module,
     Format,
     Name,
@@ -94,6 +95,7 @@ impl std::fmt::Display for GlobalDeclaration {
             Self::MethodDefinition => "method definition",
             Self::MethodBody => "method body",
             Self::EntryBlock => "entry block",
+            Self::EntryPoint => "entry point method",
             Self::Code => "code",
             Self::Module => "module",
             Self::Format => "format",
@@ -937,6 +939,9 @@ pub fn assemble_declarations(
     let mut errors = Vec::new();
     let mut module_header = None;
     let mut module_format = None;
+    let mut module_entry_point = declare::Once::new(|(), symbol: &ast::GlobalSymbol| {
+        Error::DuplicateDeclaration(symbol.0.position, GlobalDeclaration::EntryPoint)
+    });
     let mut identifiers = IdentifierLookup::new();
     let mut namespaces = NamespaceLookup::new();
     let mut type_signatures = TypeSignatureLookup::new();
@@ -968,6 +973,9 @@ pub fn assemble_declarations(
                     GlobalDeclaration::Format,
                 )),
             },
+            ast::TopLevelDeclaration::Entry(ref entry_point_name) => {
+                module_entry_point.declare_and_set(&mut errors, (), entry_point_name.clone())
+            }
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
@@ -1003,6 +1011,17 @@ pub fn assemble_declarations(
             ref unknown => unimplemented!("{:?}", unknown),
         }
     }
+
+    let entry_point_index = module_entry_point.value().and_then(|entry_point_name| {
+        let index = method_definitions.index_of(&entry_point_name);
+        if index.is_none() {
+            errors.push(Error::UndefinedGlobalSymbol(
+                entry_point_name,
+                GlobalDeclaration::MethodDefinition,
+            ));
+        }
+        index
+    });
 
     let assembled_method_bodies = {
         // These collections are reused as method bodies are assembled.
@@ -1095,7 +1114,7 @@ pub fn assemble_declarations(
                     format::structures::LengthEncodedVector(assembled_method_definitions),
                 ),
             }),
-            entry_point: format::structures::ByteLengthEncoded(None),
+            entry_point: format::structures::ByteLengthEncoded(entry_point_index),
             type_layouts: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(vec![format::TypeLayout::Unspecified]),
             ),
