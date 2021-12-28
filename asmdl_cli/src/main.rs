@@ -24,7 +24,7 @@ impl<E: Error> std::fmt::Display for WrappedError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("at ")?;
         match self.0.position() {
-            Some(position) => write!(f, "line {} column {}", position.line, position.column),
+            Some(position) => write!(f, "line {} column {}", position.line + 1, position.column),
             None => f.write_str("end of file"),
         }?;
         write!(f, ": {}", self.0.error())

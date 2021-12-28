@@ -1012,17 +1012,6 @@ pub fn assemble_declarations(
         }
     }
 
-    let entry_point_index = module_entry_point.value().and_then(|entry_point_name| {
-        let index = method_definitions.index_of(&entry_point_name);
-        if index.is_none() {
-            errors.push(Error::UndefinedGlobalSymbol(
-                entry_point_name,
-                GlobalDeclaration::MethodDefinition,
-            ));
-        }
-        index
-    });
-
     let assembled_method_bodies = {
         // These collections are reused as method bodies are assembled.
         let mut block_lookup = std::collections::HashMap::new();
@@ -1059,6 +1048,17 @@ pub fn assemble_declarations(
                 &mut method_bodies,
             )
         });
+
+    let entry_point_index = module_entry_point.value().and_then(|entry_point_name| {
+        let index = method_definitions.index_of(&entry_point_name);
+        if index.is_none() {
+            errors.push(Error::UndefinedGlobalSymbol(
+                entry_point_name,
+                GlobalDeclaration::MethodDefinition,
+            ));
+        }
+        index
+    });
 
     if module_header.is_none() {
         errors.push(Error::MissingDeclaration(None, GlobalDeclaration::Module))
