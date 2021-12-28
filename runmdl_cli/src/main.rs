@@ -17,7 +17,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let application_arguments = application_arguments_start
-        .map(|start| all_arguments[start + 1..all_arguments.len()].iter().map(String::as_str).collect())
+        .map(|start| {
+            all_arguments[start + 1..all_arguments.len()]
+                .iter()
+                .map(String::as_str)
+                .collect()
+        })
         .unwrap_or(Vec::default());
 
     let application =

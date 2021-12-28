@@ -82,7 +82,23 @@ impl<'l> Interpreter<'l> {
     }
 }
 
-pub fn run<'l>(loader: &'l loader::Loader<'l>, arguments: &[Register], entry_point: LoadedMethod<'l>) -> Vec<Register> {
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    LoadError(loader::LoadError)
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LoadError(error) => std::fmt::Display::fmt(error, f),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+pub fn run<'l>(loader: &'l loader::Loader<'l>, arguments: &[Register], entry_point: LoadedMethod<'l>) -> Result<Vec<Register>, Error> {
     let mut interpreter = Interpreter::initialize(loader);
     todo!()
 }

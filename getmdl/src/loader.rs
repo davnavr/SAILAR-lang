@@ -26,7 +26,7 @@ impl std::fmt::Display for LoadError {
         match self {
             Self::IndexOutOfBounds(index) => write!(
                 f,
-                "Attempted load with index {}, which is out of bounds",
+                "attempted load with index {}, which is out of bounds",
                 index
             ),
             Self::Other(error) => std::fmt::Display::fmt(error, f),

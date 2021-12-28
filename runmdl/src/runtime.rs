@@ -1,3 +1,4 @@
+use crate::interpreter;
 use getmdl::loader;
 
 pub struct Runtime<'l> {
@@ -21,7 +22,21 @@ impl<'l> Initializer<'l> {
 #[non_exhaustive]
 pub enum Error {
     MissingEntryPoint,
-    External(Box<dyn std::error::Error>),
+    InterpreterError(interpreter::Error),
+    InvalidReturnValueCount(usize),
+    InvalidReturnValueType(interpreter::TryFromRegisterValueError),
+}
+
+impl From<loader::LoadError> for Error {
+    fn from(error: loader::LoadError) -> Self {
+        Self::InterpreterError(interpreter::Error::LoadError(error))
+    }
+}
+
+impl From<interpreter::Error> for Error {
+    fn from(error: interpreter::Error) -> Self {
+        Self::InterpreterError(error)
+    }
 }
 
 impl<'l> Runtime<'l> {
@@ -42,7 +57,15 @@ impl<'l> Runtime<'l> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
         }
-        todo!()
+
+        let entry_point = self.program.entry_point()?.ok_or(Error::MissingEntryPoint)?;
+        let results = interpreter::run(&self.loader, &[], entry_point)?;
+
+        match results.as_slice() {
+            [] => Ok(0),
+            [ exit_code ] => i32::try_from(exit_code).map_err(Error::InvalidReturnValueType),
+            _ => Err(Error::InvalidReturnValueCount(results.len()))
+        }
     }
 }
 
@@ -50,9 +73,11 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingEntryPoint => {
-                f.write_str("The entry point method of the module is not defined")
+                f.write_str("the entry point method of the module is not defined")
             }
-            Self::External(error) => std::fmt::Display::fmt(error, f),
+            Self::InterpreterError(error) => std::fmt::Display::fmt(error, f),
+            Self::InvalidReturnValueCount(count) => write!(f, "expected at most 1 return values but got {}", count),
+            Self::InvalidReturnValueType(error) => write!(f, "invalid return value type, {}", error),
         }
     }
 }
