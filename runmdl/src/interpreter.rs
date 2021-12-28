@@ -3,7 +3,7 @@ use registir::format;
 
 pub use format::{
     instruction_set,
-    instruction_set::{Instruction, IntegerConstant},
+    instruction_set::{Instruction, IntegerConstant, RegisterIndex},
     type_system,
     type_system::PrimitiveType,
 };
@@ -61,6 +61,22 @@ impl Register {
         types: T,
     ) -> Vec<Register> {
         types.into_iter().map(Self::initialize).collect()
+    }
+
+    fn copy_raw(source: &Self, destination: &mut Self) {
+        destination.value = source.value;
+    }
+
+    /// Copies the register values from a `source` to a `destination`.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the `source` and `destination` lengths are not equal.
+    fn copy_many_raw(source: &[&Self], destination: &mut [Self]) {
+        assert_eq!(source.len(), destination.len());
+        for (index, register) in source.iter().enumerate() {
+            Self::copy_raw(register, &mut destination[index]);
+        }
     }
 }
 
@@ -152,13 +168,14 @@ type LoadedMethod<'l> = &'l loader::Method<'l>;
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error {
-    //ErrorKind
+pub enum Error /*Kind*/ {
     LoadError(loader::LoadError),
     ArgumentCountMismatch { expected: usize, actual: usize },
     CallStackUnderflow,
     DirectAbstractMethodCall,
     UnexpectedEndOfBlock,
+    UndefinedRegister(RegisterIndex),
+    ResultCountMismatch { expected: usize, actual: usize },
 }
 
 /*
@@ -182,6 +199,9 @@ impl std::fmt::Display for Error {
             Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
             Self::DirectAbstractMethodCall => write!(f, "attempt to call abstract method with call, when call.virt should have been used instead"),
             Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
+            Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
+            Self::UndefinedRegister(RegisterIndex::Temporary(index)) => write!(f, "undefined temporary register {}", index),
+            Self::ResultCountMismatch { expected, actual } => write!(f, "expected {} result values but got {}", expected, actual),
         }
     }
 }
@@ -194,27 +214,28 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 struct StackFrame<'l> {
     depth: usize,
-    argument_registers: Vec<Register>,
-    result_registers: Vec<Register>,
+    input_registers: Vec<Register>,
+    result_registers: std::rc::Rc<std::cell::RefCell<Vec<Register>>>,
     current_method: LoadedMethod<'l>,
     code: &'l format::Code,
     block_index: Option<usize>,
     instructions: &'l [format::instruction_set::Instruction],
     temporary_registers: Vec<Register>,
+    //register_arena: typed_arena::Arena<Register>, // TODO: If arena is used for a frame's registers, have the arena be tied to the frame's lifetime.
 }
 
 impl<'l> StackFrame<'l> {
     fn new(
         depth: usize,
-        argument_registers: Vec<Register>,
+        input_registers: Vec<Register>,
         result_registers: Vec<Register>,
         current_method: LoadedMethod<'l>,
         code: &'l format::Code,
     ) -> Self {
         Self {
             depth,
-            argument_registers,
-            result_registers,
+            input_registers,
+            result_registers: std::rc::Rc::new(std::cell::RefCell::new(result_registers)),
             current_method,
             code,
             block_index: None,
@@ -227,7 +248,34 @@ impl<'l> StackFrame<'l> {
         self.temporary_registers.push(temporary)
     }
 
-    //fn lookup_register
+    fn register(&self, index: RegisterIndex) -> Result<&Register> {
+        macro_rules! lookup_register {
+            ($register_index: expr, $register_lookup: expr) => {{
+                let raw_index = usize::try_from($register_index)
+                    .map_err(|_| Error::UndefinedRegister(index))?;
+                $register_lookup
+                    .get(raw_index)
+                    .ok_or(Error::UndefinedRegister(index))
+            }};
+        }
+
+        match index {
+            RegisterIndex::Temporary(temporary_index) => {
+                lookup_register!(temporary_index, self.temporary_registers)
+            }
+            RegisterIndex::Input(input_index) => {
+                lookup_register!(input_index, self.input_registers)
+            }
+        }
+    }
+
+    fn many_registers(&self, indices: &[RegisterIndex]) -> Result<Vec<&Register>> {
+        let mut registers = Vec::with_capacity(indices.len());
+        for index in indices {
+            registers.push(self.register(*index)?);
+        }
+        Ok(registers)
+    }
 }
 
 pub struct Interpreter<'l> {
@@ -256,7 +304,7 @@ impl<'l> Interpreter<'l> {
         &mut self,
         arguments: &[Register],
         method: LoadedMethod<'l>,
-    ) -> Result<&[Register]> {
+    ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Register>>>> {
         let signature = method.raw_signature_types()?;
         let mut argument_registers = Register::initialize_many(signature.parameter_types);
         let result_registers = Register::initialize_many(signature.return_types);
@@ -282,7 +330,7 @@ impl<'l> Interpreter<'l> {
                     method,
                     code,
                 ));
-                Ok(&self.current_frame()?.result_registers)
+                Ok(self.current_frame()?.result_registers.clone())
             }
             format::MethodBody::Abstract => Err(Error::DirectAbstractMethodCall),
             format::MethodBody::External { .. } => todo!("TODO: add support for external calls"),
@@ -308,7 +356,10 @@ impl<'l> Interpreter<'l> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
-                todo!()
+                // Copy results into the registers of the previous frame.
+                let registers = current_frame.many_registers(indices)?;
+                Register::copy_many_raw(&registers, current_frame.result_registers.borrow_mut().as_mut_slice());
+                self.stack_frames.pop();
             }
             Instruction::ConstI(value) => current_frame.define_temporary(Register::from(*value)),
         }
@@ -329,5 +380,5 @@ pub fn run<'l>(
         interpreter.execute_instruction(instruction)?;
     }
 
-    todo!()
+    Ok(entry_point_results.take())
 }
