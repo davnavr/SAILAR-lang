@@ -38,6 +38,38 @@ impl std::error::Error for LoadError {}
 
 pub type LoadResult<T> = Result<T, LoadError>;
 
+fn read_index<
+    I: TryInto<usize> + Copy + Into<format::numeric::UInteger>,
+    T,
+    R: FnOnce(usize) -> LoadResult<T>,
+>(
+    index: I,
+    reader: R,
+) -> LoadResult<T> {
+    index
+        .try_into()
+        .map_err(|_| LoadError::IndexOutOfBounds(index.into()))
+        .and_then(reader)
+}
+
+fn read_index_from<
+    'a,
+    I: TryInto<usize> + Copy + Into<format::numeric::UInteger>,
+    T,
+    U,
+    R: FnOnce(&'a T) -> LoadResult<U>,
+>(
+    index: I,
+    s: &'a [T],
+    reader: R,
+) -> LoadResult<U> {
+    read_index::<I, U, _>(index, |actual_index| {
+        s.get(actual_index)
+            .ok_or(LoadError::IndexOutOfBounds(index.into()))
+            .and_then(reader)
+    })
+}
+
 impl<'a> Module<'a> {
     fn new(source: format::Module) -> Self {
         Self {
@@ -66,20 +98,19 @@ impl<'a> Module<'a> {
         constructor: C,
         index: I,
     ) -> LoadResult<&'a L> {
-        let raw_index = index
-            .try_into()
-            .map_err(|_| LoadError::IndexOutOfBounds(index.into()))?;
-        match lookup.borrow_mut().entry(raw_index) {
-            hash_map::Entry::Occupied(occupied) => Ok(occupied.get()),
-            hash_map::Entry::Vacant(vacant) => match loader(raw_index) {
-                Some(source) => {
-                    let loaded = arena.alloc(constructor(source)?);
-                    vacant.insert(loaded);
-                    Ok(loaded)
-                }
-                None => Err(LoadError::IndexOutOfBounds(index.into())),
-            },
-        }
+        read_index::<_, &'a L, _>(index, |raw_index| {
+            match lookup.borrow_mut().entry(raw_index) {
+                hash_map::Entry::Occupied(occupied) => Ok(occupied.get()),
+                hash_map::Entry::Vacant(vacant) => match loader(raw_index) {
+                    Some(source) => {
+                        let loaded = arena.alloc(constructor(source)?);
+                        vacant.insert(loaded);
+                        Ok(loaded)
+                    }
+                    None => Err(LoadError::IndexOutOfBounds(index.into())),
+                },
+            }
+        })
     }
 
     pub fn load_type_raw(
@@ -114,11 +145,38 @@ impl<'a> Module<'a> {
             None => Ok(None),
         }
     }
+
+    pub fn load_type_signature_raw(
+        &'a self,
+        index: format::indices::TypeSignature,
+    ) -> LoadResult<&'a format::TypeSignature> {
+        read_index_from(index, &self.source.type_signatures.0, Ok)
+    }
+
+    fn collect_type_signatures_raw(
+        &'a self,
+        indices: &'a [format::indices::TypeSignature],
+    ) -> LoadResult<Vec<&'a format::TypeSignature>> {
+        let mut types = Vec::with_capacity(indices.len());
+        for index in indices {
+            types.push(self.load_type_signature_raw(*index)?);
+        }
+        Ok(types)
+    }
+
+    pub fn load_code_raw(&'a self, index: format::indices::Code) -> LoadResult<&'a format::Code> {
+        read_index_from(index, &self.source.method_bodies.0, Ok)
+    }
 }
 
 pub struct Method<'a> {
     source: &'a format::Method,
     owner: &'a Type<'a>,
+}
+
+pub struct MethodSignatureTypes<'a> {
+    pub return_types: Vec<&'a format::TypeSignature>,
+    pub parameter_types: Vec<&'a format::TypeSignature>,
 }
 
 impl<'a> Method<'a> {
@@ -130,25 +188,38 @@ impl<'a> Method<'a> {
         self.owner.declaring_module()
     }
 
+    pub fn raw_body(&'a self) -> &'a format::MethodBody {
+        &self.source.body
+    }
+
     /// Gets the raw method blocks that make up the method's body, if it is defined.
     pub fn raw_code(&'a self) -> LoadResult<Option<&'a format::Code>> {
         use format::MethodBody;
 
-        match self.source.body {
-            MethodBody::Defined(index) => usize::try_from(index)
-                .map_err(|_| ())
-                .and_then(|index| {
-                    self.declaring_module()
-                        .source
-                        .method_bodies
-                        .0
-                        .get(index)
-                        .ok_or(())
-                })
-                .map_err(|_| LoadError::IndexOutOfBounds(index.into()))
-                .map(Some),
+        match self.raw_body() {
+            MethodBody::Defined(index) => self.declaring_module().load_code_raw(*index).map(Some),
             MethodBody::Abstract | MethodBody::External { .. } => Ok(None),
         }
+    }
+
+    pub fn raw_signature(&'a self) -> LoadResult<&'a format::MethodSignature> {
+        read_index_from(
+            self.source.signature,
+            &self.declaring_module().source.method_signatures.0,
+            Ok,
+        )
+    }
+
+    pub fn raw_signature_types(&'a self) -> LoadResult<MethodSignatureTypes<'a>> {
+        let signature = self.raw_signature()?;
+        Ok(MethodSignatureTypes {
+            return_types: self
+                .declaring_module()
+                .collect_type_signatures_raw(&signature.return_types)?,
+            parameter_types: self
+                .declaring_module()
+                .collect_type_signatures_raw(&signature.parameter_types)?,
+        })
     }
 }
 

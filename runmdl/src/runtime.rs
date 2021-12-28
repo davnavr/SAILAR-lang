@@ -58,13 +58,17 @@ impl<'l> Runtime<'l> {
             todo!("Command line arguments are not yet supported")
         }
 
-        let entry_point = self.program.entry_point()?.ok_or(Error::MissingEntryPoint)?;
+        let entry_point = self
+            .program
+            .entry_point()?
+            .ok_or(Error::MissingEntryPoint)?;
+
         let results = interpreter::run(&self.loader, &[], entry_point)?;
 
         match results.as_slice() {
             [] => Ok(0),
-            [ exit_code ] => i32::try_from(exit_code).map_err(Error::InvalidReturnValueType),
-            _ => Err(Error::InvalidReturnValueCount(results.len()))
+            [exit_code] => i32::try_from(exit_code).map_err(Error::InvalidReturnValueType),
+            _ => Err(Error::InvalidReturnValueCount(results.len())),
         }
     }
 }
@@ -76,8 +80,12 @@ impl std::fmt::Display for Error {
                 f.write_str("the entry point method of the module is not defined")
             }
             Self::InterpreterError(error) => std::fmt::Display::fmt(error, f),
-            Self::InvalidReturnValueCount(count) => write!(f, "expected at most 1 return values but got {}", count),
-            Self::InvalidReturnValueType(error) => write!(f, "invalid return value type, {}", error),
+            Self::InvalidReturnValueCount(count) => {
+                write!(f, "expected at most 1 return values but got {}", count)
+            }
+            Self::InvalidReturnValueType(error) => {
+                write!(f, "invalid return value type, {}", error)
+            }
         }
     }
 }
