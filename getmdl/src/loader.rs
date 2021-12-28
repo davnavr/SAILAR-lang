@@ -24,13 +24,17 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::IndexOutOfBounds(index) => write!(f, "Attempted load with index {}, which is out of bounds", index),
+            Self::IndexOutOfBounds(index) => write!(
+                f,
+                "Attempted load with index {}, which is out of bounds",
+                index
+            ),
             Self::Other(error) => std::fmt::Display::fmt(error, f),
         }
     }
 }
 
-impl std::error::Error for LoadError { }
+impl std::error::Error for LoadError {}
 
 pub type LoadResult<T> = Result<T, LoadError>;
 
@@ -94,7 +98,7 @@ impl<'a> Module<'a> {
     pub fn load_method_raw(
         &'a self,
         index: format::indices::MethodDefinition,
-    ) ->  LoadResult<&'a Method<'a>> {
+    ) -> LoadResult<&'a Method<'a>> {
         Self::load_raw(
             &self.loaded_methods,
             &self.method_arena,
@@ -104,10 +108,10 @@ impl<'a> Module<'a> {
         )
     }
 
-    pub fn entry_point(&'a self) ->  LoadResult<Option<&'a Method<'a>>> {
+    pub fn entry_point(&'a self) -> LoadResult<Option<&'a Method<'a>>> {
         match self.source.entry_point.0 {
             Some(main_index) => self.load_method_raw(main_index).map(Some),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 }
@@ -174,14 +178,14 @@ pub struct Loader<'a> {
 }
 
 impl<'a> Loader<'a> {
-    pub fn new() -> Self {
+    fn new_empty() -> Self {
         Self {
             module_arena: TypedArena::new(),
             loaded_modules: RefCell::new(HashMap::new()),
         }
     }
 
-    pub fn load_module_raw(&'a self, source: format::Module) -> &'a Module {
+    fn load_module_raw(&'a self, source: format::Module) -> &'a Module<'a> {
         let identifier = source.header.0.identifier.clone();
         match self.loaded_modules.borrow_mut().entry(identifier) {
             hash_map::Entry::Vacant(vacant) => {
@@ -191,5 +195,13 @@ impl<'a> Loader<'a> {
             }
             hash_map::Entry::Occupied(occupied) => occupied.get(),
         }
+    }
+
+    pub fn initialize(
+        loader: &'a mut Option<Loader<'a>>,
+        application: format::Module,
+    ) -> (&'a Self, &'a Module<'a>) {
+        let loaded = loader.insert(Loader::new_empty());
+        (loaded, loaded.load_module_raw(application))
     }
 }

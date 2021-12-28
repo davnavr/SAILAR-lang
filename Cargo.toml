@@ -6,4 +6,6 @@ members = [
     "dasmdl_cli",
     "getmdl",
     "registir",
+    "runmdl",
+    "runmdl_cli"
 ]
