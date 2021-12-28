@@ -1,12 +1,34 @@
-use crate::format::{indices, numeric, structures::LengthEncodedVector};
+use crate::format::{indices, numeric, structures::LengthEncodedVector, type_system};
+use bitflags::bitflags;
 
-pub use crate::format::type_system::PrimitiveType;
 pub use indices::Register as RegisterIndex;
+pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
 /// if the target branch is taken, with `0` refering to the current block.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct BlockOffset(pub numeric::SInteger);
+
+#[derive(Debug, Clone, Copy)]
+pub enum RegisterType {
+    Primitive(PrimitiveType),
+    //Pointer(usize),
+    //Object
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NumericType {
+    Primitive(PrimitiveType),
+    //Pointer(usize)
+}
+
+impl From<NumericType> for RegisterType {
+    fn from(t: NumericType) -> Self {
+        match t {
+            NumericType::Primitive(primitive_type) => Self::Primitive(primitive_type),
+        }
+    }
+}
 
 /// Represents an integer constant, whose value is stored in little-endian order.
 ///
@@ -95,6 +117,23 @@ pub enum Opcode {
     Continuation = 0xFF,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum OverflowBehavior {
+    Ignore = 0,
+    /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
+    Flag,
+    /// Indicates that program execution should immediately halt if an overflow occured.
+    Halt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DivideByZeroBehavior {
+    /// Indicates that the value contained in the specified register should be returned if a division by zero occured.
+    Return(RegisterIndex),
+    Halt,
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 ///
 /// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
@@ -117,11 +156,61 @@ pub enum Instruction {
     ///
     /// Should be the last instruction in a block.
     Ret(LengthEncodedVector<RegisterIndex>),
+
+    /// ```txt
+    /// <result> = add <numeric type> <x> and <y>;
+    /// <result> = add ovf.exit <numeric type> <x> and <y>;
+    /// <result>, <overflowed> = add ovf.flag <numeric type> <x> and <y>;
+    /// ```
+    /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
+    Add {
+        overflow: OverflowBehavior,
+        return_type: NumericType,
+        x: RegisterIndex,
+        y: RegisterIndex,
+    },
+    /// ```txt
+    /// <result> = sub <numeric type> <x> from <y>;
+    /// <result> = sub ovf.exit <numeric type> <x> from <y>;
+    /// <result>, <overflowed> = sub ovf.flag <numeric type> <x> from <y>;
+    /// ```
+    /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
+    /// the difference.
+    Sub {
+        overflow: OverflowBehavior,
+        return_type: NumericType,
+        x: RegisterIndex,
+        y: RegisterIndex,
+    },
+    /// ```txt
+    /// <result> = mul <numeric type> <x> by <y>;
+    /// <result> = mul ovf.exit <numeric type> <x> by <y>;
+    /// <result>, <overflowed> = mul ovf.flag <numeric type> <x> by <y>;
+    /// ```
+    /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
+    Mul {
+        overflow: OverflowBehavior,
+        return_type: NumericType,
+        x: RegisterIndex,
+        y: RegisterIndex,
+    },
+    /// ```txt
+    /// <result> = div <numeric type> <numerator> over <denominator> or <nan>;
+    /// <result> = div zeroed.exit <numeric type> <numerator> over <denominator>;
+    /// ```
+    /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
+    Div {
+        divide_by_zero: DivideByZeroBehavior,
+        return_type: NumericType,
+        numerator: RegisterIndex,
+        denominator: RegisterIndex,
+    },
+
     /// ```txt
     /// <result> = const.i <integer type> <value>;
     /// ```
     /// Returns an integer of the specified type.
-    ConstI(IntegerConstant),
+    ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
 }
 
 impl Instruction {
@@ -129,6 +218,10 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::Add { .. } => Opcode::Add,
+            Instruction::Sub { .. } => Opcode::Sub,
+            Instruction::Mul { .. } => Opcode::Mul,
+            Instruction::Div { .. } => Opcode::Div,
             Instruction::ConstI(_) => Opcode::ConstI,
         }
     }
@@ -137,7 +230,13 @@ impl Instruction {
     pub fn return_count(&self) -> u8 {
         match self {
             Instruction::Nop | Instruction::Ret(_) => 0,
-            Instruction::ConstI(_) => 1,
+            Instruction::Add { overflow, .. }
+            | Instruction::Sub { overflow, .. }
+            | Instruction::Mul { overflow, .. } => match overflow {
+                OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
+                OverflowBehavior::Flag => 2,
+            },
+            Instruction::Div { .. } | Instruction::ConstI(_) => 1,
         }
     }
 }
