@@ -22,8 +22,7 @@ pub enum ParseError {
     InvalidIntegerConstantType(type_system::PrimitiveType),
     InvalidCodeBlockFlags(u8),
     InvalidOpcode(u32),
-    InvalidOverflowTag(u8),
-    InvalidDivideByZeroTag(u8),
+    InvalidArithmeticFlags(u8),
     InvalidNumericType(u8),
     InvalidVisibilityFlags(u8),
     InvalidTypeDefinitionFlags(u8),
@@ -70,14 +69,13 @@ impl std::fmt::Display for ParseError {
                 flags
             ),
             Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
-            Self::InvalidOverflowTag(tag) => {
-                write!(f, "{:#02X} is not a valid overflow behavior value", tag)
+            Self::InvalidArithmeticFlags(flags) => {
+                write!(
+                    f,
+                    "{:#02X} is not a valid arithmetic flags combination",
+                    flags
+                )
             }
-            Self::InvalidDivideByZeroTag(tag) => write!(
-                f,
-                "{:#02X} is not a valid division-by-zero behavior value",
-                tag
-            ),
             Self::InvalidNumericType(value) => {
                 write!(f, "{:#02X} is not a valid numeric type", value)
             }
@@ -327,29 +325,49 @@ fn numeric_type<R: std::io::Read>(src: &mut R) -> ParseResult<instruction_set::N
         .map(instruction_set::NumericType::Primitive)
 }
 
+fn arithmetic_flags<R: std::io::Read>(
+    src: &mut R,
+) -> ParseResult<instruction_set::ArithmeticFlags> {
+    let bits = byte(src)?;
+    let flags: instruction_set::ArithmeticFlags = unsafe { std::mem::transmute(bits) };
+    if instruction_set::ArithmeticFlags::all().contains(flags) {
+        Ok(flags)
+    } else {
+        Err(ParseError::InvalidArithmeticFlags(bits))
+    }
+}
+
 fn basic_arithmetic_operation<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<instruction_set::BasicArithmeticOperation> {
+    let flags = arithmetic_flags(src)?;
     Ok(instruction_set::BasicArithmeticOperation {
-        overflow: byte_enum(src, ParseError::InvalidOverflowTag)?,
+        overflow: instruction_set::OverflowBehavior::from(flags),
         return_type: numeric_type(src)?,
         x: unsigned_index(src, size)?,
         y: unsigned_index(src, size)?,
     })
 }
 
-fn divide_by_zero_behavior<R: std::io::Read>(
+fn division_operation<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<instruction_set::DivideByZeroBehavior> {
-    match byte(src)? {
-        0 => Ok(instruction_set::DivideByZeroBehavior::Return(
-            unsigned_index(src, size)?,
-        )),
-        1 => Ok(instruction_set::DivideByZeroBehavior::Halt),
-        bad => Err(ParseError::InvalidDivideByZeroTag(bad)),
-    }
+) -> ParseResult<instruction_set::DivisionOperation> {
+    let flags = arithmetic_flags(src)?;
+    Ok(instruction_set::DivisionOperation {
+        divide_by_zero: if flags
+            .contains(instruction_set::ArithmeticFlags::RETURN_VALUE_ON_DIVIDE_BY_ZERO)
+        {
+            instruction_set::DivideByZeroBehavior::Return(unsigned_index(src, size)?)
+        } else {
+            instruction_set::DivideByZeroBehavior::Halt
+        },
+        overflow: instruction_set::OverflowBehavior::from(flags),
+        return_type: numeric_type(src)?,
+        numerator: unsigned_index(src, size)?,
+        denominator: unsigned_index(src, size)?,
+    })
 }
 
 fn instruction<R: std::io::Read>(
@@ -362,12 +380,7 @@ fn instruction<R: std::io::Read>(
         Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
         Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
         Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
-        Opcode::Div => Ok(Instruction::Div(instruction_set::DivisionOperation {
-            divide_by_zero: divide_by_zero_behavior(src, size)?,
-            return_type: numeric_type(src)?,
-            numerator: unsigned_index(src, size)?,
-            denominator: unsigned_index(src, size)?,
-        })),
+        Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Continuation => unreachable!(),
         _ => todo!("TODO: Add support for parsing of more instructions"),

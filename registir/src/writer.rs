@@ -277,10 +277,21 @@ fn basic_arithmetic_operation<W: std::io::Write>(
     operation: &instruction_set::BasicArithmeticOperation,
     size: numeric::IntegerSize,
 ) -> WriteResult {
-    write(out, operation.overflow as u8)?;
+    write(out, operation.flags().bits())?;
     numeric_type(out, operation.return_type)?;
     unsigned_index(out, operation.x, size)?;
     unsigned_index(out, operation.y, size)
+}
+
+fn division_operation<W: std::io::Write>(
+    out: &mut W,
+    operation: &instruction_set::DivisionOperation,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    write(out, operation.flags().bits())?;
+    numeric_type(out, operation.return_type)?;
+    unsigned_index(out, operation.numerator, size)?;
+    unsigned_index(out, operation.denominator, size)
 }
 
 fn block_instruction<W: std::io::Write>(
@@ -298,20 +309,7 @@ fn block_instruction<W: std::io::Write>(
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)
         }
-        Instruction::Div(instruction_set::DivisionOperation {
-            divide_by_zero,
-            return_type,
-            numerator,
-            denominator,
-        }) => {
-            write(out, divide_by_zero.tag())?;
-            if let instruction_set::DivideByZeroBehavior::Return(index) = divide_by_zero {
-                unsigned_index(out, *index, size)?;
-            }
-            numeric_type(out, *return_type)?;
-            unsigned_index(out, *numerator, size)?;
-            unsigned_index(out, *denominator, size)
-        }
+        Instruction::Div(operation) => division_operation(out, operation, size),
         Instruction::ConstI(constant) => match constant {
             IntegerConstant::S8(value) => {
                 primitive_type(out, PrimitiveType::S8)?;

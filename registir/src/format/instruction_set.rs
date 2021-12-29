@@ -117,14 +117,46 @@ pub enum Opcode {
     Continuation = 0xFF,
 }
 
+bitflags! {
+    #[repr(transparent)]
+    pub struct ArithmeticFlags: u8 {
+        const NONE = 0;
+        const HALT_ON_OVERFLOW = 0b0000_0001;
+        const FLAG_ON_OVERFLOW = 0b0000_0010;
+        const RETURN_VALUE_ON_DIVIDE_BY_ZERO = 0b0000_0100;
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum OverflowBehavior {
-    Ignore = 0,
+    Ignore,
     /// Indicates that program execution should immediately halt if an overflow occured.
-    Halt = 1,
+    Halt,
     /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
-    Flag = 2,
+    Flag,
+}
+
+impl OverflowBehavior {
+    pub fn flags(self) -> ArithmeticFlags {
+        match self {
+            Self::Ignore => ArithmeticFlags::NONE,
+            Self::Halt => ArithmeticFlags::HALT_ON_OVERFLOW,
+            Self::Flag => ArithmeticFlags::FLAG_ON_OVERFLOW,
+        }
+    }
+}
+
+impl From<ArithmeticFlags> for OverflowBehavior {
+    fn from(flags: ArithmeticFlags) -> Self {
+        if flags.contains(ArithmeticFlags::HALT_ON_OVERFLOW) {
+            Self::Halt
+        } else if flags.contains(ArithmeticFlags::FLAG_ON_OVERFLOW) {
+            Self::Flag
+        } else {
+            Self::Ignore
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,10 +167,10 @@ pub enum DivideByZeroBehavior {
 }
 
 impl DivideByZeroBehavior {
-    pub fn tag(self) -> u8 {
+    pub fn flags(self) -> ArithmeticFlags {
         match self {
-            Self::Return(_) => 0,
-            Self::Halt => 1,
+            Self::Return(_) => ArithmeticFlags::RETURN_VALUE_ON_DIVIDE_BY_ZERO,
+            Self::Halt => ArithmeticFlags::NONE,
         }
     }
 }
@@ -151,12 +183,25 @@ pub struct BasicArithmeticOperation {
     pub y: RegisterIndex,
 }
 
+impl BasicArithmeticOperation {
+    pub fn flags(&self) -> ArithmeticFlags {
+        self.overflow.flags()
+    }
+}
+
 #[derive(Debug)]
 pub struct DivisionOperation {
+    pub overflow: OverflowBehavior,
     pub divide_by_zero: DivideByZeroBehavior,
     pub return_type: NumericType,
     pub numerator: RegisterIndex,
     pub denominator: RegisterIndex,
+}
+
+impl DivisionOperation {
+    pub fn flags(&self) -> ArithmeticFlags {
+        self.overflow.flags().union(self.divide_by_zero.flags())
+    }
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
