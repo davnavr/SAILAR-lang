@@ -510,6 +510,76 @@ impl<'a> MethodBlockAssembler<'a> {
         }
     }
 
+    fn emit_basic_arithmetic_instruction<
+        I: FnOnce(
+            format::instruction_set::BasicArithmeticOperation,
+        ) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BasicArithmeticOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instructions: &mut Vec<format::instruction_set::Instruction>,
+        instruction: I,
+    ) {
+        let registers = Self::lookup_register_index(errors, register_lookup, &operation.x).zip(
+            Self::lookup_register_index(errors, register_lookup, &operation.y),
+        );
+        if let Some((x, y)) = registers {
+            instructions.push(instruction(
+                format::instruction_set::BasicArithmeticOperation {
+                    overflow: operation.overflow_behavior(),
+                    return_type: operation.return_type.value,
+                    x,
+                    y,
+                },
+            ))
+        }
+    }
+
+    fn define_division_instruction<
+        I: FnOnce(format::instruction_set::DivisionOperation) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::DivisionOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        use format::instruction_set::DivideByZeroBehavior;
+
+        let numerator = Self::lookup_register_index(errors, register_lookup, &operation.numerator)?;
+        let denominator =
+            Self::lookup_register_index(errors, register_lookup, &operation.denominator)?;
+        let divide_by_zero_behavior = match operation.divide_by_zero_modifier {
+            ast::DivideByZeroModifier::Halt => DivideByZeroBehavior::Halt,
+            ast::DivideByZeroModifier::Return(ref nan) => DivideByZeroBehavior::Return(
+                Self::lookup_register_index(errors, register_lookup, nan)?,
+            ),
+        };
+
+        Some(instruction(format::instruction_set::DivisionOperation {
+            divide_by_zero: divide_by_zero_behavior,
+            return_type: operation.return_type.value,
+            numerator,
+            denominator,
+        }))
+    }
+
+    fn emit_division_instruction<
+        I: FnOnce(format::instruction_set::DivisionOperation) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::DivisionOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instructions: &mut Vec<format::instruction_set::Instruction>,
+        instruction: I,
+    ) {
+        if let Some(i) =
+            Self::define_division_instruction(errors, operation, register_lookup, instruction)
+        {
+            instructions.push(i)
+        }
+    }
+
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
@@ -544,6 +614,34 @@ impl<'a> MethodBlockAssembler<'a> {
                             instructions.push(Instruction::Ret(indices));
                         }
                     }
+                    ast::Instruction::Add(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Add,
+                    ),
+                    ast::Instruction::Sub(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Sub,
+                    ),
+                    ast::Instruction::Mul(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Mul,
+                    ),
+                    ast::Instruction::Div(operation) => Self::emit_division_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Div,
+                    ),
                     ast::Instruction::ConstI(integer_type, value) => {
                         match Self::define_integer_constant(integer_type, value) {
                             Ok(constant) => instructions.push(Instruction::ConstI(constant)),

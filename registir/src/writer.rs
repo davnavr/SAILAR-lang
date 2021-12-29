@@ -262,10 +262,7 @@ fn instruction_opcode<W: std::io::Write>(
     }
 }
 
-fn numeric_type<W: std::io::Write>(
-    out: &mut W,
-    t: instruction_set::NumericType,
-) -> WriteResult {
+fn numeric_type<W: std::io::Write>(out: &mut W, t: instruction_set::NumericType) -> WriteResult {
     match t {
         instruction_set::NumericType::Primitive(pt) => write(out, pt as u8),
     }
@@ -294,10 +291,15 @@ fn block_instruction<W: std::io::Write>(
     match instruction {
         Instruction::Nop => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        Instruction::Add(operation)
-        | Instruction::Sub(operation)
-        | Instruction::Mul(operation) => basic_arithmetic_operation(out, operation, size),
-        Instruction::Div { divide_by_zero, return_type, numerator, denominator } => {
+        Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
+            basic_arithmetic_operation(out, operation, size)
+        }
+        Instruction::Div(instruction_set::DivisionOperation {
+            divide_by_zero,
+            return_type,
+            numerator,
+            denominator,
+        }) => {
             write(out, divide_by_zero.tag())?;
             numeric_type(out, *return_type)?;
             unsigned_index(out, *numerator, size)?;

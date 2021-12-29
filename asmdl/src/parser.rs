@@ -224,13 +224,76 @@ fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind
 
 fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveType> {
     combine::choice((
+        keyword("u8").with(combine::value(ast::PrimitiveType::U8)),
+        keyword("s8").with(combine::value(ast::PrimitiveType::S8)),
+        keyword("u16").with(combine::value(ast::PrimitiveType::U16)),
+        keyword("s16").with(combine::value(ast::PrimitiveType::S16)),
         keyword("u32").with(combine::value(ast::PrimitiveType::U32)),
         keyword("s32").with(combine::value(ast::PrimitiveType::S32)),
+        keyword("u64").with(combine::value(ast::PrimitiveType::U64)),
+        keyword("s64").with(combine::value(ast::PrimitiveType::S64)),
     ))
 }
 
 fn type_signature<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeSignature> {
     combine::choice((primitive_type().map(ast::TypeSignature::Primitive),))
+}
+
+fn numeric_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::NumericType> {
+    primitive_type().map(ast::NumericType::Primitive)
+}
+
+fn basic_arithmetic_operation<'a, I: 'a + Fn(ast::BasicArithmeticOperation) -> ast::Instruction>(
+    name: &'static str,
+    separator: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            register_symbol(),
+            keyword(separator).with(register_symbol()),
+            combine::optional(positioned(combine::choice((
+                keyword("ovf.halt").with(combine::value(ast::OverflowModifier::Halt)),
+                keyword("ovf.flag").with(combine::value(ast::OverflowModifier::Flag)),
+            )))),
+        ))
+        .map(move |(return_type, x, y, overflow_modifier)| {
+            instruction(ast::BasicArithmeticOperation {
+                return_type,
+                x,
+                y,
+                overflow_modifier,
+            })
+        })
+}
+
+fn division_operation<'a, I: 'a + Fn(ast::DivisionOperation) -> ast::Instruction>(
+    name: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            register_symbol(),
+            keyword("over").with(register_symbol()),
+            combine::choice((
+                keyword("or")
+                    .with(register_symbol())
+                    .map(ast::DivideByZeroModifier::Return),
+                keyword("zeroed.halt").with(combine::value(ast::DivideByZeroModifier::Halt)),
+            )),
+        ))
+        .map(
+            move |(return_type, numerator, denominator, divide_by_zero_modifier)| {
+                instruction(ast::DivisionOperation {
+                    return_type,
+                    numerator,
+                    denominator,
+                    divide_by_zero_modifier,
+                })
+            },
+        )
 }
 
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
@@ -249,6 +312,13 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
                 combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
                     .map(ast::Instruction::Ret),
             ),
+            // Arithmetic operations
+            combine::choice((
+                basic_arithmetic_operation("add", "and", ast::Instruction::Add),
+                basic_arithmetic_operation("sub", "from", ast::Instruction::Sub),
+                basic_arithmetic_operation("mul", "by", ast::Instruction::Mul),
+                division_operation("div", ast::Instruction::Div),
+            )),
             keyword("const.i").with(
                 (positioned(primitive_type()), positioned(literal_integer()))
                     .map(|(ty, value)| ast::Instruction::ConstI(ty, value)),

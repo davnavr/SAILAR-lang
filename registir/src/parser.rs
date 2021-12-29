@@ -362,12 +362,12 @@ fn instruction<R: std::io::Read>(
         Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
         Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
         Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
-        Opcode::Div => Ok(Instruction::Div {
+        Opcode::Div => Ok(Instruction::Div(instruction_set::DivisionOperation {
             divide_by_zero: divide_by_zero_behavior(src, size)?,
             return_type: numeric_type(src)?,
             numerator: unsigned_index(src, size)?,
             denominator: unsigned_index(src, size)?,
-        }),
+        })),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Continuation => unreachable!(),
         _ => todo!("TODO: Add support for parsing of more instructions"),

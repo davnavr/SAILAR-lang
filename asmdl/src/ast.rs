@@ -1,4 +1,7 @@
-pub use registir::format::type_system::PrimitiveType;
+pub use registir::format::{
+    instruction_set::{NumericType, OverflowBehavior},
+    type_system::PrimitiveType,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
@@ -136,10 +139,58 @@ pub enum TypeSignature {
     Array(Box<TypeSignature>),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OverflowModifier {
+    Halt,
+    Flag,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BasicArithmeticOperation {
+    pub return_type: Positioned<NumericType>,
+    pub x: RegisterSymbol,
+    pub y: RegisterSymbol,
+    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
+}
+
+impl BasicArithmeticOperation {
+    pub fn overflow_behavior(&self) -> OverflowBehavior {
+        match self.overflow_modifier {
+            Some(Positioned {
+                value: OverflowModifier::Halt,
+                ..
+            }) => OverflowBehavior::Halt,
+            Some(Positioned {
+                value: OverflowModifier::Flag,
+                ..
+            }) => OverflowBehavior::Flag,
+            None => OverflowBehavior::Ignore,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DivideByZeroModifier {
+    Return(RegisterSymbol),
+    Halt,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DivisionOperation {
+    pub return_type: Positioned<NumericType>,
+    pub numerator: RegisterSymbol,
+    pub denominator: RegisterSymbol,
+    pub divide_by_zero_modifier: DivideByZeroModifier,
+}
+
 /// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
+    Add(BasicArithmeticOperation),
+    Sub(BasicArithmeticOperation),
+    Mul(BasicArithmeticOperation),
+    Div(DivisionOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
     Ret(Vec<RegisterSymbol>),
 }
@@ -149,7 +200,16 @@ impl Instruction {
     pub fn return_count(&self) -> u8 {
         match self {
             Self::Nop | Self::Ret(_) => 0,
-            Self::ConstI(_, _) => 1,
+            Self::Add(operation) | Self::Sub(operation) | Self::Mul(operation) => {
+                match operation.overflow_modifier {
+                    Some(Positioned {
+                        value: OverflowModifier::Flag,
+                        ..
+                    }) => 2,
+                    _ => 1,
+                }
+            }
+            Self::Div(_) | Self::ConstI(_, _) => 1,
         }
     }
 }

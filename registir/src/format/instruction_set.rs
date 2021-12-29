@@ -9,14 +9,14 @@ pub use type_system::PrimitiveType;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct BlockOffset(pub numeric::SInteger);
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RegisterType {
     Primitive(PrimitiveType),
     //Pointer(u32),
     //Object
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     Primitive(PrimitiveType),
     //Pointer(u32)
@@ -151,6 +151,14 @@ pub struct BasicArithmeticOperation {
     pub y: RegisterIndex,
 }
 
+#[derive(Debug)]
+pub struct DivisionOperation {
+    pub divide_by_zero: DivideByZeroBehavior,
+    pub return_type: NumericType,
+    pub numerator: RegisterIndex,
+    pub denominator: RegisterIndex,
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 ///
 /// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
@@ -176,14 +184,14 @@ pub enum Instruction {
 
     /// ```txt
     /// <result> = add <numeric type> <x> and <y>;
-    /// <result> = add ovf.exit <numeric type> <x> and <y>;
+    /// <result> = add <numeric type> <x> and <y> ovf.halt;
     /// <result>, <overflowed> = add ovf.flag <numeric type> <x> and <y>;
     /// ```
     /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
     Add(BasicArithmeticOperation),
     /// ```txt
     /// <result> = sub <numeric type> <x> from <y>;
-    /// <result> = sub ovf.exit <numeric type> <x> from <y>;
+    /// <result> = sub <numeric type> <x> from <y> ovf.halt;
     /// <result>, <overflowed> = sub ovf.flag <numeric type> <x> from <y>;
     /// ```
     /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
@@ -191,22 +199,17 @@ pub enum Instruction {
     Sub(BasicArithmeticOperation),
     /// ```txt
     /// <result> = mul <numeric type> <x> by <y>;
-    /// <result> = mul ovf.exit <numeric type> <x> by <y>;
+    /// <result> = mul <numeric type> <x> by <y> ovf.halt;
     /// <result>, <overflowed> = mul ovf.flag <numeric type> <x> by <y>;
     /// ```
     /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
     Mul(BasicArithmeticOperation),
     /// ```txt
     /// <result> = div <numeric type> <numerator> over <denominator> or <nan>;
-    /// <result> = div zeroed.exit <numeric type> <numerator> over <denominator>;
+    /// <result> = div <numeric type> <numerator> over <denominator> zeroed.halt;
     /// ```
     /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
-    Div {
-        divide_by_zero: DivideByZeroBehavior,
-        return_type: NumericType,
-        numerator: RegisterIndex,
-        denominator: RegisterIndex,
-    },
+    Div(DivisionOperation),
 
     /// ```txt
     /// <result> = const.i <integer type> <value>;
