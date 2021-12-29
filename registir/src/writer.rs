@@ -189,6 +189,10 @@ fn module_header<W: std::io::Write>(
     module_identifier(out, &header.identifier, size)
 }
 
+fn primitive_type<W: std::io::Write>(out: &mut W, t: type_system::PrimitiveType) -> WriteResult {
+    write(out, type_system::TypeTagged::tag(&t) as u8)
+}
+
 fn simple_type<W: std::io::Write>(
     out: &mut W,
     t: &type_system::SimpleType,
@@ -264,7 +268,7 @@ fn instruction_opcode<W: std::io::Write>(
 
 fn numeric_type<W: std::io::Write>(out: &mut W, t: instruction_set::NumericType) -> WriteResult {
     match t {
-        instruction_set::NumericType::Primitive(pt) => write(out, pt.tag() as u8),
+        instruction_set::NumericType::Primitive(pt) => primitive_type(out, pt),
     }
 }
 
@@ -301,41 +305,44 @@ fn block_instruction<W: std::io::Write>(
             denominator,
         }) => {
             write(out, divide_by_zero.tag())?;
+            if let instruction_set::DivideByZeroBehavior::Return(index) = divide_by_zero {
+                unsigned_index(out, *index, size)?;
+            }
             numeric_type(out, *return_type)?;
             unsigned_index(out, *numerator, size)?;
             unsigned_index(out, *denominator, size)
         }
         Instruction::ConstI(constant) => match constant {
             IntegerConstant::S8(value) => {
-                write(out, PrimitiveType::S8 as u8)?;
+                primitive_type(out, PrimitiveType::S8)?;
                 write(out, *value as u8)
             }
             IntegerConstant::U8(value) => {
-                write(out, PrimitiveType::U8 as u8)?;
+                primitive_type(out, PrimitiveType::U8)?;
                 write(out, *value)
             }
             IntegerConstant::S16(value) => {
-                write(out, PrimitiveType::S16 as u8)?;
+                primitive_type(out, PrimitiveType::S16)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U16(value) => {
-                write(out, PrimitiveType::U16 as u8)?;
+                primitive_type(out, PrimitiveType::U16)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::S32(value) => {
-                write(out, PrimitiveType::S32 as u8)?;
+                primitive_type(out, PrimitiveType::S32)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U32(value) => {
-                write(out, PrimitiveType::U32 as u8)?;
+                primitive_type(out, PrimitiveType::U32)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::S64(value) => {
-                write(out, PrimitiveType::S64 as u8)?;
+                primitive_type(out, PrimitiveType::S64)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U64(value) => {
-                write(out, PrimitiveType::U64 as u8)?;
+                primitive_type(out, PrimitiveType::U64)?;
                 write_bytes(out, &value.to_le_bytes())
             }
         },
