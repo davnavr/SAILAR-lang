@@ -5,7 +5,7 @@ pub mod register;
 
 pub use format::{
     instruction_set,
-    instruction_set::{Instruction, IntegerConstant, RegisterIndex},
+    instruction_set::{Instruction, IntegerConstant, OverflowBehavior, RegisterIndex},
     type_system,
     type_system::PrimitiveType,
 };
@@ -19,8 +19,6 @@ pub enum ProgramHalt {
     IntegerOverflow,
     DivideByZero,
 }
-
-type OperationResult<T> = std::result::Result<T, ProgramHalt>;
 
 impl std::fmt::Display for ProgramHalt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -226,10 +224,29 @@ impl<'l> Interpreter<'l> {
         }
     }
 
-    fn basic_arithmetic_operation(
-        frame: &StackFrame<'l>,
-        operation: instruction_set::BasicArithmeticOperation,
-    ) -> OperationResult<()> {
+    fn basic_arithmetic_operation<
+        O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
+    >(
+        frame: &mut StackFrame<'l>,
+        operation: &instruction_set::BasicArithmeticOperation,
+        o: O,
+    ) -> Result<()> {
+        let x = frame.register(operation.x)?;
+        let y = frame.register(operation.y)?;
+        let (result, overflowed) = o(RegisterType::from(operation.return_type), x, y);
+        frame.define_temporary(result);
+
+        match operation.overflow {
+            OverflowBehavior::Ignore => (),
+            OverflowBehavior::Flag => frame.define_temporary(Register::from(overflowed)),
+            OverflowBehavior::Halt => {
+                if overflowed {
+                    return Err(Error::Halt(ProgramHalt::IntegerOverflow));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
@@ -246,9 +263,23 @@ impl<'l> Interpreter<'l> {
                 );
                 self.stack_frames.pop();
             }
-
+            Instruction::Add(operation) => Self::basic_arithmetic_operation(
+                current_frame,
+                operation,
+                Register::overflowing_add,
+            )?,
+            Instruction::Sub(operation) => Self::basic_arithmetic_operation(
+                current_frame,
+                operation,
+                Register::overflowing_sub,
+            )?,
+            Instruction::Mul(operation) => Self::basic_arithmetic_operation(
+                current_frame,
+                operation,
+                Register::overflowing_mul,
+            )?,
             Instruction::ConstI(value) => current_frame.define_temporary(Register::from(*value)),
-            _ => todo!(),
+            _ => todo!("Interpretation of {:?} is not yet implemented", instruction),
         }
 
         Ok(())

@@ -264,7 +264,7 @@ fn instruction_opcode<W: std::io::Write>(
 
 fn numeric_type<W: std::io::Write>(out: &mut W, t: instruction_set::NumericType) -> WriteResult {
     match t {
-        instruction_set::NumericType::Primitive(pt) => write(out, pt as u8),
+        instruction_set::NumericType::Primitive(pt) => write(out, pt.tag() as u8),
     }
 }
 
