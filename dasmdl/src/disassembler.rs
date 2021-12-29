@@ -245,6 +245,13 @@ fn quoted_namespace<O: Write>(
     })
 }
 
+fn primitive_type<O: Write>(
+    out: &mut Output<'_, O>,
+    t: format::type_system::PrimitiveType,
+) -> Result<()> {
+    out.write_fmt(format_args!("{}", t))
+}
+
 fn type_signature<O: Write>(
     out: &mut Output<'_, O>,
     signature: &format::type_system::AnyType,
@@ -252,9 +259,7 @@ fn type_signature<O: Write>(
     use format::type_system::*;
 
     match signature {
-        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => {
-            out.write_fmt(format_args!("{:?}", t))
-        }
+        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => primitive_type(out, *t),
         _ => todo!(),
     }
 }
@@ -272,6 +277,74 @@ fn code_register<O: Write>(
         format::indices::Register::Input(index) => out.write_fmt(format_args!("%a{}", index)),
         format::indices::Register::Temporary(index) => out.write_fmt(format_args!("%t{}", index)),
     }
+}
+
+fn numeric_type<O: Write>(
+    out: &mut Output<'_, O>,
+    t: &format::instruction_set::NumericType,
+) -> Result<()> {
+    use format::instruction_set::NumericType;
+    match t {
+        NumericType::Primitive(t) => primitive_type(out, *t),
+    }
+}
+
+fn overflow_behavior<O: Write>(
+    out: &mut Output<'_, O>,
+    behavior: format::instruction_set::OverflowBehavior,
+) -> Result<()> {
+    use format::instruction_set::OverflowBehavior;
+
+    match behavior {
+        OverflowBehavior::Ignore => Ok(()),
+        OverflowBehavior::Halt => out.write_str(" ovf.halt"),
+        OverflowBehavior::Flag => out.write_str(" ovf.flag"),
+    }
+}
+
+fn basic_arithmetic_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BasicArithmeticOperation,
+    separator: &str,
+) -> Result<()> {
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.return_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.x)?;
+    out.write_char(' ')?;
+    out.write_str(separator)?;
+    out.write_char(' ')?;
+    code_register(out, operation.y)?;
+
+    overflow_behavior(out, operation.overflow)
+}
+
+fn division_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::DivisionOperation,
+) -> Result<()> {
+    use format::instruction_set::DivideByZeroBehavior;
+
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.return_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.numerator)?;
+    out.write_str(" over ")?;
+    code_register(out, operation.denominator)?;
+
+    match operation.divide_by_zero {
+        DivideByZeroBehavior::Halt => out.write_str(" zeroed.halt")?,
+        DivideByZeroBehavior::Return(return_index) => {
+            out.write_str(" or ")?;
+            code_register(out, return_index)?;
+        }
+    }
+
+    overflow_behavior(out, operation.overflow)
 }
 
 fn code_block<O: Write>(
@@ -317,6 +390,18 @@ fn code_block<O: Write>(
                     out.write_char(' ')?;
                     out.write_join(", ", &values.0, |out, index| code_register(out, *index))?
                 }
+            }
+            Instruction::Add(operation) => {
+                basic_arithmetic_instruction(out, "add", operation, "and")?
+            }
+            Instruction::Sub(operation) => {
+                basic_arithmetic_instruction(out, "sub", operation, "from")?
+            }
+            Instruction::Mul(operation) => {
+                basic_arithmetic_instruction(out, "mul", operation, "by")?
+            }
+            Instruction::Div(operation) => {
+                division_instruction(out, "div", operation)?
             }
             Instruction::ConstI(constant) => out.write_fmt(format_args!(
                 "const.i {} {}",
