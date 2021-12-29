@@ -22,6 +22,9 @@ pub enum ParseError {
     InvalidIntegerConstantType(type_system::PrimitiveType),
     InvalidCodeBlockFlags(u8),
     InvalidOpcode(u32),
+    InvalidOverflowTag(u8),
+    InvalidDivideByZeroTag(u8),
+    InvalidNumericType(u8),
     InvalidVisibilityFlags(u8),
     InvalidTypeDefinitionFlags(u8),
     InvalidMethodFlags(u8),
@@ -67,6 +70,17 @@ impl std::fmt::Display for ParseError {
                 flags
             ),
             Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
+            Self::InvalidOverflowTag(tag) => {
+                write!(f, "{:#02X} is not a valid overflow behavior value", tag)
+            }
+            Self::InvalidDivideByZeroTag(tag) => write!(
+                f,
+                "{:#02X} is not a valid division-by-zero behavior value",
+                tag
+            ),
+            Self::InvalidNumericType(value) => {
+                write!(f, "{:#02X} is not a valid numeric type", value)
+            }
             Self::InvalidVisibilityFlags(flag) => {
                 write!(f, "{:#02X} is not a valid visibility value", flag)
             }
@@ -305,6 +319,39 @@ fn constant_integer<R: std::io::Read>(
     }
 }
 
+fn numeric_type<R: std::io::Read>(src: &mut R) -> ParseResult<instruction_set::NumericType> {
+    let tag_byte = byte(src)?;
+    let tag: type_system::TypeTag = unsafe { std::mem::transmute(tag_byte) };
+    primitive_type(tag)
+        .ok_or(ParseError::InvalidNumericType(tag_byte))
+        .map(instruction_set::NumericType::Primitive)
+}
+
+fn basic_arithmetic_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BasicArithmeticOperation> {
+    Ok(instruction_set::BasicArithmeticOperation {
+        overflow: byte_enum(src, ParseError::InvalidOverflowTag)?,
+        return_type: numeric_type(src)?,
+        x: unsigned_index(src, size)?,
+        y: unsigned_index(src, size)?,
+    })
+}
+
+fn divide_by_zero_behavior<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::DivideByZeroBehavior> {
+    match byte(src)? {
+        0 => Ok(instruction_set::DivideByZeroBehavior::Return(
+            unsigned_index(src, size)?,
+        )),
+        1 => Ok(instruction_set::DivideByZeroBehavior::Halt),
+        bad => Err(ParseError::InvalidDivideByZeroTag(bad)),
+    }
+}
+
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -312,6 +359,15 @@ fn instruction<R: std::io::Read>(
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
+        Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
+        Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
+        Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
+        Opcode::Div => Ok(Instruction::Div {
+            divide_by_zero: divide_by_zero_behavior(src, size)?,
+            return_type: numeric_type(src)?,
+            numerator: unsigned_index(src, size)?,
+            denominator: unsigned_index(src, size)?,
+        }),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Continuation => unreachable!(),
         _ => todo!("TODO: Add support for parsing of more instructions"),

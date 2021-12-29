@@ -12,14 +12,14 @@ pub struct BlockOffset(pub numeric::SInteger);
 #[derive(Debug, Clone, Copy)]
 pub enum RegisterType {
     Primitive(PrimitiveType),
-    //Pointer(usize),
+    //Pointer(u32),
     //Object
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum NumericType {
     Primitive(PrimitiveType),
-    //Pointer(usize)
+    //Pointer(u32)
 }
 
 impl From<NumericType> for RegisterType {
@@ -121,10 +121,10 @@ pub enum Opcode {
 #[repr(u8)]
 pub enum OverflowBehavior {
     Ignore = 0,
-    /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
-    Flag,
     /// Indicates that program execution should immediately halt if an overflow occured.
-    Halt,
+    Halt = 1,
+    /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
+    Flag = 2,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -132,6 +132,23 @@ pub enum DivideByZeroBehavior {
     /// Indicates that the value contained in the specified register should be returned if a division by zero occured.
     Return(RegisterIndex),
     Halt,
+}
+
+impl DivideByZeroBehavior {
+    pub fn tag(self) -> u8 {
+        match self {
+            Self::Return(_) => 0,
+            Self::Halt => 1,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BasicArithmeticOperation {
+    pub overflow: OverflowBehavior,
+    pub return_type: NumericType,
+    pub x: RegisterIndex,
+    pub y: RegisterIndex,
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
@@ -163,12 +180,7 @@ pub enum Instruction {
     /// <result>, <overflowed> = add ovf.flag <numeric type> <x> and <y>;
     /// ```
     /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
-    Add {
-        overflow: OverflowBehavior,
-        return_type: NumericType,
-        x: RegisterIndex,
-        y: RegisterIndex,
-    },
+    Add(BasicArithmeticOperation),
     /// ```txt
     /// <result> = sub <numeric type> <x> from <y>;
     /// <result> = sub ovf.exit <numeric type> <x> from <y>;
@@ -176,24 +188,14 @@ pub enum Instruction {
     /// ```
     /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
     /// the difference.
-    Sub {
-        overflow: OverflowBehavior,
-        return_type: NumericType,
-        x: RegisterIndex,
-        y: RegisterIndex,
-    },
+    Sub(BasicArithmeticOperation),
     /// ```txt
     /// <result> = mul <numeric type> <x> by <y>;
     /// <result> = mul ovf.exit <numeric type> <x> by <y>;
     /// <result>, <overflowed> = mul ovf.flag <numeric type> <x> by <y>;
     /// ```
     /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
-    Mul {
-        overflow: OverflowBehavior,
-        return_type: NumericType,
-        x: RegisterIndex,
-        y: RegisterIndex,
-    },
+    Mul(BasicArithmeticOperation),
     /// ```txt
     /// <result> = div <numeric type> <numerator> over <denominator> or <nan>;
     /// <result> = div zeroed.exit <numeric type> <numerator> over <denominator>;
@@ -230,9 +232,9 @@ impl Instruction {
     pub fn return_count(&self) -> u8 {
         match self {
             Instruction::Nop | Instruction::Ret(_) => 0,
-            Instruction::Add { overflow, .. }
-            | Instruction::Sub { overflow, .. }
-            | Instruction::Mul { overflow, .. } => match overflow {
+            Instruction::Add(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Mul(BasicArithmeticOperation { overflow, .. }) => match overflow {
                 OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
                 OverflowBehavior::Flag => 2,
             },
@@ -249,6 +251,19 @@ impl TryFrom<u32> for Opcode {
             Ok(unsafe { std::mem::transmute(value) })
         } else {
             Err(())
+        }
+    }
+}
+
+impl TryFrom<u8> for OverflowBehavior {
+    type Error = ();
+
+    fn try_from(tag: u8) -> Result<Self, Self::Error> {
+        match tag {
+            0 => Ok(OverflowBehavior::Ignore),
+            1 => Ok(OverflowBehavior::Halt),
+            2 => Ok(OverflowBehavior::Flag),
+            _ => Err(()),
         }
     }
 }
