@@ -24,7 +24,7 @@ pub enum Error {
     MissingEntryPoint,
     InterpreterError(interpreter::Error),
     InvalidReturnValueCount(usize),
-    InvalidReturnValueType(interpreter::TryFromRegisterValueError),
+    InvalidReturnValueType(interpreter::register::TryFromRegisterValueError),
 }
 
 impl From<loader::LoadError> for Error {
