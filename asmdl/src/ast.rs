@@ -153,9 +153,9 @@ pub struct BasicArithmeticOperation {
     pub overflow_modifier: Option<Positioned<OverflowModifier>>,
 }
 
-impl BasicArithmeticOperation {
-    pub fn overflow_behavior(&self) -> OverflowBehavior {
-        match self.overflow_modifier {
+impl OverflowModifier {
+    pub fn behavior(modifier: &Option<Positioned<Self>>) -> OverflowBehavior {
+        match modifier {
             Some(Positioned {
                 value: OverflowModifier::Halt,
                 ..
@@ -180,6 +180,7 @@ pub struct DivisionOperation {
     pub return_type: Positioned<NumericType>,
     pub numerator: RegisterSymbol,
     pub denominator: RegisterSymbol,
+    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
     pub divide_by_zero_modifier: DivideByZeroModifier,
 }
 

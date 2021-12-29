@@ -243,6 +243,14 @@ fn numeric_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::NumericType>
     primitive_type().map(ast::NumericType::Primitive)
 }
 
+fn overflow_modifier<'a>(
+) -> impl Parser<ParserInput<'a>, Output = Option<ast::Positioned<ast::OverflowModifier>>> {
+    combine::optional(positioned(combine::choice((
+        keyword("ovf.halt").with(combine::value(ast::OverflowModifier::Halt)),
+        keyword("ovf.flag").with(combine::value(ast::OverflowModifier::Flag)),
+    ))))
+}
+
 fn basic_arithmetic_operation<'a, I: 'a + Fn(ast::BasicArithmeticOperation) -> ast::Instruction>(
     name: &'static str,
     separator: &'static str,
@@ -253,10 +261,7 @@ fn basic_arithmetic_operation<'a, I: 'a + Fn(ast::BasicArithmeticOperation) -> a
             positioned(numeric_type()),
             register_symbol(),
             keyword(separator).with(register_symbol()),
-            combine::optional(positioned(combine::choice((
-                keyword("ovf.halt").with(combine::value(ast::OverflowModifier::Halt)),
-                keyword("ovf.flag").with(combine::value(ast::OverflowModifier::Flag)),
-            )))),
+            overflow_modifier(),
         ))
         .map(move |(return_type, x, y, overflow_modifier)| {
             instruction(ast::BasicArithmeticOperation {
@@ -283,14 +288,22 @@ fn division_operation<'a, I: 'a + Fn(ast::DivisionOperation) -> ast::Instruction
                     .map(ast::DivideByZeroModifier::Return),
                 keyword("zeroed.halt").with(combine::value(ast::DivideByZeroModifier::Halt)),
             )),
+            overflow_modifier(),
         ))
         .map(
-            move |(return_type, numerator, denominator, divide_by_zero_modifier)| {
+            move |(
+                return_type,
+                numerator,
+                denominator,
+                divide_by_zero_modifier,
+                overflow_modifier,
+            )| {
                 instruction(ast::DivisionOperation {
                     return_type,
                     numerator,
                     denominator,
                     divide_by_zero_modifier,
+                    overflow_modifier,
                 })
             },
         )

@@ -527,7 +527,7 @@ impl<'a> MethodBlockAssembler<'a> {
         if let Some((x, y)) = registers {
             instructions.push(instruction(
                 format::instruction_set::BasicArithmeticOperation {
-                    overflow: operation.overflow_behavior(),
+                    overflow: ast::OverflowModifier::behavior(&operation.overflow_modifier),
                     return_type: operation.return_type.value,
                     x,
                     y,
@@ -549,6 +549,7 @@ impl<'a> MethodBlockAssembler<'a> {
         let numerator = Self::lookup_register_index(errors, register_lookup, &operation.numerator)?;
         let denominator =
             Self::lookup_register_index(errors, register_lookup, &operation.denominator)?;
+
         let divide_by_zero_behavior = match operation.divide_by_zero_modifier {
             ast::DivideByZeroModifier::Halt => DivideByZeroBehavior::Halt,
             ast::DivideByZeroModifier::Return(ref nan) => DivideByZeroBehavior::Return(
@@ -558,6 +559,7 @@ impl<'a> MethodBlockAssembler<'a> {
 
         Some(instruction(format::instruction_set::DivisionOperation {
             divide_by_zero: divide_by_zero_behavior,
+            overflow: ast::OverflowModifier::behavior(&operation.overflow_modifier),
             return_type: operation.return_type.value,
             numerator,
             denominator,

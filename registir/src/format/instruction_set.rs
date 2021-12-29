@@ -189,6 +189,12 @@ impl BasicArithmeticOperation {
     }
 }
 
+/// # Structure
+/// - [`DivisionOperation::flags()`]
+/// - nan index
+/// - [`return_type`]
+/// - [`numerator`]
+/// - [`denominator`]
 #[derive(Debug)]
 pub struct DivisionOperation {
     pub overflow: OverflowBehavior,
@@ -230,14 +236,14 @@ pub enum Instruction {
     /// ```txt
     /// <result> = add <numeric type> <x> and <y>;
     /// <result> = add <numeric type> <x> and <y> ovf.halt;
-    /// <result>, <overflowed> = add ovf.flag <numeric type> <x> and <y>;
+    /// <result>, <overflowed> = add <numeric type> <x> and <y> ovf.flag;
     /// ```
     /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
     Add(BasicArithmeticOperation),
     /// ```txt
     /// <result> = sub <numeric type> <x> from <y>;
     /// <result> = sub <numeric type> <x> from <y> ovf.halt;
-    /// <result>, <overflowed> = sub ovf.flag <numeric type> <x> from <y>;
+    /// <result>, <overflowed> = sub <numeric type> <x> from <y> ovf.flag;
     /// ```
     /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
     /// the difference.
@@ -245,13 +251,17 @@ pub enum Instruction {
     /// ```txt
     /// <result> = mul <numeric type> <x> by <y>;
     /// <result> = mul <numeric type> <x> by <y> ovf.halt;
-    /// <result>, <overflowed> = mul ovf.flag <numeric type> <x> by <y>;
+    /// <result>, <overflowed> = mul <numeric type> <x> by <y> ovf.flag;
     /// ```
     /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
     Mul(BasicArithmeticOperation),
     /// ```txt
     /// <result> = div <numeric type> <numerator> over <denominator> or <nan>;
+    /// <result> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
+    /// <result> = div <numeric type> <numerator> over <denominator> or <nan> ovf.flag;
     /// <result> = div <numeric type> <numerator> over <denominator> zeroed.halt;
+    /// <result> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.halt;
+    /// <result> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.flag;
     /// ```
     /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
     Div(DivisionOperation),

@@ -289,6 +289,9 @@ fn division_operation<W: std::io::Write>(
     size: numeric::IntegerSize,
 ) -> WriteResult {
     write(out, operation.flags().bits())?;
+    if let instruction_set::DivideByZeroBehavior::Return(value_index) = operation.divide_by_zero {
+        unsigned_index(out, value_index, size)?;
+    }
     numeric_type(out, operation.return_type)?;
     unsigned_index(out, operation.numerator, size)?;
     unsigned_index(out, operation.denominator, size)
