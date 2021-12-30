@@ -39,6 +39,7 @@ pub enum Error /*Kind*/ {
     LoadError(loader::LoadError),
     ArgumentCountMismatch { expected: usize, actual: usize },
     CallStackUnderflow,
+    CallStackOverflow,
     DirectAbstractMethodCall,
     UnexpectedEndOfBlock,
     UndefinedRegister(RegisterIndex),
@@ -72,6 +73,7 @@ impl std::fmt::Display for Error {
             Self::LoadError(error) => std::fmt::Display::fmt(error, f),
             Self::ArgumentCountMismatch { expected, actual } => write!(f, "expected {} arguments but got {}", expected, actual),
             Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
+            Self::CallStackOverflow => f.write_str("exceeded maximum call stack depth"),
             Self::DirectAbstractMethodCall => write!(f, "attempt to call abstract method with call, when call.virt should have been used instead"),
             Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
             Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
@@ -157,6 +159,7 @@ impl<'l> StackFrame<'l> {
 pub struct Interpreter<'l> {
     loader: &'l loader::Loader<'l>,
     stack_frames: Vec<StackFrame<'l>>,
+    max_stack_depth: usize,
 }
 
 impl<'l> Interpreter<'l> {
@@ -164,6 +167,7 @@ impl<'l> Interpreter<'l> {
         Self {
             loader,
             stack_frames: Vec::new(),
+            max_stack_depth: 0xFF,
         }
     }
 
@@ -199,6 +203,13 @@ impl<'l> Interpreter<'l> {
         match method.raw_body() {
             format::MethodBody::Defined(code_index) => {
                 let code = method.declaring_module().load_code_raw(*code_index)?;
+                let call_stack_depth = self.stack_frames.len();
+
+                if call_stack_depth > self.max_stack_depth {
+                    return Err(Error::CallStackOverflow)
+                }
+                
+
                 self.stack_frames.push(StackFrame::new(
                     self.stack_frames.len(),
                     argument_registers,
@@ -206,6 +217,7 @@ impl<'l> Interpreter<'l> {
                     method,
                     code,
                 ));
+
                 Ok(self.current_frame()?.result_registers.clone())
             }
             format::MethodBody::Abstract => Err(Error::DirectAbstractMethodCall),
