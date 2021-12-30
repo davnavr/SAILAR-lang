@@ -113,6 +113,7 @@ pub enum Opcode {
     ConstI,
     ConstS,
     ConstF,
+    Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
     Continuation = 0xFF,
 }
@@ -271,6 +272,13 @@ pub enum Instruction {
     /// ```
     /// Returns an integer of the specified type.
     ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
+    /// ```txt
+    /// break;
+    /// ```
+    /// Represents a breakpoint placed by a debugger.
+    ///
+    /// If no debugger is attached, or if a debugger is not supported, this instruction does nothing.
+    Break,
 }
 
 impl Instruction {
@@ -283,13 +291,14 @@ impl Instruction {
             Instruction::Mul { .. } => Opcode::Mul,
             Instruction::Div { .. } => Opcode::Div,
             Instruction::ConstI(_) => Opcode::ConstI,
+            Instruction::Break => Opcode::Break,
         }
     }
 
     /// The number of temporary registers introduced after execution of the instruction.
     pub fn return_count(&self) -> u8 {
         match self {
-            Instruction::Nop | Instruction::Ret(_) => 0,
+            Instruction::Nop | Instruction::Ret(_) | Instruction::Break => 0,
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             | Instruction::Mul(BasicArithmeticOperation { overflow, .. }) => match overflow {
