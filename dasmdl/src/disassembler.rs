@@ -400,9 +400,7 @@ fn code_block<O: Write>(
             Instruction::Mul(operation) => {
                 basic_arithmetic_instruction(out, "mul", operation, "by")?
             }
-            Instruction::Div(operation) => {
-                division_instruction(out, "div", operation)?
-            }
+            Instruction::Div(operation) => division_instruction(out, "div", operation)?,
             Instruction::ConstI(constant) => out.write_fmt(format_args!(
                 "const.i {} {}",
                 constant.integer_type(),

@@ -334,6 +334,16 @@ register_conversion_to_integer!(
 
 //register_conversion_to_float
 
+macro_rules! typed_integer_operation {
+    ($operation_name: ident, $integer_type: ty, $x: ident, $y: ident) => {{
+        let (value, overflowed) = <$integer_type>::$operation_name(
+            <$integer_type>::interpret_register($x),
+            <$integer_type>::interpret_register($y),
+        );
+        (Register::from(value), overflowed)
+    }};
+}
+
 macro_rules! basic_arithmetic_operation {
     ($operation_name: ident) => {
         impl Register {
@@ -344,12 +354,8 @@ macro_rules! basic_arithmetic_operation {
             ) -> (Register, bool) {
                 macro_rules! integer_operation {
                     ($integer_type: ty) => {
-                        match <$integer_type>::$operation_name(
-                            <$integer_type>::interpret_register(lhs),
-                            <$integer_type>::interpret_register(rhs),
-                        ) {
-                            (value, overflowed) => (Register::from(value), overflowed), // TODO: Set overflowed flag to true if lhs or rhs converted to the integer_type would result in overflow
-                        }
+                        typed_integer_operation!($operation_name, $integer_type, lhs, rhs)
+                        // TODO: Set overflowed flag to true if lhs or rhs converted to the integer_type would result in overflow
                     };
                 }
 
@@ -362,8 +368,8 @@ macro_rules! basic_arithmetic_operation {
                     RegisterType::Primitive(PrimitiveType::U32) => integer_operation!(u32),
                     RegisterType::Primitive(PrimitiveType::S64) => integer_operation!(i64),
                     RegisterType::Primitive(PrimitiveType::U64) => integer_operation!(u64),
-                    RegisterType::Primitive(PrimitiveType::SNative) => integer_operation!(i64),
-                    RegisterType::Primitive(PrimitiveType::UNative) => integer_operation!(u64),
+                    RegisterType::Primitive(PrimitiveType::SNative) => integer_operation!(isize),
+                    RegisterType::Primitive(PrimitiveType::UNative) => integer_operation!(usize),
                     RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("Basic arithmetic operations are not yet supported for floating-point numbers"),
                 }
             }
@@ -374,7 +380,50 @@ macro_rules! basic_arithmetic_operation {
 basic_arithmetic_operation!(overflowing_add);
 basic_arithmetic_operation!(overflowing_sub);
 basic_arithmetic_operation!(overflowing_mul);
-// NOTE: Need to handle overflows of division, since MAXIMUM / -1 overflows.
+
+macro_rules! basic_division_operation {
+    ($operation_name: ident) => {
+        impl Register {
+            pub(crate) fn $operation_name(
+                result_type: RegisterType,
+                numerator: &Register,
+                denominator: &Register,
+            ) -> Option<(Register, bool)> {
+                macro_rules! division_operation {
+                    ($integer_type: ty) => {
+                        {
+                            let actual_numerator = <$integer_type>::interpret_register(numerator);
+                            let actual_denominator = <$integer_type>::interpret_register(denominator);
+                            if actual_denominator == 0 {
+                                None
+                            }
+                            else {
+                                let (value, overflowed) = <$integer_type>::$operation_name(actual_numerator, actual_denominator);
+                                Some((Register::from(value), overflowed))
+                            }
+                        }
+                    };
+                }
+
+                match result_type {
+                    RegisterType::Primitive(PrimitiveType::S8) => division_operation!(i8),
+                    RegisterType::Primitive(PrimitiveType::U8) => division_operation!(u8),
+                    RegisterType::Primitive(PrimitiveType::S16) => division_operation!(i16),
+                    RegisterType::Primitive(PrimitiveType::U16) => division_operation!(u16),
+                    RegisterType::Primitive(PrimitiveType::S32) => division_operation!(i32),
+                    RegisterType::Primitive(PrimitiveType::U32) => division_operation!(u32),
+                    RegisterType::Primitive(PrimitiveType::S64) => division_operation!(i64),
+                    RegisterType::Primitive(PrimitiveType::U64) => division_operation!(u64),
+                    RegisterType::Primitive(PrimitiveType::SNative) => division_operation!(isize),
+                    RegisterType::Primitive(PrimitiveType::UNative) => division_operation!(usize),
+                    RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("Basic division operations are not yet supported for floating-point numbers"),
+                }
+            }
+        }
+    };
+}
+
+basic_division_operation!(overflowing_div);
 
 #[cfg(test)]
 mod tests {

@@ -5,7 +5,9 @@ pub mod register;
 
 pub use format::{
     instruction_set,
-    instruction_set::{Instruction, IntegerConstant, OverflowBehavior, RegisterIndex},
+    instruction_set::{
+        DivideByZeroBehavior, Instruction, IntegerConstant, OverflowBehavior, RegisterIndex,
+    },
     type_system,
     type_system::PrimitiveType,
 };
@@ -224,6 +226,23 @@ impl<'l> Interpreter<'l> {
         }
     }
 
+    fn handle_value_overflow(
+        frame: &mut StackFrame<'l>,
+        behavior: OverflowBehavior,
+        overflowed: bool,
+    ) -> Result<()> {
+        match behavior {
+            OverflowBehavior::Ignore => (),
+            OverflowBehavior::Flag => frame.define_temporary(Register::from(overflowed)),
+            OverflowBehavior::Halt => {
+                if overflowed {
+                    return Err(Error::Halt(ProgramHalt::IntegerOverflow));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn basic_arithmetic_operation<
         O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
     >(
@@ -235,18 +254,36 @@ impl<'l> Interpreter<'l> {
         let y = frame.register(operation.y)?;
         let (result, overflowed) = o(RegisterType::from(operation.return_type), x, y);
         frame.define_temporary(result);
+        Self::handle_value_overflow(frame, operation.overflow, overflowed)
+    }
 
-        match operation.overflow {
-            OverflowBehavior::Ignore => (),
-            OverflowBehavior::Flag => frame.define_temporary(Register::from(overflowed)),
-            OverflowBehavior::Halt => {
-                if overflowed {
-                    return Err(Error::Halt(ProgramHalt::IntegerOverflow));
-                }
+    fn basic_division_operation<
+        O: FnOnce(RegisterType, &Register, &Register) -> Option<(Register, bool)>,
+    >(
+        frame: &mut StackFrame<'l>,
+        operation: &instruction_set::DivisionOperation,
+        o: O,
+    ) -> Result<()> {
+        let numerator = frame.register(operation.numerator)?;
+        let denominator = frame.register(operation.denominator)?;
+        match o(
+            RegisterType::from(operation.return_type),
+            numerator,
+            denominator,
+        ) {
+            Some((result, overflowed)) => {
+                frame.define_temporary(result);
+                Self::handle_value_overflow(frame, operation.overflow, overflowed)
             }
+            None => match operation.divide_by_zero {
+                #[allow(unused_variables)]
+                DivideByZeroBehavior::Return(return_index) => {
+                    // TODO: Use a function that converts the register value to operation.return_type
+                    todo!("handle div return for division by zero")
+                }
+                DivideByZeroBehavior::Halt => Err(Error::Halt(ProgramHalt::DivideByZero)),
+            },
         }
-
-        Ok(())
     }
 
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
@@ -278,8 +315,10 @@ impl<'l> Interpreter<'l> {
                 operation,
                 Register::overflowing_mul,
             )?,
+            Instruction::Div(operation) => {
+                Self::basic_division_operation(current_frame, operation, Register::overflowing_div)?
+            }
             Instruction::ConstI(value) => current_frame.define_temporary(Register::from(*value)),
-            _ => todo!("Interpretation of {:?} is not yet implemented", instruction),
         }
 
         Ok(())
