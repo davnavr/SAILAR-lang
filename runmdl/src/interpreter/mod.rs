@@ -1,6 +1,7 @@
 use getmdl::loader;
 use registir::format;
 
+pub mod debugger;
 pub mod register;
 
 pub use format::{
@@ -156,18 +157,24 @@ impl<'l> StackFrame<'l> {
     }
 }
 
-pub struct Interpreter<'l> {
+struct Interpreter<'l> {
     loader: &'l loader::Loader<'l>,
     stack_frames: Vec<StackFrame<'l>>,
     max_stack_depth: usize,
+    debugger: Option<debugger::Debugger<'l>>,
 }
 
 impl<'l> Interpreter<'l> {
-    pub fn initialize(loader: &'l loader::Loader<'l>) -> Self {
+    fn initialize(
+        loader: &'l loader::Loader<'l>,
+        debugger_receiver: Option<debugger::MessageReceiver>,
+    ) -> Self {
         Self {
             loader,
             stack_frames: Vec::new(),
             max_stack_depth: 0xFF,
+            debugger: debugger_receiver
+                .map(|message_source| debugger::Debugger::new(message_source)),
         }
     }
 
@@ -206,9 +213,8 @@ impl<'l> Interpreter<'l> {
                 let call_stack_depth = self.stack_frames.len();
 
                 if call_stack_depth > self.max_stack_depth {
-                    return Err(Error::CallStackOverflow)
+                    return Err(Error::CallStackOverflow);
                 }
-                
 
                 self.stack_frames.push(StackFrame::new(
                     self.stack_frames.len(),
@@ -335,17 +341,41 @@ impl<'l> Interpreter<'l> {
 
         Ok(())
     }
+
+    fn expect_debugger_message(&mut self) -> Option<debugger::Message> {
+        let message = self
+            .debugger
+            .as_ref()
+            .and_then(|debugger| debugger.receive_message().ok());
+        if message.is_none() {
+            self.debugger = None;
+        }
+        message
+    }
 }
 
 pub fn run<'l>(
-    loader: &'l loader::Loader<'l>,
+    loader: &'l loader::Loader<'l>, // TOOD: Loader not necessary?
     arguments: &[Register],
     entry_point: LoadedMethod<'l>,
+    debugger_channel_receiver: Option<debugger::MessageReceiver>,
 ) -> Result<Vec<Register>> {
-    let mut interpreter = Interpreter::initialize(loader);
+    let mut interpreter = Interpreter::initialize(loader, debugger_channel_receiver);
+
+    // Wait for the debugger, if one is attached, to tell the application to start.
+    loop {
+        match interpreter.expect_debugger_message() {
+            Some(message) => match message.message() {
+                debugger::MessageKind::Start => break,
+            },
+            None => break,
+        }
+    }
+
     let entry_point_results = interpreter.invoke_method(arguments, entry_point)?;
 
     while let Some(instruction) = interpreter.next_instruction()? {
+        // TODO: Check if a breakpoint has been hit.
         interpreter.execute_instruction(instruction)?;
     }
 

@@ -53,6 +53,7 @@ impl<'l> Runtime<'l> {
         &'l self,
         argv: &[&str],
         //max_stack_capacity: usize,
+        debugger_channel: Option<interpreter::debugger::MessageReceiver>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
@@ -63,7 +64,7 @@ impl<'l> Runtime<'l> {
             .entry_point()?
             .ok_or(Error::MissingEntryPoint)?;
 
-        let results = interpreter::run(&self.loader, &[], entry_point)?;
+        let results = interpreter::run(&self.loader, &[], entry_point, debugger_channel)?;
 
         match results.as_slice() {
             [] => Ok(0),
