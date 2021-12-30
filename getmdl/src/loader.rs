@@ -223,6 +223,22 @@ impl<'a> Method<'a> {
     }
 }
 
+impl<'a> std::cmp::PartialEq for Method<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.source as *const _ == other.source as *const _
+            && self.owner as *const _ == other.owner as *const _
+    }
+}
+
+impl<'a> std::cmp::Eq for Method<'a> {}
+
+impl<'a> std::hash::Hash for Method<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.source as *const format::Method).hash(state);
+        (self.owner as *const Type<'a>).hash(state)
+    }
+}
+
 pub struct Type<'a> {
     source: &'a format::Type,
     module: &'a Module<'a>,
