@@ -66,44 +66,38 @@ impl Message {
 
 pub type MessageReceiver = std::sync::mpsc::Receiver<Message>;
 
-struct BlockBreakpointsContents {
-    sorted: bool,
-    indices: Vec<usize>,
-}
+pub(crate) type BreakpointsReference = std::rc::Rc<std::cell::RefCell<Box<Vec<usize>>>>;
 
-struct BlockBreakpoints(std::cell::RefCell<BlockBreakpointsContents>);
+struct BlockBreakpoints {
+    sorted: std::cell::Cell<bool>,
+    indices: BreakpointsReference,
+}
 
 impl BlockBreakpoints {
     fn new() -> Self {
-        Self(std::cell::RefCell::new(BlockBreakpointsContents {
-            sorted: true,
-            indices: Vec::new(),
-        }))
+        Self {
+            sorted: std::cell::Cell::new(true),
+            indices: std::rc::Rc::default(),
+        }
     }
 
     fn insert(&self, index: usize) {
         // TODO: Check for duplicate breakpoints in the same instruction.
-        let mut breakpoints = self.0.borrow_mut();
-        match breakpoints.indices.last() {
+        let mut indices = self.indices.borrow_mut();
+        match indices.last() {
             Some(last) if *last <= index => (),
-            _ => breakpoints.sorted = false,
+            _ => self.sorted.set(false),
         }
-        breakpoints.indices.push(index);
+        indices.push(index);
     }
 
-    fn indices(&self) -> std::cell::Ref<Vec<usize>> {
-        {
-            let mut breakpoints = self.0.borrow_mut();
-            if !breakpoints.sorted {
-                breakpoints.indices.sort_unstable();
-                breakpoints.sorted = true;
-            }
+    fn indices(&self) -> BreakpointsReference {
+        if !self.sorted.get() {
+            self.indices.borrow_mut().sort_unstable();
+            self.sorted.set(true);
         }
 
-        std::cell::Ref::map(
-            self.0.borrow(),
-            |BlockBreakpointsContents { indices, .. }| indices,
-        )
+        self.indices.clone()
     }
 }
 
@@ -113,7 +107,7 @@ pub(crate) struct Debugger<'l> {
     receiver: MessageReceiver,
 }
 
-impl<'l> Debugger<'l> {
+impl<'l: 'd, 'd> Debugger<'l> {
     pub(crate) fn new(receiver: MessageReceiver) -> Self {
         Self {
             breakpoints: hash_map::HashMap::new(),
@@ -125,11 +119,12 @@ impl<'l> Debugger<'l> {
         self.receiver.recv()
     }
 
+    /// Retrieves the breakpoints in the specified code block in ascending order.
     pub(crate) fn breakpoints_in_block(
-        &self,
+        &'d self,
         method: LoadedMethod<'l>,
         block: BlockIndex,
-    ) -> Option<std::cell::Ref<Vec<usize>>> {
+    ) -> Option<BreakpointsReference> {
         self.breakpoints.get(method).and_then(|block_breakpoints| {
             block_breakpoints.get(&block).map(BlockBreakpoints::indices)
         })
@@ -152,7 +147,7 @@ impl<'l> Debugger<'l> {
         let mut breakpoints = Vec::new();
         for (_, block_breakpoints) in self.breakpoints.iter() {
             for (block, code_indices) in block_breakpoints {
-                for index in std::ops::Deref::deref(&code_indices.indices()) {
+                for index in code_indices.indices().borrow().iter() {
                     breakpoints.push(Breakpoint {
                         block: *block,
                         instruction: Some(*index),

@@ -98,6 +98,10 @@ pub struct StackTrace {
 pub struct BlockIndex(pub Option<usize>);
 
 impl BlockIndex {
+    pub const fn entry() -> Self {
+        Self(None)
+    }
+
     pub fn to_raw(self) -> usize {
         self.0.map(|index| index + 1).unwrap_or(0)
     }
@@ -109,9 +113,33 @@ pub struct InstructionLocation {
     pub code_index: usize,
 }
 
-enum StackFrameBlockInstructions<'l> {
-    Original(&'l [format::instruction_set::Instruction]),
-    Modified(Box<[format::instruction_set::Instruction]>)
+static BREAK_INSTRUCTION: &'static Instruction = &Instruction::Break;
+
+#[derive(Default)]
+struct StackFrameBreakPoints {
+    source: Option<debugger::BreakpointsReference>,
+    index: usize,
+}
+
+impl StackFrameBreakPoints {
+    fn reset(&mut self) {
+        self.index = 0;
+    }
+
+    fn move_next(&mut self) -> Option<usize> {
+        self.source.as_ref().and_then(|indices| {
+            let index = indices.borrow().first().copied();
+            self.index += 1;
+            index
+        })
+    }
+
+    fn indices(&self) -> Option<std::cell::Ref<[usize]>> {
+        match self.source {
+            Some(ref indices) => Some(std::cell::Ref::map(indices.borrow(), |i| &i[self.index..])),
+            None => None,
+        }
+    }
 }
 
 struct StackFrame<'l> {
@@ -120,8 +148,9 @@ struct StackFrame<'l> {
     result_registers: std::rc::Rc<std::cell::RefCell<Vec<Register>>>,
     current_method: LoadedMethod<'l>,
     code: &'l format::Code,
-    block_index: Option<usize>,
-    instructions: &'l [format::instruction_set::Instruction],
+    block_index: BlockIndex,
+    instructions: &'l [Instruction],
+    breakpoints: StackFrameBreakPoints,
     temporary_registers: Vec<Register>,
     //register_arena: typed_arena::Arena<Register>, // TODO: If arena is used for a frame's registers, have the arena be tied to the frame's lifetime.
 }
@@ -141,9 +170,40 @@ impl<'l> StackFrame<'l> {
             result_registers: std::rc::Rc::new(std::cell::RefCell::new(result_registers)),
             current_method,
             code,
-            block_index: None,
+            block_index: BlockIndex::entry(),
             instructions: &code.entry_block.instructions,
+            breakpoints: StackFrameBreakPoints::default(),
             temporary_registers: Vec::new(),
+        }
+    }
+
+    fn code_index(&self) -> usize {
+        self.instructions.as_ptr() as usize - self.current_block().instructions.0.as_ptr() as usize
+    }
+
+    fn breakpoint_hit(&mut self) -> bool {
+        let current_index = self.code_index();
+        loop {
+            match self.breakpoints.move_next() {
+                Some(offset) => {
+                    if offset == current_index {
+                        return true;
+                    }
+                }
+                None => return false,
+            }
+        }
+    }
+
+    fn next_instruction(&mut self) -> Option<&'l Instruction> {
+        if self.breakpoint_hit() {
+            Some(BREAK_INSTRUCTION)
+        } else {
+            let next = self.instructions.first();
+            if next.is_some() {
+                self.instructions = &self.instructions[1..];
+            }
+            next
         }
     }
 
@@ -182,16 +242,15 @@ impl<'l> StackFrame<'l> {
 
     fn current_block(&self) -> &'l format::CodeBlock {
         match self.block_index {
-            None => &self.code.entry_block,
-            Some(other_index) => &self.code.blocks[other_index],
+            BlockIndex(None) => &self.code.entry_block,
+            BlockIndex(Some(other_index)) => &self.code.blocks[other_index],
         }
     }
 
     fn location(&self) -> InstructionLocation {
         InstructionLocation {
-            block_index: BlockIndex(self.block_index),
-            code_index: self.instructions.as_ptr() as usize
-                - self.current_block().instructions.0.as_ptr() as usize,
+            block_index: self.block_index,
+            code_index: self.code_index(),
         }
     }
 
@@ -276,6 +335,8 @@ impl<'l> Interpreter<'l> {
                     code,
                 ));
 
+                self.set_debugger_breakpoints();
+
                 Ok(self.current_frame()?.result_registers.clone())
             }
             format::MethodBody::Abstract => Err(Error::DirectAbstractMethodCall),
@@ -285,13 +346,10 @@ impl<'l> Interpreter<'l> {
 
     fn next_instruction(&mut self) -> Result<Option<&'l Instruction>> {
         match self.stack_frames.last_mut() {
-            Some(current_frame) => match current_frame.instructions.first() {
-                Some(instruction) => {
-                    current_frame.instructions = &current_frame.instructions[1..];
-                    Ok(Some(instruction))
-                }
-                None => Err(Error::UnexpectedEndOfBlock),
-            },
+            Some(current_frame) => current_frame
+                .next_instruction()
+                .map(Some)
+                .ok_or(Error::UnexpectedEndOfBlock),
             None => Ok(None),
         }
     }
@@ -406,6 +464,15 @@ impl<'l> Interpreter<'l> {
             self.debugger = None;
         }
         message
+    }
+
+    fn set_debugger_breakpoints(&mut self) {
+        if let Some(debugger) = &self.debugger {
+            for frame in &mut self.stack_frames {
+                frame.breakpoints.source = debugger.breakpoints_in_block(frame.current_method, frame.block_index);
+                frame.breakpoints.reset();
+            }
+        }
     }
 }
 
