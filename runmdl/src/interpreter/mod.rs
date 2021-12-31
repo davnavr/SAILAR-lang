@@ -14,7 +14,7 @@ pub use format::{
 };
 pub use register::{Register, RegisterType};
 
-type LoadedMethod<'l> = &'l loader::Method<'l>;
+pub type LoadedMethod<'l> = &'l loader::Method<'l>;
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -89,7 +89,30 @@ impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-//struct StackTrace
+pub struct StackTrace {
+    location: InstructionLocation,
+}
+
+/// Refers to a block in a method body, where a value of `None` refers to the entry block.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BlockIndex(pub Option<usize>);
+
+impl BlockIndex {
+    pub fn to_raw(self) -> usize {
+        self.0.map(|index| index + 1).unwrap_or(0)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash)]
+pub struct InstructionLocation {
+    pub block_index: BlockIndex,
+    pub code_index: usize,
+}
+
+enum StackFrameBlockInstructions<'l> {
+    Original(&'l [format::instruction_set::Instruction]),
+    Modified(Box<[format::instruction_set::Instruction]>)
+}
 
 struct StackFrame<'l> {
     depth: usize,
@@ -104,6 +127,7 @@ struct StackFrame<'l> {
 }
 
 impl<'l> StackFrame<'l> {
+    /// Creates a new stack frame for executing the specified method's entry block.
     fn new(
         depth: usize,
         input_registers: Vec<Register>,
@@ -155,6 +179,27 @@ impl<'l> StackFrame<'l> {
         }
         Ok(registers)
     }
+
+    fn current_block(&self) -> &'l format::CodeBlock {
+        match self.block_index {
+            None => &self.code.entry_block,
+            Some(other_index) => &self.code.blocks[other_index],
+        }
+    }
+
+    fn location(&self) -> InstructionLocation {
+        InstructionLocation {
+            block_index: BlockIndex(self.block_index),
+            code_index: self.instructions.as_ptr() as usize
+                - self.current_block().instructions.0.as_ptr() as usize,
+        }
+    }
+
+    fn stack_trace(&self) -> StackTrace {
+        StackTrace {
+            location: self.location(),
+        }
+    }
 }
 
 struct Interpreter<'l> {
@@ -182,6 +227,13 @@ impl<'l> Interpreter<'l> {
         self.stack_frames
             .last_mut()
             .ok_or(Error::CallStackUnderflow)
+    }
+
+    fn stack_trace(&self) -> Vec<StackTrace> {
+        self.stack_frames
+            .iter()
+            .map(|frame| frame.stack_trace())
+            .collect()
     }
 
     /// Pushes a new stack frame for calling the specified method.
@@ -337,6 +389,9 @@ impl<'l> Interpreter<'l> {
                 Self::basic_division_operation(current_frame, operation, Register::overflowing_div)?
             }
             Instruction::ConstI(value) => current_frame.define_temporary(Register::from(*value)),
+            Instruction::Break => {
+                todo!("send breakpoint hit message to debugger")
+            }
         }
 
         Ok(())
@@ -366,7 +421,18 @@ pub fn run<'l>(
     loop {
         match interpreter.expect_debugger_message() {
             Some(message) => match message.message() {
-                debugger::MessageKind::Start => break,
+                // TODO: Allow selection of method for breakpoint.loader
+                debugger::MessageKind::SetBreakpoint(breakpoint) => interpreter
+                    .debugger
+                    .as_mut()
+                    .unwrap()
+                    .set_breakpoint(entry_point, &breakpoint.instruction_location()),
+                debugger::MessageKind::GetBreakpoints => {
+                    message.reply(debugger::MessageReply::Breakpoints(
+                        interpreter.debugger.as_ref().unwrap().breakpoints(),
+                    ))
+                }
+                debugger::MessageKind::Start => break, // TODO: Have a variable store the reply_channel in a Some()?
             },
             None => break,
         }

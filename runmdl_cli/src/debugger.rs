@@ -26,6 +26,10 @@ impl Debugger {
             ))
             .map_err(|_| "debugger was disconnected".to_string())
     }
+
+    fn expect_reply(&mut self) -> debugger::MessageReply {
+        self.reply_channel_receiver.recv().unwrap()
+    }
 }
 
 fn all_commands() -> Vec<(&'static str, Command)> {
@@ -56,7 +60,35 @@ fn all_commands() -> Vec<(&'static str, Command)> {
             "break",
             Command {
                 description: "sets a breakpoint in the specified method",
-                command: &|debugger, arguments| Err("A".to_string()),
+                command: &|debugger, arguments| {
+                    debugger.send_message(debugger::MessageKind::SetBreakpoint(
+                        debugger::Breakpoint {
+                            block: debugger::BlockIndex(None),
+                            instruction: None,
+                        },
+                    ))
+                },
+            },
+        ),
+        (
+            "points",
+            Command {
+                description: "lists all breakpoints",
+                command: &|debugger, _| {
+                    //expect_empty_arguments
+                    debugger.send_message(debugger::MessageKind::GetBreakpoints)?;
+
+                    match debugger.expect_reply() {
+                        debugger::MessageReply::Breakpoints(breakpoints) => {
+                            for point in breakpoints {
+                                println!("- {}", point)
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+
+                    Ok(())
+                },
             },
         ),
         (
@@ -64,7 +96,10 @@ fn all_commands() -> Vec<(&'static str, Command)> {
             Command {
                 description:
                     "signals the runtime that execution of the application's entry point can begin",
-                command: &|debugger, _| debugger.send_message(debugger::MessageKind::Start),
+                command: &|debugger, _| {
+                    //expect_empty_arguments
+                    debugger.send_message(debugger::MessageKind::Start)
+                },
             },
         ),
     ]
