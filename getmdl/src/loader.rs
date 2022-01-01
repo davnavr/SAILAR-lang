@@ -15,8 +15,10 @@ pub struct Module<'a> {
     type_lookup_cache: RefCell<HashMap<Identifier, &'a Type<'a>>>,
 }
 
-pub trait FullIdentifier: std::fmt::Debug {
+pub trait FullIdentifier: Sized {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
+
+    fn parse(s: &str) -> Option<Self>;
 }
 
 impl FullIdentifier for ModuleIdentifier {
@@ -33,6 +35,31 @@ impl FullIdentifier for ModuleIdentifier {
             }
         }
         f.write_char('}')
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        lazy_static::lazy_static!(
+            static ref REGEX: regex::Regex = regex::Regex::new(r"\{(\w+)(,\s*(\d+(\.\d+)*))?\}").unwrap();
+        );
+
+        REGEX.captures(s).and_then(|ref captures| {
+            Some(Self {
+                name: Identifier::try_from(captures.get(1).unwrap().as_str()).ok()?,
+                version: {
+                    let mut numbers = Vec::new();
+                    if let Some(version_numbers) = captures.get(3) {
+                        for number in version_numbers
+                            .as_str()
+                            .split('.')
+                            .filter(|s| !s.is_empty())
+                        {
+                            numbers.push(format::numeric::UInteger(number.parse().ok()?));
+                        }
+                    }
+                    format::VersionNumbers(format::structures::LengthEncodedVector(numbers))
+                },
+            })
+        })
     }
 }
 
@@ -232,18 +259,18 @@ impl<'a> Module<'a> {
 }
 
 /// Identifiers and allows retrieval of a type definition.
-#[derive(Copy, Clone, Debug)]
-pub struct FullTypeIdentifier<'a> {
-    module_name: &'a ModuleIdentifier,
-    type_name: &'a Identifier,
+#[derive(Clone, Debug)]
+pub struct FullTypeIdentifier {
+    module_name: ModuleIdentifier,
+    type_name: Identifier,
 }
 
-impl<'a> FullTypeIdentifier<'a> {
-    pub fn module_name(&'a self) -> &'a ModuleIdentifier {
+impl FullTypeIdentifier {
+    pub fn module_name(&self) -> &ModuleIdentifier {
         &self.module_name
     }
 
-    pub fn type_name(&'a self) -> &'a Identifier {
+    pub fn type_name(&self) -> &Identifier {
         &self.type_name
     }
 }
@@ -259,17 +286,17 @@ pub struct MethodSignatureTypes<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FullMethodIdentifier<'a> {
-    type_name: FullTypeIdentifier<'a>,
-    method_name: &'a Identifier,
+pub struct FullMethodIdentifier {
+    type_name: FullTypeIdentifier,
+    method_name: Identifier,
 }
 
-impl<'a> FullMethodIdentifier<'a> {
-    fn type_name(&'a self) -> &'a FullTypeIdentifier {
+impl FullMethodIdentifier {
+    fn type_name(&self) -> &FullTypeIdentifier {
         &self.type_name
     }
 
-    fn method_name(&'a self) -> &'a Identifier {
+    fn method_name(&self) -> &Identifier {
         &self.method_name
     }
 }
@@ -352,13 +379,6 @@ impl<'a> Type<'a> {
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.module
     }
-
-    pub fn identifier(&'a self) -> LoadResult<FullTypeIdentifier<'a>> {
-        Ok(FullTypeIdentifier {
-            module_name: self.module.identifier(),
-            type_name: self.module.load_identifier_raw(self.source.name)?,
-        })
-    }
 }
 
 pub struct Loader<'a> {
@@ -399,8 +419,33 @@ impl<'a> Loader<'a> {
         self.loaded_modules.borrow().get(name).copied().ok_or(())
     }
 
-    pub fn lookup_type(&'a self, name: &FullTypeIdentifier<'_>) -> Result<&'a Type<'a>, ()> {
+    pub fn lookup_type(&'a self, name: &FullTypeIdentifier) -> Result<&'a Type<'a>, ()> {
         self.lookup_module(name.module_name())?
             .lookup_type(&name.type_name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    mod identifier {
+        use crate::loader::{FullIdentifier as _, Identifier, ModuleIdentifier};
+        use registir::format::{
+            numeric::UInteger, structures::LengthEncodedVector, VersionNumbers,
+        };
+
+        #[test]
+        fn module_identifier_with_version_is_valid() {
+            assert_eq!(
+                ModuleIdentifier::parse("{abc, 1.2.34}"),
+                Some(ModuleIdentifier {
+                    name: Identifier::try_from("abc").unwrap(),
+                    version: VersionNumbers(LengthEncodedVector(vec![
+                        UInteger(1),
+                        UInteger(2),
+                        UInteger(34),
+                    ]))
+                })
+            );
+        }
     }
 }
