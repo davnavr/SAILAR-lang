@@ -3,7 +3,10 @@ use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
 use typed_arena::Arena as TypedArena;
 
+mod names;
+
 pub use format::{Identifier, ModuleIdentifier};
+pub use names::{FullMethodIdentifier, FullTypeIdentifier};
 
 pub struct Module<'a> {
     source: format::Module,
@@ -13,54 +16,6 @@ pub struct Module<'a> {
     method_arena: TypedArena<Method<'a>>,
     loaded_methods: RefCell<HashMap<usize, &'a Method<'a>>>,
     type_lookup_cache: RefCell<HashMap<Identifier, &'a Type<'a>>>,
-}
-
-pub trait FullIdentifier: Sized {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
-
-    fn parse(s: &str) -> Option<Self>;
-}
-
-impl FullIdentifier for ModuleIdentifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::fmt::Write as _;
-        f.write_char('{')?;
-        std::fmt::Display::fmt(&self.name, f)?;
-        if !self.version.0.is_empty() {
-            for (index, number) in self.version.0.iter().enumerate() {
-                if index > 0 {
-                    f.write_char('.')?;
-                }
-                std::fmt::Display::fmt(number, f)?;
-            }
-        }
-        f.write_char('}')
-    }
-
-    fn parse(s: &str) -> Option<Self> {
-        lazy_static::lazy_static!(
-            static ref REGEX: regex::Regex = regex::Regex::new(r"\{(\w+)(,\s*(\d+(\.\d+)*))?\}").unwrap();
-        );
-
-        REGEX.captures(s).and_then(|ref captures| {
-            Some(Self {
-                name: Identifier::try_from(captures.get(1).unwrap().as_str()).ok()?,
-                version: {
-                    let mut numbers = Vec::new();
-                    if let Some(version_numbers) = captures.get(3) {
-                        for number in version_numbers
-                            .as_str()
-                            .split('.')
-                            .filter(|s| !s.is_empty())
-                        {
-                            numbers.push(format::numeric::UInteger(number.parse().ok()?));
-                        }
-                    }
-                    format::VersionNumbers(format::structures::LengthEncodedVector(numbers))
-                },
-            })
-        })
-    }
 }
 
 #[derive(Debug)]
@@ -258,23 +213,6 @@ impl<'a> Module<'a> {
     }
 }
 
-/// Identifiers and allows retrieval of a type definition.
-#[derive(Clone, Debug)]
-pub struct FullTypeIdentifier {
-    module_name: ModuleIdentifier,
-    type_name: Identifier,
-}
-
-impl FullTypeIdentifier {
-    pub fn module_name(&self) -> &ModuleIdentifier {
-        &self.module_name
-    }
-
-    pub fn type_name(&self) -> &Identifier {
-        &self.type_name
-    }
-}
-
 pub struct Method<'a> {
     source: &'a format::Method,
     owner: &'a Type<'a>,
@@ -283,22 +221,6 @@ pub struct Method<'a> {
 pub struct MethodSignatureTypes<'a> {
     pub return_types: Vec<&'a format::TypeSignature>,
     pub parameter_types: Vec<&'a format::TypeSignature>,
-}
-
-#[derive(Clone, Debug)]
-pub struct FullMethodIdentifier {
-    type_name: FullTypeIdentifier,
-    method_name: Identifier,
-}
-
-impl FullMethodIdentifier {
-    fn type_name(&self) -> &FullTypeIdentifier {
-        &self.type_name
-    }
-
-    fn method_name(&self) -> &Identifier {
-        &self.method_name
-    }
 }
 
 impl<'a> Method<'a> {
@@ -421,31 +343,6 @@ impl<'a> Loader<'a> {
 
     pub fn lookup_type(&'a self, name: &FullTypeIdentifier) -> Result<&'a Type<'a>, ()> {
         self.lookup_module(name.module_name())?
-            .lookup_type(&name.type_name)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    mod identifier {
-        use crate::loader::{FullIdentifier as _, Identifier, ModuleIdentifier};
-        use registir::format::{
-            numeric::UInteger, structures::LengthEncodedVector, VersionNumbers,
-        };
-
-        #[test]
-        fn module_identifier_with_version_is_valid() {
-            assert_eq!(
-                ModuleIdentifier::parse("{abc, 1.2.34}"),
-                Some(ModuleIdentifier {
-                    name: Identifier::try_from("abc").unwrap(),
-                    version: VersionNumbers(LengthEncodedVector(vec![
-                        UInteger(1),
-                        UInteger(2),
-                        UInteger(34),
-                    ]))
-                })
-            );
-        }
+            .lookup_type(&name.type_name())
     }
 }
