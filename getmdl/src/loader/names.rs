@@ -100,6 +100,8 @@ identifier_type_traits!(FullTypeIdentifier);
 pub struct FullMethodIdentifier {
     type_name: FullTypeIdentifier,
     method_name: Identifier,
+    //parameter_types:
+    //return_types:
 }
 
 impl FullMethodIdentifier {
@@ -111,6 +113,26 @@ impl FullMethodIdentifier {
         &self.method_name
     }
 }
+
+impl FullIdentifier for FullMethodIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.type_name().fmt(f)?;
+        write!(f, "::{}", self.type_name)
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        lazy_static::lazy_static!(
+            static ref REGEX: regex::Regex = regex::Regex::new(r"\.(\w+)").unwrap();
+        );
+
+        Some(Self {
+            type_name: FullTypeIdentifier::parse(s)?,
+            method_name: Identifier::try_from(REGEX.captures(s)?.get(1)?.as_str()).ok()?,
+        })
+    }
+}
+
+identifier_type_traits!(FullMethodIdentifier);
 
 #[cfg(test)]
 mod tests {

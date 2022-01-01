@@ -232,6 +232,11 @@ impl<'a> Method<'a> {
         self.owner.declaring_module()
     }
 
+    pub fn name(&'a self) -> LoadResult<&'a Identifier> {
+        self.declaring_module()
+            .load_identifier_raw(self.source.name)
+    }
+
     pub fn raw_body(&'a self) -> &'a format::MethodBody {
         &self.source.body
     }
@@ -286,20 +291,31 @@ impl<'a> std::hash::Hash for Method<'a> {
 pub struct Type<'a> {
     source: &'a format::Type,
     module: &'a Module<'a>,
-    loaded_methods: RefCell<HashMap<usize, &'a Method<'a>>>,
 }
 
 impl<'a> Type<'a> {
     fn new(module: &'a Module<'a>, source: &'a format::Type) -> Self {
-        Self {
-            source,
-            module,
-            loaded_methods: RefCell::new(HashMap::new()),
-        }
+        Self { source, module }
     }
 
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.module
+    }
+
+    pub fn try_lookup_method(&'a self, name: &Identifier) -> LoadResult<Vec<&'a Method<'a>>> {
+        let mut matches = Vec::new();
+        for &index in &self.source.methods.0 {
+            // TODO: Since names are simply being checked, could avoid loading of methods.
+            let method = self.module.load_method_raw(index)?;
+            if method.name()? == name {
+                matches.push(method)
+            }
+        }
+        Ok(matches)
+    }
+
+    pub fn lookup_method(&'a self, name: &Identifier) -> Vec<&'a Method<'a>> {
+        self.try_lookup_method(name).unwrap_or(Vec::new())
     }
 }
 
@@ -344,5 +360,11 @@ impl<'a> Loader<'a> {
     pub fn lookup_type(&'a self, name: &FullTypeIdentifier) -> Result<&'a Type<'a>, ()> {
         self.lookup_module(name.module_name())?
             .lookup_type(&name.type_name())
+    }
+
+    pub fn lookup_method(&'a self, name: &FullMethodIdentifier) -> Vec<&'a Method<'a>> {
+        self.lookup_type(name.type_name())
+            .map(|type_definition| type_definition.lookup_method(name.method_name()))
+            .unwrap_or(Vec::new())
     }
 }
