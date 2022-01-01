@@ -25,7 +25,7 @@ impl FullIdentifier for ModuleIdentifier {
 
     fn parse(s: &str) -> Option<Self> {
         lazy_static::lazy_static!(
-            static ref REGEX: regex::Regex = regex::Regex::new(r"\{(\w+)(,\s*(\d+(\.\d+)*))?\}").unwrap();
+            static ref REGEX: regex::Regex = regex::Regex::new(r"\{([\w_]+)(,\s*(\d+(\.\d+)*))?\}").unwrap();
         );
 
         REGEX.captures(s).and_then(|ref captures| {
@@ -64,9 +64,17 @@ macro_rules! identifier_type_traits {
 pub struct FullTypeIdentifier {
     module_name: ModuleIdentifier,
     type_name: Identifier,
+    //type_namespace: Vec<Identifier>, // TODO: Include namespace in full type identifier.
 }
 
 impl FullTypeIdentifier {
+    pub fn new(module_name: ModuleIdentifier, type_name: Identifier) -> Self {
+        Self {
+            module_name,
+            type_name,
+        }
+    }
+
     pub fn module_name(&self) -> &ModuleIdentifier {
         &self.module_name
     }
@@ -84,7 +92,7 @@ impl FullIdentifier for FullTypeIdentifier {
 
     fn parse(s: &str) -> Option<Self> {
         lazy_static::lazy_static!(
-            static ref REGEX: regex::Regex = regex::Regex::new(r"::(\w+)").unwrap();
+            static ref REGEX: regex::Regex = regex::Regex::new(r"::([\w_]+)").unwrap();
         );
 
         Some(Self {
@@ -105,6 +113,13 @@ pub struct FullMethodIdentifier {
 }
 
 impl FullMethodIdentifier {
+    pub fn new(type_name: FullTypeIdentifier, method_name: Identifier) -> Self {
+        Self {
+            type_name,
+            method_name,
+        }
+    }
+
     pub fn type_name(&self) -> &FullTypeIdentifier {
         &self.type_name
     }
@@ -117,12 +132,13 @@ impl FullMethodIdentifier {
 impl FullIdentifier for FullMethodIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.type_name().fmt(f)?;
-        write!(f, "::{}", self.type_name)
+        write!(f, "::{}", self.method_name)
     }
 
     fn parse(s: &str) -> Option<Self> {
         lazy_static::lazy_static!(
-            static ref REGEX: regex::Regex = regex::Regex::new(r"\.(\w+)").unwrap();
+            // a-zA-Z is hack until this doesn't match against version numbers.
+            static ref REGEX: regex::Regex = regex::Regex::new(r"\.([a-zA-Z_]+)").unwrap();
         );
 
         Some(Self {
@@ -138,7 +154,8 @@ identifier_type_traits!(FullMethodIdentifier);
 mod tests {
     mod identifier {
         use crate::loader::names::{
-            FullIdentifier as _, FullTypeIdentifier, Identifier, ModuleIdentifier,
+            FullIdentifier as _, FullMethodIdentifier, FullTypeIdentifier, Identifier,
+            ModuleIdentifier,
         };
         use registir::format::{
             numeric::UInteger, structures::LengthEncodedVector, VersionNumbers,
@@ -169,6 +186,23 @@ mod tests {
                         version: VersionNumbers(LengthEncodedVector(vec![UInteger(1)]))
                     },
                     type_name: Identifier::try_from("SomeTypeName").unwrap(),
+                })
+            );
+        }
+
+        #[test]
+        fn method_identifier_is_valid() {
+            assert_eq!(
+                FullMethodIdentifier::parse("{hello_world, 3.0.1}::Hello.Main"),
+                Some(FullMethodIdentifier {
+                    type_name: FullTypeIdentifier {
+                        module_name: ModuleIdentifier {
+                            name: Identifier::try_from("hello_world").unwrap(),
+                            version: VersionNumbers(LengthEncodedVector(vec![UInteger(3), UInteger(0), UInteger(1)]))
+                        },
+                        type_name: Identifier::try_from("Hello").unwrap(),
+                    },
+                    method_name: Identifier::try_from("Main").unwrap(),
                 })
             );
         }

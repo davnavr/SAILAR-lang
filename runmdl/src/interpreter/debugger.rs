@@ -2,18 +2,20 @@ use std::collections::hash_map;
 use std::sync::mpsc;
 
 pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedMethod, StackTrace};
+pub use getmdl::loader::{FullIdentifier, FullMethodIdentifier, ModuleIdentifier};
 
+#[derive(Default)]
 pub struct Breakpoint {
     pub block: BlockIndex,
-    pub instruction: Option<usize>,
-    //pub method: Option<MethodName>
+    pub instruction: usize,
+    pub method: Option<FullMethodIdentifier>,
 }
 
 impl Breakpoint {
     pub fn instruction_location(&self) -> InstructionLocation {
         InstructionLocation {
             block_index: self.block,
-            code_index: self.instruction.unwrap_or_default(),
+            code_index: self.instruction,
         }
     }
 }
@@ -21,6 +23,10 @@ impl Breakpoint {
 impl std::fmt::Display for Breakpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let location = self.instruction_location();
+        if let Some(ref method_name) = self.method {
+            write!(f, "{} ", method_name)?;
+        }
+
         write!(
             f,
             "at block {} instruction {}",
@@ -145,12 +151,13 @@ impl<'l: 'd, 'd> Debugger<'l> {
 
     pub(crate) fn breakpoints<'a>(&'a self) -> Vec<Breakpoint> {
         let mut breakpoints = Vec::new();
-        for (_, block_breakpoints) in self.breakpoints.iter() {
-            for (block, code_indices) in block_breakpoints {
-                for index in code_indices.indices().borrow().iter() {
+        for (&method, block_breakpoints) in self.breakpoints.iter() {
+            for (&block, code_indices) in block_breakpoints {
+                for &index in code_indices.indices().borrow().iter() {
                     breakpoints.push(Breakpoint {
-                        block: *block,
-                        instruction: Some(*index),
+                        block,
+                        instruction: index,
+                        method: Some(method.identifier().unwrap()),
                     });
                 }
             }

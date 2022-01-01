@@ -100,7 +100,7 @@ impl StackTrace {
 }
 
 /// Refers to a block in a method body, where a value of `None` refers to the entry block.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct BlockIndex(pub Option<usize>);
 
 impl BlockIndex {
@@ -130,6 +130,13 @@ struct StackFrameBreakPoints {
 impl StackFrameBreakPoints {
     fn reset(&mut self) {
         self.index = 0;
+    }
+
+    fn is_empty(&self) -> bool {
+        match self.source {
+            None => true,
+            Some(ref indices) => indices.borrow().len() == self.index,
+        }
     }
 
     fn move_next(&mut self) -> Option<usize> {
@@ -188,6 +195,10 @@ impl<'l> StackFrame<'l> {
     }
 
     fn breakpoint_hit(&mut self) -> bool {
+        if self.breakpoints.is_empty() {
+            false
+        }
+        else {
         let current_index = self.code_index();
         loop {
             match self.breakpoints.move_next() {
@@ -199,6 +210,7 @@ impl<'l> StackFrame<'l> {
                 None => return false,
             }
         }
+    }
     }
 
     fn next_instruction(&mut self) -> Option<&'l Instruction> {
@@ -459,6 +471,7 @@ impl<'l> Interpreter<'l> {
             Instruction::Break => {
                 let current_method = self.current_frame()?.current_method;
                 self.debugger_message_loop(current_method);
+                self.set_debugger_breakpoints();
             }
         }
 
@@ -480,12 +493,24 @@ impl<'l> Interpreter<'l> {
         loop {
             match self.expect_debugger_message() {
                 Some(message) => match message.message() {
-                    // TODO: Allow selection of method for breakpoint.loader
-                    debugger::MessageKind::SetBreakpoint(breakpoint) => self
-                        .debugger
-                        .as_mut()
-                        .unwrap()
-                        .set_breakpoint(default_method, &breakpoint.instruction_location()),
+                    debugger::MessageKind::SetBreakpoint(breakpoint) => {
+                        let method = breakpoint
+                            .method
+                            .as_ref()
+                            .map(|method_name| self.loader.lookup_method(method_name))
+                            .map(|methods| {
+                                if methods.len() != 1 {
+                                    todo!("how to handle method not found for breakpoint?")
+                                } else {
+                                    methods[0]
+                                }
+                            })
+                            .unwrap_or(default_method);
+                        self.debugger
+                            .as_mut()
+                            .unwrap()
+                            .set_breakpoint(method, &breakpoint.instruction_location())
+                    }
                     debugger::MessageKind::GetBreakpoints => {
                         message.reply(debugger::MessageReply::Breakpoints(
                             self.debugger.as_ref().unwrap().breakpoints(),

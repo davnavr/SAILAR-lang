@@ -1,4 +1,4 @@
-use runmdl::interpreter::debugger;
+use runmdl::interpreter::{debugger, debugger::FullIdentifier as _};
 use std::{io, sync::mpsc};
 
 type CommandResult = Result<(), String>;
@@ -61,10 +61,24 @@ fn all_commands() -> Vec<(&'static str, Command)> {
             Command {
                 description: "sets a breakpoint in the specified method",
                 command: &|debugger, arguments| {
+                    let method = match arguments.get(0) {
+                        Some(name) => Some(
+                            debugger::FullMethodIdentifier::parse(name)
+                                .ok_or_else(|| String::from("invalid method name"))?,
+                        ),
+                        None => None,
+                    };
+
+                    let instruction = match arguments.get(2) {
+                        Some(index) => str::parse(index).map_err(|_| String::from("invalid instruction index"))?,
+                        None => 0,
+                    };
+
                     debugger.send_message(debugger::MessageKind::SetBreakpoint(
                         debugger::Breakpoint {
                             block: debugger::BlockIndex(None),
-                            instruction: None,
+                            instruction,
+                            method,
                         },
                     ))
                 },

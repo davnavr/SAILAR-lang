@@ -6,7 +6,7 @@ use typed_arena::Arena as TypedArena;
 mod names;
 
 pub use format::{Identifier, ModuleIdentifier};
-pub use names::{FullMethodIdentifier, FullTypeIdentifier};
+pub use names::{FullIdentifier, FullMethodIdentifier, FullTypeIdentifier};
 
 pub struct Module<'a> {
     source: format::Module,
@@ -270,6 +270,13 @@ impl<'a> Method<'a> {
                 .collect_type_signatures_raw(&signature.parameter_types)?,
         })
     }
+
+    pub fn identifier(&'a self) -> LoadResult<FullMethodIdentifier> {
+        Ok(FullMethodIdentifier::new(
+            self.owner.identifier()?,
+            self.name()?.clone(),
+        ))
+    }
 }
 
 impl<'a> std::cmp::PartialEq for Method<'a> {
@@ -298,6 +305,11 @@ impl<'a> Type<'a> {
         Self { source, module }
     }
 
+    pub fn name(&'a self) -> LoadResult<&'a Identifier> {
+        self.declaring_module()
+            .load_identifier_raw(self.source.name)
+    }
+
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.module
     }
@@ -316,6 +328,13 @@ impl<'a> Type<'a> {
 
     pub fn lookup_method(&'a self, name: &Identifier) -> Vec<&'a Method<'a>> {
         self.try_lookup_method(name).unwrap_or(Vec::new())
+    }
+
+    pub fn identifier(&'a self) -> LoadResult<FullTypeIdentifier> {
+        Ok(FullTypeIdentifier::new(
+            self.module.identifier().clone(),
+            self.name()?.clone(),
+        ))
     }
 }
 
