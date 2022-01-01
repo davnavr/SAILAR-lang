@@ -92,16 +92,35 @@ fn all_commands() -> Vec<(&'static str, Command)> {
             },
         ),
         (
-            "start",
+            "cont",
             Command {
-                description:
-                    "signals the runtime that execution of the application's entry point can begin",
+                description: "continues execution until the next breakpoint is hit",
                 command: &|debugger, _| {
                     //expect_empty_arguments
-                    debugger.send_message(debugger::MessageKind::Start)
+                    debugger.send_message(debugger::MessageKind::Continue)
                 },
             },
         ),
+        (
+            "where",
+            Command {
+                description: "prints a stack trace",
+                command: &|debugger, _| {
+                    debugger.send_message(debugger::MessageKind::GetStackTrace)?;
+
+                    match debugger.expect_reply() {
+                        debugger::MessageReply::StackTrace(stack_frames) => {
+                            for frame in stack_frames {
+                                println!("- block {} instruction {}", frame.location().block_index.to_raw(), frame.location().code_index)
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+
+                    Ok(())
+                }
+            }
+        )
     ]
 }
 
@@ -126,7 +145,7 @@ pub(crate) fn start(channel: mpsc::SyncSender<debugger::Message>) {
         reply_channel_receiver,
     };
 
-    println!("Type 'help' for help, or 'start' to begin program execution");
+    println!("Type 'help' for help, or 'cont' to begin program execution");
     while debugger.is_running {
         let mut line_buffer = String::new();
         io::stdin().read_line(&mut line_buffer).unwrap();

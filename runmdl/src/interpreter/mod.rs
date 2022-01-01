@@ -93,6 +93,12 @@ pub struct StackTrace {
     location: InstructionLocation,
 }
 
+impl StackTrace {
+    pub fn location(&self) -> &InstructionLocation {
+        &self.location
+    }
+}
+
 /// Refers to a block in a method body, where a value of `None` refers to the entry block.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockIndex(pub Option<usize>);
@@ -128,7 +134,7 @@ impl StackFrameBreakPoints {
 
     fn move_next(&mut self) -> Option<usize> {
         self.source.as_ref().and_then(|indices| {
-            let index = indices.borrow().first().copied();
+            let index = indices.borrow().get(self.index).copied();
             self.index += 1;
             index
         })
@@ -415,11 +421,10 @@ impl<'l> Interpreter<'l> {
     }
 
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
-        let current_frame = self.current_frame()?;
-
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
+                let current_frame = self.current_frame()?;
                 // Copy results into the registers of the previous frame.
                 let registers = current_frame.many_registers(indices)?;
                 Register::copy_many_raw(
@@ -429,26 +434,31 @@ impl<'l> Interpreter<'l> {
                 self.stack_frames.pop();
             }
             Instruction::Add(operation) => Self::basic_arithmetic_operation(
-                current_frame,
+                self.current_frame()?,
                 operation,
                 Register::overflowing_add,
             )?,
             Instruction::Sub(operation) => Self::basic_arithmetic_operation(
-                current_frame,
+                self.current_frame()?,
                 operation,
                 Register::overflowing_sub,
             )?,
             Instruction::Mul(operation) => Self::basic_arithmetic_operation(
-                current_frame,
+                self.current_frame()?,
                 operation,
                 Register::overflowing_mul,
             )?,
-            Instruction::Div(operation) => {
-                Self::basic_division_operation(current_frame, operation, Register::overflowing_div)?
-            }
-            Instruction::ConstI(value) => current_frame.define_temporary(Register::from(*value)),
+            Instruction::Div(operation) => Self::basic_division_operation(
+                self.current_frame()?,
+                operation,
+                Register::overflowing_div,
+            )?,
+            Instruction::ConstI(value) => self
+                .current_frame()?
+                .define_temporary(Register::from(*value)),
             Instruction::Break => {
-                todo!("send breakpoint hit message to debugger")
+                let current_method = self.current_frame()?.current_method;
+                self.debugger_message_loop(current_method);
             }
         }
 
@@ -466,10 +476,36 @@ impl<'l> Interpreter<'l> {
         message
     }
 
+    fn debugger_message_loop(&mut self, default_method: LoadedMethod<'l>) {
+        loop {
+            match self.expect_debugger_message() {
+                Some(message) => match message.message() {
+                    // TODO: Allow selection of method for breakpoint.loader
+                    debugger::MessageKind::SetBreakpoint(breakpoint) => self
+                        .debugger
+                        .as_mut()
+                        .unwrap()
+                        .set_breakpoint(default_method, &breakpoint.instruction_location()),
+                    debugger::MessageKind::GetBreakpoints => {
+                        message.reply(debugger::MessageReply::Breakpoints(
+                            self.debugger.as_ref().unwrap().breakpoints(),
+                        ))
+                    }
+                    debugger::MessageKind::GetStackTrace => {
+                        message.reply(debugger::MessageReply::StackTrace(self.stack_trace()))
+                    }
+                    debugger::MessageKind::Continue => return, // TODO: When continue is recevied, store the reply_channel somewhere so a reply can be sent when breakpoint is hit?
+                },
+                None => return,
+            }
+        }
+    }
+
     fn set_debugger_breakpoints(&mut self) {
         if let Some(debugger) = &self.debugger {
             for frame in &mut self.stack_frames {
-                frame.breakpoints.source = debugger.breakpoints_in_block(frame.current_method, frame.block_index);
+                frame.breakpoints.source =
+                    debugger.breakpoints_in_block(frame.current_method, frame.block_index);
                 frame.breakpoints.reset();
             }
         }
@@ -485,25 +521,7 @@ pub fn run<'l>(
     let mut interpreter = Interpreter::initialize(loader, debugger_channel_receiver);
 
     // Wait for the debugger, if one is attached, to tell the application to start.
-    loop {
-        match interpreter.expect_debugger_message() {
-            Some(message) => match message.message() {
-                // TODO: Allow selection of method for breakpoint.loader
-                debugger::MessageKind::SetBreakpoint(breakpoint) => interpreter
-                    .debugger
-                    .as_mut()
-                    .unwrap()
-                    .set_breakpoint(entry_point, &breakpoint.instruction_location()),
-                debugger::MessageKind::GetBreakpoints => {
-                    message.reply(debugger::MessageReply::Breakpoints(
-                        interpreter.debugger.as_ref().unwrap().breakpoints(),
-                    ))
-                }
-                debugger::MessageKind::Start => break, // TODO: Have a variable store the reply_channel in a Some()?
-            },
-            None => break,
-        }
-    }
+    interpreter.debugger_message_loop(entry_point);
 
     let entry_point_results = interpreter.invoke_method(arguments, entry_point)?;
 

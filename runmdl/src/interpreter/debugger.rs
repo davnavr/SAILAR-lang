@@ -31,15 +31,15 @@ impl std::fmt::Display for Breakpoint {
 }
 
 pub enum MessageReply {
-    StackTrace(StackTrace),
+    StackTrace(Vec<StackTrace>),
     Breakpoints(Vec<Breakpoint>),
 }
 
 pub enum MessageKind {
-    /// Starts the execution of the application's entry point.
-    Start,
+    Continue,
     SetBreakpoint(Breakpoint),
     GetBreakpoints,
+    GetStackTrace,
 }
 
 pub struct Message {
