@@ -111,16 +111,20 @@ fn all_commands() -> Vec<(&'static str, Command)> {
                     match debugger.expect_reply() {
                         debugger::MessageReply::StackTrace(stack_frames) => {
                             for frame in stack_frames {
-                                println!("- block {} instruction {}", frame.location().block_index.to_raw(), frame.location().code_index)
+                                println!(
+                                    "- block {} instruction {}",
+                                    frame.location().block_index.to_raw(),
+                                    frame.location().code_index
+                                )
                             }
                         }
                         _ => unreachable!(),
                     }
 
                     Ok(())
-                }
-            }
-        )
+                },
+            },
+        ),
     ]
 }
 

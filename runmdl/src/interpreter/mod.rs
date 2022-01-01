@@ -516,9 +516,9 @@ pub fn run<'l>(
     loader: &'l loader::Loader<'l>, // TOOD: Loader not necessary?
     arguments: &[Register],
     entry_point: LoadedMethod<'l>,
-    debugger_channel_receiver: Option<debugger::MessageReceiver>,
+    debugger_message_channel: Option<debugger::MessageReceiver>,
 ) -> Result<Vec<Register>> {
-    let mut interpreter = Interpreter::initialize(loader, debugger_channel_receiver);
+    let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);
 
     // Wait for the debugger, if one is attached, to tell the application to start.
     interpreter.debugger_message_loop(entry_point);
