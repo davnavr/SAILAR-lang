@@ -1,11 +1,16 @@
 use runmdl::runtime;
+use std::sync::mpsc;
 use structopt::StructOpt;
+
+mod debugger;
 
 #[derive(StructOpt)]
 struct Arguments {
     /// Path to the program to run.
     #[structopt(long, short)]
     program: std::path::PathBuf,
+    #[structopt(long)]
+    interactive: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,5 +36,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut initializer = runtime::Initializer::new();
     let runtime = runtime::Runtime::initialize(&mut initializer, application);
 
-    std::process::exit(runtime.invoke_entry_point(application_arguments.as_ref())?)
+    let (debugger, debugger_channel_receiver) = if interpreter_arguments.interactive {
+        let (debugger_channel_sender, debugger_channel_receiver) = mpsc::sync_channel(0);
+        let debugger_thread = std::thread::Builder::new()
+            .name("debugger".to_string())
+            .spawn(|| debugger::start(debugger_channel_sender))?;
+        (Some(debugger_thread), Some(debugger_channel_receiver))
+    } else {
+        (None, None)
+    };
+
+    let exit_code =
+        runtime.invoke_entry_point(application_arguments.as_ref(), debugger_channel_receiver)?;
+
+    if let Some(debugger_thread) = debugger {
+        debugger_thread.join().unwrap();
+    }
+
+    std::process::exit(exit_code)
 }

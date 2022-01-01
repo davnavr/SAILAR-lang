@@ -307,7 +307,7 @@ fn block_instruction<W: std::io::Write>(
     instruction_opcode(out, instruction.opcode())?;
 
     match instruction {
-        Instruction::Nop => Ok(()),
+        Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)

@@ -3,7 +3,10 @@ use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
 use typed_arena::Arena as TypedArena;
 
+mod names;
+
 pub use format::{Identifier, ModuleIdentifier};
+pub use names::{FullIdentifier, FullMethodIdentifier, FullTypeIdentifier};
 
 pub struct Module<'a> {
     source: format::Module,
@@ -12,6 +15,7 @@ pub struct Module<'a> {
     //loaded_fields: ,
     method_arena: TypedArena<Method<'a>>,
     loaded_methods: RefCell<HashMap<usize, &'a Method<'a>>>,
+    type_lookup_cache: RefCell<HashMap<Identifier, &'a Type<'a>>>,
 }
 
 #[derive(Debug)]
@@ -75,9 +79,10 @@ impl<'a> Module<'a> {
         Self {
             source,
             type_arena: TypedArena::new(),
-            loaded_types: RefCell::new(HashMap::new()),
+            loaded_types: RefCell::default(),
             method_arena: TypedArena::new(),
-            loaded_methods: RefCell::new(HashMap::new()),
+            loaded_methods: RefCell::default(),
+            type_lookup_cache: RefCell::default(),
         }
     }
 
@@ -111,6 +116,13 @@ impl<'a> Module<'a> {
                 },
             }
         })
+    }
+
+    pub fn load_identifier_raw(
+        &'a self,
+        index: format::indices::Identifier,
+    ) -> LoadResult<&'a Identifier> {
+        read_index_from(index, &self.source.identifiers, Ok)
     }
 
     pub fn load_type_raw(
@@ -167,6 +179,38 @@ impl<'a> Module<'a> {
     pub fn load_code_raw(&'a self, index: format::indices::Code) -> LoadResult<&'a format::Code> {
         read_index_from(index, &self.source.method_bodies.0, Ok)
     }
+
+    pub fn lookup_type(&'a self, name: &Identifier) -> Result<&'a Type<'a>, ()> {
+        match self.type_lookup_cache.borrow_mut().entry(name.clone()) {
+            hash_map::Entry::Occupied(occupied) => Ok(occupied.get()),
+            hash_map::Entry::Vacant(vacant) => {
+                let result = self
+                    .source
+                    .definitions
+                    .0
+                    .defined_types
+                    .0
+                    .iter()
+                    .enumerate()
+                    .find(|(_, definition)| {
+                        self.load_identifier_raw(definition.name)
+                            .ok()
+                            .filter(|&type_name| type_name == name)
+                            .is_some()
+                    })
+                    .map(|(index, _)| {
+                        self.load_type_raw(
+                            format::indices::TypeDefinition::try_from(index).unwrap(),
+                        )
+                        .unwrap()
+                    });
+                if let Some(definition) = result {
+                    vacant.insert(definition);
+                }
+                result.ok_or(())
+            }
+        }
+    }
 }
 
 pub struct Method<'a> {
@@ -186,6 +230,11 @@ impl<'a> Method<'a> {
 
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.owner.declaring_module()
+    }
+
+    pub fn name(&'a self) -> LoadResult<&'a Identifier> {
+        self.declaring_module()
+            .load_identifier_raw(self.source.name)
     }
 
     pub fn raw_body(&'a self) -> &'a format::MethodBody {
@@ -221,6 +270,13 @@ impl<'a> Method<'a> {
                 .collect_type_signatures_raw(&signature.parameter_types)?,
         })
     }
+
+    pub fn identifier(&'a self) -> LoadResult<FullMethodIdentifier> {
+        Ok(FullMethodIdentifier::new(
+            self.owner.identifier()?,
+            self.name()?.clone(),
+        ))
+    }
 }
 
 impl<'a> std::cmp::PartialEq for Method<'a> {
@@ -242,20 +298,43 @@ impl<'a> std::hash::Hash for Method<'a> {
 pub struct Type<'a> {
     source: &'a format::Type,
     module: &'a Module<'a>,
-    loaded_methods: RefCell<HashMap<usize, &'a Method<'a>>>,
 }
 
 impl<'a> Type<'a> {
     fn new(module: &'a Module<'a>, source: &'a format::Type) -> Self {
-        Self {
-            source,
-            module,
-            loaded_methods: RefCell::new(HashMap::new()),
-        }
+        Self { source, module }
+    }
+
+    pub fn name(&'a self) -> LoadResult<&'a Identifier> {
+        self.declaring_module()
+            .load_identifier_raw(self.source.name)
     }
 
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.module
+    }
+
+    pub fn try_lookup_method(&'a self, name: &Identifier) -> LoadResult<Vec<&'a Method<'a>>> {
+        let mut matches = Vec::new();
+        for &index in &self.source.methods.0 {
+            // TODO: Since names are simply being checked, could avoid loading of methods.
+            let method = self.module.load_method_raw(index)?;
+            if method.name()? == name {
+                matches.push(method)
+            }
+        }
+        Ok(matches)
+    }
+
+    pub fn lookup_method(&'a self, name: &Identifier) -> Vec<&'a Method<'a>> {
+        self.try_lookup_method(name).unwrap_or(Vec::new())
+    }
+
+    pub fn identifier(&'a self) -> LoadResult<FullTypeIdentifier> {
+        Ok(FullTypeIdentifier::new(
+            self.module.identifier().clone(),
+            self.name()?.clone(),
+        ))
     }
 }
 
@@ -290,5 +369,21 @@ impl<'a> Loader<'a> {
     ) -> (&'a Self, &'a Module<'a>) {
         let loaded = loader.insert(Loader::new_empty());
         (loaded, loaded.load_module_raw(application))
+    }
+
+    // TODO: How to force loading of a module if it is an import of one of the already loaded modules?
+    pub fn lookup_module(&'a self, name: &ModuleIdentifier) -> Result<&'a Module<'a>, ()> {
+        self.loaded_modules.borrow().get(name).copied().ok_or(())
+    }
+
+    pub fn lookup_type(&'a self, name: &FullTypeIdentifier) -> Result<&'a Type<'a>, ()> {
+        self.lookup_module(name.module_name())?
+            .lookup_type(&name.type_name())
+    }
+
+    pub fn lookup_method(&'a self, name: &FullMethodIdentifier) -> Vec<&'a Method<'a>> {
+        self.lookup_type(name.type_name())
+            .map(|type_definition| type_definition.lookup_method(name.method_name()))
+            .unwrap_or(Vec::new())
     }
 }

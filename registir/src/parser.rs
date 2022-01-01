@@ -382,6 +382,7 @@ fn instruction<R: std::io::Read>(
         Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
         Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
+        Opcode::Break => Ok(Instruction::Break),
         Opcode::Continuation => unreachable!(),
         _ => todo!("TODO: Add support for parsing of more instructions"),
     }
