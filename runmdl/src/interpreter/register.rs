@@ -26,7 +26,7 @@ impl Default for RegisterValue {
 
 pub struct Register {
     pub(crate) value: RegisterValue,
-    value_type: interpreter::RegisterType,
+    value_type: RegisterType,
 }
 
 impl Register {
@@ -66,6 +66,43 @@ impl Register {
         assert_eq!(source.len(), destination.len());
         for (index, register) in source.iter().enumerate() {
             Self::copy_raw(register, &mut destination[index]);
+        }
+    }
+}
+
+impl std::fmt::Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.value_type {
+            RegisterType::Primitive(PrimitiveType::U8) => unsafe { self.value.u_byte.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S8) => unsafe { self.value.s_byte.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U16) => unsafe { self.value.u_short.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S16) => unsafe { self.value.s_short.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U32) => unsafe { self.value.u_int.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S32) => unsafe { self.value.s_int.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U64) => unsafe { self.value.u_long.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S64) => unsafe { self.value.s_long.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::UNative) => unsafe { self.value.u_native.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::SNative) => unsafe { self.value.s_native.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::F32) => unsafe { self.value.f_single.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::F64) => unsafe { self.value.f_double.fmt(f) },
+        }
+    }
+}
+
+
+impl std::fmt::UpperHex for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.value_type {
+            RegisterType::Primitive(PrimitiveType::U8) => unsafe { self.value.u_byte.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S8) => unsafe { self.value.s_byte.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U16) => unsafe { self.value.u_short.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S16) => unsafe { self.value.s_short.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U32 | PrimitiveType::F32) => unsafe { self.value.u_int.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S32) => unsafe { self.value.s_int.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::U64 | PrimitiveType::F64) => unsafe { self.value.u_long.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::S64) => unsafe { self.value.s_long.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::UNative) => unsafe { self.value.u_native.fmt(f) },
+            RegisterType::Primitive(PrimitiveType::SNative) => unsafe { self.value.s_native.fmt(f) },
         }
     }
 }

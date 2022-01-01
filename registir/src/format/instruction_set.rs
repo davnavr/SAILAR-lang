@@ -16,6 +16,14 @@ pub enum RegisterType {
     //Object
 }
 
+impl std::fmt::Display for RegisterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Primitive(primitive_type) => primitive_type.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     Primitive(PrimitiveType),
