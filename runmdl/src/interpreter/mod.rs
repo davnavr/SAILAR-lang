@@ -91,16 +91,21 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct StackTrace {
     location: InstructionLocation,
+    method: debugger::FullMethodIdentifier,
 }
 
 impl StackTrace {
     pub fn location(&self) -> &InstructionLocation {
         &self.location
     }
+
+    pub fn method(&self) -> &debugger::FullMethodIdentifier {
+        &self.method
+    }
 }
 
 /// Refers to a block in a method body, where a value of `None` refers to the entry block.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct BlockIndex(pub Option<usize>);
 
 impl BlockIndex {
@@ -113,7 +118,7 @@ impl BlockIndex {
     }
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct InstructionLocation {
     pub block_index: BlockIndex,
     pub code_index: usize,
@@ -128,10 +133,6 @@ struct StackFrameBreakPoints {
 }
 
 impl StackFrameBreakPoints {
-    fn reset(&mut self) {
-        self.index = 0;
-    }
-
     fn is_empty(&self) -> bool {
         match self.source {
             None => true,
@@ -139,19 +140,11 @@ impl StackFrameBreakPoints {
         }
     }
 
-    fn move_next(&mut self) -> Option<usize> {
+    fn next(&mut self) -> Option<usize> {
         self.source.as_ref().and_then(|indices| {
             let index = indices.borrow().get(self.index).copied();
-            self.index += 1;
             index
         })
-    }
-
-    fn indices(&self) -> Option<std::cell::Ref<[usize]>> {
-        match self.source {
-            Some(ref indices) => Some(std::cell::Ref::map(indices.borrow(), |i| &i[self.index..])),
-            None => None,
-        }
     }
 }
 
@@ -191,26 +184,24 @@ impl<'l> StackFrame<'l> {
     }
 
     fn code_index(&self) -> usize {
-        self.instructions.as_ptr() as usize - self.current_block().instructions.0.as_ptr() as usize
+        (self.instructions.as_ptr() as usize - self.current_block().instructions.0.as_ptr() as usize) / std::mem::size_of::<Instruction>()
     }
 
     fn breakpoint_hit(&mut self) -> bool {
         if self.breakpoints.is_empty() {
             false
-        }
-        else {
-        let current_index = self.code_index();
-        loop {
-            match self.breakpoints.move_next() {
+        } else {
+            let current_index = self.code_index();
+            match self.breakpoints.next() {
                 Some(offset) => {
-                    if offset == current_index {
-                        return true;
+                    if offset <= current_index {
+                        self.breakpoints.index += 1;
                     }
-                }
-                None => return false,
+                    offset == current_index
+                },
+                None => false,
             }
         }
-    }
     }
 
     fn next_instruction(&mut self) -> Option<&'l Instruction> {
@@ -275,6 +266,7 @@ impl<'l> StackFrame<'l> {
     fn stack_trace(&self) -> StackTrace {
         StackTrace {
             location: self.location(),
+            method: self.current_method.identifier().unwrap(),
         }
     }
 }
@@ -531,7 +523,6 @@ impl<'l> Interpreter<'l> {
             for frame in &mut self.stack_frames {
                 frame.breakpoints.source =
                     debugger.breakpoints_in_block(frame.current_method, frame.block_index);
-                frame.breakpoints.reset();
             }
         }
     }

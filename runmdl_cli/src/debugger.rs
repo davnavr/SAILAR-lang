@@ -70,7 +70,8 @@ fn all_commands() -> Vec<(&'static str, Command)> {
                     };
 
                     let instruction = match arguments.get(2) {
-                        Some(index) => str::parse(index).map_err(|_| String::from("invalid instruction index"))?,
+                        Some(index) => str::parse(index)
+                            .map_err(|_| String::from("invalid instruction index"))?,
                         None => 0,
                     };
 
@@ -126,7 +127,8 @@ fn all_commands() -> Vec<(&'static str, Command)> {
                         debugger::MessageReply::StackTrace(stack_frames) => {
                             for frame in stack_frames {
                                 println!(
-                                    "- block {} instruction {}",
+                                    "- {} at block {} instruction {}",
+                                    frame.method(),
                                     frame.location().block_index.to_raw(),
                                     frame.location().code_index
                                 )

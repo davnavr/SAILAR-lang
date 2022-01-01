@@ -198,7 +198,11 @@ mod tests {
                     type_name: FullTypeIdentifier {
                         module_name: ModuleIdentifier {
                             name: Identifier::try_from("hello_world").unwrap(),
-                            version: VersionNumbers(LengthEncodedVector(vec![UInteger(3), UInteger(0), UInteger(1)]))
+                            version: VersionNumbers(LengthEncodedVector(vec![
+                                UInteger(3),
+                                UInteger(0),
+                                UInteger(1)
+                            ]))
                         },
                         type_name: Identifier::try_from("Hello").unwrap(),
                     },
