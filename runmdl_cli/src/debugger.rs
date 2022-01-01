@@ -141,6 +141,26 @@ fn all_commands() -> Vec<(&'static str, Command)> {
                 },
             },
         ),
+        (
+            "temps",
+            Command {
+                description: "prints all temporary registers that have been defined",
+                command: &|debugger, _| {
+                    debugger.send_message(debugger::MessageKind::GetRegisters)?;
+
+                    match debugger.expect_reply() {
+                        debugger::MessageReply::Registers(temporaries) => {
+                            for (index, register) in temporaries.iter().enumerate() {
+                                println!("- t{} = {}", index, register,)
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+
+                    Ok(())
+                },
+            },
+        ),
     ]
 }
 

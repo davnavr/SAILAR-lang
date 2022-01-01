@@ -24,6 +24,7 @@ impl Default for RegisterValue {
     }
 }
 
+#[derive(Clone)]
 pub struct Register {
     pub(crate) value: RegisterValue,
     value_type: RegisterType,

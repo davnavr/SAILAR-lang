@@ -1,7 +1,7 @@
 use std::collections::hash_map;
 use std::sync::mpsc;
 
-pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedMethod, StackTrace};
+pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedMethod, Register, StackTrace};
 pub use getmdl::loader::{FullIdentifier, FullMethodIdentifier, ModuleIdentifier};
 
 #[derive(Default)]
@@ -37,8 +37,9 @@ impl std::fmt::Display for Breakpoint {
 }
 
 pub enum MessageReply {
-    StackTrace(Vec<StackTrace>),
+    StackTrace(Vec<StackTrace>), // TODO: Use Rc<Vec> in message reply to reduce heap allocations?
     Breakpoints(Vec<Breakpoint>),
+    Registers(Vec<Register>), // TODO: Also include input registers.
 }
 
 pub enum MessageKind {
@@ -46,6 +47,7 @@ pub enum MessageKind {
     SetBreakpoint(Breakpoint),
     GetBreakpoints,
     GetStackTrace,
+    GetRegisters, // TODO: Allow selection of stack frame to show registers for.
 }
 
 pub struct Message {

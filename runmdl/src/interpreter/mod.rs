@@ -184,7 +184,9 @@ impl<'l> StackFrame<'l> {
     }
 
     fn code_index(&self) -> usize {
-        (self.instructions.as_ptr() as usize - self.current_block().instructions.0.as_ptr() as usize) / std::mem::size_of::<Instruction>()
+        (self.instructions.as_ptr() as usize
+            - self.current_block().instructions.0.as_ptr() as usize)
+            / std::mem::size_of::<Instruction>()
     }
 
     fn breakpoint_hit(&mut self) -> bool {
@@ -198,7 +200,7 @@ impl<'l> StackFrame<'l> {
                         self.breakpoints.index += 1;
                     }
                     offset == current_index
-                },
+                }
                 None => false,
             }
         }
@@ -510,6 +512,12 @@ impl<'l> Interpreter<'l> {
                     }
                     debugger::MessageKind::GetStackTrace => {
                         message.reply(debugger::MessageReply::StackTrace(self.stack_trace()))
+                    }
+                    debugger::MessageKind::GetRegisters => {
+                        let frame = self.current_frame().unwrap();
+                        message.reply(debugger::MessageReply::Registers(
+                            frame.temporary_registers.clone(),
+                        ))
                     }
                     debugger::MessageKind::Continue => return, // TODO: When continue is recevied, store the reply_channel somewhere so a reply can be sent when breakpoint is hit?
                 },
