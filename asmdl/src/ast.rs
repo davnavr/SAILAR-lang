@@ -184,6 +184,13 @@ pub struct DivisionOperation {
     pub divide_by_zero_modifier: DivideByZeroModifier,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BitwiseOperation {
+    pub result_type: Positioned<NumericType>,
+    pub x: RegisterSymbol,
+    pub y: RegisterSymbol,
+}
+
 /// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -192,6 +199,14 @@ pub enum Instruction {
     Sub(BasicArithmeticOperation),
     Mul(BasicArithmeticOperation),
     Div(DivisionOperation),
+    And(BitwiseOperation),
+    Or(BitwiseOperation),
+    Not(Positioned<NumericType>, RegisterSymbol),
+    Xor(BitwiseOperation),
+    ShL(BitwiseOperation),
+    ShR(BitwiseOperation),
+    RotL(BitwiseOperation),
+    RotR(BitwiseOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
     Ret(Vec<RegisterSymbol>),
 }
@@ -210,7 +225,16 @@ impl Instruction {
                     _ => 1,
                 }
             }
-            Self::Div(_) | Self::ConstI(_, _) => 1,
+            Self::Div(_)
+            | Self::And(_)
+            | Self::Or(_)
+            | Self::Not(_, _)
+            | Self::Xor(_)
+            | Self::ShL(_)
+            | Self::ShR(_)
+            | Self::RotL(_)
+            | Self::RotR(_)
+            | Self::ConstI(_, _) => 1,
         }
     }
 }

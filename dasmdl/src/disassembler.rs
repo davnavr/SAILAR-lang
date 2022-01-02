@@ -431,7 +431,9 @@ fn code_block<O: Write>(
             Instruction::And(operation) => bitwise_instruction(out, "and", operation, None)?,
             Instruction::Or(operation) => bitwise_instruction(out, "or", operation, None)?,
             Instruction::Not(result_type, value) => {
+                out.write_str("not ")?;
                 numeric_type(out, result_type)?;
+                out.write_char(' ')?;
                 code_register(out, *value)?;
             }
             Instruction::Xor(operation) => bitwise_instruction(out, "xor", operation, None)?,

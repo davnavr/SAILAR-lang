@@ -566,20 +566,43 @@ impl<'a> MethodBlockAssembler<'a> {
         }))
     }
 
-    fn emit_division_instruction<
-        I: FnOnce(format::instruction_set::DivisionOperation) -> format::instruction_set::Instruction,
-    >(
-        errors: &mut Vec<Error>,
-        operation: &'a ast::DivisionOperation,
-        register_lookup: &mut indexed::RegisterLookup<'a>,
+    fn try_emit_instruction(
+        definition: Option<format::instruction_set::Instruction>,
         instructions: &mut Vec<format::instruction_set::Instruction>,
-        instruction: I,
     ) {
-        if let Some(i) =
-            Self::define_division_instruction(errors, operation, register_lookup, instruction)
-        {
+        if let Some(i) = definition {
             instructions.push(i)
         }
+    }
+
+    fn define_bitwise_instruction<
+        I: FnOnce(format::instruction_set::BitwiseOperation) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BitwiseOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        Some(instruction(format::instruction_set::BitwiseOperation {
+            result_type: operation.result_type.value,
+            x: Self::lookup_register_index(errors, register_lookup, &operation.x)?,
+            y: Self::lookup_register_index(errors, register_lookup, &operation.y)?,
+        }))
+    }
+
+    fn define_bitwise_shift_instruction<
+        I: FnOnce(
+            format::instruction_set::BitwiseShiftOperation,
+        ) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BitwiseOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        Self::define_bitwise_instruction(errors, operation, register_lookup, |operation| {
+            instruction(format::instruction_set::BitwiseShiftOperation(operation))
+        })
     }
 
     fn assemble(
@@ -637,12 +660,83 @@ impl<'a> MethodBlockAssembler<'a> {
                         &mut instructions,
                         Instruction::Mul,
                     ),
-                    ast::Instruction::Div(operation) => Self::emit_division_instruction(
-                        errors,
-                        operation,
-                        register_lookup,
+                    ast::Instruction::Div(operation) => Self::try_emit_instruction(
+                        Self::define_division_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Div,
+                        ),
                         &mut instructions,
-                        Instruction::Div,
+                    ),
+                    ast::Instruction::And(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::And,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Or(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Or,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Not(result_type, value) => Self::try_emit_instruction(
+                        register_lookup
+                            .get(value)
+                            .map(|register| Instruction::Not(result_type.value, register)),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Xor(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Xor,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::ShL(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::ShL,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::ShR(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::ShR,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::RotL(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::RotL,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::RotR(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::RotR,
+                        ),
+                        &mut instructions,
                     ),
                     ast::Instruction::ConstI(integer_type, value) => {
                         match Self::define_integer_constant(integer_type, value) {

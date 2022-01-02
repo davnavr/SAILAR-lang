@@ -241,12 +241,18 @@ fn module_header<R: std::io::Read>(
 
 fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveType> {
     match tag {
+        type_system::TypeTag::S8 => Some(type_system::PrimitiveType::S8),
+        type_system::TypeTag::U8 => Some(type_system::PrimitiveType::U8),
         type_system::TypeTag::S16 => Some(type_system::PrimitiveType::S16),
         type_system::TypeTag::U16 => Some(type_system::PrimitiveType::U16),
         type_system::TypeTag::S32 => Some(type_system::PrimitiveType::S32),
         type_system::TypeTag::U32 => Some(type_system::PrimitiveType::U32),
         type_system::TypeTag::S64 => Some(type_system::PrimitiveType::S64),
         type_system::TypeTag::U64 => Some(type_system::PrimitiveType::U64),
+        type_system::TypeTag::SNative => Some(type_system::PrimitiveType::SNative),
+        type_system::TypeTag::UNative => Some(type_system::PrimitiveType::UNative),
+        type_system::TypeTag::F32 => Some(type_system::PrimitiveType::F32),
+        type_system::TypeTag::F64 => Some(type_system::PrimitiveType::F64),
         _ => None,
     }
 }
@@ -401,7 +407,10 @@ fn instruction<R: std::io::Read>(
         Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
         Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
         Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
-        Opcode::Not => Ok(Instruction::Not(numeric_type(src)?, unsigned_index(src, size)?)),
+        Opcode::Not => Ok(Instruction::Not(
+            numeric_type(src)?,
+            unsigned_index(src, size)?,
+        )),
         Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
         Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
         Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),

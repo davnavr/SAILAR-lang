@@ -309,6 +309,32 @@ fn division_operation<'a, I: 'a + Fn(ast::DivisionOperation) -> ast::Instruction
         )
 }
 
+fn bitwise_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
+    name: &'static str,
+    separator: Option<&'static str>,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            match separator {
+                Some(separator) => combine::parser::combinator::Either::Left(
+                    register_symbol().skip(keyword(separator)),
+                ),
+                None => combine::parser::combinator::Either::Right(register_symbol()),
+            },
+            register_symbol(),
+        ))
+        .map(move |(result_type, x, y)| instruction(ast::BitwiseOperation { result_type, x, y }))
+}
+
+fn bitwise_shift_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
+    name: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    bitwise_operation(name, Some("by"), instruction)
+}
+
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
     (
         combine::optional(
@@ -325,12 +351,25 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
                 combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
                     .map(ast::Instruction::Ret),
             ),
-            // Arithmetic operations
+            // Arithmetic instructions
             combine::choice((
                 basic_arithmetic_operation("add", "and", ast::Instruction::Add),
                 basic_arithmetic_operation("sub", "from", ast::Instruction::Sub),
                 basic_arithmetic_operation("mul", "by", ast::Instruction::Mul),
                 division_operation("div", ast::Instruction::Div),
+            )),
+            // Bitwise instructions
+            combine::choice((
+                bitwise_operation("and", None, ast::Instruction::And),
+                bitwise_operation("or", None, ast::Instruction::Or),
+                keyword("not")
+                    .with((positioned(numeric_type()), register_symbol()))
+                    .map(move |(result_type, value)| ast::Instruction::Not(result_type, value)),
+                bitwise_operation("xor", None, ast::Instruction::Xor),
+                bitwise_shift_operation("sh.l", ast::Instruction::ShL),
+                bitwise_shift_operation("sh.r", ast::Instruction::ShR),
+                bitwise_shift_operation("rot.l", ast::Instruction::RotL),
+                bitwise_shift_operation("rot.r", ast::Instruction::RotR),
             )),
             keyword("const.i").with(
                 (positioned(primitive_type()), positioned(literal_integer()))
