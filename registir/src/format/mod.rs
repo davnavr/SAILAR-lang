@@ -37,7 +37,7 @@ pub mod instruction_set;
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
     /// Indicates the block that control will transfer to when an exception is thrown, relative to the current block.
-    pub catch_block: instruction_set::BlockOffset,
+    pub catch_block: instruction_set::JumpTarget,
     /// Specifies the input register of the `[catch_block]` that the exception object is stored into when an exception is thrown.
     /// If omitted, the exception object is ignored.
     pub exception_register: Option<indices::InputRegister>,

@@ -614,16 +614,25 @@ macro_rules! bitwise_rotate_operation {
             ) -> Register {
                 macro_rules! rotate {
                     ($integer_type: ty) => {
-                        Register::from(<$integer_type>::$operation_name(<$integer_type>::interpret_register(value), u32::interpret_register(amount)))
+                        Register::from(<$integer_type>::$operation_name(
+                            <$integer_type>::interpret_register(value),
+                            u32::interpret_register(amount),
+                        ))
                     };
                 }
 
                 match result_type {
                     NumericType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => rotate!(u8),
                     NumericType::Primitive(PrimitiveType::U16 | PrimitiveType::S16) => rotate!(i16),
-                    NumericType::Primitive(PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32) => rotate!(u32),
-                    NumericType::Primitive(PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64) => rotate!(u64),
-                    NumericType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => rotate!(usize),
+                    NumericType::Primitive(
+                        PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32,
+                    ) => rotate!(u32),
+                    NumericType::Primitive(
+                        PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64,
+                    ) => rotate!(u64),
+                    NumericType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => {
+                        rotate!(usize)
+                    }
                 }
             }
         }

@@ -1,13 +1,14 @@
-use crate::format::{indices, numeric, structures::LengthEncodedVector, type_system};
+use crate::format::{indices, structures::LengthEncodedVector, type_system};
 use bitflags::bitflags;
 
 pub use indices::Register as RegisterIndex;
 pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
-/// if the target branch is taken, with `0` refering to the current block.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct BlockOffset(pub numeric::SInteger);
+/// if the target branch is taken.
+///
+/// Note that branch instructions and exception handlers cannot transfer control to an entry block.
+pub type JumpTarget = indices::CodeBlock;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RegisterType {
@@ -98,7 +99,7 @@ pub enum Opcode {
     Ret,
     Phi,
     Select,
-    //Switch,
+    Switch,
     Br = 5,
     BrIf,
     Call,
@@ -285,6 +286,21 @@ pub enum Instruction {
     ///
     /// Should be the last instruction in a block.
     Ret(LengthEncodedVector<RegisterIndex>),
+    /// ```txt
+    /// br <target>;
+    /// ```
+    /// Unconditionally transfers control flow to the `target` block.
+    Br(JumpTarget),
+    /// ```txt
+    /// br.if <condition> then <true> else <false>;
+    /// ```
+    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
+    /// otherwise, control flow is transferred to the `false` block.
+    BrIf {
+        condition: RegisterIndex,
+        true_branch: JumpTarget,
+        false_branch: JumpTarget,
+    },
 
     /// ```txt
     /// <sum> = add <numeric type> <x> and <y>;
@@ -384,6 +400,8 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::Br(_) => Opcode::Br,
+            Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Add(_) => Opcode::Add,
             Instruction::Sub(_) => Opcode::Sub,
             Instruction::Mul(_) => Opcode::Mul,
@@ -404,7 +422,11 @@ impl Instruction {
     /// The number of temporary registers introduced after execution of the instruction.
     pub fn return_count(&self) -> u8 {
         match self {
-            Instruction::Nop | Instruction::Ret(_) | Instruction::Break => 0,
+            Instruction::Nop
+            | Instruction::Ret(_)
+            | Instruction::Br(_)
+            | Instruction::BrIf { .. }
+            | Instruction::Break => 0,
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             | Instruction::Mul(BasicArithmeticOperation { overflow, .. })

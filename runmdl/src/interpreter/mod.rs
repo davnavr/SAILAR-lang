@@ -517,12 +517,16 @@ impl<'l> Interpreter<'l> {
             Instruction::ShR(operation) => {
                 Self::bitwise_shift_operation(self.current_frame()?, operation, Register::shr)?
             }
-            Instruction::RotL(operation) => {
-                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::rotate_left)?
-            }
-            Instruction::RotR(operation) => {
-                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::rotate_right)?
-            }
+            Instruction::RotL(operation) => Self::bitwise_shift_operation(
+                self.current_frame()?,
+                operation,
+                Register::rotate_left,
+            )?,
+            Instruction::RotR(operation) => Self::bitwise_shift_operation(
+                self.current_frame()?,
+                operation,
+                Register::rotate_right,
+            )?,
             Instruction::ConstI(value) => self
                 .current_frame()?
                 .define_temporary(Register::from(*value)),

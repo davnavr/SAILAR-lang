@@ -58,14 +58,6 @@ fn signed_integer<W: std::io::Write>(
     unsigned_integer(out, numeric::UInteger(value as u32), size)
 }
 
-fn block_offset<W: std::io::Write>(
-    out: &mut W,
-    instruction_set::BlockOffset(offset): instruction_set::BlockOffset,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    signed_integer(out, offset, size)
-}
-
 fn unsigned_length<W: std::io::Write>(
     out: &mut W,
     length: usize,
@@ -319,6 +311,16 @@ fn block_instruction<W: std::io::Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
+        Instruction::Br(target) => unsigned_index(out, *target, size),
+        Instruction::BrIf {
+            condition,
+            true_branch,
+            false_branch,
+        } => {
+            unsigned_index(out, *condition, size)?;
+            unsigned_index(out, *true_branch, size)?;
+            unsigned_index(out, *target, size)
+        }
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)
         }
@@ -384,7 +386,7 @@ fn code_block<W: std::io::Write>(
 
     // Flags already indicate if exception handler is present or if exception register is used.
     if let Some(exception_handler) = &block.exception_handler {
-        block_offset(out, exception_handler.catch_block, size)?;
+        unsigned_index(out, exception_handler.catch_block, size)?;
         if let Some(exception_register) = exception_handler.exception_register {
             unsigned_index(out, exception_register, size)?;
         }
