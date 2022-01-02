@@ -144,10 +144,10 @@ macro_rules! double_index_type {
         }
 
         impl $name {
-            fn index(self) -> UInteger {
+            pub fn index(self) -> UInteger {
                 UInteger(match self {
                     Self::$case_name_1(value) => UInteger::from(value).0 << 1,
-                    Self::$case_name_2(value) => (UInteger::from(value).0 << 1) & 1,
+                    Self::$case_name_2(value) => (UInteger::from(value).0 << 1) | 1,
                 })
             }
         }

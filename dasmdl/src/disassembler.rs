@@ -401,7 +401,7 @@ fn code_block<O: Write>(
     out.write_str(".block $")?;
     out.write_str(BLOCK_NAME_PREFIX)?;
     if let Some(i) = index {
-        out.write_fmt(format_args!("{}", i))?;
+        out.write_fmt(format_args!("{}", i - 1))?;
     } else {
         out.write_str(ENTRY_BLOCK_NAME)?;
     }
