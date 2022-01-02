@@ -303,6 +303,8 @@ type MethodSignatureLookup =
 type MethodBodyLookup<'a> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, format::indices::Code, MethodBodyAssembler<'a>>;
 
+type CodeBlockLookup<'a> = std::collections::HashMap<&'a ast::Identifier, usize>;
+
 type MethodDefinitionLookup<'a> = indexed::SymbolMap<
     'a,
     ast::GlobalSymbol,
@@ -605,13 +607,26 @@ impl<'a> MethodBlockAssembler<'a> {
         })
     }
 
+    fn lookup_jump_target(
+        errors: &mut Vec<Error>,
+        symbol: &'a ast::LocalSymbol,
+        block_indices: &CodeBlockLookup<'a>,
+    ) -> Option<format::instruction_set::JumpTarget> {
+        if let Some(target) = block_indices.get(&symbol.0.value) {
+            Some(format::indices::CodeBlock::try_from(*target).unwrap())
+        } else {
+            errors.push(Error::DuplicateLocalDeclaration(
+                symbol.clone(),
+                LocalDeclaration::CodeBlock,
+            ));
+            None
+        }
+    }
+
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
-        #[allow(unused_variables)] block_indices: &std::collections::HashMap<
-            &'a ast::Identifier,
-            usize,
-        >,
+        block_indices: &CodeBlockLookup<'a>,
         register_lookup: &mut indexed::RegisterLookup<'a>,
     ) -> Option<format::CodeBlock> {
         let error_count = errors.len();
@@ -638,6 +653,51 @@ impl<'a> MethodBlockAssembler<'a> {
                         {
                             instructions.push(Instruction::Ret(indices));
                         }
+                    }
+                    ast::Instruction::Br(target, input_registers) => {
+                        let mut define = || {
+                            Some(Instruction::Br(
+                                Self::lookup_jump_target(errors, target, block_indices)?,
+                                Self::lookup_register_indices(
+                                    errors,
+                                    register_lookup,
+                                    input_registers,
+                                )?,
+                            ))
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
+                    }
+                    ast::Instruction::BrIf {
+                        condition,
+                        true_branch,
+                        false_branch,
+                        input_registers,
+                    } => {
+                        let mut define = || {
+                            Some(Instruction::BrIf {
+                                condition: Self::lookup_register_index(
+                                    errors,
+                                    register_lookup,
+                                    condition,
+                                )?,
+                                true_branch: Self::lookup_jump_target(
+                                    errors,
+                                    true_branch,
+                                    block_indices,
+                                )?,
+                                false_branch: Self::lookup_jump_target(
+                                    errors,
+                                    false_branch,
+                                    block_indices,
+                                )?,
+                                input_registers: Self::lookup_register_indices(
+                                    errors,
+                                    register_lookup,
+                                    input_registers,
+                                )?,
+                            })
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
                     }
                     ast::Instruction::Add(operation) => Self::emit_basic_arithmetic_instruction(
                         errors,
@@ -791,7 +851,7 @@ impl<'a> MethodBodyAssembler<'a> {
         &self,
         errors: &mut Vec<Error>,
         #[allow(unused_variables)] defined_methods: &mut MethodDefinitionLookup,
-        block_lookup: &mut std::collections::HashMap<&'a ast::Identifier, usize>,
+        block_lookup: &mut CodeBlockLookup<'a>,
         blocks: &mut Vec<MethodBlockAssembler<'a>>,
         register_lookup: &mut indexed::RegisterLookup<'a>,
     ) -> Option<format::Code> {

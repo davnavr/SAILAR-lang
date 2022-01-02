@@ -335,6 +335,14 @@ fn bitwise_shift_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruc
     bitwise_operation(name, Some("by"), instruction)
 }
 
+fn many_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
+    combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
+}
+
+fn input_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
+    combine::optional(keyword("with").with(many_register_symbols())).map(Option::unwrap_or_default)
+}
+
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
     (
         combine::optional(
@@ -347,10 +355,28 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
         .map(Option::unwrap_or_default),
         positioned(combine::choice((
             keyword("nop").with(combine::value(ast::Instruction::Nop)),
-            keyword("ret").with(
-                combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
-                    .map(ast::Instruction::Ret),
-            ),
+            keyword("ret").with(many_register_symbols().map(ast::Instruction::Ret)),
+            // Branch instructions
+            combine::choice((
+                keyword("br")
+                    .with((local_symbol(), input_register_symbols()))
+                    .map(|(target, input_registers)| ast::Instruction::Br(target, input_registers)),
+                keyword("br.if")
+                    .with((
+                        register_symbol(),
+                        keyword("then").with(local_symbol()),
+                        keyword("else").with(local_symbol()),
+                        input_register_symbols(),
+                    ))
+                    .map(|(condition, true_branch, false_branch, input_registers)| {
+                        ast::Instruction::BrIf {
+                            condition,
+                            true_branch,
+                            false_branch,
+                            input_registers,
+                        }
+                    }),
+            )),
             // Arithmetic instructions
             combine::choice((
                 basic_arithmetic_operation("add", "and", ast::Instruction::Add),

@@ -382,6 +382,17 @@ fn jump_target<O: Write>(
     out.write_fmt(format_args!("{}", target.0))
 }
 
+fn many_code_registers<O: Write>(
+    out: &mut Output<'_, O>,
+    registers: &Vec<format::instruction_set::RegisterIndex>,
+) -> Result<()> {
+    if !registers.is_empty() {
+        out.write_char(' ')?;
+        out.write_join(", ", registers, |out, &index| code_register(out, index))?;
+    }
+    Ok(())
+}
+
 fn code_block<O: Write>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
@@ -421,26 +432,26 @@ fn code_block<O: Write>(
             Instruction::Nop => out.write_str("nop")?,
             Instruction::Ret(values) => {
                 out.write_str("ret")?;
-                if !values.is_empty() {
-                    out.write_char(' ')?;
-                    out.write_join(", ", &values.0, |out, &index| code_register(out, index))?
-                }
+                many_code_registers(out, &values.0)?;
             }
-            Instruction::Br(target) => {
+            Instruction::Br(target, input_registers) => {
                 out.write_str("br ")?;
-                jump_target(out, *target)?
+                jump_target(out, *target)?;
+                many_code_registers(out, &input_registers.0)?
             }
             Instruction::BrIf {
                 condition,
                 true_branch,
                 false_branch,
+                input_registers,
             } => {
                 out.write_str("br.if ")?;
                 code_register(out, *condition)?;
                 out.write_str(" then ")?;
                 jump_target(out, *true_branch)?;
                 out.write_str(" else ")?;
-                jump_target(out, *false_branch)?
+                jump_target(out, *false_branch)?;
+                many_code_registers(out, &input_registers.0)?
             }
             Instruction::Add(operation) => {
                 basic_arithmetic_instruction(out, "add", operation, "and")?

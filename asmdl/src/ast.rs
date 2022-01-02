@@ -195,6 +195,14 @@ pub struct BitwiseOperation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
+    Ret(Vec<RegisterSymbol>),
+    Br(LocalSymbol, Vec<RegisterSymbol>),
+    BrIf {
+        condition: RegisterSymbol,
+        true_branch: LocalSymbol,
+        false_branch: LocalSymbol,
+        input_registers: Vec<RegisterSymbol>,
+    },
     Add(BasicArithmeticOperation),
     Sub(BasicArithmeticOperation),
     Mul(BasicArithmeticOperation),
@@ -208,14 +216,13 @@ pub enum Instruction {
     RotL(BitwiseOperation),
     RotR(BitwiseOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
-    Ret(Vec<RegisterSymbol>),
 }
 
 impl Instruction {
     /// Returns the number of temporary registers that contain the results of executing the instruction.
     pub fn return_count(&self) -> u8 {
         match self {
-            Self::Nop | Self::Ret(_) => 0,
+            Self::Nop | Self::Ret(_) | Self::Br(_, _) | Self::BrIf { .. } => 0,
             Self::Add(operation) | Self::Sub(operation) | Self::Mul(operation) => {
                 match operation.overflow_modifier {
                     Some(Positioned {
