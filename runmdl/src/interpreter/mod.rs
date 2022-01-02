@@ -12,7 +12,8 @@ pub use format::{
     type_system,
     type_system::PrimitiveType,
 };
-pub use register::{Register, RegisterType};
+
+pub use register::{NumericType, Register, RegisterType};
 
 pub type LoadedMethod<'l> = &'l loader::Method<'l>;
 
@@ -387,12 +388,14 @@ impl<'l> Interpreter<'l> {
         O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
     >(
         frame: &mut StackFrame<'l>,
-        operation: &instruction_set::BasicArithmeticOperation,
+        operation: &'l instruction_set::BasicArithmeticOperation,
         o: O,
     ) -> Result<()> {
-        let x = frame.register(operation.x)?;
-        let y = frame.register(operation.y)?;
-        let (result, overflowed) = o(RegisterType::from(operation.return_type), x, y);
+        let (result, overflowed) = o(
+            RegisterType::from(operation.return_type),
+            frame.register(operation.x)?,
+            frame.register(operation.y)?,
+        );
         frame.define_temporary(result);
         Self::handle_value_overflow(frame, operation.overflow, overflowed)
     }
@@ -424,6 +427,36 @@ impl<'l> Interpreter<'l> {
                 DivideByZeroBehavior::Halt => Err(Error::Halt(ProgramHalt::DivideByZero)),
             },
         }
+    }
+
+    fn basic_bitwise_operation<
+        O: FnOnce(register::NumericType, &Register, &Register) -> Register,
+    >(
+        frame: &mut StackFrame<'l>,
+        operation: &'l instruction_set::BitwiseOperation,
+        o: O,
+    ) -> Result<()> {
+        frame.define_temporary(o(
+            operation.result_type,
+            frame.register(operation.x)?,
+            frame.register(operation.y)?,
+        ));
+        Ok(())
+    }
+
+    fn bitwise_shift_operation<
+        O: FnOnce(register::NumericType, &Register, &Register) -> Register,
+    >(
+        frame: &mut StackFrame<'l>,
+        operation: &'l instruction_set::BitwiseShiftOperation,
+        o: O,
+    ) -> Result<()> {
+        frame.define_temporary(o(
+            *operation.result_type(),
+            frame.register(*operation.value())?,
+            frame.register(*operation.amount())?,
+        ));
+        Ok(())
     }
 
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
@@ -459,6 +492,37 @@ impl<'l> Interpreter<'l> {
                 operation,
                 Register::overflowing_div,
             )?,
+            Instruction::And(operation) => Self::basic_bitwise_operation(
+                self.current_frame()?,
+                operation,
+                Register::bitwise_add,
+            )?,
+            Instruction::Or(operation) => Self::basic_bitwise_operation(
+                self.current_frame()?,
+                operation,
+                Register::bitwise_or,
+            )?,
+            Instruction::Not(result_type, value) => {
+                let frame = self.current_frame()?;
+                frame.define_temporary(Register::bitwise_not(*result_type, frame.register(*value)?))
+            }
+            Instruction::Xor(operation) => Self::basic_bitwise_operation(
+                self.current_frame()?,
+                operation,
+                Register::bitwise_xor,
+            )?,
+            Instruction::ShL(operation) => {
+                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::shl)?
+            }
+            Instruction::ShR(operation) => {
+                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::shr)?
+            }
+            Instruction::RotL(operation) => {
+                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::rotate_left)?
+            }
+            Instruction::RotR(operation) => {
+                Self::bitwise_shift_operation(self.current_frame()?, operation, Register::rotate_right)?
+            }
             Instruction::ConstI(value) => self
                 .current_frame()?
                 .define_temporary(Register::from(*value)),
@@ -468,7 +532,6 @@ impl<'l> Interpreter<'l> {
                 self.set_debugger_breakpoints();
             }
         }
-
         Ok(())
     }
 

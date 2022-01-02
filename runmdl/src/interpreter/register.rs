@@ -1,6 +1,10 @@
 use crate::interpreter;
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
-pub use interpreter::{instruction_set::RegisterType, IntegerConstant, PrimitiveType};
+pub use interpreter::{
+    instruction_set::{NumericType, RegisterType},
+    IntegerConstant, PrimitiveType,
+};
 
 #[derive(Clone, Copy)]
 pub union RegisterValue {
@@ -120,6 +124,7 @@ impl std::fmt::UpperHex for Register {
 }
 
 trait InterpretRegister {
+    /// Interprets the value of the register, performing any necessary conversions.
     fn interpret_register(register: &Register) -> Self;
 }
 
@@ -396,7 +401,7 @@ macro_rules! typed_integer_operation {
 macro_rules! basic_arithmetic_operation {
     ($operation_name: ident) => {
         impl Register {
-            pub(crate) fn $operation_name(
+            pub fn $operation_name(
                 result_type: RegisterType,
                 lhs: &Register,
                 rhs: &Register,
@@ -433,7 +438,7 @@ basic_arithmetic_operation!(overflowing_mul);
 macro_rules! basic_division_operation {
     ($operation_name: ident) => {
         impl Register {
-            pub(crate) fn $operation_name(
+            pub fn $operation_name(
                 result_type: RegisterType,
                 numerator: &Register,
                 denominator: &Register,
@@ -473,6 +478,160 @@ macro_rules! basic_division_operation {
 }
 
 basic_division_operation!(overflowing_div);
+
+macro_rules! basic_bitwise_operation {
+    ($function_name: ident, $operation_name: ident) => {
+        impl Register {
+            pub fn $function_name(
+                result_type: NumericType,
+                x: &Register,
+                y: &Register,
+            ) -> Register {
+                macro_rules! bitwise_operation {
+                    ($integer_type: ty) => {
+                        Register::from(<$integer_type>::$operation_name(
+                            <$integer_type>::interpret_register(x),
+                            <$integer_type>::interpret_register(y),
+                        ))
+                    };
+                }
+
+                match result_type {
+                    NumericType::Primitive(PrimitiveType::S8 | PrimitiveType::U8) => {
+                        bitwise_operation!(u8)
+                    }
+                    NumericType::Primitive(PrimitiveType::S16 | PrimitiveType::U16) => {
+                        bitwise_operation!(u16)
+                    }
+                    NumericType::Primitive(
+                        PrimitiveType::S32 | PrimitiveType::U32 | PrimitiveType::F32,
+                    ) => bitwise_operation!(u32),
+                    NumericType::Primitive(
+                        PrimitiveType::S64 | PrimitiveType::U64 | PrimitiveType::F64,
+                    ) => bitwise_operation!(u64),
+                    NumericType::Primitive(PrimitiveType::SNative | PrimitiveType::UNative) => {
+                        bitwise_operation!(usize)
+                    }
+                }
+            }
+        }
+    };
+}
+
+basic_bitwise_operation!(bitwise_add, bitand);
+basic_bitwise_operation!(bitwise_or, bitor);
+basic_bitwise_operation!(bitwise_xor, bitxor);
+
+impl Register {
+    pub fn bitwise_not(result_type: NumericType, value: &Register) -> Register {
+        macro_rules! bitwise_not_operation {
+            ($integer_type: ty) => {
+                Register::from(<$integer_type as std::ops::Not>::not(
+                    <$integer_type>::interpret_register(value),
+                ))
+            };
+        }
+
+        match result_type {
+            NumericType::Primitive(PrimitiveType::S8 | PrimitiveType::U8) => {
+                bitwise_not_operation!(u8)
+            }
+            NumericType::Primitive(PrimitiveType::S16 | PrimitiveType::U16) => {
+                bitwise_not_operation!(u16)
+            }
+            NumericType::Primitive(
+                PrimitiveType::S32 | PrimitiveType::U32 | PrimitiveType::F32,
+            ) => bitwise_not_operation!(u32),
+            NumericType::Primitive(
+                PrimitiveType::S64 | PrimitiveType::U64 | PrimitiveType::F64,
+            ) => bitwise_not_operation!(u64),
+            NumericType::Primitive(PrimitiveType::SNative | PrimitiveType::UNative) => {
+                bitwise_not_operation!(usize)
+            }
+        }
+    }
+}
+
+macro_rules! bitwise_shift_operation {
+    ($operation_name: ident) => {
+        impl Register {
+            pub fn $operation_name(
+                result_type: NumericType,
+                value: &Register,
+                amount: &Register,
+            ) -> Register {
+                macro_rules! shift {
+                    ($value_type: ty) => {{
+                        macro_rules! perform_shift {
+                            ($amount_type: ty) => {
+                                Register::from(<$value_type>::$operation_name(<$value_type>::interpret_register(value), <$amount_type>::interpret_register(amount)))
+                            };
+                        }
+
+                        match amount.value_type {
+                            RegisterType::Primitive(PrimitiveType::S8) => perform_shift!(i8),
+                            RegisterType::Primitive(PrimitiveType::U8) => perform_shift!(u8),
+                            RegisterType::Primitive(PrimitiveType::S16) => perform_shift!(i16),
+                            RegisterType::Primitive(PrimitiveType::U16) => perform_shift!(u16),
+                            RegisterType::Primitive(PrimitiveType::S32) => perform_shift!(i32),
+                            RegisterType::Primitive(PrimitiveType::U32) => perform_shift!(u32),
+                            RegisterType::Primitive(PrimitiveType::S64) => perform_shift!(i64),
+                            RegisterType::Primitive(PrimitiveType::U64) => perform_shift!(u64),
+                            RegisterType::Primitive(PrimitiveType::SNative) => perform_shift!(isize),
+                            RegisterType::Primitive(PrimitiveType::UNative) => perform_shift!(usize),
+                            RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("semantics regarding floating point amounts in bitwise operations have not yet been decided"),
+                        }
+                    }};
+                }
+
+                match result_type {
+                    NumericType::Primitive(PrimitiveType::S8) => shift!(i8),
+                    NumericType::Primitive(PrimitiveType::U8) => shift!(u8),
+                    NumericType::Primitive(PrimitiveType::S16) => shift!(i16),
+                    NumericType::Primitive(PrimitiveType::U16) => shift!(u16),
+                    NumericType::Primitive(PrimitiveType::S32) => shift!(i32),
+                    NumericType::Primitive(PrimitiveType::U32 | PrimitiveType::F32) => shift!(u32),
+                    NumericType::Primitive(PrimitiveType::S64) => shift!(i64),
+                    NumericType::Primitive(PrimitiveType::U64 | PrimitiveType::F64) => shift!(u64),
+                    NumericType::Primitive(PrimitiveType::SNative) => shift!(isize),
+                    NumericType::Primitive(PrimitiveType::UNative) => shift!(usize),
+                }
+            }
+        }
+    };
+}
+
+bitwise_shift_operation!(shl);
+bitwise_shift_operation!(shr);
+
+macro_rules! bitwise_rotate_operation {
+    ($operation_name: ident) => {
+        impl Register {
+            pub fn $operation_name(
+                result_type: NumericType,
+                value: &Register,
+                amount: &Register,
+            ) -> Register {
+                macro_rules! rotate {
+                    ($integer_type: ty) => {
+                        Register::from(<$integer_type>::$operation_name(<$integer_type>::interpret_register(value), u32::interpret_register(amount)))
+                    };
+                }
+
+                match result_type {
+                    NumericType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => rotate!(u8),
+                    NumericType::Primitive(PrimitiveType::U16 | PrimitiveType::S16) => rotate!(i16),
+                    NumericType::Primitive(PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32) => rotate!(u32),
+                    NumericType::Primitive(PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64) => rotate!(u64),
+                    NumericType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => rotate!(usize),
+                }
+            }
+        }
+    };
+}
+
+bitwise_rotate_operation!(rotate_left);
+bitwise_rotate_operation!(rotate_right);
 
 #[cfg(test)]
 mod tests {
