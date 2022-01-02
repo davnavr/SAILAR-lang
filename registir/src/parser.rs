@@ -370,6 +370,24 @@ fn division_operation<R: std::io::Read>(
     })
 }
 
+fn bitwise_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BitwiseOperation> {
+    Ok(instruction_set::BitwiseOperation {
+        result_type: numeric_type(src)?,
+        x: unsigned_index(src, size)?,
+        y: unsigned_index(src, size)?,
+    })
+}
+
+fn bitwise_shift_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BitwiseShiftOperation> {
+    bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
+}
+
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -381,10 +399,21 @@ fn instruction<R: std::io::Read>(
         Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
         Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
         Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
+        Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
+        Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
+        Opcode::Not => Ok(Instruction::Not(numeric_type(src)?, unsigned_index(src, size)?)),
+        Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
+        Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
+        Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),
+        Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
+        Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Break => Ok(Instruction::Break),
         Opcode::Continuation => unreachable!(),
-        _ => todo!("TODO: Add support for parsing of more instructions"),
+        bad => todo!(
+            "TODO: Add support for parsing of more instructions such as {:?}",
+            bad
+        ),
     }
 }
 

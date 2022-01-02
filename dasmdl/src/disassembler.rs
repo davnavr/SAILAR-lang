@@ -347,6 +347,33 @@ fn division_instruction<O: Write>(
     overflow_behavior(out, operation.overflow)
 }
 
+fn bitwise_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BitwiseOperation,
+    separator: Option<&str>,
+) -> Result<()> {
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.result_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.x)?;
+    out.write_char(' ')?;
+    if let Some(separator) = separator {
+        out.write_str(separator)?;
+        out.write_char(' ')?;
+    }
+    code_register(out, operation.y)
+}
+
+fn bitwise_shift_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BitwiseShiftOperation,
+) -> Result<()> {
+    bitwise_instruction(out, name, &operation.0, Some("by"))
+}
+
 fn code_block<O: Write>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
@@ -388,7 +415,7 @@ fn code_block<O: Write>(
                 out.write_str("ret")?;
                 if !values.is_empty() {
                     out.write_char(' ')?;
-                    out.write_join(", ", &values.0, |out, index| code_register(out, *index))?
+                    out.write_join(", ", &values.0, |out, &index| code_register(out, index))?
                 }
             }
             Instruction::Add(operation) => {
@@ -401,11 +428,23 @@ fn code_block<O: Write>(
                 basic_arithmetic_instruction(out, "mul", operation, "by")?
             }
             Instruction::Div(operation) => division_instruction(out, "div", operation)?,
+            Instruction::And(operation) => bitwise_instruction(out, "and", operation, None)?,
+            Instruction::Or(operation) => bitwise_instruction(out, "or", operation, None)?,
+            Instruction::Not(result_type, value) => {
+                numeric_type(out, result_type)?;
+                code_register(out, *value)?;
+            }
+            Instruction::Xor(operation) => bitwise_instruction(out, "xor", operation, None)?,
+            Instruction::ShL(operation) => bitwise_shift_instruction(out, "sh.l", operation)?,
+            Instruction::ShR(operation) => bitwise_shift_instruction(out, "sh.r", operation)?,
+            Instruction::RotL(operation) => bitwise_shift_instruction(out, "rot.l", operation)?,
+            Instruction::RotR(operation) => bitwise_shift_instruction(out, "rot.r", operation)?,
             Instruction::ConstI(constant) => out.write_fmt(format_args!(
                 "const.i {} {}",
                 constant.integer_type(),
                 constant.value()
             ))?,
+            Instruction::Break => out.write_str("break")?,
         }
 
         out.write_char_ln(';')?;

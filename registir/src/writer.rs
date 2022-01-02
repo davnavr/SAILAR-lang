@@ -297,6 +297,16 @@ fn division_operation<W: std::io::Write>(
     unsigned_index(out, operation.denominator, size)
 }
 
+fn bitwise_operation<W: std::io::Write>(
+    out: &mut W,
+    operation: &instruction_set::BitwiseOperation,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    numeric_type(out, operation.result_type)?;
+    unsigned_index(out, operation.x, size)?;
+    unsigned_index(out, operation.y, size)
+}
+
 fn block_instruction<W: std::io::Write>(
     out: &mut W,
     instruction: &instruction_set::Instruction,
@@ -313,6 +323,19 @@ fn block_instruction<W: std::io::Write>(
             basic_arithmetic_operation(out, operation, size)
         }
         Instruction::Div(operation) => division_operation(out, operation, size),
+        Instruction::And(operation)
+        | Instruction::Or(operation)
+        | Instruction::Xor(operation)
+        | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
+            bitwise_operation(out, operation, size)
+        }
+        Instruction::Not(result_type, value) => {
+            numeric_type(out, *result_type)?;
+            unsigned_index(out, *value, size)
+        }
         Instruction::ConstI(constant) => match constant {
             IntegerConstant::S8(value) => {
                 primitive_type(out, PrimitiveType::S8)?;
@@ -347,8 +370,6 @@ fn block_instruction<W: std::io::Write>(
                 write_bytes(out, &value.to_le_bytes())
             }
         },
-        #[allow(unreachable_patterns)]
-        _ => todo!("TODO: Add support for writing of more instructions"),
     }
 }
 
