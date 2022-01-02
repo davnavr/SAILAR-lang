@@ -7,7 +7,8 @@ pub mod register;
 pub use format::{
     instruction_set,
     instruction_set::{
-        DivideByZeroBehavior, Instruction, IntegerConstant, OverflowBehavior, RegisterIndex,
+        DivideByZeroBehavior, Instruction, IntegerConstant, JumpTarget, OverflowBehavior,
+        RegisterIndex,
     },
     type_system,
     type_system::PrimitiveType,
@@ -45,6 +46,7 @@ pub enum Error /*Kind*/ {
     DirectAbstractMethodCall,
     UnexpectedEndOfBlock,
     UndefinedRegister(RegisterIndex),
+    UndefinedBlock(JumpTarget),
     ResultCountMismatch { expected: usize, actual: usize },
     Halt(ProgramHalt),
 }
@@ -80,6 +82,7 @@ impl std::fmt::Display for Error {
             Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
             Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
             Self::UndefinedRegister(RegisterIndex::Temporary(index)) => write!(f, "undefined temporary register {}", index),
+            Self::UndefinedBlock(index) => write!(f, "undefined block {}", index.0),
             Self::ResultCountMismatch { expected, actual } => write!(f, "expected {} result values but got {}", expected, actual),
             Self::Halt(reason) => write!(f, "program execution halted, {}", reason),
         }
@@ -459,18 +462,86 @@ impl<'l> Interpreter<'l> {
         Ok(())
     }
 
+    fn jump_to_block(
+        current_frame: &mut StackFrame<'l>,
+        debugger: Option<&debugger::Debugger<'l>>,
+        target: JumpTarget,
+        inputs: &[RegisterIndex],
+    ) -> Result<()> {
+        let mut new_inputs = vec![Register::uninitialized(); inputs.len()];
+        Register::copy_many_raw(&current_frame.many_registers(inputs)?, &mut new_inputs);
+
+        current_frame.input_registers = new_inputs;
+        current_frame.temporary_registers.clear();
+
+        // Index into the method body's other blocks, NONE of the indices refer to the entry block.
+        let new_block_index = usize::try_from(target).unwrap();
+        current_frame.block_index = BlockIndex(Some(new_block_index));
+        current_frame.instructions = &current_frame
+            .code
+            .blocks
+            .get(new_block_index)
+            .ok_or(Error::UndefinedBlock(target))?
+            .instructions;
+
+        if let Some(debugger) = debugger {
+            current_frame.breakpoints.source = debugger
+                .breakpoints_in_block(current_frame.current_method, current_frame.block_index);
+            current_frame.breakpoints.index = 0;
+        }
+
+        Ok(())
+    }
+
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
                 let current_frame = self.current_frame()?;
                 // Copy results into the registers of the previous frame.
-                let registers = current_frame.many_registers(indices)?;
                 Register::copy_many_raw(
-                    &registers,
+                    &current_frame.many_registers(indices)?,
                     current_frame.result_registers.borrow_mut().as_mut_slice(),
                 );
                 self.stack_frames.pop();
+            }
+            Instruction::Br(target, input_registers) => {
+                let current_frame = self
+                    .stack_frames
+                    .last_mut()
+                    .ok_or(Error::CallStackUnderflow)?;
+                // self.current_frame()?;
+                Self::jump_to_block(
+                    current_frame,
+                    self.debugger.as_ref(),
+                    *target,
+                    input_registers,
+                )?
+            }
+            Instruction::BrIf {
+                condition,
+                true_branch,
+                false_branch,
+                input_registers,
+            } => {
+                let current_frame = self
+                    .stack_frames
+                    .last_mut()
+                    .ok_or(Error::CallStackUnderflow)?;
+                // self.current_frame()?;
+                
+                let target = if current_frame.register(*condition)?.is_truthy() {
+                    *true_branch
+                } else {
+                    *false_branch
+                };
+
+                Self::jump_to_block(
+                    current_frame,
+                    self.debugger.as_ref(),
+                    target,
+                    input_registers,
+                )?
             }
             Instruction::Add(operation) => Self::basic_arithmetic_operation(
                 self.current_frame()?,

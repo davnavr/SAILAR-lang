@@ -8,6 +8,7 @@ pub use interpreter::{
 
 #[derive(Clone, Copy)]
 pub union RegisterValue {
+    // NOTE: Currently, some code assumes that groups of fields (e.g. s_int, u_int, and f_single) start at the same offset.
     s_byte: i8,
     u_byte: u8,
     s_short: i16,
@@ -35,6 +36,13 @@ pub struct Register {
 }
 
 impl Register {
+    pub(crate) fn uninitialized() -> Self {
+        Self {
+            value: RegisterValue::default(),
+            value_type: RegisterType::Primitive(PrimitiveType::U8),
+        }
+    }
+
     pub(crate) fn initialize(value_type: &interpreter::type_system::AnyType) -> Self {
         use interpreter::type_system::{AnyType, HeapType, SimpleType};
 
@@ -71,6 +79,26 @@ impl Register {
         assert_eq!(source.len(), destination.len());
         for (index, register) in source.iter().enumerate() {
             Self::copy_raw(register, &mut destination[index]);
+        }
+    }
+
+    pub fn is_truthy(&self) -> bool {
+        match self.value_type {
+            RegisterType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => unsafe {
+                self.value.u_byte == 0
+            },
+            RegisterType::Primitive(PrimitiveType::U16 | PrimitiveType::S16) => unsafe {
+                self.value.u_long == 0
+            },
+            RegisterType::Primitive(
+                PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32,
+            ) => unsafe { self.value.u_int == 0 },
+            RegisterType::Primitive(
+                PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64,
+            ) => unsafe { self.value.u_long == 0 },
+            RegisterType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => unsafe {
+                self.value.u_native == 0usize
+            },
         }
     }
 }
