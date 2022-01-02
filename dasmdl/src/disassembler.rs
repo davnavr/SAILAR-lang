@@ -374,6 +374,14 @@ fn bitwise_shift_instruction<O: Write>(
     bitwise_instruction(out, name, &operation.0, Some("by"))
 }
 
+fn jump_target<O: Write>(
+    out: &mut Output<'_, O>,
+    target: format::instruction_set::JumpTarget,
+) -> Result<()> {
+    out.write_str(BLOCK_NAME_PREFIX)?;
+    out.write_fmt(format_args!("{}", target.0))
+}
+
 fn code_block<O: Write>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
@@ -417,6 +425,22 @@ fn code_block<O: Write>(
                     out.write_char(' ')?;
                     out.write_join(", ", &values.0, |out, &index| code_register(out, index))?
                 }
+            }
+            Instruction::Br(target) => {
+                out.write_str("br ")?;
+                jump_target(out, *target)?
+            }
+            Instruction::BrIf {
+                condition,
+                true_branch,
+                false_branch,
+            } => {
+                out.write_str("br.if ")?;
+                code_register(out, *condition)?;
+                out.write_str(" then ")?;
+                jump_target(out, *true_branch)?;
+                out.write_str(" else ")?;
+                jump_target(out, *false_branch)?
             }
             Instruction::Add(operation) => {
                 basic_arithmetic_instruction(out, "add", operation, "and")?

@@ -311,15 +311,20 @@ fn block_instruction<W: std::io::Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        Instruction::Br(target) => unsigned_index(out, *target, size),
+        Instruction::Br(target, input_registers) => {
+            unsigned_index(out, *target, size)?;
+            length_encoded_indices(out, input_registers, size)
+        }
         Instruction::BrIf {
             condition,
             true_branch,
             false_branch,
+            input_registers,
         } => {
             unsigned_index(out, *condition, size)?;
             unsigned_index(out, *true_branch, size)?;
-            unsigned_index(out, *target, size)
+            unsigned_index(out, *false_branch, size)?;
+            length_encoded_indices(out, input_registers, size)
         }
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)

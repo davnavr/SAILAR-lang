@@ -288,11 +288,13 @@ pub enum Instruction {
     Ret(LengthEncodedVector<RegisterIndex>),
     /// ```txt
     /// br <target>;
+    /// br <target> with <input1>, <input2>, ...;
     /// ```
-    /// Unconditionally transfers control flow to the `target` block.
-    Br(JumpTarget),
+    /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
+    Br(JumpTarget, LengthEncodedVector<RegisterIndex>),
     /// ```txt
     /// br.if <condition> then <true> else <false>;
+    /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
     /// ```
     /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
     /// otherwise, control flow is transferred to the `false` block.
@@ -300,6 +302,7 @@ pub enum Instruction {
         condition: RegisterIndex,
         true_branch: JumpTarget,
         false_branch: JumpTarget,
+        input_registers: LengthEncodedVector<RegisterIndex>,
     },
 
     /// ```txt
@@ -400,7 +403,7 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
-            Instruction::Br(_) => Opcode::Br,
+            Instruction::Br(_, _) => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Add(_) => Opcode::Add,
             Instruction::Sub(_) => Opcode::Sub,
@@ -424,7 +427,7 @@ impl Instruction {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
-            | Instruction::Br(_)
+            | Instruction::Br(_, _)
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
