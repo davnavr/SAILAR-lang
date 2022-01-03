@@ -38,9 +38,8 @@ impl std::error::Error for ProgramHalt {}
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error /*Kind*/ {
+pub enum ErrorKind {
     LoadError(loader::LoadError),
-    ArgumentCountMismatch { expected: usize, actual: usize },
     CallStackUnderflow,
     CallStackOverflow,
     DirectAbstractMethodCall,
@@ -54,7 +53,7 @@ pub enum Error /*Kind*/ {
 
 macro_rules! error_kind_conversion {
     ($source_type: ty, $case: ident) => {
-        impl From<$source_type> for Error {
+        impl From<$source_type> for ErrorKind {
             fn from(error: $source_type) -> Self {
                 Self::$case(error)
             }
@@ -65,18 +64,10 @@ macro_rules! error_kind_conversion {
 error_kind_conversion!(loader::LoadError, LoadError);
 error_kind_conversion!(ProgramHalt, Halt);
 
-/*
-pub struct Error {
-    frame: StackFrame,
-    error: ErrorKind,
-}
-*/
-
-impl std::fmt::Display for Error {
+impl std::fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LoadError(error) => std::fmt::Display::fmt(error, f),
-            Self::ArgumentCountMismatch { expected, actual } => write!(f, "expected {} arguments but got {}", expected, actual),
             Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
             Self::CallStackOverflow => f.write_str("exceeded maximum call stack depth"),
             Self::DirectAbstractMethodCall => write!(f, "attempt to call abstract method with call, when call.virt should have been used instead"),
@@ -91,22 +82,39 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for ErrorKind {}
 
-pub type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, ErrorKind>;
 
+/// Describes a stack frame in the call stack.
+#[derive(Clone, Debug)]
 pub struct StackTrace {
+    depth: usize,
     location: InstructionLocation,
     method: debugger::FullMethodIdentifier,
+    input_registers: Box<[Register]>,
+    temporary_registers: Box<[Register]>,
 }
 
 impl StackTrace {
+    pub fn depth(&self) -> usize {
+        self.depth
+    }
+
     pub fn location(&self) -> &InstructionLocation {
         &self.location
     }
 
     pub fn method(&self) -> &debugger::FullMethodIdentifier {
         &self.method
+    }
+
+    pub fn input_registers(&self) -> &[Register] {
+        &self.input_registers
+    }
+
+    pub fn temporary_registers(&self) -> &[Register] {
+        &self.temporary_registers
     }
 }
 
@@ -124,7 +132,13 @@ impl BlockIndex {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+impl std::fmt::Display for BlockIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.to_raw(), f)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct InstructionLocation {
     pub block_index: BlockIndex,
     pub code_index: usize,
@@ -232,10 +246,10 @@ impl<'l> StackFrame<'l> {
         macro_rules! lookup_register {
             ($register_index: expr, $register_lookup: expr) => {{
                 let raw_index = usize::try_from($register_index)
-                    .map_err(|_| Error::UndefinedRegister(index))?;
+                    .map_err(|_| ErrorKind::UndefinedRegister(index))?;
                 $register_lookup
                     .get(raw_index)
-                    .ok_or(Error::UndefinedRegister(index))
+                    .ok_or(ErrorKind::UndefinedRegister(index))
             }};
         }
 
@@ -273,13 +287,17 @@ impl<'l> StackFrame<'l> {
 
     fn stack_trace(&self) -> StackTrace {
         StackTrace {
+            depth: self.depth,
             location: self.location(),
             method: self.current_method.identifier().unwrap(),
+            input_registers: self.input_registers.clone().into_boxed_slice(),
+            temporary_registers: self.temporary_registers.clone().into_boxed_slice(),
         }
     }
 }
 
 struct Interpreter<'l> {
+    /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
     stack_frames: Vec<StackFrame<'l>>,
     max_stack_depth: usize,
@@ -303,7 +321,7 @@ impl<'l> Interpreter<'l> {
     fn current_frame(&mut self) -> Result<&mut StackFrame<'l>> {
         self.stack_frames
             .last_mut()
-            .ok_or(Error::CallStackUnderflow)
+            .ok_or(ErrorKind::CallStackUnderflow)
     }
 
     fn stack_trace(&self) -> Vec<StackTrace> {
@@ -326,7 +344,7 @@ impl<'l> Interpreter<'l> {
         let result_registers = Register::initialize_many(signature.return_types);
 
         if argument_registers.len() != arguments.len() {
-            return Err(Error::ArgumentCountMismatch {
+            return Err(ErrorKind::InputCountMismatch {
                 expected: argument_registers.len(),
                 actual: arguments.len(),
             });
@@ -342,7 +360,7 @@ impl<'l> Interpreter<'l> {
                 let call_stack_depth = self.stack_frames.len();
 
                 if call_stack_depth > self.max_stack_depth {
-                    return Err(Error::CallStackOverflow);
+                    return Err(ErrorKind::CallStackOverflow);
                 }
 
                 self.stack_frames.push(StackFrame::new(
@@ -357,7 +375,7 @@ impl<'l> Interpreter<'l> {
 
                 Ok(self.current_frame()?.result_registers.clone())
             }
-            format::MethodBody::Abstract => Err(Error::DirectAbstractMethodCall),
+            format::MethodBody::Abstract => Err(ErrorKind::DirectAbstractMethodCall),
             format::MethodBody::External { .. } => todo!("TODO: add support for external calls"),
         }
     }
@@ -367,7 +385,7 @@ impl<'l> Interpreter<'l> {
             Some(current_frame) => current_frame
                 .next_instruction()
                 .map(Some)
-                .ok_or(Error::UnexpectedEndOfBlock),
+                .ok_or(ErrorKind::UnexpectedEndOfBlock),
             None => Ok(None),
         }
     }
@@ -382,7 +400,7 @@ impl<'l> Interpreter<'l> {
             OverflowBehavior::Flag => frame.define_temporary(Register::from(overflowed)),
             OverflowBehavior::Halt => {
                 if overflowed {
-                    return Err(Error::Halt(ProgramHalt::IntegerOverflow));
+                    return Err(ErrorKind::Halt(ProgramHalt::IntegerOverflow));
                 }
             }
         }
@@ -429,7 +447,7 @@ impl<'l> Interpreter<'l> {
                     // TODO: Use a function that converts the register value to operation.return_type
                     todo!("handle div return for division by zero")
                 }
-                DivideByZeroBehavior::Halt => Err(Error::Halt(ProgramHalt::DivideByZero)),
+                DivideByZeroBehavior::Halt => Err(ErrorKind::Halt(ProgramHalt::DivideByZero)),
             },
         }
     }
@@ -485,12 +503,15 @@ impl<'l> Interpreter<'l> {
             .code
             .blocks
             .get(new_block_index)
-            .ok_or(Error::UndefinedBlock(target))?;
+            .ok_or(ErrorKind::UndefinedBlock(target))?;
 
         {
             let expected = usize::try_from(new_block.input_register_count).unwrap();
             if expected != inputs.len() {
-                return Err(Error::InputCountMismatch { expected, actual: inputs.len() });
+                return Err(ErrorKind::InputCountMismatch {
+                    expected,
+                    actual: inputs.len(),
+                });
             }
         }
 
@@ -522,7 +543,7 @@ impl<'l> Interpreter<'l> {
                 let current_frame = self
                     .stack_frames
                     .last_mut()
-                    .ok_or(Error::CallStackUnderflow)?;
+                    .ok_or(ErrorKind::CallStackUnderflow)?;
                 // self.current_frame()?;
                 Self::jump_to_block(
                     current_frame,
@@ -540,7 +561,7 @@ impl<'l> Interpreter<'l> {
                 let current_frame = self
                     .stack_frames
                     .last_mut()
-                    .ok_or(Error::CallStackUnderflow)?;
+                    .ok_or(ErrorKind::CallStackUnderflow)?;
                 // self.current_frame()?;
 
                 let target = if current_frame.register(*condition)?.is_truthy() {
@@ -685,25 +706,68 @@ impl<'l> Interpreter<'l> {
             }
         }
     }
+
+    fn execute_entry_point(
+        &mut self,
+        arguments: &[Register],
+        entry_point: LoadedMethod<'l>,
+    ) -> Result<Vec<Register>> {
+        // Wait for the debugger, if one is attached, to tell the application to start.
+        self.debugger_message_loop(entry_point);
+
+        let entry_point_results = self.invoke_method(arguments, entry_point)?;
+
+        while let Some(instruction) = self.next_instruction()? {
+            // TODO: Check if a breakpoint has been hit.
+            self.execute_instruction(instruction)?;
+        }
+
+        Ok(entry_point_results.take())
+    }
 }
 
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    stack_trace: Vec<StackTrace>,
+}
+
+impl Error {
+    pub(crate) fn with_no_stack_trace(kind: ErrorKind) -> Self {
+        Self {
+            kind,
+            stack_trace: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
+    pub fn stack_trace(&self) -> &[StackTrace] {
+        &self.stack_trace
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl std::error::Error for Error {}
+
 pub fn run<'l>(
-    loader: &'l loader::Loader<'l>, // TOOD: Loader not necessary?
+    loader: &'l loader::Loader<'l>,
     arguments: &[Register],
     entry_point: LoadedMethod<'l>,
     debugger_message_channel: Option<debugger::MessageReceiver>,
-) -> Result<Vec<Register>> {
+) -> std::result::Result<Vec<Register>, Error> {
     let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);
-
-    // Wait for the debugger, if one is attached, to tell the application to start.
-    interpreter.debugger_message_loop(entry_point);
-
-    let entry_point_results = interpreter.invoke_method(arguments, entry_point)?;
-
-    while let Some(instruction) = interpreter.next_instruction()? {
-        // TODO: Check if a breakpoint has been hit.
-        interpreter.execute_instruction(instruction)?;
-    }
-
-    Ok(entry_point_results.take())
+    interpreter
+        .execute_entry_point(arguments, entry_point)
+        .map_err(|kind| Error {
+            kind,
+            stack_trace: interpreter.stack_trace(),
+        })
 }

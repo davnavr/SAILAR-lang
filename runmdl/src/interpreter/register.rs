@@ -126,6 +126,15 @@ impl std::fmt::Display for Register {
     }
 }
 
+impl std::fmt::Debug for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Register")
+            .field("value_type", &self.value_type)
+            .field("value", &self.to_string())
+            .finish()
+    }
+}
+
 impl std::fmt::UpperHex for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.value_type {

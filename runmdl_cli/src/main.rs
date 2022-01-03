@@ -46,12 +46,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (None, None)
     };
 
-    let exit_code =
-        runtime.invoke_entry_point(application_arguments.as_ref(), debugger_channel_receiver)?;
+    match runtime.invoke_entry_point(application_arguments.as_ref(), debugger_channel_receiver) {
+        Ok(exit_code) => {
+            if let Some(debugger_thread) = debugger {
+                debugger_thread.join().unwrap();
+            }
 
-    if let Some(debugger_thread) = debugger {
-        debugger_thread.join().unwrap();
+            std::process::exit(exit_code)
+        }
+        Err(runtime::Error::InterpreterError(error)) => {
+            eprintln!("Error: {}", error);
+            for frame in error.stack_trace() {
+                let location = frame.location();
+                eprintln!("- {} at block {} instruction {}", frame.method(), location.block_index, location.code_index);
+                // TODO: Have option to hide register values.
+                for (index, input) in frame.input_registers().iter().enumerate() {
+                    eprintln!(" > %i{} = {}", index, input);
+                }
+                for (index, temporary) in frame.temporary_registers().iter().enumerate() {
+                    eprintln!(" > %i{} = {}", index, temporary);
+                }
+            }
+            std::process::exit(1)
+        }
+        Err(error) => Err(Box::new(error))
     }
-
-    std::process::exit(exit_code)
 }

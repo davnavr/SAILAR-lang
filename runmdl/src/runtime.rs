@@ -29,7 +29,9 @@ pub enum Error {
 
 impl From<loader::LoadError> for Error {
     fn from(error: loader::LoadError) -> Self {
-        Self::InterpreterError(interpreter::Error::LoadError(error))
+        Self::InterpreterError(interpreter::Error::with_no_stack_trace(
+            interpreter::ErrorKind::LoadError(error),
+        ))
     }
 }
 
