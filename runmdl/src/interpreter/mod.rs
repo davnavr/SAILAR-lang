@@ -47,6 +47,7 @@ pub enum Error /*Kind*/ {
     UnexpectedEndOfBlock,
     UndefinedRegister(RegisterIndex),
     UndefinedBlock(JumpTarget),
+    InputCountMismatch { expected: usize, actual: usize },
     ResultCountMismatch { expected: usize, actual: usize },
     Halt(ProgramHalt),
 }
@@ -83,6 +84,7 @@ impl std::fmt::Display for Error {
             Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
             Self::UndefinedRegister(RegisterIndex::Temporary(index)) => write!(f, "undefined temporary register {}", index),
             Self::UndefinedBlock(index) => write!(f, "undefined block {}", index.0),
+            Self::InputCountMismatch { expected, actual } => write!(f, "expected {} input values but got {}", expected, actual),
             Self::ResultCountMismatch { expected, actual } => write!(f, "expected {} result values but got {}", expected, actual),
             Self::Halt(reason) => write!(f, "program execution halted, {}", reason),
         }
@@ -468,21 +470,32 @@ impl<'l> Interpreter<'l> {
         target: JumpTarget,
         inputs: &[RegisterIndex],
     ) -> Result<()> {
-        let mut new_inputs = vec![Register::uninitialized(); inputs.len()];
-        Register::copy_many_raw(&current_frame.many_registers(inputs)?, &mut new_inputs);
+        // Replace input registers with new inputs.
+        current_frame.input_registers = {
+            let mut new_inputs = vec![Register::uninitialized(); inputs.len()];
+            Register::copy_many_raw(&current_frame.many_registers(inputs)?, &mut new_inputs);
+            new_inputs
+        };
 
-        current_frame.input_registers = new_inputs;
         current_frame.temporary_registers.clear();
 
         // Index into the method body's other blocks, NONE of the indices refer to the entry block.
         let new_block_index = usize::try_from(target).unwrap();
-        current_frame.block_index = BlockIndex(Some(new_block_index));
-        current_frame.instructions = &current_frame
+        let new_block = current_frame
             .code
             .blocks
             .get(new_block_index)
-            .ok_or(Error::UndefinedBlock(target))?
-            .instructions;
+            .ok_or(Error::UndefinedBlock(target))?;
+
+        {
+            let expected = usize::try_from(new_block.input_register_count).unwrap();
+            if expected != inputs.len() {
+                return Err(Error::InputCountMismatch { expected, actual: inputs.len() });
+            }
+        }
+
+        current_frame.block_index = BlockIndex(Some(new_block_index));
+        current_frame.instructions = &new_block.instructions;
 
         if let Some(debugger) = debugger {
             current_frame.breakpoints.source = debugger
@@ -529,7 +542,7 @@ impl<'l> Interpreter<'l> {
                     .last_mut()
                     .ok_or(Error::CallStackUnderflow)?;
                 // self.current_frame()?;
-                
+
                 let target = if current_frame.register(*condition)?.is_truthy() {
                     *true_branch
                 } else {
