@@ -6,7 +6,7 @@
     .block $ENTRY () {
         %t0 = const.i s32 1;
         %t1 = const.i s32 3;
-        br $BLOCK_1 with %t1;
+        br $BLOCK_1 with %t0, %t1;
     };
     .block $BLOCK_1 (%i0, %i1) {
         %t0 = add s32 %i0 and %i1;
