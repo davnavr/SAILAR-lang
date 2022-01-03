@@ -2,7 +2,7 @@ use crate::{
     buffers, format,
     format::{
         instruction_set,
-        instruction_set::{Instruction, Opcode},
+        instruction_set::{CallFlags, Instruction, Opcode, TailCall},
         numeric, structures, type_system,
     },
 };
@@ -24,6 +24,7 @@ pub enum ParseError {
     InvalidOpcode(u32),
     InvalidArithmeticFlags(u8),
     InvalidNumericType(u8),
+    InvalidCallFlags(u8),
     InvalidVisibilityFlags(u8),
     InvalidTypeDefinitionFlags(u8),
     InvalidMethodFlags(u8),
@@ -78,6 +79,9 @@ impl std::fmt::Display for ParseError {
             }
             Self::InvalidNumericType(value) => {
                 write!(f, "{:#02X} is not a valid numeric type", value)
+            }
+            Self::InvalidCallFlags(flags) => {
+                write!(f, "{:#02X} is not a valid call flags combination", flags)
             }
             Self::InvalidVisibilityFlags(flag) => {
                 write!(f, "{:#02X} is not a valid visibility value", flag)
@@ -394,6 +398,15 @@ fn bitwise_shift_operation<R: std::io::Read>(
     bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
 }
 
+fn call_flags<R: std::io::Read>(src: &mut R) -> ParseResult<CallFlags> {
+    let bits = byte(src)?;
+    let flags: CallFlags = unsafe { std::mem::transmute(bits) };
+    if flags.contains(CallFlags::TAIL_CALL_MASK) {
+        return Err(ParseError::InvalidCallFlags(bits));
+    }
+    Ok(flags)
+}
+
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -411,6 +424,23 @@ fn instruction<R: std::io::Read>(
             false_branch: unsigned_index(src, size)?,
             input_registers: length_encoded_indices(src, size)?,
         }),
+        Opcode::Call => {
+            let flags = call_flags(src)?;
+            // TODO: Check that call flags are valid.
+            Ok(Instruction::Call(
+                format::instruction_set::CallInstruction {
+                    tail_call: if flags.contains(CallFlags::TAIL_CALL_REQUIRED) {
+                        TailCall::Required
+                    } else if flags.contains(CallFlags::TAIL_CALL_PROHIBITED) {
+                        TailCall::Prohibited
+                    } else {
+                        TailCall::Allowed
+                    },
+                    method: unsigned_index(src, size)?,
+                    arguments: length_encoded_indices(src, size)?,
+                },
+            ))
+        }
         Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
         Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
         Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),

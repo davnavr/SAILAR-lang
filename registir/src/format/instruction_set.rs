@@ -1,7 +1,7 @@
 use crate::format::{indices, structures::LengthEncodedVector, type_system};
 use bitflags::bitflags;
 
-pub use indices::Register as RegisterIndex;
+pub use indices::{Method as MethodIndex, Register as RegisterIndex};
 pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
@@ -259,6 +259,52 @@ impl BitwiseShiftOperation {
     }
 }
 
+bitflags! {
+    #[repr(transparent)]
+    pub struct CallFlags: u8 {
+        const NONE = 0;
+        const TAIL_CALL_REQUIRED = 0b0000_0001;
+        const TAIL_CALL_PROHIBITED = 0b0000_0010;
+        const TAIL_CALL_MASK = 0b0000_0011;
+        /// Applicable to the `call.virt` instruction, halts execution if the `this` argument is `null`.
+        const HALT_ON_NULL_THIS = 0b0000_0100;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TailCall {
+    Allowed,
+    Required,
+    Prohibited,
+}
+
+impl TailCall {
+    pub fn flags(self) -> CallFlags {
+        match self {
+            Self::Allowed => CallFlags::NONE,
+            Self::Required => CallFlags::TAIL_CALL_REQUIRED,
+            Self::Prohibited => CallFlags::TAIL_CALL_PROHIBITED,
+        }
+    }
+}
+
+/// # Structure
+/// - [`CallInstruction::flags()`]
+/// - [`method`]
+/// - [`arguments`]
+#[derive(Debug)]
+pub struct CallInstruction {
+    pub tail_call: TailCall,
+    pub method: MethodIndex,
+    pub arguments: LengthEncodedVector<RegisterIndex>,
+}
+
+impl CallInstruction {
+    pub fn flags(&self) -> CallFlags {
+        self.tail_call.flags()
+    }
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 ///
 /// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
@@ -304,6 +350,12 @@ pub enum Instruction {
         false_branch: JumpTarget,
         input_registers: LengthEncodedVector<RegisterIndex>,
     },
+    /// ```txt
+    /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <method> <argument0>, <argument1>, ...;
+    /// ```
+    /// Calls the specified `method`, supplying the values in the arguments registers as inputs to the entry block of the
+    /// method.
+    Call(CallInstruction),
 
     /// ```txt
     /// <sum> = add <numeric type> <x> and <y>;
@@ -405,6 +457,7 @@ impl Instruction {
             Instruction::Ret(_) => Opcode::Ret,
             Instruction::Br(_, _) => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
+            Instruction::Call(_) => Opcode::Call,
             Instruction::Add(_) => Opcode::Add,
             Instruction::Sub(_) => Opcode::Sub,
             Instruction::Mul(_) => Opcode::Mul,
@@ -422,14 +475,15 @@ impl Instruction {
         }
     }
 
-    /// The number of temporary registers introduced after execution of the instruction.
-    pub fn return_count(&self) -> u8 {
+    /// Calculates the number of temporary registers introduced after execution of the instruction.
+    pub fn return_count<R: FnOnce(MethodIndex) -> u8>(&self, method_return_count: R) -> u8 {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
             | Instruction::Br(_, _)
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,
+            Instruction::Call(CallInstruction { method, .. }) => method_return_count(*method),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             | Instruction::Mul(BasicArithmeticOperation { overflow, .. })

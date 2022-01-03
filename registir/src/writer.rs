@@ -326,6 +326,11 @@ fn block_instruction<W: std::io::Write>(
             unsigned_index(out, *false_branch, size)?;
             length_encoded_indices(out, input_registers, size)
         }
+        Instruction::Call(call) => {
+            write(out, call.flags().bits())?;
+            unsigned_index(out, call.method, size)?;
+            length_encoded_indices(out, &call.arguments, size)
+        }
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)
         }

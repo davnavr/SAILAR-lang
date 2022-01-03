@@ -393,10 +393,31 @@ fn many_code_registers<O: Write>(
     Ok(())
 }
 
-fn code_block<O: Write>(
+const METHOD_DEFINITION_NAME_PREFIX: &str = "method_definition_";
+const METHOD_IMPORT_NAME_PREFIX: &str = "method_import_";
+
+fn method_index<O: Write>(
+    out: &mut Output<'_, O>,
+    index: format::instruction_set::MethodIndex,
+) -> Result<()> {
+    out.write_char('@')?;
+    match index {
+        format::instruction_set::MethodIndex::Defined(definition_index) => {
+            out.write_str(METHOD_DEFINITION_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{}", definition_index))
+        }
+        format::instruction_set::MethodIndex::Imported(import_index) => {
+            out.write_str(METHOD_IMPORT_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{}", import_index))
+        }
+    }
+}
+
+fn code_block<O: Write, R: Fn(format::instruction_set::MethodIndex) -> u8>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
     index: Option<usize>,
+    method_return_count: &R,
 ) -> Result<()> {
     out.write_str(".block $")?;
     out.write_str(BLOCK_NAME_PREFIX)?;
@@ -415,10 +436,9 @@ fn code_block<O: Write>(
     let mut temporary_count = 0usize;
 
     for instruction in &block.instructions.0 .0 {
-        use format::instruction_set::Instruction;
+        use format::instruction_set::{Instruction, TailCall};
 
-        let return_count = instruction.return_count();
-
+        let return_count = instruction.return_count(method_return_count);
         if return_count > 0 {
             out.write_join(", ", 0..return_count, |out, index| {
                 out.write_fmt(format_args!("%t{}", temporary_count + usize::from(index)))
@@ -452,6 +472,16 @@ fn code_block<O: Write>(
                 out.write_str(" else ")?;
                 jump_target(out, *false_branch)?;
                 many_code_registers(out, &input_registers.0)?
+            }
+            Instruction::Call(call) => {
+                out.write_str("call ");
+                match call.tail_call {
+                    TailCall::Allowed => (),
+                    TailCall::Required => out.write_str("tail.required ")?,
+                    TailCall::Prohibited => out.write_str("tail.prohibited ")?,
+                }
+                method_index(out, call.method)?;
+                many_code_registers(out, &call.arguments.0)?;
             }
             Instruction::Add(operation) => {
                 basic_arithmetic_instruction(out, "add", operation, "and")?
@@ -491,9 +521,10 @@ fn code_block<O: Write>(
     out.write_str_ln("};")
 }
 
-fn module_method_bodies<O: Write>(
+fn module_method_bodies<O: Write, R: Fn(format::instruction_set::MethodIndex) -> u8>(
     out: &mut Output<'_, O>,
     method_bodies: &[format::Code],
+    method_return_count: &R,
 ) -> Result<()> {
     for (index, body) in method_bodies.iter().enumerate() {
         out.write_fmt_ln(format_args!(".code @code_{} {{", index))?;
@@ -502,10 +533,10 @@ fn module_method_bodies<O: Write>(
         out.write_str(BLOCK_NAME_PREFIX)?;
         out.write_str(ENTRY_BLOCK_NAME)?;
         out.write_char_ln(';')?;
-        code_block(out, &body.entry_block, None)?;
+        code_block(out, &body.entry_block, None, method_return_count)?;
         out.write_ln()?;
         for (block_index, block) in body.blocks.iter().enumerate() {
-            code_block(out, block, Some(block_index + 1))?;
+            code_block(out, block, Some(block_index + 1), method_return_count)?;
             out.write_ln()?;
         }
         out.dedent();
@@ -561,7 +592,9 @@ fn module_definitions<O: Write>(
         for method_index in type_definition.methods.iter() {
             // TODO: Check that method index is in bounds, and that owner is correct.
             let method = &definitions.defined_methods[usize::try_from(*method_index).unwrap()];
-            out.write_fmt(format_args!(".method @method_{} (", method_index))?;
+            out.write_str(".method @")?;
+            out.write_str(METHOD_DEFINITION_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{} (", method_index))?;
             // TODO: Write signature things.
             out.write_str(") returns (")?;
             out.write_str(") ")?;
@@ -624,7 +657,15 @@ pub fn disassemble<O: Write>(
     out.write_ln()?;
     // TODO: Print method signatures.
     out.write_ln()?;
-    module_method_bodies(&mut out, &module.method_bodies)?;
+    {
+        let method_return_count = |index: format::instruction_set::MethodIndex| {
+            // TODO: Print error comments if method or signature is not found while retrieving return value count.
+            let method = &module.definitions.0.defined_methods.0[usize::try_from(index).unwrap()];
+            let signature = &module.method_signatures.0[usize::try_from(method.signature).unwrap()];
+            signature.return_types.0.len().try_into().unwrap()
+        };
+        module_method_bodies(&mut out, &module.method_bodies, &method_return_count)?;
+    }
     out.write_ln()?;
     // TODO: Print data arrays.
     out.write_ln()?;
