@@ -85,19 +85,19 @@ impl Register {
     pub fn is_truthy(&self) -> bool {
         match self.value_type {
             RegisterType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => unsafe {
-                self.value.u_byte == 0
+                self.value.u_byte != 0
             },
             RegisterType::Primitive(PrimitiveType::U16 | PrimitiveType::S16) => unsafe {
-                self.value.u_long == 0
+                self.value.u_long != 0
             },
             RegisterType::Primitive(
                 PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32,
-            ) => unsafe { self.value.u_int == 0 },
+            ) => unsafe { self.value.u_int != 0 },
             RegisterType::Primitive(
                 PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64,
-            ) => unsafe { self.value.u_long == 0 },
+            ) => unsafe { self.value.u_long != 0 },
             RegisterType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => unsafe {
-                self.value.u_native == 0usize
+                self.value.u_native != 0usize
             },
         }
     }
