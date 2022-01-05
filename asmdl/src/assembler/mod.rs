@@ -702,12 +702,12 @@ impl<'a> MethodBlockAssembler<'a> {
                     ast::Instruction::Call {
                         tail_call,
                         method,
-                        arguments
+                        arguments,
                     } => {
                         let mut define = || {
-                            Some(Instruction::Call(format::instruction_set::CallInstruction {
-                                
-                            }))
+                            Some(Instruction::Call(
+                                format::instruction_set::CallInstruction {},
+                            ))
                         };
                         Self::try_emit_instruction(define(), &mut instructions);
                     }

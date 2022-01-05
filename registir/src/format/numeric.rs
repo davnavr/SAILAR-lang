@@ -1,9 +1,9 @@
-/// Represents an unsigned integer.
+/// Represents an unsigned integer in little-endian order.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct UInteger(pub u32);
 
-/// Represents a signed integer.
+/// Represents a signed integer in little-endian order.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct SInteger(pub i32);

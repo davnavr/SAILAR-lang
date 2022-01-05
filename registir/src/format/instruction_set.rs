@@ -1,4 +1,4 @@
-use crate::format::{indices, structures::LengthEncodedVector, type_system};
+use crate::format::{indices, type_system, LenVec};
 use bitflags::bitflags;
 
 pub use indices::{Method as MethodIndex, Register as RegisterIndex};
@@ -296,7 +296,7 @@ impl TailCall {
 pub struct CallInstruction {
     pub tail_call: TailCall,
     pub method: MethodIndex,
-    pub arguments: LengthEncodedVector<RegisterIndex>,
+    pub arguments: LenVec<RegisterIndex>,
 }
 
 impl CallInstruction {
@@ -331,13 +331,13 @@ pub enum Instruction {
     /// Returns the values in the specified registers and transfers control back to the calling method.
     ///
     /// Should be the last instruction in a block.
-    Ret(LengthEncodedVector<RegisterIndex>),
+    Ret(LenVec<RegisterIndex>),
     /// ```txt
     /// br <target>;
     /// br <target> with <input1>, <input2>, ...;
     /// ```
     /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
-    Br(JumpTarget, LengthEncodedVector<RegisterIndex>),
+    Br(JumpTarget, LenVec<RegisterIndex>),
     /// ```txt
     /// br.if <condition> then <true> else <false>;
     /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
@@ -348,7 +348,7 @@ pub enum Instruction {
         condition: RegisterIndex,
         true_branch: JumpTarget,
         false_branch: JumpTarget,
-        input_registers: LengthEncodedVector<RegisterIndex>,
+        input_registers: LenVec<RegisterIndex>,
     },
     /// ```txt
     /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <method> <argument0>, <argument1>, ...;

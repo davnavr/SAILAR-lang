@@ -8,8 +8,6 @@ pub struct ByteLengthEncoded<T>(pub T);
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct LengthEncodedVector<T>(pub Vec<T>);
 
-pub type DoubleLengthEncodedVector<T> = ByteLengthEncoded<LengthEncodedVector<T>>;
-
 impl<T> ByteLengthEncoded<T> {
     pub fn data(&self) -> &T {
         &self.0
