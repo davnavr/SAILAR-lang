@@ -1,12 +1,43 @@
-use crate::format::{indices, numeric, structures::LengthEncodedVector};
+use crate::format::{indices, structures::LengthEncodedVector, type_system};
+use bitflags::bitflags;
 
-pub use crate::format::type_system::PrimitiveType;
-pub use indices::Register as RegisterIndex;
+pub use indices::{Method as MethodIndex, Register as RegisterIndex};
+pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
-/// if the target branch is taken, with `0` refering to the current block.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct BlockOffset(pub numeric::SInteger);
+/// if the target branch is taken.
+///
+/// Note that branch instructions and exception handlers cannot transfer control to an entry block.
+pub type JumpTarget = indices::CodeBlock;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RegisterType {
+    Primitive(PrimitiveType),
+    //Pointer(u32),
+    //Object
+}
+
+impl std::fmt::Display for RegisterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Primitive(primitive_type) => primitive_type.fmt(f),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum NumericType {
+    Primitive(PrimitiveType),
+    //Pointer(u32)
+}
+
+impl From<NumericType> for RegisterType {
+    fn from(t: NumericType) -> Self {
+        match t {
+            NumericType::Primitive(primitive_type) => Self::Primitive(primitive_type),
+        }
+    }
+}
 
 /// Represents an integer constant, whose value is stored in little-endian order.
 ///
@@ -68,7 +99,7 @@ pub enum Opcode {
     Ret,
     Phi,
     Select,
-    //Switch = 4,
+    Switch,
     Br = 5,
     BrIf,
     Call,
@@ -83,16 +114,195 @@ pub enum Opcode {
     Not,
     Xor,
     Rem,
+    //Mod,
     //StoresBothDivisionResultAndRemainder,
-    //ShiftIntegerBitsLeft,
-    //ShiftIntegerBitsRight,
-    Rotl = 22,
-    Rotr,
+    //StoresBothModuloAndRemainder,
+    ShL = 22,
+    ShR,
+    RotL,
+    RotR,
     ConstI,
-    ConstS,
     ConstF,
+    Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
     Continuation = 0xFF,
+}
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct ArithmeticFlags: u8 {
+        const NONE = 0;
+        const HALT_ON_OVERFLOW = 0b0000_0001;
+        const FLAG_ON_OVERFLOW = 0b0000_0010;
+        const RETURN_VALUE_ON_DIVIDE_BY_ZERO = 0b0000_0100;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum OverflowBehavior {
+    Ignore,
+    /// Indicates that program execution should immediately halt if an overflow occured.
+    Halt,
+    /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
+    Flag,
+}
+
+impl OverflowBehavior {
+    pub fn flags(self) -> ArithmeticFlags {
+        match self {
+            Self::Ignore => ArithmeticFlags::NONE,
+            Self::Halt => ArithmeticFlags::HALT_ON_OVERFLOW,
+            Self::Flag => ArithmeticFlags::FLAG_ON_OVERFLOW,
+        }
+    }
+}
+
+impl From<ArithmeticFlags> for OverflowBehavior {
+    fn from(flags: ArithmeticFlags) -> Self {
+        if flags.contains(ArithmeticFlags::HALT_ON_OVERFLOW) {
+            Self::Halt
+        } else if flags.contains(ArithmeticFlags::FLAG_ON_OVERFLOW) {
+            Self::Flag
+        } else {
+            Self::Ignore
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DivideByZeroBehavior {
+    /// Indicates that the value contained in the specified register should be returned if a division by zero occured.
+    Return(RegisterIndex),
+    Halt,
+}
+
+impl DivideByZeroBehavior {
+    pub fn flags(self) -> ArithmeticFlags {
+        match self {
+            Self::Return(_) => ArithmeticFlags::RETURN_VALUE_ON_DIVIDE_BY_ZERO,
+            Self::Halt => ArithmeticFlags::NONE,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BasicArithmeticOperation {
+    pub overflow: OverflowBehavior,
+    pub return_type: NumericType,
+    pub x: RegisterIndex,
+    pub y: RegisterIndex,
+}
+
+impl BasicArithmeticOperation {
+    pub fn flags(&self) -> ArithmeticFlags {
+        self.overflow.flags()
+    }
+}
+
+/// # Structure
+/// - [`DivisionOperation::flags()`]
+/// - nan index
+/// - [`return_type`]
+/// - [`numerator`]
+/// - [`denominator`]
+#[derive(Debug)]
+pub struct DivisionOperation {
+    pub overflow: OverflowBehavior,
+    pub divide_by_zero: DivideByZeroBehavior,
+    pub return_type: NumericType,
+    pub numerator: RegisterIndex,
+    pub denominator: RegisterIndex,
+}
+
+impl DivisionOperation {
+    pub fn flags(&self) -> ArithmeticFlags {
+        self.overflow.flags().union(self.divide_by_zero.flags())
+    }
+}
+
+#[derive(Debug)]
+pub struct BitwiseOperation {
+    pub result_type: NumericType,
+    pub x: RegisterIndex,
+    pub y: RegisterIndex,
+}
+
+/// Describes a bitwise operation that results in the shifting of a value.
+/// # Structure
+/// - [`BitwiseShiftOperation::result_type()`]
+/// - [`BitwiseShiftOperation::value()`]
+/// - [`BitwiseShiftOperation::amount()`]
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct BitwiseShiftOperation(pub BitwiseOperation);
+
+impl BitwiseShiftOperation {
+    pub fn new(result_type: NumericType, value: RegisterIndex, amount: RegisterIndex) -> Self {
+        Self(BitwiseOperation {
+            result_type,
+            x: value,
+            y: amount,
+        })
+    }
+
+    pub fn result_type(&self) -> &NumericType {
+        &self.0.result_type
+    }
+
+    pub fn value(&self) -> &RegisterIndex {
+        &self.0.x
+    }
+
+    pub fn amount(&self) -> &RegisterIndex {
+        &self.0.y
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    pub struct CallFlags: u8 {
+        const NONE = 0;
+        const TAIL_CALL_REQUIRED = 0b0000_0001;
+        const TAIL_CALL_PROHIBITED = 0b0000_0010;
+        const TAIL_CALL_MASK = 0b0000_0011;
+        /// Applicable to the `call.virt` instruction, halts execution if the `this` argument is `null`.
+        const HALT_ON_NULL_THIS = 0b0000_0100;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TailCall {
+    Allowed,
+    Required,
+    Prohibited,
+}
+
+impl TailCall {
+    pub fn flags(self) -> CallFlags {
+        match self {
+            Self::Allowed => CallFlags::NONE,
+            Self::Required => CallFlags::TAIL_CALL_REQUIRED,
+            Self::Prohibited => CallFlags::TAIL_CALL_PROHIBITED,
+        }
+    }
+}
+
+/// # Structure
+/// - [`CallInstruction::flags()`]
+/// - [`method`]
+/// - [`arguments`]
+#[derive(Debug)]
+pub struct CallInstruction {
+    pub tail_call: TailCall,
+    pub method: MethodIndex,
+    pub arguments: LengthEncodedVector<RegisterIndex>,
+}
+
+impl CallInstruction {
+    pub fn flags(&self) -> CallFlags {
+        self.tail_call.flags()
+    }
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
@@ -103,6 +313,11 @@ pub enum Opcode {
 /// For instructions that call another method, such as `call` or `call.virt`, the number of registers used as
 /// arguments must exactly match the number of arguments specified by the signature of the method. Additionally, the number
 /// of temporary registers introduced is equal to the number of return values in the method's signature.
+///
+/// Floating-point numbers used in bitwise instructions such as [`And`] or [`Xor`] are simply reinterpreted as values of their
+/// corresponding unsigned integer counterparts, (e.g. an `f32` is reinpterpreted as a `u32`).
+///
+/// TODO: Have not about conversions, maybe round towards 0 for float to signed int conversions?
 #[derive(Debug)]
 pub enum Instruction {
     /// ```txt
@@ -118,10 +333,121 @@ pub enum Instruction {
     /// Should be the last instruction in a block.
     Ret(LengthEncodedVector<RegisterIndex>),
     /// ```txt
+    /// br <target>;
+    /// br <target> with <input1>, <input2>, ...;
+    /// ```
+    /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
+    Br(JumpTarget, LengthEncodedVector<RegisterIndex>),
+    /// ```txt
+    /// br.if <condition> then <true> else <false>;
+    /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
+    /// ```
+    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
+    /// otherwise, control flow is transferred to the `false` block.
+    BrIf {
+        condition: RegisterIndex,
+        true_branch: JumpTarget,
+        false_branch: JumpTarget,
+        input_registers: LengthEncodedVector<RegisterIndex>,
+    },
+    /// ```txt
+    /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <method> <argument0>, <argument1>, ...;
+    /// ```
+    /// Calls the specified `method`, supplying the values in the arguments registers as inputs to the entry block of the
+    /// method.
+    Call(CallInstruction),
+
+    /// ```txt
+    /// <sum> = add <numeric type> <x> and <y>;
+    /// <sum> = add <numeric type> <x> and <y> ovf.halt;
+    /// <sum>, <overflowed> = add <numeric type> <x> and <y> ovf.flag;
+    /// ```
+    /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
+    Add(BasicArithmeticOperation),
+    /// ```txt
+    /// <result> = sub <numeric type> <x> from <y>;
+    /// <result> = sub <numeric type> <x> from <y> ovf.halt;
+    /// <result>, <overflowed> = sub <numeric type> <x> from <y> ovf.flag;
+    /// ```
+    /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
+    /// the difference.
+    Sub(BasicArithmeticOperation),
+    /// ```txt
+    /// <product> = mul <numeric type> <x> by <y>;
+    /// <product> = mul <numeric type> <x> by <y> ovf.halt;
+    /// <product>, <overflowed> = mul <numeric type> <x> by <y> ovf.flag;
+    /// ```
+    /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
+    Mul(BasicArithmeticOperation),
+    /// ```txt
+    /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan>;
+    /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
+    /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> or <nan> ovf.flag;
+    /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt;
+    /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.halt;
+    /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.flag;
+    /// ```
+    /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
+    Div(DivisionOperation),
+    /// ```txt
+    /// <result> = and <numeric type> <x> <y>;
+    /// ```
+    /// Returns the bitwise `AND` of the values in the `x` and `y` registers converted to the specified numeric type.
+    And(BitwiseOperation),
+    /// ```txt
+    /// <result> = or <numeric type> <x> <y>;
+    /// ```
+    /// Returns the bitwise `OR` of the values in the `x` and `y` registers converted to the specified numeric type.
+    Or(BitwiseOperation),
+    /// ```txt
+    /// <result> = not <numeric type> <value>;
+    /// ```
+    /// Returns the bitwise `NOT` of the value in the specified register converted to the specified numeric type.
+    Not(NumericType, RegisterIndex),
+    /// ```txt
+    /// <result> = xor <numeric type> <x> <y>;
+    /// ```
+    /// Returns the bitwise `XOR` of the values in the `x` and `y` registers converted to the specified numeric type.
+    Xor(BitwiseOperation),
+
+    /// ```txt
+    /// <result> = sh.l <numeric type> <value> by <amount>;
+    /// ```
+    /// Shifts the value in the `value` register converted to the specified integer type to the left by the amount in the
+    /// `amount` register.
+    ShL(BitwiseShiftOperation),
+    /// ```txt
+    /// <result> = sh.r <numeric type> <value> by <amount>;
+    /// ```
+    /// Shifts the value in the `value` register converted to the specified integer type to the right by the amount in the
+    /// `amount` register, inserting a `0` bit if the numeric type is an unsigned integer type, or copying the sign bit if the
+    /// type is a signed integer type.
+    ShR(BitwiseShiftOperation),
+    /// ```txt
+    /// <result> = rot.l <numeric type> <value> by <amount>;
+    /// ```
+    /// Rotates the value in the specified `value` register converted to the specified numeric type left by the amount in the
+    /// `amount` register.
+    RotL(BitwiseShiftOperation),
+    /// ```txt
+    /// <result> = rot.r <numeric type> <value> by <amount>;
+    /// ```
+    /// Rotates the value in the specified `value` register converted to the specified numeric type right by the amount in the
+    /// `amount` register.
+    RotR(BitwiseShiftOperation),
+
+    /// ```txt
     /// <result> = const.i <integer type> <value>;
     /// ```
     /// Returns an integer of the specified type.
-    ConstI(IntegerConstant),
+    ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
+    /// ```txt
+    /// break;
+    /// ```
+    /// Represents a breakpoint placed by a debugger.
+    ///
+    /// If no debugger is attached, or if a debugger is not supported, this instruction does nothing.
+    Break,
 }
 
 impl Instruction {
@@ -129,15 +455,51 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::Br(_, _) => Opcode::Br,
+            Instruction::BrIf { .. } => Opcode::BrIf,
+            Instruction::Call(_) => Opcode::Call,
+            Instruction::Add(_) => Opcode::Add,
+            Instruction::Sub(_) => Opcode::Sub,
+            Instruction::Mul(_) => Opcode::Mul,
+            Instruction::Div(_) => Opcode::Div,
+            Instruction::And(_) => Opcode::And,
+            Instruction::Or(_) => Opcode::Or,
+            Instruction::Not { .. } => Opcode::Not,
+            Instruction::Xor(_) => Opcode::Xor,
+            Instruction::ShL(_) => Opcode::ShL,
+            Instruction::ShR(_) => Opcode::ShR,
+            Instruction::RotL(_) => Opcode::RotL,
+            Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
+            Instruction::Break => Opcode::Break,
         }
     }
 
-    /// The number of temporary registers introduced after execution of the instruction.
-    pub fn return_count(&self) -> u8 {
+    /// Calculates the number of temporary registers introduced after execution of the instruction.
+    pub fn return_count<R: FnOnce(MethodIndex) -> u8>(&self, method_return_count: R) -> u8 {
         match self {
-            Instruction::Nop | Instruction::Ret(_) => 0,
-            Instruction::ConstI(_) => 1,
+            Instruction::Nop
+            | Instruction::Ret(_)
+            | Instruction::Br(_, _)
+            | Instruction::BrIf { .. }
+            | Instruction::Break => 0,
+            Instruction::Call(CallInstruction { method, .. }) => method_return_count(*method),
+            Instruction::Add(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Div(DivisionOperation { overflow, .. }) => match overflow {
+                OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
+                OverflowBehavior::Flag => 2,
+            },
+            Instruction::And(_)
+            | Instruction::Or(_)
+            | Instruction::Not { .. }
+            | Instruction::Xor(_)
+            | Instruction::ShL(_)
+            | Instruction::ShR(_)
+            | Instruction::RotL(_)
+            | Instruction::RotR(_)
+            | Instruction::ConstI(_) => 1,
         }
     }
 }
@@ -146,10 +508,23 @@ impl TryFrom<u32> for Opcode {
     type Error = ();
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value < Self::ConstF as u32 {
+        if value < Self::Continuation as u32 {
             Ok(unsafe { std::mem::transmute(value) })
         } else {
             Err(())
+        }
+    }
+}
+
+impl TryFrom<u8> for OverflowBehavior {
+    type Error = ();
+
+    fn try_from(tag: u8) -> Result<Self, Self::Error> {
+        match tag {
+            0 => Ok(OverflowBehavior::Ignore),
+            1 => Ok(OverflowBehavior::Halt),
+            2 => Ok(OverflowBehavior::Flag),
+            _ => Err(()),
         }
     }
 }

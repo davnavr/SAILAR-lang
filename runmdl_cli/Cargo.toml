@@ -1,0 +1,13 @@
+[package]
+name = "runmdl_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runmdl = { path = "../runmdl" }
+registir = { path = "../registir" }
+structopt = "0.3.25"
+
+[[bin]]
+name = "runmdl"
+path = "src/main.rs"

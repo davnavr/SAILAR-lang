@@ -15,7 +15,7 @@ pub mod type_system;
 pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
 
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>);
 
 /// Represents a length-encoded UTF-8 string that cannot be empty.
@@ -37,7 +37,7 @@ pub mod instruction_set;
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
     /// Indicates the block that control will transfer to when an exception is thrown, relative to the current block.
-    pub catch_block: instruction_set::BlockOffset,
+    pub catch_block: instruction_set::JumpTarget,
     /// Specifies the input register of the `[catch_block]` that the exception object is stored into when an exception is thrown.
     /// If omitted, the exception object is ignored.
     pub exception_register: Option<indices::InputRegister>,
@@ -402,7 +402,7 @@ pub struct FormatVersion {
     pub minor: numeric::UInteger,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ModuleIdentifier {
     pub name: Identifier,
     pub version: VersionNumbers,
@@ -467,7 +467,7 @@ pub struct Module {
     pub definitions: structures::ByteLengthEncoded<ModuleDefinitions>,
     /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
     /// compiler or runtime to determine if the signature of the entry point method is valid.
-    pub entry_point: structures::ByteLengthEncoded<Option<indices::Method>>,
+    pub entry_point: structures::ByteLengthEncoded<Option<indices::MethodDefinition>>,
     pub type_layouts: structures::DoubleLengthEncodedVector<TypeLayout>,
     //pub debugging_information: ByteLengthEncoded<>
 }
@@ -479,6 +479,12 @@ impl Identifier {
 
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+impl std::fmt::Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

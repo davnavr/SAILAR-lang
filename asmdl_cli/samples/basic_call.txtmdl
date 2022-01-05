@@ -1,0 +1,36 @@
+.format { .major 0; .minor 0; };
+.module { .name "BasicCall"; .version 11; };
+
+.code @code_helper {
+    .entry $ENTRY;
+    .block $ENTRY (%i0) {
+        %t0 = const.i s32 5;
+        %t1 = add s32 %i0 %t0;
+    }
+}
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t0 = const.i s32 5;
+        %t1 = call @method_helper %t0;
+        br $BLOCK_1 with %t0, %t1;
+    };
+};
+
+.type @class public {
+    .name "BasicCall";
+    .namespace "Example";
+
+    .method @method_main () returns (s32) public {
+        .name "Main";
+        .body defined @code_main;
+    };
+
+    .method @method_helper (s32) returns (s32) public {
+        .name "Helper";
+        .body defined @code_helper;
+    }
+};
+
+.entry @method_main;

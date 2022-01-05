@@ -1,4 +1,7 @@
-pub use registir::format::type_system::PrimitiveType;
+pub use registir::format::{
+    instruction_set::{NumericType, OverflowBehavior, TailCall},
+    type_system::PrimitiveType,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Position {
@@ -136,20 +139,114 @@ pub enum TypeSignature {
     Array(Box<TypeSignature>),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OverflowModifier {
+    Halt,
+    Flag,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BasicArithmeticOperation {
+    pub return_type: Positioned<NumericType>,
+    pub x: RegisterSymbol,
+    pub y: RegisterSymbol,
+    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
+}
+
+impl OverflowModifier {
+    pub fn behavior(modifier: &Option<Positioned<Self>>) -> OverflowBehavior {
+        match modifier {
+            Some(Positioned {
+                value: OverflowModifier::Halt,
+                ..
+            }) => OverflowBehavior::Halt,
+            Some(Positioned {
+                value: OverflowModifier::Flag,
+                ..
+            }) => OverflowBehavior::Flag,
+            None => OverflowBehavior::Ignore,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DivideByZeroModifier {
+    Return(RegisterSymbol),
+    Halt,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DivisionOperation {
+    pub return_type: Positioned<NumericType>,
+    pub numerator: RegisterSymbol,
+    pub denominator: RegisterSymbol,
+    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
+    pub divide_by_zero_modifier: DivideByZeroModifier,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BitwiseOperation {
+    pub result_type: Positioned<NumericType>,
+    pub x: RegisterSymbol,
+    pub y: RegisterSymbol,
+}
+
 /// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
-    ConstI(Positioned<PrimitiveType>, Positioned<i128>),
     Ret(Vec<RegisterSymbol>),
+    Br(LocalSymbol, Vec<RegisterSymbol>),
+    BrIf {
+        condition: RegisterSymbol,
+        true_branch: LocalSymbol,
+        false_branch: LocalSymbol,
+        input_registers: Vec<RegisterSymbol>,
+    },
+    Call {
+        tail_call: TailCall,
+        method: GlobalSymbol,
+        arguments: Vec<RegisterSymbol>,
+    },
+    Add(BasicArithmeticOperation),
+    Sub(BasicArithmeticOperation),
+    Mul(BasicArithmeticOperation),
+    Div(DivisionOperation),
+    And(BitwiseOperation),
+    Or(BitwiseOperation),
+    Not(Positioned<NumericType>, RegisterSymbol),
+    Xor(BitwiseOperation),
+    ShL(BitwiseOperation),
+    ShR(BitwiseOperation),
+    RotL(BitwiseOperation),
+    RotR(BitwiseOperation),
+    ConstI(Positioned<PrimitiveType>, Positioned<i128>),
 }
 
 impl Instruction {
     /// Returns the number of temporary registers that contain the results of executing the instruction.
     pub fn return_count(&self) -> u8 {
         match self {
-            Self::Nop | Self::Ret(_) => 0,
-            Self::ConstI(_, _) => 1,
+            Self::Nop | Self::Ret(_) | Self::Br(_, _) | Self::BrIf { .. } => 0,
+            Self::Add(operation) | Self::Sub(operation) | Self::Mul(operation) => {
+                match operation.overflow_modifier {
+                    Some(Positioned {
+                        value: OverflowModifier::Flag,
+                        ..
+                    }) => 2,
+                    _ => 1,
+                }
+            }
+            Self::Div(_)
+            | Self::And(_)
+            | Self::Or(_)
+            | Self::Not(_, _)
+            | Self::Xor(_)
+            | Self::ShL(_)
+            | Self::ShR(_)
+            | Self::RotL(_)
+            | Self::RotR(_)
+            | Self::ConstI(_, _) => 1,
         }
     }
 }
@@ -238,6 +335,7 @@ pub enum ModuleDeclaration {
 pub enum TopLevelDeclaration {
     Format(Vec<Positioned<FormatDeclaration>>),
     Module(Vec<Positioned<ModuleDeclaration>>),
+    Entry(GlobalSymbol),
     Code {
         symbol: GlobalSymbol,
         declarations: Vec<Positioned<CodeDeclaration>>,

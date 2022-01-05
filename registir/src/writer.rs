@@ -58,14 +58,6 @@ fn signed_integer<W: std::io::Write>(
     unsigned_integer(out, numeric::UInteger(value as u32), size)
 }
 
-fn block_offset<W: std::io::Write>(
-    out: &mut W,
-    instruction_set::BlockOffset(offset): instruction_set::BlockOffset,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    signed_integer(out, offset, size)
-}
-
 fn unsigned_length<W: std::io::Write>(
     out: &mut W,
     length: usize,
@@ -189,6 +181,10 @@ fn module_header<W: std::io::Write>(
     module_identifier(out, &header.identifier, size)
 }
 
+fn primitive_type<W: std::io::Write>(out: &mut W, t: type_system::PrimitiveType) -> WriteResult {
+    write(out, type_system::TypeTagged::tag(&t) as u8)
+}
+
 fn simple_type<W: std::io::Write>(
     out: &mut W,
     t: &type_system::SimpleType,
@@ -262,6 +258,47 @@ fn instruction_opcode<W: std::io::Write>(
     }
 }
 
+fn numeric_type<W: std::io::Write>(out: &mut W, t: instruction_set::NumericType) -> WriteResult {
+    match t {
+        instruction_set::NumericType::Primitive(pt) => primitive_type(out, pt),
+    }
+}
+
+fn basic_arithmetic_operation<W: std::io::Write>(
+    out: &mut W,
+    operation: &instruction_set::BasicArithmeticOperation,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    write(out, operation.flags().bits())?;
+    numeric_type(out, operation.return_type)?;
+    unsigned_index(out, operation.x, size)?;
+    unsigned_index(out, operation.y, size)
+}
+
+fn division_operation<W: std::io::Write>(
+    out: &mut W,
+    operation: &instruction_set::DivisionOperation,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    write(out, operation.flags().bits())?;
+    if let instruction_set::DivideByZeroBehavior::Return(value_index) = operation.divide_by_zero {
+        unsigned_index(out, value_index, size)?;
+    }
+    numeric_type(out, operation.return_type)?;
+    unsigned_index(out, operation.numerator, size)?;
+    unsigned_index(out, operation.denominator, size)
+}
+
+fn bitwise_operation<W: std::io::Write>(
+    out: &mut W,
+    operation: &instruction_set::BitwiseOperation,
+    size: numeric::IntegerSize,
+) -> WriteResult {
+    numeric_type(out, operation.result_type)?;
+    unsigned_index(out, operation.x, size)?;
+    unsigned_index(out, operation.y, size)
+}
+
 fn block_instruction<W: std::io::Write>(
     out: &mut W,
     instruction: &instruction_set::Instruction,
@@ -272,44 +309,79 @@ fn block_instruction<W: std::io::Write>(
     instruction_opcode(out, instruction.opcode())?;
 
     match instruction {
-        Instruction::Nop => Ok(()),
+        Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
+        Instruction::Br(target, input_registers) => {
+            unsigned_index(out, *target, size)?;
+            length_encoded_indices(out, input_registers, size)
+        }
+        Instruction::BrIf {
+            condition,
+            true_branch,
+            false_branch,
+            input_registers,
+        } => {
+            unsigned_index(out, *condition, size)?;
+            unsigned_index(out, *true_branch, size)?;
+            unsigned_index(out, *false_branch, size)?;
+            length_encoded_indices(out, input_registers, size)
+        }
+        Instruction::Call(call) => {
+            write(out, call.flags().bits())?;
+            unsigned_index(out, call.method, size)?;
+            length_encoded_indices(out, &call.arguments, size)
+        }
+        Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
+            basic_arithmetic_operation(out, operation, size)
+        }
+        Instruction::Div(operation) => division_operation(out, operation, size),
+        Instruction::And(operation)
+        | Instruction::Or(operation)
+        | Instruction::Xor(operation)
+        | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
+        | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
+            bitwise_operation(out, operation, size)
+        }
+        Instruction::Not(result_type, value) => {
+            numeric_type(out, *result_type)?;
+            unsigned_index(out, *value, size)
+        }
         Instruction::ConstI(constant) => match constant {
             IntegerConstant::S8(value) => {
-                write(out, PrimitiveType::S8 as u8)?;
+                primitive_type(out, PrimitiveType::S8)?;
                 write(out, *value as u8)
             }
             IntegerConstant::U8(value) => {
-                write(out, PrimitiveType::U8 as u8)?;
+                primitive_type(out, PrimitiveType::U8)?;
                 write(out, *value)
             }
             IntegerConstant::S16(value) => {
-                write(out, PrimitiveType::S16 as u8)?;
+                primitive_type(out, PrimitiveType::S16)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U16(value) => {
-                write(out, PrimitiveType::U16 as u8)?;
+                primitive_type(out, PrimitiveType::U16)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::S32(value) => {
-                write(out, PrimitiveType::S32 as u8)?;
+                primitive_type(out, PrimitiveType::S32)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U32(value) => {
-                write(out, PrimitiveType::U32 as u8)?;
+                primitive_type(out, PrimitiveType::U32)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::S64(value) => {
-                write(out, PrimitiveType::S64 as u8)?;
+                primitive_type(out, PrimitiveType::S64)?;
                 write_bytes(out, &value.to_le_bytes())
             }
             IntegerConstant::U64(value) => {
-                write(out, PrimitiveType::U64 as u8)?;
+                primitive_type(out, PrimitiveType::U64)?;
                 write_bytes(out, &value.to_le_bytes())
             }
         },
-        #[allow(unreachable_patterns)]
-        _ => todo!("TODO: Add support for writing of more instructions"),
     }
 }
 
@@ -324,7 +396,7 @@ fn code_block<W: std::io::Write>(
 
     // Flags already indicate if exception handler is present or if exception register is used.
     if let Some(exception_handler) = &block.exception_handler {
-        block_offset(out, exception_handler.catch_block, size)?;
+        unsigned_index(out, exception_handler.catch_block, size)?;
         if let Some(exception_register) = exception_handler.exception_register {
             unsigned_index(out, exception_register, size)?;
         }

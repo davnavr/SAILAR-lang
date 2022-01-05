@@ -18,3 +18,5 @@
         .body defined @code_main;
     };
 };
+
+.entry @method_main;

@@ -2,7 +2,7 @@ use crate::{
     buffers, format,
     format::{
         instruction_set,
-        instruction_set::{Instruction, Opcode},
+        instruction_set::{CallFlags, Instruction, Opcode, TailCall},
         numeric, structures, type_system,
     },
 };
@@ -22,6 +22,9 @@ pub enum ParseError {
     InvalidIntegerConstantType(type_system::PrimitiveType),
     InvalidCodeBlockFlags(u8),
     InvalidOpcode(u32),
+    InvalidArithmeticFlags(u8),
+    InvalidNumericType(u8),
+    InvalidCallFlags(u8),
     InvalidVisibilityFlags(u8),
     InvalidTypeDefinitionFlags(u8),
     InvalidMethodFlags(u8),
@@ -67,6 +70,19 @@ impl std::fmt::Display for ParseError {
                 flags
             ),
             Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
+            Self::InvalidArithmeticFlags(flags) => {
+                write!(
+                    f,
+                    "{:#02X} is not a valid arithmetic flags combination",
+                    flags
+                )
+            }
+            Self::InvalidNumericType(value) => {
+                write!(f, "{:#02X} is not a valid numeric type", value)
+            }
+            Self::InvalidCallFlags(flags) => {
+                write!(f, "{:#02X} is not a valid call flags combination", flags)
+            }
             Self::InvalidVisibilityFlags(flag) => {
                 write!(f, "{:#02X} is not a valid visibility value", flag)
             }
@@ -229,12 +245,18 @@ fn module_header<R: std::io::Read>(
 
 fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveType> {
     match tag {
+        type_system::TypeTag::S8 => Some(type_system::PrimitiveType::S8),
+        type_system::TypeTag::U8 => Some(type_system::PrimitiveType::U8),
         type_system::TypeTag::S16 => Some(type_system::PrimitiveType::S16),
         type_system::TypeTag::U16 => Some(type_system::PrimitiveType::U16),
         type_system::TypeTag::S32 => Some(type_system::PrimitiveType::S32),
         type_system::TypeTag::U32 => Some(type_system::PrimitiveType::U32),
         type_system::TypeTag::S64 => Some(type_system::PrimitiveType::S64),
         type_system::TypeTag::U64 => Some(type_system::PrimitiveType::U64),
+        type_system::TypeTag::SNative => Some(type_system::PrimitiveType::SNative),
+        type_system::TypeTag::UNative => Some(type_system::PrimitiveType::UNative),
+        type_system::TypeTag::F32 => Some(type_system::PrimitiveType::F32),
+        type_system::TypeTag::F64 => Some(type_system::PrimitiveType::F64),
         _ => None,
     }
 }
@@ -305,6 +327,86 @@ fn constant_integer<R: std::io::Read>(
     }
 }
 
+fn numeric_type<R: std::io::Read>(src: &mut R) -> ParseResult<instruction_set::NumericType> {
+    let tag_byte = byte(src)?;
+    let tag: type_system::TypeTag = unsafe { std::mem::transmute(tag_byte) };
+    primitive_type(tag)
+        .ok_or(ParseError::InvalidNumericType(tag_byte))
+        .map(instruction_set::NumericType::Primitive)
+}
+
+fn arithmetic_flags<R: std::io::Read>(
+    src: &mut R,
+) -> ParseResult<instruction_set::ArithmeticFlags> {
+    let bits = byte(src)?;
+    let flags: instruction_set::ArithmeticFlags = unsafe { std::mem::transmute(bits) };
+    if instruction_set::ArithmeticFlags::all().contains(flags) {
+        Ok(flags)
+    } else {
+        Err(ParseError::InvalidArithmeticFlags(bits))
+    }
+}
+
+fn basic_arithmetic_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BasicArithmeticOperation> {
+    let flags = arithmetic_flags(src)?;
+    Ok(instruction_set::BasicArithmeticOperation {
+        overflow: instruction_set::OverflowBehavior::from(flags),
+        return_type: numeric_type(src)?,
+        x: unsigned_index(src, size)?,
+        y: unsigned_index(src, size)?,
+    })
+}
+
+fn division_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::DivisionOperation> {
+    let flags = arithmetic_flags(src)?;
+    Ok(instruction_set::DivisionOperation {
+        divide_by_zero: if flags
+            .contains(instruction_set::ArithmeticFlags::RETURN_VALUE_ON_DIVIDE_BY_ZERO)
+        {
+            instruction_set::DivideByZeroBehavior::Return(unsigned_index(src, size)?)
+        } else {
+            instruction_set::DivideByZeroBehavior::Halt
+        },
+        overflow: instruction_set::OverflowBehavior::from(flags),
+        return_type: numeric_type(src)?,
+        numerator: unsigned_index(src, size)?,
+        denominator: unsigned_index(src, size)?,
+    })
+}
+
+fn bitwise_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BitwiseOperation> {
+    Ok(instruction_set::BitwiseOperation {
+        result_type: numeric_type(src)?,
+        x: unsigned_index(src, size)?,
+        y: unsigned_index(src, size)?,
+    })
+}
+
+fn bitwise_shift_operation<R: std::io::Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<instruction_set::BitwiseShiftOperation> {
+    bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
+}
+
+fn call_flags<R: std::io::Read>(src: &mut R) -> ParseResult<CallFlags> {
+    let bits = byte(src)?;
+    let flags: CallFlags = unsafe { std::mem::transmute(bits) };
+    if flags.contains(CallFlags::TAIL_CALL_MASK) {
+        return Err(ParseError::InvalidCallFlags(bits));
+    }
+    Ok(flags)
+}
+
 fn instruction<R: std::io::Read>(
     src: &mut R,
     size: numeric::IntegerSize,
@@ -312,9 +414,55 @@ fn instruction<R: std::io::Read>(
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
+        Opcode::Br => Ok(Instruction::Br(
+            unsigned_index(src, size)?,
+            length_encoded_indices(src, size)?,
+        )),
+        Opcode::BrIf => Ok(Instruction::BrIf {
+            condition: unsigned_index(src, size)?,
+            true_branch: unsigned_index(src, size)?,
+            false_branch: unsigned_index(src, size)?,
+            input_registers: length_encoded_indices(src, size)?,
+        }),
+        Opcode::Call => {
+            let flags = call_flags(src)?;
+            // TODO: Check that call flags are valid.
+            Ok(Instruction::Call(
+                format::instruction_set::CallInstruction {
+                    tail_call: if flags.contains(CallFlags::TAIL_CALL_REQUIRED) {
+                        TailCall::Required
+                    } else if flags.contains(CallFlags::TAIL_CALL_PROHIBITED) {
+                        TailCall::Prohibited
+                    } else {
+                        TailCall::Allowed
+                    },
+                    method: unsigned_index(src, size)?,
+                    arguments: length_encoded_indices(src, size)?,
+                },
+            ))
+        }
+        Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
+        Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
+        Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
+        Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
+        Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
+        Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
+        Opcode::Not => Ok(Instruction::Not(
+            numeric_type(src)?,
+            unsigned_index(src, size)?,
+        )),
+        Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
+        Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
+        Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),
+        Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
+        Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
+        Opcode::Break => Ok(Instruction::Break),
         Opcode::Continuation => unreachable!(),
-        _ => todo!("TODO: Add support for parsing of more instructions"),
+        bad => todo!(
+            "TODO: Add support for parsing of more instructions such as {:?}",
+            bad
+        ),
     }
 }
 

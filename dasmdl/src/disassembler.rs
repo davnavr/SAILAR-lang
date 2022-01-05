@@ -245,6 +245,13 @@ fn quoted_namespace<O: Write>(
     })
 }
 
+fn primitive_type<O: Write>(
+    out: &mut Output<'_, O>,
+    t: format::type_system::PrimitiveType,
+) -> Result<()> {
+    out.write_fmt(format_args!("{}", t))
+}
+
 fn type_signature<O: Write>(
     out: &mut Output<'_, O>,
     signature: &format::type_system::AnyType,
@@ -252,9 +259,7 @@ fn type_signature<O: Write>(
     use format::type_system::*;
 
     match signature {
-        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => {
-            out.write_fmt(format_args!("{:?}", t))
-        }
+        AnyType::Heap(HeapType::Val(SimpleType::Primitive(t))) => primitive_type(out, *t),
         _ => todo!(),
     }
 }
@@ -274,15 +279,150 @@ fn code_register<O: Write>(
     }
 }
 
-fn code_block<O: Write>(
+fn numeric_type<O: Write>(
+    out: &mut Output<'_, O>,
+    t: &format::instruction_set::NumericType,
+) -> Result<()> {
+    use format::instruction_set::NumericType;
+    match t {
+        NumericType::Primitive(t) => primitive_type(out, *t),
+    }
+}
+
+fn overflow_behavior<O: Write>(
+    out: &mut Output<'_, O>,
+    behavior: format::instruction_set::OverflowBehavior,
+) -> Result<()> {
+    use format::instruction_set::OverflowBehavior;
+
+    match behavior {
+        OverflowBehavior::Ignore => Ok(()),
+        OverflowBehavior::Halt => out.write_str(" ovf.halt"),
+        OverflowBehavior::Flag => out.write_str(" ovf.flag"),
+    }
+}
+
+fn basic_arithmetic_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BasicArithmeticOperation,
+    separator: &str,
+) -> Result<()> {
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.return_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.x)?;
+    out.write_char(' ')?;
+    out.write_str(separator)?;
+    out.write_char(' ')?;
+    code_register(out, operation.y)?;
+
+    overflow_behavior(out, operation.overflow)
+}
+
+fn division_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::DivisionOperation,
+) -> Result<()> {
+    use format::instruction_set::DivideByZeroBehavior;
+
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.return_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.numerator)?;
+    out.write_str(" over ")?;
+    code_register(out, operation.denominator)?;
+
+    match operation.divide_by_zero {
+        DivideByZeroBehavior::Halt => out.write_str(" zeroed.halt")?,
+        DivideByZeroBehavior::Return(return_index) => {
+            out.write_str(" or ")?;
+            code_register(out, return_index)?;
+        }
+    }
+
+    overflow_behavior(out, operation.overflow)
+}
+
+fn bitwise_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BitwiseOperation,
+    separator: Option<&str>,
+) -> Result<()> {
+    out.write_str(name)?;
+    out.write_char(' ')?;
+    numeric_type(out, &operation.result_type)?;
+    out.write_char(' ')?;
+    code_register(out, operation.x)?;
+    out.write_char(' ')?;
+    if let Some(separator) = separator {
+        out.write_str(separator)?;
+        out.write_char(' ')?;
+    }
+    code_register(out, operation.y)
+}
+
+fn bitwise_shift_instruction<O: Write>(
+    out: &mut Output<'_, O>,
+    name: &str,
+    operation: &format::instruction_set::BitwiseShiftOperation,
+) -> Result<()> {
+    bitwise_instruction(out, name, &operation.0, Some("by"))
+}
+
+fn jump_target<O: Write>(
+    out: &mut Output<'_, O>,
+    target: format::instruction_set::JumpTarget,
+) -> Result<()> {
+    out.write_str(BLOCK_NAME_PREFIX)?;
+    out.write_fmt(format_args!("{}", target.0))
+}
+
+fn many_code_registers<O: Write>(
+    out: &mut Output<'_, O>,
+    registers: &Vec<format::instruction_set::RegisterIndex>,
+) -> Result<()> {
+    if !registers.is_empty() {
+        out.write_char(' ')?;
+        out.write_join(", ", registers, |out, &index| code_register(out, index))?;
+    }
+    Ok(())
+}
+
+const METHOD_DEFINITION_NAME_PREFIX: &str = "method_definition_";
+const METHOD_IMPORT_NAME_PREFIX: &str = "method_import_";
+
+fn method_index<O: Write>(
+    out: &mut Output<'_, O>,
+    index: format::instruction_set::MethodIndex,
+) -> Result<()> {
+    out.write_char('@')?;
+    match index {
+        format::instruction_set::MethodIndex::Defined(definition_index) => {
+            out.write_str(METHOD_DEFINITION_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{}", definition_index))
+        }
+        format::instruction_set::MethodIndex::Imported(import_index) => {
+            out.write_str(METHOD_IMPORT_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{}", import_index))
+        }
+    }
+}
+
+fn code_block<O: Write, R: Fn(format::instruction_set::MethodIndex) -> u8>(
     out: &mut Output<'_, O>,
     block: &format::CodeBlock,
     index: Option<usize>,
+    method_return_count: &R,
 ) -> Result<()> {
     out.write_str(".block $")?;
     out.write_str(BLOCK_NAME_PREFIX)?;
     if let Some(i) = index {
-        out.write_fmt(format_args!("{}", i))?;
+        out.write_fmt(format_args!("{}", i - 1))?;
     } else {
         out.write_str(ENTRY_BLOCK_NAME)?;
     }
@@ -296,10 +436,9 @@ fn code_block<O: Write>(
     let mut temporary_count = 0usize;
 
     for instruction in &block.instructions.0 .0 {
-        use format::instruction_set::Instruction;
+        use format::instruction_set::{Instruction, TailCall};
 
-        let return_count = instruction.return_count();
-
+        let return_count = instruction.return_count(method_return_count);
         if return_count > 0 {
             out.write_join(", ", 0..return_count, |out, index| {
                 out.write_fmt(format_args!("%t{}", temporary_count + usize::from(index)))
@@ -313,16 +452,66 @@ fn code_block<O: Write>(
             Instruction::Nop => out.write_str("nop")?,
             Instruction::Ret(values) => {
                 out.write_str("ret")?;
-                if !values.is_empty() {
-                    out.write_char(' ')?;
-                    out.write_join(", ", &values.0, |out, index| code_register(out, *index))?
-                }
+                many_code_registers(out, &values.0)?;
             }
+            Instruction::Br(target, input_registers) => {
+                out.write_str("br ")?;
+                jump_target(out, *target)?;
+                many_code_registers(out, &input_registers.0)?
+            }
+            Instruction::BrIf {
+                condition,
+                true_branch,
+                false_branch,
+                input_registers,
+            } => {
+                out.write_str("br.if ")?;
+                code_register(out, *condition)?;
+                out.write_str(" then ")?;
+                jump_target(out, *true_branch)?;
+                out.write_str(" else ")?;
+                jump_target(out, *false_branch)?;
+                many_code_registers(out, &input_registers.0)?
+            }
+            Instruction::Call(call) => {
+                out.write_str("call ");
+                match call.tail_call {
+                    TailCall::Allowed => (),
+                    TailCall::Required => out.write_str("tail.required ")?,
+                    TailCall::Prohibited => out.write_str("tail.prohibited ")?,
+                }
+                method_index(out, call.method)?;
+                many_code_registers(out, &call.arguments.0)?;
+            }
+            Instruction::Add(operation) => {
+                basic_arithmetic_instruction(out, "add", operation, "and")?
+            }
+            Instruction::Sub(operation) => {
+                basic_arithmetic_instruction(out, "sub", operation, "from")?
+            }
+            Instruction::Mul(operation) => {
+                basic_arithmetic_instruction(out, "mul", operation, "by")?
+            }
+            Instruction::Div(operation) => division_instruction(out, "div", operation)?,
+            Instruction::And(operation) => bitwise_instruction(out, "and", operation, None)?,
+            Instruction::Or(operation) => bitwise_instruction(out, "or", operation, None)?,
+            Instruction::Not(result_type, value) => {
+                out.write_str("not ")?;
+                numeric_type(out, result_type)?;
+                out.write_char(' ')?;
+                code_register(out, *value)?;
+            }
+            Instruction::Xor(operation) => bitwise_instruction(out, "xor", operation, None)?,
+            Instruction::ShL(operation) => bitwise_shift_instruction(out, "sh.l", operation)?,
+            Instruction::ShR(operation) => bitwise_shift_instruction(out, "sh.r", operation)?,
+            Instruction::RotL(operation) => bitwise_shift_instruction(out, "rot.l", operation)?,
+            Instruction::RotR(operation) => bitwise_shift_instruction(out, "rot.r", operation)?,
             Instruction::ConstI(constant) => out.write_fmt(format_args!(
                 "const.i {} {}",
                 constant.integer_type(),
                 constant.value()
             ))?,
+            Instruction::Break => out.write_str("break")?,
         }
 
         out.write_char_ln(';')?;
@@ -332,9 +521,10 @@ fn code_block<O: Write>(
     out.write_str_ln("};")
 }
 
-fn module_method_bodies<O: Write>(
+fn module_method_bodies<O: Write, R: Fn(format::instruction_set::MethodIndex) -> u8>(
     out: &mut Output<'_, O>,
     method_bodies: &[format::Code],
+    method_return_count: &R,
 ) -> Result<()> {
     for (index, body) in method_bodies.iter().enumerate() {
         out.write_fmt_ln(format_args!(".code @code_{} {{", index))?;
@@ -343,10 +533,10 @@ fn module_method_bodies<O: Write>(
         out.write_str(BLOCK_NAME_PREFIX)?;
         out.write_str(ENTRY_BLOCK_NAME)?;
         out.write_char_ln(';')?;
-        code_block(out, &body.entry_block, None)?;
+        code_block(out, &body.entry_block, None, method_return_count)?;
         out.write_ln()?;
         for (block_index, block) in body.blocks.iter().enumerate() {
-            code_block(out, block, Some(block_index + 1))?;
+            code_block(out, block, Some(block_index + 1), method_return_count)?;
             out.write_ln()?;
         }
         out.dedent();
@@ -402,7 +592,9 @@ fn module_definitions<O: Write>(
         for method_index in type_definition.methods.iter() {
             // TODO: Check that method index is in bounds, and that owner is correct.
             let method = &definitions.defined_methods[usize::try_from(*method_index).unwrap()];
-            out.write_fmt(format_args!(".method @method_{} (", method_index))?;
+            out.write_str(".method @")?;
+            out.write_str(METHOD_DEFINITION_NAME_PREFIX)?;
+            out.write_fmt(format_args!("{} (", method_index))?;
             // TODO: Write signature things.
             out.write_str(") returns (")?;
             out.write_str(") ")?;
@@ -465,7 +657,15 @@ pub fn disassemble<O: Write>(
     out.write_ln()?;
     // TODO: Print method signatures.
     out.write_ln()?;
-    module_method_bodies(&mut out, &module.method_bodies)?;
+    {
+        let method_return_count = |index: format::instruction_set::MethodIndex| {
+            // TODO: Print error comments if method or signature is not found while retrieving return value count.
+            let method = &module.definitions.0.defined_methods.0[usize::try_from(index).unwrap()];
+            let signature = &module.method_signatures.0[usize::try_from(method.signature).unwrap()];
+            signature.return_types.0.len().try_into().unwrap()
+        };
+        module_method_bodies(&mut out, &module.method_bodies, &method_return_count)?;
+    }
     out.write_ln()?;
     // TODO: Print data arrays.
     out.write_ln()?;

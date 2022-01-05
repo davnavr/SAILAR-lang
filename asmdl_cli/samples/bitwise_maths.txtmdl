@@ -1,0 +1,30 @@
+.format { .major 0; .minor 0; };
+.module { .name "BitwiseMaths"; .version 0; };
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t0 = const.i s32 4;
+        %t1 = const.i s32 1;
+        %t2 = and s32 %t0 %t1;
+        %t3 = sh.l s32 %t0 by %t1;
+        %t4 = or s32 %t2 %t3;
+        %t5 = rot.r u8 %t4 by %t1;
+        %t6 = not u8 %t5;
+        %t7 = const.i s32 120;
+        %t8 = xor u8 %t6 %t7;
+        ret %t8;
+    };
+};
+
+.type @class_hello public {
+    .name "BitwiseMaths";
+    .namespace "Example";
+
+    .method @method_main () returns (s32) public {
+        .name "Main";
+        .body defined @code_main;
+    };
+};
+
+.entry @method_main;

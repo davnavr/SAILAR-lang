@@ -12,6 +12,7 @@ pub enum GlobalDeclaration {
     MethodDefinition,
     MethodBody,
     EntryBlock,
+    EntryPoint,
     Module,
     Format,
     Name,
@@ -94,6 +95,7 @@ impl std::fmt::Display for GlobalDeclaration {
             Self::MethodDefinition => "method definition",
             Self::MethodBody => "method body",
             Self::EntryBlock => "entry block",
+            Self::EntryPoint => "entry point method",
             Self::Code => "code",
             Self::Module => "module",
             Self::Format => "format",
@@ -300,6 +302,8 @@ type MethodSignatureLookup =
 
 type MethodBodyLookup<'a> =
     indexed::SymbolMap<'a, ast::GlobalSymbol, format::indices::Code, MethodBodyAssembler<'a>>;
+
+type CodeBlockLookup<'a> = std::collections::HashMap<&'a ast::Identifier, usize>;
 
 type MethodDefinitionLookup<'a> = indexed::SymbolMap<
     'a,
@@ -508,13 +512,121 @@ impl<'a> MethodBlockAssembler<'a> {
         }
     }
 
+    fn emit_basic_arithmetic_instruction<
+        I: FnOnce(
+            format::instruction_set::BasicArithmeticOperation,
+        ) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BasicArithmeticOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instructions: &mut Vec<format::instruction_set::Instruction>,
+        instruction: I,
+    ) {
+        let registers = Self::lookup_register_index(errors, register_lookup, &operation.x).zip(
+            Self::lookup_register_index(errors, register_lookup, &operation.y),
+        );
+        if let Some((x, y)) = registers {
+            instructions.push(instruction(
+                format::instruction_set::BasicArithmeticOperation {
+                    overflow: ast::OverflowModifier::behavior(&operation.overflow_modifier),
+                    return_type: operation.return_type.value,
+                    x,
+                    y,
+                },
+            ))
+        }
+    }
+
+    fn define_division_instruction<
+        I: FnOnce(format::instruction_set::DivisionOperation) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::DivisionOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        use format::instruction_set::DivideByZeroBehavior;
+
+        let numerator = Self::lookup_register_index(errors, register_lookup, &operation.numerator)?;
+        let denominator =
+            Self::lookup_register_index(errors, register_lookup, &operation.denominator)?;
+
+        let divide_by_zero_behavior = match operation.divide_by_zero_modifier {
+            ast::DivideByZeroModifier::Halt => DivideByZeroBehavior::Halt,
+            ast::DivideByZeroModifier::Return(ref nan) => DivideByZeroBehavior::Return(
+                Self::lookup_register_index(errors, register_lookup, nan)?,
+            ),
+        };
+
+        Some(instruction(format::instruction_set::DivisionOperation {
+            divide_by_zero: divide_by_zero_behavior,
+            overflow: ast::OverflowModifier::behavior(&operation.overflow_modifier),
+            return_type: operation.return_type.value,
+            numerator,
+            denominator,
+        }))
+    }
+
+    fn try_emit_instruction(
+        definition: Option<format::instruction_set::Instruction>,
+        instructions: &mut Vec<format::instruction_set::Instruction>,
+    ) {
+        if let Some(i) = definition {
+            instructions.push(i)
+        }
+    }
+
+    fn define_bitwise_instruction<
+        I: FnOnce(format::instruction_set::BitwiseOperation) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BitwiseOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        Some(instruction(format::instruction_set::BitwiseOperation {
+            result_type: operation.result_type.value,
+            x: Self::lookup_register_index(errors, register_lookup, &operation.x)?,
+            y: Self::lookup_register_index(errors, register_lookup, &operation.y)?,
+        }))
+    }
+
+    fn define_bitwise_shift_instruction<
+        I: FnOnce(
+            format::instruction_set::BitwiseShiftOperation,
+        ) -> format::instruction_set::Instruction,
+    >(
+        errors: &mut Vec<Error>,
+        operation: &'a ast::BitwiseOperation,
+        register_lookup: &mut indexed::RegisterLookup<'a>,
+        instruction: I,
+    ) -> Option<format::instruction_set::Instruction> {
+        Self::define_bitwise_instruction(errors, operation, register_lookup, |operation| {
+            instruction(format::instruction_set::BitwiseShiftOperation(operation))
+        })
+    }
+
+    fn lookup_jump_target(
+        errors: &mut Vec<Error>,
+        symbol: &'a ast::LocalSymbol,
+        block_indices: &CodeBlockLookup<'a>,
+    ) -> Option<format::instruction_set::JumpTarget> {
+        if let Some(target) = block_indices.get(&symbol.0.value) {
+            Some(format::indices::CodeBlock::try_from(*target).unwrap())
+        } else {
+            errors.push(Error::DuplicateLocalDeclaration(
+                symbol.clone(),
+                LocalDeclaration::CodeBlock,
+            ));
+            None
+        }
+    }
+
     fn assemble(
         &self,
         errors: &mut Vec<Error>,
-        #[allow(unused_variables)] block_indices: &std::collections::HashMap<
-            &'a ast::Identifier,
-            usize,
-        >,
+        block_indices: &CodeBlockLookup<'a>,
         register_lookup: &mut indexed::RegisterLookup<'a>,
     ) -> Option<format::CodeBlock> {
         let error_count = errors.len();
@@ -542,6 +654,162 @@ impl<'a> MethodBlockAssembler<'a> {
                             instructions.push(Instruction::Ret(indices));
                         }
                     }
+                    ast::Instruction::Br(target, input_registers) => {
+                        let mut define = || {
+                            Some(Instruction::Br(
+                                Self::lookup_jump_target(errors, target, block_indices)?,
+                                Self::lookup_register_indices(
+                                    errors,
+                                    register_lookup,
+                                    input_registers,
+                                )?,
+                            ))
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
+                    }
+                    ast::Instruction::BrIf {
+                        condition,
+                        true_branch,
+                        false_branch,
+                        input_registers,
+                    } => {
+                        let mut define = || {
+                            Some(Instruction::BrIf {
+                                condition: Self::lookup_register_index(
+                                    errors,
+                                    register_lookup,
+                                    condition,
+                                )?,
+                                true_branch: Self::lookup_jump_target(
+                                    errors,
+                                    true_branch,
+                                    block_indices,
+                                )?,
+                                false_branch: Self::lookup_jump_target(
+                                    errors,
+                                    false_branch,
+                                    block_indices,
+                                )?,
+                                input_registers: Self::lookup_register_indices(
+                                    errors,
+                                    register_lookup,
+                                    input_registers,
+                                )?,
+                            })
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
+                    }
+                    ast::Instruction::Call {
+                        tail_call,
+                        method,
+                        arguments
+                    } => {
+                        let mut define = || {
+                            Some(Instruction::Call(format::instruction_set::CallInstruction {
+                                
+                            }))
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
+                    }
+                    ast::Instruction::Add(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Add,
+                    ),
+                    ast::Instruction::Sub(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Sub,
+                    ),
+                    ast::Instruction::Mul(operation) => Self::emit_basic_arithmetic_instruction(
+                        errors,
+                        operation,
+                        register_lookup,
+                        &mut instructions,
+                        Instruction::Mul,
+                    ),
+                    ast::Instruction::Div(operation) => Self::try_emit_instruction(
+                        Self::define_division_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Div,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::And(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::And,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Or(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Or,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Not(result_type, value) => Self::try_emit_instruction(
+                        register_lookup
+                            .get(value)
+                            .map(|register| Instruction::Not(result_type.value, register)),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::Xor(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::Xor,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::ShL(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::ShL,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::ShR(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::ShR,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::RotL(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::RotL,
+                        ),
+                        &mut instructions,
+                    ),
+                    ast::Instruction::RotR(operation) => Self::try_emit_instruction(
+                        Self::define_bitwise_shift_instruction(
+                            errors,
+                            operation,
+                            register_lookup,
+                            Instruction::RotR,
+                        ),
+                        &mut instructions,
+                    ),
                     ast::Instruction::ConstI(integer_type, value) => {
                         match Self::define_integer_constant(integer_type, value) {
                             Ok(constant) => instructions.push(Instruction::ConstI(constant)),
@@ -595,7 +863,7 @@ impl<'a> MethodBodyAssembler<'a> {
         &self,
         errors: &mut Vec<Error>,
         #[allow(unused_variables)] defined_methods: &mut MethodDefinitionLookup,
-        block_lookup: &mut std::collections::HashMap<&'a ast::Identifier, usize>,
+        block_lookup: &mut CodeBlockLookup<'a>,
         blocks: &mut Vec<MethodBlockAssembler<'a>>,
         register_lookup: &mut indexed::RegisterLookup<'a>,
     ) -> Option<format::Code> {
@@ -937,6 +1205,9 @@ pub fn assemble_declarations(
     let mut errors = Vec::new();
     let mut module_header = None;
     let mut module_format = None;
+    let mut module_entry_point = declare::Once::new(|(), symbol: &ast::GlobalSymbol| {
+        Error::DuplicateDeclaration(symbol.0.position, GlobalDeclaration::EntryPoint)
+    });
     let mut identifiers = IdentifierLookup::new();
     let mut namespaces = NamespaceLookup::new();
     let mut type_signatures = TypeSignatureLookup::new();
@@ -968,6 +1239,9 @@ pub fn assemble_declarations(
                     GlobalDeclaration::Format,
                 )),
             },
+            ast::TopLevelDeclaration::Entry(ref entry_point_name) => {
+                module_entry_point.declare_and_set(&mut errors, (), entry_point_name.clone())
+            }
             ast::TopLevelDeclaration::Code {
                 ref symbol,
                 declarations,
@@ -1041,6 +1315,17 @@ pub fn assemble_declarations(
             )
         });
 
+    let entry_point_index = module_entry_point.value().and_then(|entry_point_name| {
+        let index = method_definitions.index_of(&entry_point_name);
+        if index.is_none() {
+            errors.push(Error::UndefinedGlobalSymbol(
+                entry_point_name,
+                GlobalDeclaration::MethodDefinition,
+            ));
+        }
+        index
+    });
+
     if module_header.is_none() {
         errors.push(Error::MissingDeclaration(None, GlobalDeclaration::Module))
     }
@@ -1095,7 +1380,7 @@ pub fn assemble_declarations(
                     format::structures::LengthEncodedVector(assembled_method_definitions),
                 ),
             }),
-            entry_point: format::structures::ByteLengthEncoded(None),
+            entry_point: format::structures::ByteLengthEncoded(entry_point_index),
             type_layouts: format::structures::ByteLengthEncoded(
                 format::structures::LengthEncodedVector(vec![format::TypeLayout::Unspecified]),
             ),

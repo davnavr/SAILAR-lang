@@ -224,13 +224,131 @@ fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind
 
 fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveType> {
     combine::choice((
+        keyword("u8").with(combine::value(ast::PrimitiveType::U8)),
+        keyword("s8").with(combine::value(ast::PrimitiveType::S8)),
+        keyword("u16").with(combine::value(ast::PrimitiveType::U16)),
+        keyword("s16").with(combine::value(ast::PrimitiveType::S16)),
         keyword("u32").with(combine::value(ast::PrimitiveType::U32)),
         keyword("s32").with(combine::value(ast::PrimitiveType::S32)),
+        keyword("u64").with(combine::value(ast::PrimitiveType::U64)),
+        keyword("s64").with(combine::value(ast::PrimitiveType::S64)),
     ))
 }
 
 fn type_signature<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeSignature> {
     combine::choice((primitive_type().map(ast::TypeSignature::Primitive),))
+}
+
+fn numeric_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::NumericType> {
+    primitive_type().map(ast::NumericType::Primitive)
+}
+
+fn overflow_modifier<'a>(
+) -> impl Parser<ParserInput<'a>, Output = Option<ast::Positioned<ast::OverflowModifier>>> {
+    combine::optional(positioned(combine::choice((
+        keyword("ovf.halt").with(combine::value(ast::OverflowModifier::Halt)),
+        keyword("ovf.flag").with(combine::value(ast::OverflowModifier::Flag)),
+    ))))
+}
+
+fn basic_arithmetic_operation<'a, I: 'a + Fn(ast::BasicArithmeticOperation) -> ast::Instruction>(
+    name: &'static str,
+    separator: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            register_symbol(),
+            keyword(separator).with(register_symbol()),
+            overflow_modifier(),
+        ))
+        .map(move |(return_type, x, y, overflow_modifier)| {
+            instruction(ast::BasicArithmeticOperation {
+                return_type,
+                x,
+                y,
+                overflow_modifier,
+            })
+        })
+}
+
+fn division_operation<'a, I: 'a + Fn(ast::DivisionOperation) -> ast::Instruction>(
+    name: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            register_symbol(),
+            keyword("over").with(register_symbol()),
+            combine::choice((
+                keyword("or")
+                    .with(register_symbol())
+                    .map(ast::DivideByZeroModifier::Return),
+                keyword("zeroed.halt").with(combine::value(ast::DivideByZeroModifier::Halt)),
+            )),
+            overflow_modifier(),
+        ))
+        .map(
+            move |(
+                return_type,
+                numerator,
+                denominator,
+                divide_by_zero_modifier,
+                overflow_modifier,
+            )| {
+                instruction(ast::DivisionOperation {
+                    return_type,
+                    numerator,
+                    denominator,
+                    divide_by_zero_modifier,
+                    overflow_modifier,
+                })
+            },
+        )
+}
+
+fn bitwise_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
+    name: &'static str,
+    separator: Option<&'static str>,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    keyword(name)
+        .with((
+            positioned(numeric_type()),
+            match separator {
+                Some(separator) => combine::parser::combinator::Either::Left(
+                    register_symbol().skip(keyword(separator)),
+                ),
+                None => combine::parser::combinator::Either::Right(register_symbol()),
+            },
+            register_symbol(),
+        ))
+        .map(move |(result_type, x, y)| instruction(ast::BitwiseOperation { result_type, x, y }))
+}
+
+fn bitwise_shift_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
+    name: &'static str,
+    instruction: I,
+) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
+    bitwise_operation(name, Some("by"), instruction)
+}
+
+fn many_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
+    combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
+}
+
+fn input_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
+    combine::optional(keyword("with").with(many_register_symbols())).map(Option::unwrap_or_default)
+}
+
+fn tail_call_behavior<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TailCall> {
+    combine::choice((
+        keyword("tail.required").with(combine::value(ast::TailCall::Required)),
+        keyword("tail.prohibited").with(combine::value(ast::TailCall::Prohibited)),
+        combine::value(ast::TailCall::Allowed),
+    ))
 }
 
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
@@ -244,11 +362,62 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
         )
         .map(Option::unwrap_or_default),
         positioned(combine::choice((
-            keyword("nop").with(combine::value(ast::Instruction::Nop)),
-            keyword("ret").with(
-                combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
-                    .map(ast::Instruction::Ret),
-            ),
+            combine::choice((
+                keyword("nop").with(combine::value(ast::Instruction::Nop)),
+                keyword("ret").with(many_register_symbols().map(ast::Instruction::Ret)),
+                keyword("call")
+                    .with((
+                        tail_call_behavior(),
+                        global_symbol(),
+                        many_register_symbols(),
+                    ))
+                    .map(|(tail_call, method, arguments)| ast::Instruction::Call {
+                        tail_call,
+                        method,
+                        arguments,
+                    }),
+            )),
+            // Branch instructions
+            combine::choice((
+                keyword("br")
+                    .with((local_symbol(), input_register_symbols()))
+                    .map(|(target, input_registers)| ast::Instruction::Br(target, input_registers)),
+                keyword("br.if")
+                    .with((
+                        register_symbol(),
+                        keyword("then").with(local_symbol()),
+                        keyword("else").with(local_symbol()),
+                        input_register_symbols(),
+                    ))
+                    .map(|(condition, true_branch, false_branch, input_registers)| {
+                        ast::Instruction::BrIf {
+                            condition,
+                            true_branch,
+                            false_branch,
+                            input_registers,
+                        }
+                    }),
+            )),
+            // Arithmetic instructions
+            combine::choice((
+                basic_arithmetic_operation("add", "and", ast::Instruction::Add),
+                basic_arithmetic_operation("sub", "from", ast::Instruction::Sub),
+                basic_arithmetic_operation("mul", "by", ast::Instruction::Mul),
+                division_operation("div", ast::Instruction::Div),
+            )),
+            // Bitwise instructions
+            combine::choice((
+                bitwise_operation("and", None, ast::Instruction::And),
+                bitwise_operation("or", None, ast::Instruction::Or),
+                keyword("not")
+                    .with((positioned(numeric_type()), register_symbol()))
+                    .map(move |(result_type, value)| ast::Instruction::Not(result_type, value)),
+                bitwise_operation("xor", None, ast::Instruction::Xor),
+                bitwise_shift_operation("sh.l", ast::Instruction::ShL),
+                bitwise_shift_operation("sh.r", ast::Instruction::ShR),
+                bitwise_shift_operation("rot.l", ast::Instruction::RotL),
+                bitwise_shift_operation("rot.r", ast::Instruction::RotR),
+            )),
             keyword("const.i").with(
                 (positioned(primitive_type()), positioned(literal_integer()))
                     .map(|(ty, value)| ast::Instruction::ConstI(ty, value)),
@@ -366,6 +535,7 @@ fn top_level_declaration<'a>(
             .map(ast::TopLevelDeclaration::Format),
         directive("module", declaration_block(module_declaration()))
             .map(ast::TopLevelDeclaration::Module),
+        directive("entry", global_symbol()).map(ast::TopLevelDeclaration::Entry),
         directive(
             "data",
             (global_symbol(), data_declaration())

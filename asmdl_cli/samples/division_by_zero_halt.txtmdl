@@ -1,0 +1,24 @@
+.format { .major 0; .minor 0; };
+.module { .name "DivisionByZero"; .version 0; };
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t0 = const.i s32 0;
+        %t1 = const.i s32 42;
+        %t2 = div s32 %t1 over %t0 zeroed.halt;
+        ret %t2;
+    };
+};
+
+.type @class public {
+    .name "DivisionByZero";
+    .namespace "Example";
+
+    .method @method_main () returns (s32) public {
+        .name "Main";
+        .body defined @code_main;
+    };
+};
+
+.entry @method_main;

@@ -1,0 +1,8 @@
+[package]
+name = "runmdl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+getmdl = { path = "../getmdl" }
+registir = { path = "../registir" }
