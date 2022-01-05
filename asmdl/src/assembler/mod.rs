@@ -699,6 +699,18 @@ impl<'a> MethodBlockAssembler<'a> {
                         };
                         Self::try_emit_instruction(define(), &mut instructions);
                     }
+                    ast::Instruction::Call {
+                        tail_call,
+                        method,
+                        arguments
+                    } => {
+                        let mut define = || {
+                            Some(Instruction::Call(format::instruction_set::CallInstruction {
+                                
+                            }))
+                        };
+                        Self::try_emit_instruction(define(), &mut instructions);
+                    }
                     ast::Instruction::Add(operation) => Self::emit_basic_arithmetic_instruction(
                         errors,
                         operation,

@@ -1,5 +1,5 @@
 pub use registir::format::{
-    instruction_set::{NumericType, OverflowBehavior},
+    instruction_set::{NumericType, OverflowBehavior, TailCall},
     type_system::PrimitiveType,
 };
 
@@ -202,6 +202,11 @@ pub enum Instruction {
         true_branch: LocalSymbol,
         false_branch: LocalSymbol,
         input_registers: Vec<RegisterSymbol>,
+    },
+    Call {
+        tail_call: TailCall,
+        method: GlobalSymbol,
+        arguments: Vec<RegisterSymbol>,
     },
     Add(BasicArithmeticOperation),
     Sub(BasicArithmeticOperation),

@@ -343,6 +343,14 @@ fn input_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast
     combine::optional(keyword("with").with(many_register_symbols())).map(Option::unwrap_or_default)
 }
 
+fn tail_call_behavior<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TailCall> {
+    combine::choice((
+        keyword("tail.required").with(combine::value(ast::TailCall::Required)),
+        keyword("tail.prohibited").with(combine::value(ast::TailCall::Prohibited)),
+        combine::value(ast::TailCall::Allowed),
+    ))
+}
+
 fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
     (
         combine::optional(
@@ -354,8 +362,21 @@ fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement>
         )
         .map(Option::unwrap_or_default),
         positioned(combine::choice((
-            keyword("nop").with(combine::value(ast::Instruction::Nop)),
-            keyword("ret").with(many_register_symbols().map(ast::Instruction::Ret)),
+            combine::choice((
+                keyword("nop").with(combine::value(ast::Instruction::Nop)),
+                keyword("ret").with(many_register_symbols().map(ast::Instruction::Ret)),
+                keyword("call")
+                    .with((
+                        tail_call_behavior(),
+                        global_symbol(),
+                        many_register_symbols(),
+                    ))
+                    .map(|(tail_call, method, arguments)| ast::Instruction::Call {
+                        tail_call,
+                        method,
+                        arguments,
+                    }),
+            )),
             // Branch instructions
             combine::choice((
                 keyword("br")
