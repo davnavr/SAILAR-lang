@@ -13,6 +13,7 @@ use std::io::Read;
 pub enum Error {
     InvalidModuleMagic,
     InvalidIntegerSize(u8),
+    UnsupportedFormatVersion(format::FormatVersion),
     InvalidDataVectorCount(numeric::UInteger),
     InvalidByteLength { expected: usize, actual: usize },
     InvalidHeaderFieldCount(numeric::UInteger),
@@ -43,6 +44,11 @@ impl std::fmt::Display for Error {
             Self::InvalidIntegerSize(value) => {
                 write!(f, "{:#02X} is not a valid integer size value", value)
             }
+            Self::UnsupportedFormatVersion(version) => write!(
+                f,
+                "The format version {}.{} is not supported",
+                version.major, version.minor
+            ),
             Self::InvalidDataVectorCount(count) => {
                 write!(f, "{} is not a valid data vector count", count)
             }
@@ -115,9 +121,9 @@ impl std::error::Error for Error {
     }
 }
 
-pub type ParseResult<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-fn fill_buffer(src: &mut impl Read, buffer: &mut [u8]) -> ParseResult<()> {
+fn fill_buffer(src: &mut impl Read, buffer: &mut [u8]) -> Result<()> {
     let count = src.read(buffer).map_err(Error::InputOutputError)?;
     if count == buffer.len() {
         Ok(())
@@ -129,24 +135,21 @@ fn fill_buffer(src: &mut impl Read, buffer: &mut [u8]) -> ParseResult<()> {
     }
 }
 
-fn fixed_bytes<R: Read, const L: usize>(src: &mut R) -> ParseResult<[u8; L]> {
+fn fixed_bytes<R: Read, const L: usize>(src: &mut R) -> Result<[u8; L]> {
     let mut buffer = [0u8; L];
     fill_buffer(src, &mut buffer).map(|()| buffer)
 }
 
-fn byte<R: Read>(src: &mut R) -> ParseResult<u8> {
+fn byte<R: Read>(src: &mut R) -> Result<u8> {
     fixed_bytes::<R, 1>(src).map(|bytes| bytes[0])
 }
 
-fn many_bytes<R: Read>(src: &mut R, length: usize) -> ParseResult<Vec<u8>> {
+fn many_bytes<R: Read>(src: &mut R, length: usize) -> Result<Vec<u8>> {
     let mut buffer = vec![0u8; length];
     fill_buffer(src, buffer.as_mut_slice()).map(|()| buffer)
 }
 
-fn unsigned_integer<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<numeric::UInteger> {
+fn unsigned_integer<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<numeric::UInteger> {
     match size {
         numeric::IntegerSize::I1 => byte(src).map(numeric::UInteger::from),
         numeric::IntegerSize::I2 => fixed_bytes::<R, 2>(src)
@@ -157,14 +160,14 @@ fn unsigned_integer<R: Read>(
     }
 }
 
-fn unsigned_length<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<usize> {
+fn unsigned_length<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<usize> {
     unsigned_integer(src, size).map(|value| usize::try_from(value).unwrap())
 }
 
 fn unsigned_index<I: From<numeric::UInteger>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<I> {
+) -> Result<I> {
     unsigned_integer(src, size).map(I::from)
 }
 
@@ -172,7 +175,7 @@ fn identifier<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> ParseResult<format::Identifier> {
+) -> Result<format::Identifier> {
     let length = unsigned_length(src, size)?;
     let mut buffer = buffer_pool.rent_with_length(length);
     fill_buffer(src, &mut buffer)?;
@@ -181,11 +184,11 @@ fn identifier<R: Read>(
         .and_then(|s| format::Identifier::try_from(s).map_err(|_| Error::EmptyIdentifier))
 }
 
-fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: Read>(
+fn length_encoded_vector<T, P: FnMut(&mut R) -> Result<T>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     mut parser: P,
-) -> ParseResult<format::LenVec<T>> {
+) -> Result<format::LenVec<T>> {
     let length = unsigned_length(src, size)?;
     let mut buffer = Vec::<T>::with_capacity(length);
 
@@ -200,14 +203,14 @@ fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: Read>(
 fn length_encoded_indices<I: From<numeric::UInteger>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::LenVec<I>> {
+) -> Result<format::LenVec<I>> {
     length_encoded_vector(src, size, |src| unsigned_integer(src, size).map(I::from))
 }
 
 fn version_numbers<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::VersionNumbers> {
+) -> Result<format::VersionNumbers> {
     length_encoded_vector(src, size, |src| unsigned_integer(src, size)).map(format::VersionNumbers)
 }
 
@@ -215,7 +218,7 @@ fn module_identifier<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> ParseResult<format::ModuleIdentifier> {
+) -> Result<format::ModuleIdentifier> {
     Ok(format::ModuleIdentifier {
         name: identifier(src, size, buffer_pool)?,
         version: version_numbers(src, size)?,
@@ -226,7 +229,7 @@ fn module_header<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> ParseResult<format::ModuleHeader> {
+) -> Result<format::ModuleHeader> {
     let field_count = unsigned_integer(src, size)?;
 
     if field_count < format::MIN_HEADER_FIELD_COUNT || field_count > format::MAX_HEADER_FIELD_COUNT
@@ -265,7 +268,7 @@ fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveTyp
 //         })
 // }
 
-fn type_signature<R: Read>(src: &mut R) -> ParseResult<type_system::AnyType> {
+fn type_signature<R: Read>(src: &mut R) -> Result<type_system::AnyType> {
     let tag: type_system::TypeTag = unsafe { std::mem::transmute(byte(src)?) }; // TODO: Define a conversion function going from u8 to TypeTag.
     primitive_type(tag)
         .map(|p| {
@@ -279,14 +282,14 @@ fn type_signature<R: Read>(src: &mut R) -> ParseResult<type_system::AnyType> {
 fn function_signature<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::FunctionSignature> {
+) -> Result<format::FunctionSignature> {
     Ok(format::FunctionSignature {
         return_types: length_encoded_indices(src, size)?,
         parameter_types: length_encoded_indices(src, size)?,
     })
 }
 
-fn opcode<R: Read>(src: &mut R) -> ParseResult<Opcode> {
+fn opcode<R: Read>(src: &mut R) -> Result<Opcode> {
     let mut opcode = 0u32;
     loop {
         let value = byte(src)?;
@@ -297,7 +300,7 @@ fn opcode<R: Read>(src: &mut R) -> ParseResult<Opcode> {
     }
 }
 
-fn constant_integer<R: Read>(src: &mut R) -> ParseResult<instruction_set::IntegerConstant> {
+fn constant_integer<R: Read>(src: &mut R) -> Result<instruction_set::IntegerConstant> {
     use instruction_set::IntegerConstant;
     use type_system::PrimitiveType;
 
@@ -321,7 +324,7 @@ fn constant_integer<R: Read>(src: &mut R) -> ParseResult<instruction_set::Intege
     }
 }
 
-fn numeric_type<R: Read>(src: &mut R) -> ParseResult<instruction_set::NumericType> {
+fn numeric_type<R: Read>(src: &mut R) -> Result<instruction_set::NumericType> {
     let tag_byte = byte(src)?;
     let tag: type_system::TypeTag = unsafe { std::mem::transmute(tag_byte) };
     primitive_type(tag)
@@ -329,7 +332,7 @@ fn numeric_type<R: Read>(src: &mut R) -> ParseResult<instruction_set::NumericTyp
         .map(instruction_set::NumericType::Primitive)
 }
 
-fn arithmetic_flags<R: Read>(src: &mut R) -> ParseResult<instruction_set::ArithmeticFlags> {
+fn arithmetic_flags<R: Read>(src: &mut R) -> Result<instruction_set::ArithmeticFlags> {
     let bits = byte(src)?;
     let flags: instruction_set::ArithmeticFlags = unsafe { std::mem::transmute(bits) };
     if instruction_set::ArithmeticFlags::all().contains(flags) {
@@ -342,7 +345,7 @@ fn arithmetic_flags<R: Read>(src: &mut R) -> ParseResult<instruction_set::Arithm
 fn basic_arithmetic_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<instruction_set::BasicArithmeticOperation> {
+) -> Result<instruction_set::BasicArithmeticOperation> {
     let flags = arithmetic_flags(src)?;
     Ok(instruction_set::BasicArithmeticOperation {
         overflow: instruction_set::OverflowBehavior::from(flags),
@@ -355,7 +358,7 @@ fn basic_arithmetic_operation<R: Read>(
 fn division_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<instruction_set::DivisionOperation> {
+) -> Result<instruction_set::DivisionOperation> {
     let flags = arithmetic_flags(src)?;
     Ok(instruction_set::DivisionOperation {
         divide_by_zero: if flags
@@ -375,7 +378,7 @@ fn division_operation<R: Read>(
 fn bitwise_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<instruction_set::BitwiseOperation> {
+) -> Result<instruction_set::BitwiseOperation> {
     Ok(instruction_set::BitwiseOperation {
         result_type: numeric_type(src)?,
         x: unsigned_index(src, size)?,
@@ -386,11 +389,11 @@ fn bitwise_operation<R: Read>(
 fn bitwise_shift_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<instruction_set::BitwiseShiftOperation> {
+) -> Result<instruction_set::BitwiseShiftOperation> {
     bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
 }
 
-fn call_flags<R: Read>(src: &mut R) -> ParseResult<CallFlags> {
+fn call_flags<R: Read>(src: &mut R) -> Result<CallFlags> {
     let bits = byte(src)?;
     let flags: CallFlags = unsafe { std::mem::transmute(bits) };
     if flags.contains(CallFlags::TAIL_CALL_MASK) {
@@ -399,7 +402,7 @@ fn call_flags<R: Read>(src: &mut R) -> ParseResult<CallFlags> {
     Ok(flags)
 }
 
-fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<Instruction> {
+fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instruction> {
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
@@ -459,12 +462,12 @@ fn byte_flags<B, C: FnOnce(u8) -> Option<B>, E: FnOnce(u8) -> Error, R: Read>(
     src: &mut R,
     converter: C,
     error: E,
-) -> ParseResult<B> {
+) -> Result<B> {
     let bits = byte(src)?;
     converter(bits).ok_or_else(|| error(bits))
 }
 
-fn code_block<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::CodeBlock> {
+fn code_block<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::CodeBlock> {
     let flags = byte_flags(
         src,
         flags::CodeBlock::from_bits,
@@ -488,29 +491,26 @@ fn code_block<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<f
     })
 }
 
-fn function_body<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::Code> {
+fn function_body<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::Code> {
     Ok(format::Code {
         entry_block: code_block(src, size)?,
         blocks: length_encoded_vector(src, size, |src| code_block(src, size))?,
     })
 }
 
-fn data_array<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::DataArray> {
+fn data_array<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::DataArray> {
     let length = unsigned_length(src, size)?;
     many_bytes(src, length).map(|data| format::DataArray(format::LenVec(data)))
 }
 
-fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> Error, R: Read>(
-    src: &mut R,
-    error: E,
-) -> ParseResult<B> {
+fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> Error, R: Read>(src: &mut R, error: E) -> Result<B> {
     byte_flags(src, |bits| B::try_from(bits).ok(), error)
 }
 
 fn namespace_definition<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::Namespace> {
+) -> Result<format::Namespace> {
     let name = unsigned_index(src, size)?;
     let flags = byte_flags(
         src,
@@ -535,7 +535,7 @@ fn symbol<F: flags::ExportFlag, R: Read>(
     src: &mut R,
     flags: F,
     size: numeric::IntegerSize,
-) -> ParseResult<Option<format::indices::Identifier>> {
+) -> Result<Option<format::indices::Identifier>> {
     if flags.is_export() {
         unsigned_index(src, size).map(Some)
     } else {
@@ -543,10 +543,7 @@ fn symbol<F: flags::ExportFlag, R: Read>(
     }
 }
 
-fn struct_definition<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<format::Struct> {
+fn struct_definition<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::Struct> {
     let name = unsigned_index(src, size)?;
     let flags = byte_flags(src, flags::Struct::from_bits, Error::InvalidStructFlags)?;
 
@@ -565,7 +562,7 @@ fn struct_definition<R: Read>(
 fn function_definition<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::Function> {
+) -> Result<format::Function> {
     let name = unsigned_index(src, size)?;
     let signature = unsigned_index(src, size)?;
     let flags = byte_flags(src, flags::Function::from_bits, Error::InvalidFunctionFlags)?;
@@ -585,10 +582,7 @@ fn function_definition<R: Read>(
     })
 }
 
-fn struct_layout<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<format::StructLayout> {
+fn struct_layout<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::StructLayout> {
     Ok(
         match byte_flags(
             src,
@@ -601,7 +595,7 @@ fn struct_layout<R: Read>(
     )
 }
 
-fn magic_bytes<R: Read>(src: &mut R, magic: &[u8], error: Error) -> ParseResult<()> {
+fn magic_bytes<R: Read>(src: &mut R, magic: &[u8], error: Error) -> Result<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
         Ok(())
@@ -610,7 +604,7 @@ fn magic_bytes<R: Read>(src: &mut R, magic: &[u8], error: Error) -> ParseResult<
     }
 }
 
-fn integer_size<R: Read>(src: &mut R) -> ParseResult<numeric::IntegerSize> {
+fn integer_size<R: Read>(src: &mut R) -> Result<numeric::IntegerSize> {
     byte(src).and_then(|value| match value {
         0 => Ok(numeric::IntegerSize::I1),
         1 => Ok(numeric::IntegerSize::I2),
@@ -619,12 +613,12 @@ fn integer_size<R: Read>(src: &mut R) -> ParseResult<numeric::IntegerSize> {
     })
 }
 
-fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> ParseResult<T>, R: Read>(
+fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> Result<T>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
     parser: F,
-) -> ParseResult<format::LenVecBytes<T>> {
+) -> Result<format::LenVecBytes<T>> {
     let length = unsigned_length(src, size)?;
     Ok(format::LenBytes(if length > 0usize {
         let mut buffer = buffer_pool.rent_with_length(length);
@@ -636,12 +630,12 @@ fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> ParseResult<T>, R: Read>(
     }))
 }
 
-fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
+fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> Result<T>>(
     data_vectors: &[Vec<u8>],
     index: usize,
     default: D,
     parser: F,
-) -> ParseResult<format::LenBytes<T>> {
+) -> Result<format::LenBytes<T>> {
     data_vectors
         .get(index)
         .and_then(|data| {
@@ -655,22 +649,26 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
         .map(format::LenBytes)
 }
 
-fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> ParseResult<T>>(
+fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> Result<T>>(
     data_vectors: &[Vec<u8>],
     index: usize,
     parser: F,
-) -> ParseResult<format::LenBytes<T>> {
+) -> Result<format::LenBytes<T>> {
     module_data(data_vectors, index, T::default, parser)
 }
 
 /// Parses a binary module.
-pub fn parse_module<R: Read>(input: &mut R) -> ParseResult<format::Module> {
+pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
     magic_bytes(input, format::MAGIC, Error::InvalidModuleMagic)?;
     let size = integer_size(input)?;
     let format_version = format::FormatVersion {
         major: unsigned_integer(input, size)?,
         minor: unsigned_integer(input, size)?,
     };
+
+    if !format_version.is_supported() {
+        return Err(Error::UnsupportedFormatVersion(format_version));
+    }
 
     let data_count = unsigned_integer(input, size)?;
 
