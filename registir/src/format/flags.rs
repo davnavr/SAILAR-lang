@@ -69,15 +69,32 @@ macro_rules! numeric_enum_conversion {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u8)]
-pub enum TypeLayout {
-    /// The runtime or compiler is free to decide how the fields of the type are laid out.
+pub enum StructLayout {
+    /// The runtime or compiler is free to decide how the fields of the struct are laid out.
     Unspecified = 0,
-    /// The fields of the type are laid out sequentially, and the size of the type is calculated automatically.
+    /// The fields of the struct are laid out sequentially, and the size of the struct is calculated automatically.
     Sequential,
     /// The size and offset of fields is specified manually.
     ExplicitOffsets,
-    /// The fields of the type are laid out sequentially, but the size of the type is specified manually.
+    /// The fields of the struct are laid out sequentially, but the size of the struct is specified manually.
     ExplicitSize,
 }
 
-numeric_enum_conversion!(TypeLayout, u8, Unspecified, ExplicitSize);
+numeric_enum_conversion!(StructLayout, u8, Unspecified, ExplicitSize);
+
+pub trait ExportFlag {
+    fn is_export(self) -> bool;
+}
+
+macro_rules! export_flag {
+    ($flag_type: ty) => {
+        impl ExportFlag for $flag_type {
+            fn is_export(self) -> bool {
+                self.contains(Self::IS_EXPORT)
+            }
+        }
+    };
+}
+
+export_flag!(Struct);
+export_flag!(Function);

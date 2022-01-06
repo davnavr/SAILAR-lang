@@ -29,7 +29,7 @@ impl Format {
 
 impl std::default::Default for Format {
     fn default() -> Self {
-        MINIMUM_FORMAT_VERSION
+        MINIMUM_FORMAT_VERSION.clone()
     }
 }
 
@@ -45,10 +45,18 @@ impl<T: Into<UInteger>> std::iter::FromIterator<T> for Numbers {
 
 #[cfg(test)]
 mod tests {
-    use crate::format::{FormatVersion, numeric::UInteger};
+    use crate::format::{numeric::UInteger, FormatVersion};
 
     #[test]
     fn larger_format_major_version_is_greater() {
-        assert!(FormatVersion { major: UInteger(2), minor: UInteger(3) } > FormatVersion { major: UInteger(1), minor: UInteger(6) })
+        assert!(
+            FormatVersion {
+                major: UInteger(2),
+                minor: UInteger(3)
+            } > FormatVersion {
+                major: UInteger(1),
+                minor: UInteger(6)
+            }
+        )
     }
 }

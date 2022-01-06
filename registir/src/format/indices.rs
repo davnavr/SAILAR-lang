@@ -77,7 +77,7 @@ index_type!(
 );
 
 index_type!(
-    MethodSignature,
+    FunctionSignature,
     "An index into the module's method signatures, starting at `0`."
 );
 
@@ -123,20 +123,14 @@ index_type!(
     "An index into the module's defined fields."
 );
 
-index_type!(
-    FieldImport,
-    "An index into the module's imported fields."
-);
+index_type!(FieldImport, "An index into the module's imported fields.");
 
 index_type!(
     GlobalDefinition,
     "An index into the module's defined globals."
 );
 
-index_type!(
-    GlobalImport,
-    "An index into the module's imported globals."
-);
+index_type!(GlobalImport, "An index into the module's imported globals.");
 
 index_type!(
     TypeLayout,

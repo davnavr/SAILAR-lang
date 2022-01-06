@@ -1,7 +1,7 @@
 use crate::format::{indices, type_system, LenVec};
 use bitflags::bitflags;
 
-pub use indices::{Method as MethodIndex, Register as RegisterIndex};
+pub use indices::{Function as FunctionIndex, Register as RegisterIndex};
 pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
@@ -100,12 +100,10 @@ pub enum Opcode {
     Phi,
     Select,
     Switch,
-    Br = 5,
+    Br,
     BrIf,
     Call,
-    CallVirt,
-    //CallIndr,
-    Add = 10,
+    Add,
     Sub,
     Mul,
     Div,
@@ -114,10 +112,10 @@ pub enum Opcode {
     Not,
     Xor,
     Rem,
-    //Mod,
-    //StoresBothDivisionResultAndRemainder,
-    //StoresBothModuloAndRemainder,
-    ShL = 22,
+    Mod,
+    StoresBothDivisionResultAndRemainder,
+    StoresBothModuloAndRemainder,
+    ShL,
     ShR,
     RotL,
     RotR,
@@ -290,12 +288,12 @@ impl TailCall {
 
 /// # Structure
 /// - [`CallInstruction::flags()`]
-/// - [`method`]
+/// - [`function`]
 /// - [`arguments`]
 #[derive(Debug)]
 pub struct CallInstruction {
     pub tail_call: TailCall,
-    pub method: MethodIndex,
+    pub function: FunctionIndex,
     pub arguments: LenVec<RegisterIndex>,
 }
 
@@ -309,10 +307,6 @@ impl CallInstruction {
 ///
 /// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
 /// included as usual to simplify parsing.
-///
-/// For instructions that call another method, such as `call` or `call.virt`, the number of registers used as
-/// arguments must exactly match the number of arguments specified by the signature of the method. Additionally, the number
-/// of temporary registers introduced is equal to the number of return values in the method's signature.
 ///
 /// Floating-point numbers used in bitwise instructions such as [`And`] or [`Xor`] are simply reinterpreted as values of their
 /// corresponding unsigned integer counterparts, (e.g. an `f32` is reinpterpreted as a `u32`).
@@ -328,7 +322,7 @@ pub enum Instruction {
     /// ```txt
     /// ret <value1>, <value2>, ...;
     /// ```
-    /// Returns the values in the specified registers and transfers control back to the calling method.
+    /// Returns the values in the specified registers and transfers control back to the calling function.
     ///
     /// Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
@@ -351,10 +345,13 @@ pub enum Instruction {
         input_registers: LenVec<RegisterIndex>,
     },
     /// ```txt
-    /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <method> <argument0>, <argument1>, ...;
+    /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <function> <argument0>, <argument1>, ...;
     /// ```
-    /// Calls the specified `method`, supplying the values in the arguments registers as inputs to the entry block of the
-    /// method.
+    /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
+    ///
+    /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
+    /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
+    /// function's signature.
     Call(CallInstruction),
 
     /// ```txt
@@ -476,14 +473,14 @@ impl Instruction {
     }
 
     /// Calculates the number of temporary registers introduced after execution of the instruction.
-    pub fn return_count<R: FnOnce(MethodIndex) -> u8>(&self, method_return_count: R) -> u8 {
+    pub fn return_count<R: FnOnce(FunctionIndex) -> u8>(&self, function_return_count: R) -> u8 {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
             | Instruction::Br(_, _)
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,
-            Instruction::Call(CallInstruction { method, .. }) => method_return_count(*method),
+            Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             | Instruction::Mul(BasicArithmeticOperation { overflow, .. })

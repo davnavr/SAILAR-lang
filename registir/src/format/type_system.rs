@@ -39,7 +39,7 @@ impl std::fmt::Display for PrimitiveType {
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum SimpleType {
     Primitive(PrimitiveType),
-    Defined(indices::Type),
+    Defined(indices::Struct),
     NativePointer(Box<SimpleType>),
 }
 

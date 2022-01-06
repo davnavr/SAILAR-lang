@@ -1,15 +1,16 @@
 use crate::{
-    buffers, format,
+    buffers,
     format::{
-        instruction_set,
-        instruction_set::{CallFlags, Instruction, Opcode, TailCall},
-        numeric, structures, type_system,
+        self, flags,
+        instruction_set::{self, CallFlags, Instruction, Opcode, TailCall},
+        numeric, type_system,
     },
 };
+use std::io::Read;
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum ParseError {
+pub enum Error {
     InvalidModuleMagic,
     InvalidIntegerSize(u8),
     InvalidDataVectorCount(numeric::UInteger),
@@ -17,6 +18,7 @@ pub enum ParseError {
     InvalidHeaderFieldCount(numeric::UInteger),
     InvalidIdentifierCharacter(std::str::Utf8Error),
     EmptyIdentifier,
+    InvalidNamespaceFlags(u8),
     InvalidTypeSignatureTag(u8),
     InvalidPrimitiveType(u8),
     InvalidIntegerConstantType(type_system::PrimitiveType),
@@ -26,14 +28,13 @@ pub enum ParseError {
     InvalidNumericType(u8),
     InvalidCallFlags(u8),
     InvalidVisibilityFlags(u8),
-    InvalidTypeDefinitionFlags(u8),
-    InvalidMethodFlags(u8),
-    InvalidMethodImplementationFlags(u8),
-    InvalidTypeLayoutFlags(u8),
+    InvalidStructFlags(u8),
+    InvalidFunctionFlags(u8),
+    InvalidStructLayoutFlags(u8),
     InputOutputError(std::io::Error),
 }
 
-impl std::fmt::Display for ParseError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidModuleMagic => {
@@ -54,6 +55,11 @@ impl std::fmt::Display for ParseError {
                 count
             ),
             Self::EmptyIdentifier => f.write_str("Identifiers must not be empty"),
+            Self::InvalidNamespaceFlags(flags) => write!(
+                f,
+                "{:#02X} is not a valid combination of namespace flags",
+                flags
+            ),
             Self::InvalidIdentifierCharacter(error) => error.fmt(f),
             Self::InvalidTypeSignatureTag(tag) => {
                 write!(f, "{:#02X} is not a valid type signature tag", tag)
@@ -86,28 +92,21 @@ impl std::fmt::Display for ParseError {
             Self::InvalidVisibilityFlags(flag) => {
                 write!(f, "{:#02X} is not a valid visibility value", flag)
             }
-            Self::InvalidTypeDefinitionFlags(flag) => write!(
-                f,
-                "{:#02X} is not a valid type definition flags combination",
-                flag
-            ),
-            Self::InvalidMethodFlags(flag) => {
-                write!(f, "{:#02X} is not a valid method flags combination", flag)
+            Self::InvalidStructFlags(flag) => {
+                write!(f, "{:#02X} is not a valid struct flags combination", flag)
             }
-            Self::InvalidMethodImplementationFlags(flag) => write!(
-                f,
-                "{:#02X} is not a valid method implementation flags combination",
-                flag
-            ),
-            Self::InvalidTypeLayoutFlags(flag) => {
-                write!(f, "{:#02X} is not a valid type layout", flag)
+            Self::InvalidFunctionFlags(flag) => {
+                write!(f, "{:#02X} is not a valid function flags combination", flag)
+            }
+            Self::InvalidStructLayoutFlags(flag) => {
+                write!(f, "{:#02X} is not a valid struct layout", flag)
             }
             Self::InputOutputError(error) => error.fmt(f),
         }
     }
 }
 
-impl std::error::Error for ParseError {
+impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::InputOutputError(error) => Some(error),
@@ -116,35 +115,35 @@ impl std::error::Error for ParseError {
     }
 }
 
-pub type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = std::result::Result<T, Error>;
 
-fn fill_buffer(src: &mut impl std::io::Read, buffer: &mut [u8]) -> ParseResult<()> {
-    let count = src.read(buffer).map_err(ParseError::InputOutputError)?;
+fn fill_buffer(src: &mut impl Read, buffer: &mut [u8]) -> ParseResult<()> {
+    let count = src.read(buffer).map_err(Error::InputOutputError)?;
     if count == buffer.len() {
         Ok(())
     } else {
-        Err(ParseError::InvalidByteLength {
+        Err(Error::InvalidByteLength {
             expected: buffer.len(),
             actual: count,
         })
     }
 }
 
-fn fixed_bytes<R: std::io::Read, const L: usize>(src: &mut R) -> ParseResult<[u8; L]> {
+fn fixed_bytes<R: Read, const L: usize>(src: &mut R) -> ParseResult<[u8; L]> {
     let mut buffer = [0u8; L];
     fill_buffer(src, &mut buffer).map(|()| buffer)
 }
 
-fn byte<R: std::io::Read>(src: &mut R) -> ParseResult<u8> {
+fn byte<R: Read>(src: &mut R) -> ParseResult<u8> {
     fixed_bytes::<R, 1>(src).map(|bytes| bytes[0])
 }
 
-fn many_bytes<R: std::io::Read>(src: &mut R, length: usize) -> ParseResult<Vec<u8>> {
+fn many_bytes<R: Read>(src: &mut R, length: usize) -> ParseResult<Vec<u8>> {
     let mut buffer = vec![0u8; length];
     fill_buffer(src, buffer.as_mut_slice()).map(|()| buffer)
 }
 
-fn unsigned_integer<R: std::io::Read>(
+fn unsigned_integer<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<numeric::UInteger> {
@@ -158,21 +157,18 @@ fn unsigned_integer<R: std::io::Read>(
     }
 }
 
-fn unsigned_length<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<usize> {
+fn unsigned_length<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<usize> {
     unsigned_integer(src, size).map(|value| usize::try_from(value).unwrap())
 }
 
-fn unsigned_index<I: From<numeric::UInteger>, R: std::io::Read>(
+fn unsigned_index<I: From<numeric::UInteger>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<I> {
     unsigned_integer(src, size).map(I::from)
 }
 
-fn identifier<R: std::io::Read>(
+fn identifier<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
@@ -181,15 +177,15 @@ fn identifier<R: std::io::Read>(
     let mut buffer = buffer_pool.rent_with_length(length);
     fill_buffer(src, &mut buffer)?;
     std::str::from_utf8(&buffer)
-        .map_err(ParseError::InvalidIdentifierCharacter)
-        .and_then(|s| format::Identifier::try_from(s).map_err(|_| ParseError::EmptyIdentifier))
+        .map_err(Error::InvalidIdentifierCharacter)
+        .and_then(|s| format::Identifier::try_from(s).map_err(|_| Error::EmptyIdentifier))
 }
 
-fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: std::io::Read>(
+fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     mut parser: P,
-) -> ParseResult<structures::LengthEncodedVector<T>> {
+) -> ParseResult<format::LenVec<T>> {
     let length = unsigned_length(src, size)?;
     let mut buffer = Vec::<T>::with_capacity(length);
 
@@ -198,24 +194,24 @@ fn length_encoded_vector<T, P: FnMut(&mut R) -> ParseResult<T>, R: std::io::Read
         buffer.push(item);
     }
 
-    Ok(structures::LengthEncodedVector(buffer))
+    Ok(format::LenVec(buffer))
 }
 
-fn length_encoded_indices<I: From<numeric::UInteger>, R: std::io::Read>(
+fn length_encoded_indices<I: From<numeric::UInteger>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<structures::LengthEncodedVector<I>> {
+) -> ParseResult<format::LenVec<I>> {
     length_encoded_vector(src, size, |src| unsigned_integer(src, size).map(I::from))
 }
 
-fn version_numbers<R: std::io::Read>(
+fn version_numbers<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<format::VersionNumbers> {
     length_encoded_vector(src, size, |src| unsigned_integer(src, size)).map(format::VersionNumbers)
 }
 
-fn module_identifier<R: std::io::Read>(
+fn module_identifier<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
@@ -226,7 +222,7 @@ fn module_identifier<R: std::io::Read>(
     })
 }
 
-fn module_header<R: std::io::Read>(
+fn module_header<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
@@ -235,7 +231,7 @@ fn module_header<R: std::io::Read>(
 
     if field_count < format::MIN_HEADER_FIELD_COUNT || field_count > format::MAX_HEADER_FIELD_COUNT
     {
-        return Err(ParseError::InvalidHeaderFieldCount(field_count));
+        return Err(Error::InvalidHeaderFieldCount(field_count));
     }
 
     let id = module_identifier(src, size, buffer_pool)?;
@@ -269,7 +265,7 @@ fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveTyp
 //         })
 // }
 
-fn type_signature<R: std::io::Read>(src: &mut R) -> ParseResult<type_system::AnyType> {
+fn type_signature<R: Read>(src: &mut R) -> ParseResult<type_system::AnyType> {
     let tag: type_system::TypeTag = unsafe { std::mem::transmute(byte(src)?) }; // TODO: Define a conversion function going from u8 to TypeTag.
     primitive_type(tag)
         .map(|p| {
@@ -277,39 +273,37 @@ fn type_signature<R: std::io::Read>(src: &mut R) -> ParseResult<type_system::Any
                 type_system::SimpleType::Primitive(p),
             )))
         })
-        .unwrap_or_else(|| Err(ParseError::InvalidTypeSignatureTag(tag as u8)))
+        .unwrap_or_else(|| Err(Error::InvalidTypeSignatureTag(tag as u8)))
 }
 
-fn method_signature<R: std::io::Read>(
+fn function_signature<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::MethodSignature> {
-    Ok(format::MethodSignature {
+) -> ParseResult<format::FunctionSignature> {
+    Ok(format::FunctionSignature {
         return_types: length_encoded_indices(src, size)?,
         parameter_types: length_encoded_indices(src, size)?,
     })
 }
 
-fn opcode<R: std::io::Read>(src: &mut R) -> ParseResult<Opcode> {
+fn opcode<R: Read>(src: &mut R) -> ParseResult<Opcode> {
     let mut opcode = 0u32;
     loop {
         let value = byte(src)?;
         opcode += u32::from(value);
         if value != Opcode::Continuation as u8 {
-            return Opcode::try_from(opcode).map_err(|()| ParseError::InvalidOpcode(opcode));
+            return Opcode::try_from(opcode).map_err(|()| Error::InvalidOpcode(opcode));
         }
     }
 }
 
-fn constant_integer<R: std::io::Read>(
-    src: &mut R,
-) -> ParseResult<instruction_set::IntegerConstant> {
+fn constant_integer<R: Read>(src: &mut R) -> ParseResult<instruction_set::IntegerConstant> {
     use instruction_set::IntegerConstant;
     use type_system::PrimitiveType;
 
     let tag = byte(src)?;
     let integer_type = primitive_type(unsafe { std::mem::transmute(tag) })
-        .ok_or(ParseError::InvalidPrimitiveType(tag))?;
+        .ok_or(Error::InvalidPrimitiveType(tag))?;
 
     match integer_type {
         PrimitiveType::U8 => Ok(IntegerConstant::U8(byte(src)?)),
@@ -323,31 +317,29 @@ fn constant_integer<R: std::io::Read>(
         PrimitiveType::UNative
         | PrimitiveType::SNative
         | PrimitiveType::F32
-        | PrimitiveType::F64 => Err(ParseError::InvalidIntegerConstantType(integer_type)),
+        | PrimitiveType::F64 => Err(Error::InvalidIntegerConstantType(integer_type)),
     }
 }
 
-fn numeric_type<R: std::io::Read>(src: &mut R) -> ParseResult<instruction_set::NumericType> {
+fn numeric_type<R: Read>(src: &mut R) -> ParseResult<instruction_set::NumericType> {
     let tag_byte = byte(src)?;
     let tag: type_system::TypeTag = unsafe { std::mem::transmute(tag_byte) };
     primitive_type(tag)
-        .ok_or(ParseError::InvalidNumericType(tag_byte))
+        .ok_or(Error::InvalidNumericType(tag_byte))
         .map(instruction_set::NumericType::Primitive)
 }
 
-fn arithmetic_flags<R: std::io::Read>(
-    src: &mut R,
-) -> ParseResult<instruction_set::ArithmeticFlags> {
+fn arithmetic_flags<R: Read>(src: &mut R) -> ParseResult<instruction_set::ArithmeticFlags> {
     let bits = byte(src)?;
     let flags: instruction_set::ArithmeticFlags = unsafe { std::mem::transmute(bits) };
     if instruction_set::ArithmeticFlags::all().contains(flags) {
         Ok(flags)
     } else {
-        Err(ParseError::InvalidArithmeticFlags(bits))
+        Err(Error::InvalidArithmeticFlags(bits))
     }
 }
 
-fn basic_arithmetic_operation<R: std::io::Read>(
+fn basic_arithmetic_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<instruction_set::BasicArithmeticOperation> {
@@ -360,7 +352,7 @@ fn basic_arithmetic_operation<R: std::io::Read>(
     })
 }
 
-fn division_operation<R: std::io::Read>(
+fn division_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<instruction_set::DivisionOperation> {
@@ -380,7 +372,7 @@ fn division_operation<R: std::io::Read>(
     })
 }
 
-fn bitwise_operation<R: std::io::Read>(
+fn bitwise_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<instruction_set::BitwiseOperation> {
@@ -391,26 +383,23 @@ fn bitwise_operation<R: std::io::Read>(
     })
 }
 
-fn bitwise_shift_operation<R: std::io::Read>(
+fn bitwise_shift_operation<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
 ) -> ParseResult<instruction_set::BitwiseShiftOperation> {
     bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
 }
 
-fn call_flags<R: std::io::Read>(src: &mut R) -> ParseResult<CallFlags> {
+fn call_flags<R: Read>(src: &mut R) -> ParseResult<CallFlags> {
     let bits = byte(src)?;
     let flags: CallFlags = unsafe { std::mem::transmute(bits) };
     if flags.contains(CallFlags::TAIL_CALL_MASK) {
-        return Err(ParseError::InvalidCallFlags(bits));
+        return Err(Error::InvalidCallFlags(bits));
     }
     Ok(flags)
 }
 
-fn instruction<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<Instruction> {
+fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<Instruction> {
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
@@ -436,7 +425,7 @@ fn instruction<R: std::io::Read>(
                     } else {
                         TailCall::Allowed
                     },
-                    method: unsigned_index(src, size)?,
+                    function: unsigned_index(src, size)?,
                     arguments: length_encoded_indices(src, size)?,
                 },
             ))
@@ -466,7 +455,7 @@ fn instruction<R: std::io::Read>(
     }
 }
 
-fn byte_flags<B, C: FnOnce(u8) -> Option<B>, E: FnOnce(u8) -> ParseError, R: std::io::Read>(
+fn byte_flags<B, C: FnOnce(u8) -> Option<B>, E: FnOnce(u8) -> Error, R: Read>(
     src: &mut R,
     converter: C,
     error: E,
@@ -475,14 +464,11 @@ fn byte_flags<B, C: FnOnce(u8) -> Option<B>, E: FnOnce(u8) -> ParseError, R: std
     converter(bits).ok_or_else(|| error(bits))
 }
 
-fn code_block<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<format::CodeBlock> {
+fn code_block<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::CodeBlock> {
     let flags = byte_flags(
         src,
-        format::CodeBlockFlags::from_bits,
-        ParseError::InvalidCodeBlockFlags,
+        flags::CodeBlock::from_bits,
+        Error::InvalidCodeBlockFlags,
     )?;
 
     let input_register_count = unsigned_integer(src, size)?;
@@ -493,7 +479,7 @@ fn code_block<R: std::io::Read>(
         instructions: {
             let length = unsigned_length(src, size)?;
             let buffer = many_bytes(src, length)?;
-            structures::ByteLengthEncoded(length_encoded_vector(
+            format::LenBytes(length_encoded_vector(
                 &mut buffer.as_slice(),
                 size,
                 |src| instruction(src, size),
@@ -502,114 +488,120 @@ fn code_block<R: std::io::Read>(
     })
 }
 
-fn method_body<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<format::Code> {
+fn function_body<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::Code> {
     Ok(format::Code {
         entry_block: code_block(src, size)?,
         blocks: length_encoded_vector(src, size, |src| code_block(src, size))?,
     })
 }
 
-fn data_array<R: std::io::Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> ParseResult<format::DataArray> {
+fn data_array<R: Read>(src: &mut R, size: numeric::IntegerSize) -> ParseResult<format::DataArray> {
     let length = unsigned_length(src, size)?;
-    many_bytes(src, length).map(|data| format::DataArray(structures::LengthEncodedVector(data)))
+    many_bytes(src, length).map(|data| format::DataArray(format::LenVec(data)))
 }
 
-fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> ParseError, R: std::io::Read>(
+fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> Error, R: Read>(
     src: &mut R,
     error: E,
 ) -> ParseResult<B> {
     byte_flags(src, |bits| B::try_from(bits).ok(), error)
 }
 
-fn type_definition<R: std::io::Read>(
+fn namespace_definition<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::Type> {
-    Ok(format::Type {
-        name: unsigned_index(src, size)?,
-        namespace: unsigned_index(src, size)?,
-        visibility: byte_enum(src, ParseError::InvalidVisibilityFlags)?,
-        flags: byte_flags(
-            src,
-            format::TypeFlags::from_bits,
-            ParseError::InvalidTypeDefinitionFlags,
-        )?,
-        layout: unsigned_index(src, size)?,
-        inherited_types: length_encoded_indices(src, size)?,
-        fields: length_encoded_indices(src, size)?,
-        methods: length_encoded_indices(src, size)?,
-        vtable: length_encoded_vector(src, size, |src| {
-            Ok(format::MethodOverride {
-                declaration: unsigned_index(src, size)?,
-                implementation: unsigned_index(src, size)?,
-            })
-        })?,
+) -> ParseResult<format::Namespace> {
+    let name = unsigned_index(src, size)?;
+    let flags = byte_flags(
+        src,
+        flags::Namespace::from_bits,
+        Error::InvalidNamespaceFlags,
+    )?;
+
+    Ok(format::Namespace {
+        name,
+        parent: if flags.contains(flags::Namespace::HAS_PARENT) {
+            Some(unsigned_index(src, size)?)
+        } else {
+            None
+        },
+        structs: length_encoded_indices(src, size)?,
+        globals: length_encoded_indices(src, size)?,
+        functions: length_encoded_indices(src, size)?,
     })
 }
 
-//field_definition
+fn symbol<F: flags::ExportFlag, R: Read>(
+    src: &mut R,
+    flags: F,
+    size: numeric::IntegerSize,
+) -> ParseResult<Option<format::indices::Identifier>> {
+    if flags.is_export() {
+        unsigned_index(src, size).map(Some)
+    } else {
+        Ok(None)
+    }
+}
 
-fn method_definition<R: std::io::Read>(
+fn struct_definition<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::Method> {
-    let owner = unsigned_index(src, size)?;
+) -> ParseResult<format::Struct> {
     let name = unsigned_index(src, size)?;
-    let visibility = byte_enum(src, ParseError::InvalidVisibilityFlags)?;
-    let flags = byte_flags(
-        src,
-        format::MethodFlags::from_bits,
-        ParseError::InvalidMethodFlags,
-    )?;
-    let implementation_flags = byte_flags(
-        src,
-        format::MethodImplementationFlags::from_bits,
-        ParseError::InvalidMethodImplementationFlags,
-    )?;
+    let flags = byte_flags(src, flags::Struct::from_bits, Error::InvalidStructFlags)?;
 
-    Ok(format::Method {
-        owner,
+    Ok(format::Struct {
         name,
-        visibility,
-        flags,
-        signature: unsigned_index(src, size)?,
-        // TODO: How to deal with EXTERNAL and NONE/ABSTRACT flags being set?
-        body: if implementation_flags.contains(format::MethodImplementationFlags::NONE) {
-            format::MethodBody::Abstract
-        } else if implementation_flags.contains(format::MethodImplementationFlags::EXTERNAL) {
-            format::MethodBody::External {
+        symbol: symbol(src, flags, size)?,
+        layout: unsigned_index(src, size)?,
+        fields: length_encoded_indices(src, size)?,
+    })
+}
+
+//global_definition
+
+//field_definition
+
+fn function_definition<R: Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> ParseResult<format::Function> {
+    let name = unsigned_index(src, size)?;
+    let signature = unsigned_index(src, size)?;
+    let flags = byte_flags(src, flags::Function::from_bits, Error::InvalidFunctionFlags)?;
+
+    Ok(format::Function {
+        name,
+        signature,
+        symbol: symbol(src, flags, size)?,
+        body: if flags.contains(flags::Function::IS_EXTERNAL) {
+            format::FunctionBody::External {
                 library: unsigned_index(src, size)?,
                 entry_point_name: unsigned_index(src, size)?,
             }
         } else {
-            format::MethodBody::Defined(unsigned_index(src, size)?)
+            format::FunctionBody::Defined(unsigned_index(src, size)?)
         },
     })
 }
 
-fn type_layout<R: std::io::Read>(
+fn struct_layout<R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
-) -> ParseResult<format::TypeLayout> {
+) -> ParseResult<format::StructLayout> {
     Ok(
         match byte_flags(
             src,
-            |bits| format::TypeLayoutFlags::try_from(bits).ok(),
-            ParseError::InvalidTypeLayoutFlags,
+            |bits| flags::StructLayout::try_from(bits).ok(),
+            Error::InvalidStructLayoutFlags,
         )? {
-            format::TypeLayoutFlags::Unspecified => format::TypeLayout::Unspecified,
-            _ => todo!("Parsing of specific type layouts is not yet supported"),
+            flags::StructLayout::Unspecified => format::StructLayout::Unspecified,
+            _ => todo!("Parsing of specific struct layouts is not yet supported"),
         },
     )
 }
 
-fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -> ParseResult<()> {
+fn magic_bytes<R: Read>(src: &mut R, magic: &[u8], error: Error) -> ParseResult<()> {
     let actual = many_bytes(src, magic.len())?;
     if actual == magic {
         Ok(())
@@ -618,29 +610,29 @@ fn magic_bytes<R: std::io::Read>(src: &mut R, magic: &[u8], error: ParseError) -
     }
 }
 
-fn integer_size<R: std::io::Read>(src: &mut R) -> ParseResult<numeric::IntegerSize> {
+fn integer_size<R: Read>(src: &mut R) -> ParseResult<numeric::IntegerSize> {
     byte(src).and_then(|value| match value {
         0 => Ok(numeric::IntegerSize::I1),
         1 => Ok(numeric::IntegerSize::I2),
         2 => Ok(numeric::IntegerSize::I4),
-        _ => Err(ParseError::InvalidIntegerSize(value)),
+        _ => Err(Error::InvalidIntegerSize(value)),
     })
 }
 
-fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> ParseResult<T>, R: std::io::Read>(
+fn double_length_encoded<T, F: FnMut(&mut &[u8]) -> ParseResult<T>, R: Read>(
     src: &mut R,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
     parser: F,
-) -> ParseResult<structures::DoubleLengthEncodedVector<T>> {
+) -> ParseResult<format::LenVecBytes<T>> {
     let length = unsigned_length(src, size)?;
-    Ok(structures::ByteLengthEncoded(if length > 0usize {
+    Ok(format::LenBytes(if length > 0usize {
         let mut buffer = buffer_pool.rent_with_length(length);
         fill_buffer(src, &mut buffer)?;
         let mut buffer_slice: &[u8] = &mut buffer;
         length_encoded_vector(&mut buffer_slice, size, parser)?
     } else {
-        structures::LengthEncodedVector(Vec::new())
+        format::LenVec(Vec::new())
     }))
 }
 
@@ -649,7 +641,7 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
     index: usize,
     default: D,
     parser: F,
-) -> ParseResult<structures::ByteLengthEncoded<T>> {
+) -> ParseResult<format::LenBytes<T>> {
     data_vectors
         .get(index)
         .and_then(|data| {
@@ -660,20 +652,20 @@ fn module_data<T, D: FnOnce() -> T, F: FnOnce(&[u8]) -> ParseResult<T>>(
             }
         })
         .unwrap_or_else(|| Ok(default()))
-        .map(structures::ByteLengthEncoded)
+        .map(format::LenBytes)
 }
 
 fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> ParseResult<T>>(
     data_vectors: &[Vec<u8>],
     index: usize,
     parser: F,
-) -> ParseResult<structures::ByteLengthEncoded<T>> {
+) -> ParseResult<format::LenBytes<T>> {
     module_data(data_vectors, index, T::default, parser)
 }
 
 /// Parses a binary module.
-pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Module> {
-    magic_bytes(input, format::MAGIC, ParseError::InvalidModuleMagic)?;
+pub fn parse_module<R: Read>(input: &mut R) -> ParseResult<format::Module> {
+    magic_bytes(input, format::MAGIC, Error::InvalidModuleMagic)?;
     let size = integer_size(input)?;
     let format_version = format::FormatVersion {
         major: unsigned_integer(input, size)?,
@@ -683,7 +675,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
     let data_count = unsigned_integer(input, size)?;
 
     if data_count < format::MIN_MODULE_DATA_COUNT || data_count > format::MAX_MODULE_DATA_COUNT {
-        return Err(ParseError::InvalidDataVectorCount(data_count));
+        return Err(Error::InvalidDataVectorCount(data_count));
     }
 
     let mut data_vectors: Vec<Vec<u8>> = Vec::with_capacity(data_count.try_into().unwrap());
@@ -699,7 +691,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
         integer_size: size,
         format_version,
         // Header is always present.
-        header: structures::ByteLengthEncoded(module_header(
+        header: format::LenBytes(module_header(
             &mut data_vectors[0].as_slice(),
             size,
             &buffers,
@@ -707,55 +699,59 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
         identifiers: module_data(
             &data_vectors,
             1,
-            || structures::LengthEncodedVector(Vec::new()),
+            || format::LenVec(Vec::new()),
             |mut data| {
                 length_encoded_vector(&mut data, size, |src| identifier(src, size, &buffers))
             },
         )?,
-        namespaces: module_data_or_default(&data_vectors, 2, |mut data| {
-            length_encoded_vector(&mut data, size, |src| length_encoded_indices(src, size))
-        })?,
+        namespaces: module_data(
+            &data_vectors,
+            2,
+            || format::LenVec(Vec::new()),
+            |mut data| {
+                length_encoded_vector(&mut data, size, |src| namespace_definition(src, size))
+            },
+        )?,
         type_signatures: module_data(
             &data_vectors,
             3,
-            || structures::LengthEncodedVector(Vec::new()),
+            || format::LenVec(Vec::new()),
             |mut data| length_encoded_vector(&mut data, size, |src| type_signature(src)),
         )?,
-        method_signatures: module_data_or_default(&data_vectors, 4, |mut data| {
-            length_encoded_vector(&mut data, size, |src| method_signature(src, size))
+        function_signatures: module_data_or_default(&data_vectors, 4, |mut data| {
+            length_encoded_vector(&mut data, size, |src| function_signature(src, size))
         })?,
-        method_bodies: module_data(
+        function_bodies: module_data(
             &data_vectors,
             5,
-            || structures::LengthEncodedVector(Vec::new()),
-            |mut data| length_encoded_vector(&mut data, size, |src| method_body(src, size)),
+            || format::LenVec(Vec::new()),
+            |mut data| length_encoded_vector(&mut data, size, |src| function_body(src, size)),
         )?,
-        data_arrays: module_data_or_default(&data_vectors, 6, |mut data| {
+        data: module_data_or_default(&data_vectors, 6, |mut data| {
             length_encoded_vector(&mut data, size, |src| data_array(src, size))
         })?,
         imports: module_data(
             &data_vectors,
             7,
             || format::ModuleImports {
-                imported_modules: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
-                imported_types: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
-                imported_fields: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
-                imported_methods: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
+                imported_modules: format::LenBytes(format::LenVec(Vec::new())),
+                imported_structs: format::LenBytes(format::LenVec(Vec::new())),
+                imported_globals: format::LenBytes(format::LenVec(Vec::new())),
+                imported_fields: format::LenBytes(format::LenVec(Vec::new())),
+                imported_functions: format::LenBytes(format::LenVec(Vec::new())),
             },
             |mut data| {
                 Ok(format::ModuleImports {
                     imported_modules: double_length_encoded(&mut data, size, &buffers, |src| {
                         module_identifier(src, size, &buffers)
                     })?,
-                    imported_types: double_length_encoded(
+                    imported_structs: double_length_encoded(
+                        &mut data,
+                        size,
+                        &buffers,
+                        |src| todo!(),
+                    )?,
+                    imported_globals: double_length_encoded(
                         &mut data,
                         size,
                         &buffers,
@@ -767,7 +763,7 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
                         &buffers,
                         |src| todo!(),
                     )?,
-                    imported_methods: double_length_encoded(
+                    imported_functions: double_length_encoded(
                         &mut data,
                         size,
                         &buffers,
@@ -780,44 +776,45 @@ pub fn parse_module<R: std::io::Read>(input: &mut R) -> ParseResult<format::Modu
             &data_vectors,
             8,
             || format::ModuleDefinitions {
-                defined_types: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
-                defined_fields: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
-                defined_methods: structures::ByteLengthEncoded(structures::LengthEncodedVector(
-                    Vec::new(),
-                )),
+                defined_structs: format::LenBytes(format::LenVec(Vec::new())),
+                defined_globals: format::LenBytes(format::LenVec(Vec::new())),
+                defined_fields: format::LenBytes(format::LenVec(Vec::new())),
+                defined_functions: format::LenBytes(format::LenVec(Vec::new())),
             },
             |mut data| {
                 Ok(format::ModuleDefinitions {
-                    defined_types: double_length_encoded(&mut data, size, &buffers, |src| {
-                        type_definition(src, size)
+                    defined_structs: double_length_encoded(&mut data, size, &buffers, |src| {
+                        struct_definition(src, size)
                     })?,
+                    defined_globals: double_length_encoded(
+                        &mut data,
+                        size,
+                        &buffers,
+                        |src| todo!(),
+                    )?,
                     defined_fields: double_length_encoded(
                         &mut data,
                         size,
                         &buffers,
                         |src| todo!(),
                     )?,
-                    defined_methods: double_length_encoded(&mut data, size, &buffers, |src| {
-                        method_definition(src, size)
+                    defined_functions: double_length_encoded(&mut data, size, &buffers, |src| {
+                        function_definition(src, size)
                     })?,
                 })
             },
         )?,
-        entry_point: module_data(
+        struct_layouts: module_data(
             &data_vectors,
             9,
-            || None,
-            |mut data| unsigned_index(&mut data, size).map(Some),
+            || format::LenVec(Vec::new()),
+            |mut data| length_encoded_vector(&mut data, size, |src| struct_layout(src, size)),
         )?,
-        type_layouts: module_data(
+        entry_point: module_data(
             &data_vectors,
             10,
-            || structures::LengthEncodedVector(Vec::new()),
-            |mut data| length_encoded_vector(&mut data, size, |src| type_layout(src, size)),
+            || None,
+            |mut data| unsigned_index(&mut data, size).map(Some),
         )?,
     })
 }
