@@ -4,6 +4,35 @@ use crate::format::{numeric::UInteger, LenVec};
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Numbers(pub LenVec<UInteger>);
 
+/// Specifies what version of the module format is being used, placed after the module's integer size field.
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub struct Format {
+    pub major: UInteger,
+    pub minor: UInteger,
+}
+
+static MINIMUM_FORMAT_VERSION: Format = Format {
+    major: UInteger(0),
+    minor: UInteger(3),
+};
+
+impl Format {
+    pub fn minimum_supported_version() -> &'static Self {
+        &MINIMUM_FORMAT_VERSION
+    }
+
+    /// Indicates if this version is greater than or equal to the [`Format::minimum_supported_version()`].
+    pub fn is_supported(&self) -> bool {
+        self >= Self::minimum_supported_version()
+    }
+}
+
+impl std::default::Default for Format {
+    fn default() -> Self {
+        MINIMUM_FORMAT_VERSION
+    }
+}
+
 impl<T: Into<UInteger>> std::iter::FromIterator<T> for Numbers {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut numbers = Vec::new();
@@ -11,5 +40,15 @@ impl<T: Into<UInteger>> std::iter::FromIterator<T> for Numbers {
             numbers.push(i.into())
         }
         Self(LenVec(numbers))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::format::{FormatVersion, numeric::UInteger};
+
+    #[test]
+    fn larger_format_major_version_is_greater() {
+        assert!(FormatVersion { major: UInteger(2), minor: UInteger(3) } > FormatVersion { major: UInteger(1), minor: UInteger(6) })
     }
 }

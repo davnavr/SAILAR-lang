@@ -101,23 +101,42 @@ index_type!(
     "`0` refers to the current module, while the remaining indices refer to the module imports."
 );
 
-index_type!(TypeDefinition, "An index into the module's defined types.");
-
-index_type!(TypeImport, "An index into the module's imported types.");
-
 index_type!(
-    MethodDefinition,
-    "An index into the module's defined methods."
+    StructDefinition,
+    "An index into the module's defined structs."
 );
 
-index_type!(MethodImport, "An index into the module's imported methods.");
+index_type!(StructImport, "An index into the module's imported structs.");
+
+index_type!(
+    FunctionDefinition,
+    "An index into the module's defined functions."
+);
+
+index_type!(
+    FunctionImport,
+    "An index into the module's imported functions."
+);
 
 index_type!(
     FieldDefinition,
     "An index into the module's defined fields."
 );
 
-index_type!(FieldImport, "An index into the module's imported fields.");
+index_type!(
+    FieldImport,
+    "An index into the module's imported fields."
+);
+
+index_type!(
+    GlobalDefinition,
+    "An index into the module's defined globals."
+);
+
+index_type!(
+    GlobalImport,
+    "An index into the module's imported globals."
+);
 
 index_type!(
     TypeLayout,
@@ -134,6 +153,7 @@ index_type!(
     "An index corresponding to the temporary registers of a code block."
 );
 
+// NOTE: Usage of bit to indicate what kind of index is being used may mean excessively large modules are not valid.
 macro_rules! double_index_type {
     ($name: ident, $description: literal, $case_name_1: ident, $case_value_1: ty, $case_name_2: ident, $case_value_2: ty) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
@@ -212,10 +232,17 @@ macro_rules! imported_or_defined_index_type {
 }
 
 imported_or_defined_index_type!(
-    Type,
-    "An index into the module's imported types or defined types.",
-    TypeDefinition,
-    TypeImport
+    Struct,
+    "An index into the module's imported structs or defined structs.",
+    StructDefinition,
+    StructImport
+);
+
+imported_or_defined_index_type!(
+    Global,
+    "An index into the module's global imports or defined globals.",
+    GlobalDefinition,
+    GlobalImport
 );
 
 imported_or_defined_index_type!(
@@ -226,8 +253,8 @@ imported_or_defined_index_type!(
 );
 
 imported_or_defined_index_type!(
-    Method,
-    "An index into the module's method imports or defined methods.",
-    MethodDefinition,
-    MethodImport
+    Function,
+    "An index into the module's function imports or defined functions.",
+    FunctionDefinition,
+    FunctionImport
 );

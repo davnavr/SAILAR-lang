@@ -636,7 +636,7 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
     write_bytes(out, format::MAGIC)?;
     write(out, module.integer_size as u8)?;
     format_version(out, &module.format_version, module.integer_size)?;
-    unsigned_integer(out, module.data_count(), module.integer_size)?;
+    unsigned_integer(out, format::MAX_MODULE_DATA_COUNT, module.integer_size)?;
 
     let buffers = buffers::BufferPool::new();
 

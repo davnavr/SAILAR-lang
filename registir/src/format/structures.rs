@@ -2,10 +2,12 @@ use std::ops::Deref;
 
 /// Represents data that is preceded by an unsigned integer indicating the byte length of the following data.
 #[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct ByteLengthEncoded<T>(pub T);
 
 /// Represents an array preceded by an unsigned integer indicating the number of items.
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct LengthEncodedVector<T>(pub Vec<T>);
 
 impl<T> ByteLengthEncoded<T> {
