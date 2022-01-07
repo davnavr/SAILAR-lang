@@ -3,24 +3,23 @@ pub use registir::format::{
     type_system::PrimitiveType,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Position {
-    pub line: u32,
-    pub column: u32,
-}
-
-impl Position {
-    pub fn new(line: u32, column: u32) -> Self {
-        Self { line, column }
-    }
-}
+pub type Position = std::ops::Range<usize>;
+pub type Positioned<T> = (T, Position);
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 impl Identifier {
-    pub fn chars(&self) -> &String {
-        &self.0
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl std::ops::Deref for Identifier {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.as_str()
     }
 }
 
@@ -53,71 +52,63 @@ impl TryFrom<String> for Identifier {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Positioned<T> {
-    pub value: T,
-    pub position: Position,
-}
+impl TryFrom<&str> for Identifier {
+    type Error = TryFromIdentifierError;
 
-impl<T> Positioned<T> {
-    pub fn new(line: u32, column: u32, value: T) -> Positioned<T> {
-        Self {
-            position: Position { line, column },
-            value,
-        }
-    }
-
-    pub fn map<U, F: FnOnce(T) -> U>(self, mapper: F) -> Positioned<U> {
-        Positioned {
-            position: self.position,
-            value: mapper(self.value),
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            Err(TryFromIdentifierError())
+        } else {
+            Ok(Self(value.to_string()))
         }
     }
 }
+macro_rules! symbol_type {
+    ($symbol_type: ident) => {
+        #[derive(Clone, Debug, Eq, PartialEq)]
+        pub struct $symbol_type(pub Positioned<Identifier>);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RegisterSymbol(pub Positioned<Identifier>);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LocalSymbol(pub Positioned<Identifier>);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GlobalSymbol(pub Positioned<Identifier>);
-
-macro_rules! symbol_from_identifier {
-    ($symbol_type: ty) => {
         impl From<$symbol_type> for Identifier {
             fn from(identifier: $symbol_type) -> Identifier {
-                identifier.0.value
+                identifier.0 .0
             }
         }
 
         impl<'a> From<&'a $symbol_type> for &'a Identifier {
-            fn from(id: &'a $symbol_type) -> Self {
-                &id.0.value
+            fn from(identifier: &'a $symbol_type) -> Self {
+                &identifier.0 .0
             }
         }
     };
 }
 
-symbol_from_identifier!(RegisterSymbol);
-symbol_from_identifier!(LocalSymbol);
-symbol_from_identifier!(GlobalSymbol);
+symbol_type!(RegisterSymbol);
+symbol_type!(LocalSymbol);
+symbol_type!(GlobalSymbol);
 
-#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct LiteralString(pub Vec<char>);
 
 impl std::fmt::Display for LiteralString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for c in &self.0 {
-            let c = *c;
-            if c.is_control() || c == '\t' || c == '\\' || c == '\"' {
-                write!(f, "\\u{:04X}", u32::from(c))?;
-            } else {
-                write!(f, "{}", c)?;
+            match *c {
+                '\t' => f.write_str(r"\t")?,
+                '\n' => f.write_str(r"\n")?,
+                '\r' => f.write_str(r"\r")?,
+                '\\' => f.write_str(r"\\")?,
+                '\"' => f.write_str("\\\"")?,
+                c if c.is_control() => write!(f, "\\u{:04X}", u32::from(c))?,
+                _ => write!(f, "{}", c)?,
             }
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Debug for LiteralString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self)
     }
 }
 
@@ -156,14 +147,8 @@ pub struct BasicArithmeticOperation {
 impl OverflowModifier {
     pub fn behavior(modifier: &Option<Positioned<Self>>) -> OverflowBehavior {
         match modifier {
-            Some(Positioned {
-                value: OverflowModifier::Halt,
-                ..
-            }) => OverflowBehavior::Halt,
-            Some(Positioned {
-                value: OverflowModifier::Flag,
-                ..
-            }) => OverflowBehavior::Flag,
+            Some((OverflowModifier::Halt, _)) => OverflowBehavior::Halt,
+            Some((OverflowModifier::Flag, _)) => OverflowBehavior::Flag,
             None => OverflowBehavior::Ignore,
         }
     }
@@ -221,34 +206,6 @@ pub enum Instruction {
     RotL(BitwiseOperation),
     RotR(BitwiseOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
-}
-
-impl Instruction {
-    /// Returns the number of temporary registers that contain the results of executing the instruction.
-    pub fn return_count(&self) -> u8 {
-        match self {
-            Self::Nop | Self::Ret(_) | Self::Br(_, _) | Self::BrIf { .. } => 0,
-            Self::Add(operation) | Self::Sub(operation) | Self::Mul(operation) => {
-                match operation.overflow_modifier {
-                    Some(Positioned {
-                        value: OverflowModifier::Flag,
-                        ..
-                    }) => 2,
-                    _ => 1,
-                }
-            }
-            Self::Div(_)
-            | Self::And(_)
-            | Self::Or(_)
-            | Self::Not(_, _)
-            | Self::Xor(_)
-            | Self::ShL(_)
-            | Self::ShR(_)
-            | Self::RotL(_)
-            | Self::RotR(_)
-            | Self::ConstI(_, _) => 1,
-        }
-    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
