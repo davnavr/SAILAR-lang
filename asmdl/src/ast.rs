@@ -63,6 +63,7 @@ impl TryFrom<&str> for Identifier {
         }
     }
 }
+
 macro_rules! symbol_type {
     ($symbol_type: ident) => {
         #[derive(Clone, Debug, Eq, PartialEq)]
@@ -86,7 +87,7 @@ symbol_type!(RegisterSymbol);
 symbol_type!(LocalSymbol);
 symbol_type!(GlobalSymbol);
 
-#[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct LiteralString(pub Vec<char>);
 
 impl std::fmt::Display for LiteralString {
@@ -226,65 +227,14 @@ pub enum CodeDeclaration {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum DataKind {
-    //Bytes(Vec<Positioned<ByteDataDeclaration>>),
-    String {
-        content: LiteralString,
-        //encoding: StringDataEncoding,
-    },
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum MethodModifier {
-    Public,
-    Private,
-    Instance,
-    Initializer,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum TypeModifier {
-    Public,
-    Private,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MethodBodyDeclaration {
-    Defined(GlobalSymbol),
-    External {
-        library: Positioned<LiteralString>,
-        name: Positioned<LiteralString>,
-    },
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MethodDeclaration {
-    Name(Positioned<LiteralString>),
-    Body(MethodBodyDeclaration),
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum TypeDeclaration {
-    Name(Positioned<LiteralString>),
-    Namespace(Vec<Positioned<LiteralString>>),
-    Method {
-        symbol: GlobalSymbol,
-        parameter_types: Vec<Positioned<TypeSignature>>,
-        return_types: Vec<Positioned<TypeSignature>>,
-        modifiers: Vec<Positioned<MethodModifier>>,
-        declarations: Vec<Positioned<MethodDeclaration>>,
-    },
-}
-
-#[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
-    Major(registir::format::numeric::UInteger),
-    Minor(registir::format::numeric::UInteger),
+    Major(i128),
+    Minor(i128),
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ModuleDeclaration {
-    Name(Positioned<LiteralString>),
+    Name(Positioned<Identifier>),
     Version(Vec<u32>),
 }
 
@@ -292,18 +242,4 @@ pub enum ModuleDeclaration {
 pub enum TopLevelDeclaration {
     Format(Vec<Positioned<FormatDeclaration>>),
     Module(Vec<Positioned<ModuleDeclaration>>),
-    Entry(GlobalSymbol),
-    Code {
-        symbol: GlobalSymbol,
-        declarations: Vec<Positioned<CodeDeclaration>>,
-    },
-    Data {
-        symbol: GlobalSymbol,
-        kind: DataKind,
-    },
-    Type {
-        symbol: GlobalSymbol,
-        modifiers: Vec<Positioned<TypeModifier>>,
-        declarations: Vec<Positioned<TypeDeclaration>>,
-    },
 }

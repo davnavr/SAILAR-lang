@@ -1,7 +1,7 @@
 use crate::ast;
 use chumsky::{self, Parser};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Token {
     OpenBracket,
     CloseBracket,
@@ -21,9 +21,43 @@ pub enum Token {
     Keyword(String),
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write as _;
+        match self {
+            Self::OpenBracket => f.write_char('{'),
+            Self::CloseBracket => f.write_char('}'),
+            Self::OpenParenthesis => f.write_char('('),
+            Self::CloseParenthesis => f.write_char(')'),
+            Self::Comma => f.write_char(','),
+            Self::Equals => f.write_char('='),
+            Self::Semicolon => f.write_char(';'),
+            Self::Directive(contents) => {
+                f.write_char('.')?;
+                f.write_str(&contents)
+            }
+            Self::GlobalIdentifier(identifier) => {
+                f.write_char('@')?;
+                f.write_str(&identifier)
+            }
+            Self::LocalIdentifier(identifier) => {
+                f.write_char('%')?;
+                f.write_str(&identifier)
+            }
+            Self::RegisterIdentifier(identifier) => {
+                f.write_char('$')?;
+                f.write_str(&identifier)
+            }
+            Self::LiteralInteger(value) => std::fmt::Display::fmt(value, f),
+            Self::LiteralString(literal) => std::fmt::Display::fmt(literal, f),
+            Self::Keyword(keyword) => f.write_str(&keyword),
+        }
+    }
+}
+
 pub type Error = chumsky::error::Simple<char>;
 
-pub fn tokenizer() -> impl Parser<char, Vec<ast::Positioned<Token>>, Error = Error> {
+fn tokenizer() -> impl Parser<char, Vec<ast::Positioned<Token>>, Error = Error> {
     use chumsky::{
         primitive::{end, filter, just, none_of, take_until},
         recovery,
@@ -133,7 +167,7 @@ pub fn tokenizer() -> impl Parser<char, Vec<ast::Positioned<Token>>, Error = Err
         .then_ignore(end())
 }
 
-pub fn tokenize(input: &str) -> (Vec<ast::Positioned<Token>>, Vec<Error>) {
+pub fn tokens_from_str(input: &str) -> (Vec<ast::Positioned<Token>>, Vec<Error>) {
     let (tokens, errors) = tokenizer().parse_recovery(input);
     (tokens.unwrap_or_else(Vec::new), errors)
 }
@@ -142,18 +176,18 @@ pub fn tokenize(input: &str) -> (Vec<ast::Positioned<Token>>, Vec<Error>) {
 mod tests {
     use crate::{
         ast::{LiteralString, Position},
-        lexer::{tokenize, Token},
+        lexer::{tokens_from_str, Token},
     };
 
-    macro_rules! assert_no_errors {
+    macro_rules! assert_success {
         ($input: expr, $output: expr) => {
-            assert_eq!(tokenize($input), ($output, Vec::new()))
+            assert_eq!(tokens_from_str($input), ($output, Vec::new()))
         };
     }
 
     #[test]
     fn basic_sequence_test() {
-        assert_no_errors!(
+        assert_success!(
             "{ret;42",
             vec![
                 (Token::OpenBracket, Position { start: 0, end: 1 }),
@@ -169,7 +203,7 @@ mod tests {
 
     #[test]
     fn format_directive_tokens_test() {
-        assert_no_errors!(
+        assert_success!(
             ".format {\n  .major 0;\n  .minor 0x10;\n}",
             vec![
                 (
@@ -196,7 +230,7 @@ mod tests {
 
     #[test]
     fn module_directive_tokens_test() {
-        assert_no_errors!(
+        assert_success!(
             ".module { .name \"Hello\" };",
             vec![
                 (
