@@ -87,7 +87,7 @@ fn tokenizer() -> impl Parser<char, Vec<ast::Positioned<Token>>, Error = Error> 
         ) -> impl Parser<char, Token, Error = Error> {
             just(prefix)
                 .ignore_then(
-                    filter(|&c: &char| c.is_alphanumeric())
+                    filter(|&c: &char| c.is_alphanumeric() || c == '_')
                         .repeated()
                         .at_least(1)
                         .collect::<String>(),
