@@ -191,10 +191,18 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         _ => Err(Error::custom(position, "expected string literal")),
     });
 
-    let identifier_literal = with_position(string_literal.try_map(|literal, position| {
-        ast::Identifier::try_from(String::from(literal))
-            .map_err(|_| Error::custom(position, "Expected non-empty string literal"))
-    }));
+    let identifier_literal = || {
+        with_position(string_literal.try_map(|literal, position| {
+            ast::Identifier::try_from(String::from(literal))
+                .map_err(|_| Error::custom(position, "Expected non-empty string literal"))
+        }))
+    };
+
+    macro_rules! name_directive {
+        ($mapper: expr) => {
+            directive("name", identifier_literal().map($mapper))
+        };
+    }
 
     let format_declaration = choice((
         directive("major", integer_literal.map(ast::FormatDeclaration::Major)),
@@ -202,7 +210,7 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
     ));
 
     let module_declaration = choice((
-        directive("name", identifier_literal.map(ast::ModuleDeclaration::Name)),
+        name_directive!(ast::ModuleDeclaration::Name),
         directive(
             "version",
             integer_literal
@@ -274,6 +282,20 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         ))
     };
 
+    let function_declaration = {
+        let body_declaration = choice((
+            keyword("defined")
+                .ignore_then(global_symbol)
+                .map(ast::FunctionBodyDeclaration::Defined),
+            keyword("external").ignore_then(chumsky::primitive::todo()),
+        ));
+
+        choice((
+            name_directive!(ast::FunctionDeclaration::Name),
+            directive("body", body_declaration.map(ast::FunctionDeclaration::Body)),
+        ))
+    };
+
     let top_level_declaration = choice((
         simple_declaration(
             "format",
@@ -293,6 +315,17 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
             with_position_optional(code_declaration),
             |symbol, (), declarations| ast::TopLevelDeclaration::Code {
                 symbol,
+                declarations,
+            },
+        ),
+        symbolic_declaration(
+            "function",
+            global_symbol,
+            keyword("export").ignore_then(identifier_literal()).or_not(),
+            with_position_optional(function_declaration),
+            |symbol, exported, declarations| ast::TopLevelDeclaration::Function {
+                symbol,
+                exported,
                 declarations,
             },
         ),

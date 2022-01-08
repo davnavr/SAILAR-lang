@@ -9,14 +9,9 @@
     };
 };
 
-.type @class_hello public {
-    .name "Return";
-    .namespace "Example";
-
-    .method @method_main () returns (s32) public {
-        .name "Main";
-        .body defined @code_main;
-    };
+.function @main {
+    .name "Main";
+    .body defined @code_main;
 };
 
-.entry @method_main;
+.entry @main;
