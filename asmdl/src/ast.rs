@@ -1,68 +1,11 @@
 pub use registir::format::{
     instruction_set::{NumericType, OverflowBehavior, TailCall},
     type_system::PrimitiveType,
+    Identifier,
 };
 
 pub type Position = std::ops::Range<usize>;
 pub type Positioned<T> = (T, Position);
-
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Identifier(String);
-
-impl Identifier {
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl std::ops::Deref for Identifier {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl std::fmt::Display for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct TryFromIdentifierError();
-
-impl std::fmt::Display for TryFromIdentifierError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "identifiers cannot be empty")
-    }
-}
-
-impl std::error::Error for TryFromIdentifierError {}
-
-impl TryFrom<String> for Identifier {
-    type Error = TryFromIdentifierError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            Err(TryFromIdentifierError())
-        } else {
-            Ok(Self(value))
-        }
-    }
-}
-
-impl TryFrom<&str> for Identifier {
-    type Error = TryFromIdentifierError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            Err(TryFromIdentifierError())
-        } else {
-            Ok(Self(value.to_string()))
-        }
-    }
-}
 
 macro_rules! symbol_type {
     ($symbol_type: ident) => {
@@ -182,36 +125,12 @@ pub struct BitwiseOperation {
 pub enum Instruction {
     Nop,
     Ret(Vec<RegisterSymbol>),
-    Br(LocalSymbol, Vec<RegisterSymbol>),
-    BrIf {
-        condition: RegisterSymbol,
-        true_branch: LocalSymbol,
-        false_branch: LocalSymbol,
-        input_registers: Vec<RegisterSymbol>,
-    },
-    Call {
-        tail_call: TailCall,
-        method: GlobalSymbol,
-        arguments: Vec<RegisterSymbol>,
-    },
-    Add(BasicArithmeticOperation),
-    Sub(BasicArithmeticOperation),
-    Mul(BasicArithmeticOperation),
-    Div(DivisionOperation),
-    And(BitwiseOperation),
-    Or(BitwiseOperation),
-    Not(Positioned<NumericType>, RegisterSymbol),
-    Xor(BitwiseOperation),
-    ShL(BitwiseOperation),
-    ShR(BitwiseOperation),
-    RotL(BitwiseOperation),
-    RotR(BitwiseOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Statement {
-    pub registers: Vec<RegisterSymbol>,
+    pub results: Vec<RegisterSymbol>,
     pub instruction: Positioned<Instruction>,
 }
 
@@ -224,6 +143,21 @@ pub enum CodeDeclaration {
         arguments: Vec<RegisterSymbol>,
         instructions: Vec<Statement>,
     },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum FunctionBodyDeclaration {
+    Defined(GlobalSymbol),
+    External {
+        library: Positioned<Identifier>,
+        name: Positioned<Identifier>,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum FunctionDeclaration {
+    Name(Positioned<Identifier>),
+    Body(FunctionBodyDeclaration),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -242,4 +176,14 @@ pub enum ModuleDeclaration {
 pub enum TopLevelDeclaration {
     Format(Vec<Positioned<FormatDeclaration>>),
     Module(Vec<Positioned<ModuleDeclaration>>),
+    Entry(GlobalSymbol),
+    Code {
+        symbol: GlobalSymbol,
+        declarations: Vec<Positioned<CodeDeclaration>>,
+    },
+    Function {
+        symbol: GlobalSymbol,
+        exported: Option<Positioned<Identifier>>,
+        declarations: Vec<Positioned<FunctionDeclaration>>,
+    },
 }

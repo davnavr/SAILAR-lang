@@ -10,7 +10,7 @@ pub type Tree = Vec<ast::Positioned<ast::TopLevelDeclaration>>;
 
 fn parser() -> impl Parser<Token, Tree, Error = Error> {
     use chumsky::{
-        primitive::{choice, end, filter, filter_map, just},
+        primitive::{choice, custom, empty, end, filter, filter_map, just},
         recovery,
     };
 
@@ -27,25 +27,46 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         .then_ignore(just(Token::Semicolon))
     }
 
-    fn between_brackets<O, P: Parser<Token, O, Error = Error>>(
+    fn between_brackets_or_else<O, P: Parser<Token, O, Error = Error>, F: Fn() -> O>(
         inner: P,
-    ) -> impl Parser<Token, Option<O>, Error = Error> {
+        err: F,
+    ) -> impl Parser<Token, O, Error = Error> {
         inner
             .delimited_by(Token::OpenBracket, Token::CloseBracket)
-            .map(Some)
             .recover_with(recovery::nested_delimiters(
                 Token::OpenBracket,
                 Token::CloseBracket,
                 [],
-                |_| None,
+                move |_| err(),
             ))
     }
 
-    fn directive_between_brackets<O, P: Parser<Token, O, Error = Error>>(
+    fn between_parenthesis_or_else<O, P: Parser<Token, O, Error = Error>, F: Fn() -> O>(
+        inner: P,
+        err: F,
+    ) -> impl Parser<Token, O, Error = Error> {
+        inner
+            .delimited_by(Token::OpenParenthesis, Token::CloseParenthesis)
+            .recover_with(recovery::nested_delimiters(
+                Token::OpenParenthesis,
+                Token::CloseParenthesis,
+                [],
+                move |_| err(),
+            ))
+    }
+
+    fn directive_between_brackets<A, B, P, Q, F>(
         name: &'static str,
-        contents: P,
-    ) -> impl Parser<Token, Option<O>, Error = Error> {
-        directive(name, between_brackets(contents)).map(Option::flatten)
+        outer: P,
+        inner: Q,
+        err: F,
+    ) -> impl Parser<Token, Option<(A, B)>, Error = Error>
+    where
+        P: Parser<Token, A, Error = Error>,
+        Q: Parser<Token, B, Error = Error>,
+        F: Fn() -> B,
+    {
+        directive(name, outer.then(between_brackets_or_else(inner, err)))
     }
 
     fn with_position<O, P: Parser<Token, O, Error = Error>>(
@@ -54,32 +75,111 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         parser.map_with_span(|value, position| (value, position))
     }
 
-    fn filter_parsed_declarations<D>(
-        declarations: Vec<ast::Positioned<Option<D>>>,
-    ) -> Vec<ast::Positioned<D>> {
+    fn filter_parsed_declarations<D>(declarations: Vec<Option<D>>) -> Vec<D> {
         declarations
             .into_iter()
-            .filter_map(|(declaration, position)| declaration.map(|node| (node, position)))
+            .filter_map(|declaration| declaration)
             .collect()
     }
 
-    fn directive_with_declarations<
-        N,
-        D,
-        P: Parser<Token, Option<N>, Error = Error>,
-        F: Fn(Vec<ast::Positioned<N>>) -> D,
-    >(
+    fn directive_with_declarations<A, N, D, P, Q, F>(
+        name: &'static str,
+        attributes: P,
+        declaration: Q,
+        declarer: F,
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, A, Error = Error>,
+        Q: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(A, Vec<N>) -> D,
+    {
+        directive_between_brackets(name, attributes, declaration.repeated(), Vec::new).map(
+            move |content| {
+                content.map(|(attributes, nodes)| {
+                    declarer(attributes, filter_parsed_declarations(nodes))
+                })
+            },
+        )
+    }
+
+    let global_symbol = {
+        filter_map(|position, token| match token {
+            Token::GlobalIdentifier(symbol) => Ok(ast::GlobalSymbol((symbol, position))),
+            _ => Err(Error::custom(position, "expected global symbol")),
+        })
+    };
+
+    let local_symbol = filter_map(|position, token| match token {
+        Token::LocalIdentifier(symbol) => Ok(ast::LocalSymbol((symbol, position))),
+        _ => Err(Error::custom(position, "expected local symbol")),
+    });
+
+    let register_symbol = filter_map(|position, token| match token {
+        Token::RegisterIdentifier(symbol) => Ok(ast::RegisterSymbol((symbol, position))),
+        _ => Err(Error::custom(position, "expected register symbol")),
+    });
+
+    fn with_position_optional<O, P: Parser<Token, Option<O>, Error = Error>>(
+        parser: P,
+    ) -> impl Parser<Token, Option<ast::Positioned<O>>, Error = Error> {
+        with_position(parser).map(|(result, position)| result.map(|value| (value, position)))
+    }
+
+    fn simple_declaration<N, D, P, F>(
         name: &'static str,
         declaration: P,
         declarer: F,
-    ) -> impl Parser<Token, Option<D>, Error = Error> {
-        directive_between_brackets(
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(Vec<ast::Positioned<N>>) -> D,
+    {
+        directive_with_declarations(
             name,
-            with_position(declaration)
-                .repeated()
-                .map(move |nodes| declarer(filter_parsed_declarations(nodes))),
+            empty(),
+            with_position_optional(declaration),
+            move |(), nodes| declarer(nodes),
         )
     }
+
+    fn symbolic_declaration<S, A, N, D, P, Q, R, F>(
+        name: &'static str,
+        symbol: P,
+        attributes: Q,
+        declaration: R,
+        declarer: F,
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, S, Error = Error>,
+        Q: Parser<Token, A, Error = Error>,
+        R: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(S, A, Vec<N>) -> D,
+    {
+        directive_with_declarations(
+            name,
+            symbol.then(attributes),
+            declaration,
+            move |(s, a), nodes| declarer(s, a, nodes),
+        )
+    }
+
+    let any_keyword = filter_map(|position, token| match token {
+        Token::Keyword(word) => Ok(word),
+        _ => Err(Error::custom(position, "expected keyword")),
+    });
+
+    let keyword = |word: &'static str| {
+        any_keyword.try_map(move |actual, position| {
+            if actual == word {
+                Ok(())
+            } else {
+                Err(Error::custom(
+                    position,
+                    format!("expected {} but got {}", word, actual),
+                ))
+            }
+        })
+    };
 
     let integer_literal = filter_map(|position, token| match token {
         Token::LiteralInteger(value) => Ok(value),
@@ -115,20 +215,90 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         ),
     ));
 
+    let primitive_type = choice((keyword("s32").to(ast::PrimitiveType::S32),));
+
+    let many_registers = || register_symbol.separated_by(just(Token::Comma));
+
+    let code_declaration = {
+        // NOTE: Waiting for next stable release of chumsky for the then_with function
+        /* let instruction_parsers = {
+            let mut lookup = std::collections::HashMap::<&'static str, chumsky::BoxedParser<Token, ast::Instruction, Error>>::new();
+
+            lookup.insert("nop", empty().to(ast::Instruction::Nop).boxed());
+
+            lookup
+        }; */
+
+        let code_statement = {
+            //any_keyword
+            let full_instruction = with_position(choice((
+                keyword("nop").to(ast::Instruction::Nop),
+                keyword("ret")
+                    .ignore_then(many_registers())
+                    .map(ast::Instruction::Ret),
+                keyword("const.i")
+                    .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
+                    .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
+            )));
+
+            let result_registers = many_registers()
+                .at_least(1)
+                .then_ignore(just(Token::Equals))
+                .or_not()
+                .map(|results| results.unwrap_or_else(Vec::new));
+
+            result_registers
+                .then(full_instruction)
+                .map(|(results, instruction)| {
+                    Some(ast::Statement {
+                        results,
+                        instruction,
+                    })
+                })
+                .then_ignore(just(Token::Semicolon))
+        };
+
+        choice((
+            directive("entry", local_symbol.map(ast::CodeDeclaration::Entry)),
+            symbolic_declaration(
+                "block",
+                local_symbol,
+                between_parenthesis_or_else(many_registers(), Vec::new),
+                code_statement,
+                |name, arguments, instructions| ast::CodeDeclaration::Block {
+                    name,
+                    arguments,
+                    instructions,
+                },
+            ),
+        ))
+    };
+
     let top_level_declaration = choice((
-        directive_with_declarations(
+        simple_declaration(
             "format",
             format_declaration,
             ast::TopLevelDeclaration::Format,
         ),
-        directive_with_declarations(
+        simple_declaration(
             "module",
             module_declaration,
             ast::TopLevelDeclaration::Module,
         ),
+        directive("entry", global_symbol.map(ast::TopLevelDeclaration::Entry)),
+        symbolic_declaration(
+            "code",
+            global_symbol,
+            empty(),
+            with_position_optional(code_declaration),
+            |symbol, (), declarations| ast::TopLevelDeclaration::Code {
+                symbol,
+                declarations,
+            },
+        ),
     ));
 
-    with_position(top_level_declaration)
+    with_position_optional(top_level_declaration)
         .repeated()
         .map(filter_parsed_declarations)
         .then_ignore(end())
@@ -205,6 +375,67 @@ mod tests {
                     )
                 ]),
                 Position { start: 0, end: 45 }
+            )]
+        )
+    }
+
+    #[test]
+    fn entry_point_declaration_test() {
+        assert_success!(
+            "\n.entry @my_main_function;\n\n",
+            vec![(
+                TopLevelDeclaration::Entry(ast::GlobalSymbol((
+                    ast::Identifier::try_from("my_main_function").unwrap(),
+                    Position { start: 8, end: 25 }
+                ))),
+                Position { start: 1, end: 26 }
+            )]
+        )
+    }
+
+    #[test]
+    fn basic_code_declaration_test() {
+        assert_success!(
+            ".code @code_test {\n  .entry $ENTRY;\n  .block $ENTRY () {\n    ret %non_existant;\n  };\n};\n",
+            vec![(
+                TopLevelDeclaration::Code {
+                    symbol: ast::GlobalSymbol((
+                        ast::Identifier::try_from("code_test").unwrap(),
+                        Position { start: 6, end: 16 }
+                    )),
+                    declarations: vec![
+                        (
+                            ast::CodeDeclaration::Entry(ast::LocalSymbol((
+                                ast::Identifier::try_from("ENTRY").unwrap(),
+                                Position { start: 28, end: 34 }
+                            ))),
+                            Position { start: 21, end: 35 }
+                        ),
+                        (
+                            ast::CodeDeclaration::Block {
+                                name: ast::LocalSymbol((
+                                    ast::Identifier::try_from("ENTRY").unwrap(),
+                                    Position { start: 45, end: 51 }
+                                )),
+                                arguments: Vec::new(),
+                                instructions: vec![ast::Statement {
+                                    results: Vec::new(),
+                                    instruction: (
+                                        ast::Instruction::Ret(vec![
+                                            ast::RegisterSymbol((
+                                                ast::Identifier::try_from("non_existant").unwrap(),
+                                                Position { start: 65, end: 78 }
+                                            ))
+                                        ]),
+                                        Position { start: 61, end: 78 }
+                                    )
+                                }]
+                            },
+                            Position { start: 38, end: 84 }
+                        )
+                    ]
+                },
+                Position { start: 0, end: 87 }
             )]
         )
     }
