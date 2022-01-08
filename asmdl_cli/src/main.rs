@@ -10,20 +10,25 @@ struct Arguments {
     output: Option<std::path::PathBuf>,
 }
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<(), registir::writer::Error> {
     let arguments = Arguments::from_args();
     let input = std::fs::read_to_string(&arguments.input)?;
     let (syntax_tree, lexer_errors, parser_errors) = asmdl::parser::tree_from_str(&input);
 
-    // let module = asmdl::assembler::assemble_declarations(&syntax_tree)
-    //     .map_err::<Vec<Box<dyn std::error::Error>>, _>(|errors| {
-    //         errors
-    //             .into_iter()
-    //             .map(|error| Box::new(WrappedError(error)) as Box<dyn std::error::Error>)
-    //             .collect()
-    //     })?;
+    let module;
+    let assembler_errors;
+    match asmdl::assembler::assemble_declarations(&syntax_tree) {
+        Ok(assembled) => {
+            module = Some(assembled);
+            assembler_errors = Vec::new();
+        }
+        Err(errors) => {
+            module = None;
+            assembler_errors = errors;
+        }
+    }
 
-    if !(lexer_errors.is_empty() && parser_errors.is_empty()) {
+    if !(lexer_errors.is_empty() && parser_errors.is_empty() && assembler_errors.is_empty()) {
         use ariadne::{Label, Report, ReportKind, Source};
         // NOTE: ariadne currently does not work with CRLF
 
@@ -44,18 +49,30 @@ fn main() -> Result<(), std::io::Error> {
                     .map(|error| error.map(|msg| msg.to_string())),
             );
 
-        for error in input_errors {
-            let position = error.span();
+        let create_report = |position: &asmdl::ast::Position| {
             Report::<(&str, asmdl::ast::Position)>::build(
                 ReportKind::Error,
                 source_path,
                 position.start,
             )
-            .with_label(Label::new((source_path, position)).with_message(error))
-            .finish()
-            .eprint(&mut source)?;
+        };
+
+        for error in input_errors {
+            let position = error.span();
+            create_report(&position)
+                .with_label(Label::new((source_path, position)).with_message(error))
+                .finish()
+                .eprint(&mut source)?;
         }
-        
+
+        for error in assembler_errors {
+            let position = error.location().cloned().unwrap_or_default();
+            create_report(&position)
+                .with_label(Label::new((source_path, position)).with_message(error.kind()))
+                .finish()
+                .eprint(&mut source)?;
+        }
+
         std::process::exit(1)
     }
 
@@ -66,6 +83,5 @@ fn main() -> Result<(), std::io::Error> {
             .unwrap_or(&arguments.input.with_extension("binmdl")),
     )?;
 
-    //registir::writer::write_module(&module, &mut output)
-    Ok(())
+    registir::writer::write_module(module.as_ref().unwrap(), &mut output)
 }

@@ -23,6 +23,14 @@ macro_rules! symbol_type {
                 &identifier.0 .0
             }
         }
+
+        impl std::ops::Deref for $symbol_type {
+            type Target = Identifier;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0 .0
+            }
+        }
     };
 }
 
@@ -162,8 +170,8 @@ pub enum FunctionDeclaration {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
-    Major(i128),
-    Minor(i128),
+    Major(u32),
+    Minor(u32),
 }
 
 #[derive(Debug, Eq, PartialEq)]

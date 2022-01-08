@@ -198,6 +198,12 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         }))
     };
 
+    let version_number = {
+        integer_literal.try_map(|value, position| {
+            u32::try_from(value).map_err(|_| Error::custom(position, "invalid version number"))
+        })
+    };
+
     macro_rules! name_directive {
         ($mapper: expr) => {
             directive("name", identifier_literal().map($mapper))
@@ -205,19 +211,15 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
     }
 
     let format_declaration = choice((
-        directive("major", integer_literal.map(ast::FormatDeclaration::Major)),
-        directive("minor", integer_literal.map(ast::FormatDeclaration::Minor)),
+        directive("major", version_number.map(ast::FormatDeclaration::Major)),
+        directive("minor", version_number.map(ast::FormatDeclaration::Minor)),
     ));
 
     let module_declaration = choice((
         name_directive!(ast::ModuleDeclaration::Name),
         directive(
             "version",
-            integer_literal
-                .try_map(|value, position| {
-                    u32::try_from(value)
-                        .map_err(|_| Error::custom(position, "invalid version number"))
-                })
+            version_number
                 .repeated()
                 .map(ast::ModuleDeclaration::Version),
         ),

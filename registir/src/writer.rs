@@ -22,13 +22,17 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::InputOutputError(error)
+    }
+}
+
 pub type Result = std::result::Result<(), Error>;
 
 fn write_bytes<W: Write>(out: &mut W, bytes: &[u8]) -> Result {
-    match out.write_all(bytes) {
-        Ok(()) => Ok(()),
-        Err(err) => Err(Error::InputOutputError(err)),
-    }
+    out.write_all(bytes)?;
+    Ok(())
 }
 
 fn write<W: Write>(out: &mut W, value: u8) -> Result {
