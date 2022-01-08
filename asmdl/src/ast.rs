@@ -134,7 +134,7 @@ pub enum Instruction {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Statement {
-    pub results: Vec<RegisterSymbol>,
+    pub results: Positioned<Vec<RegisterSymbol>>,
     pub instruction: Positioned<Instruction>,
 }
 

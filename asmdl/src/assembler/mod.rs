@@ -137,6 +137,44 @@ impl<'a> CodeBlockAssembler<'a> {
         block_lookup: &CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
+        fn lookup_register<'a>(
+            errors: &mut error::Builder,
+            register_lookup: &mut lookup::RegisterMap<'a>,
+            register: &'a ast::RegisterSymbol,
+        ) -> Option<format::indices::Register> {
+            let index = register_lookup.get(register);
+            if index.is_none() {
+                errors.push_with_location(
+                    ErrorKind::UndefinedRegister(register.identifier().clone()),
+                    register.location().clone(),
+                );
+            }
+            index
+        }
+
+        fn lookup_many_registers<'a>(
+            errors: &mut error::Builder,
+            register_lookup: &mut lookup::RegisterMap<'a>,
+            registers: &'a [ast::RegisterSymbol],
+        ) -> Option<format::LenVec<format::indices::Register>> {
+            let mut indices = Vec::with_capacity(registers.len());
+            let mut success = true;
+
+            for name in registers {
+                match lookup_register(errors, register_lookup, name) {
+                    Some(index) if success => indices.push(index),
+                    Some(_) => (),
+                    None => success = false,
+                }
+            }
+
+            if success {
+                Some(format::LenVec(indices))
+            } else {
+                None
+            }
+        }
+
         register_lookup.clear();
 
         for register in self.input_registers {
@@ -154,7 +192,93 @@ impl<'a> CodeBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
-            todo!("TODO: Implement assembling of instructions")
+            use format::instruction_set::Instruction;
+
+            let expected_return_count;
+            let next_instruction;
+            match &statement.instruction.0 {
+                ast::Instruction::Nop => {
+                    expected_return_count = 0;
+                    next_instruction = Some(Instruction::Nop);
+                }
+                ast::Instruction::Ret(registers) => {
+                    expected_return_count = 0;
+                    next_instruction = lookup_many_registers(errors, register_lookup, registers)
+                        .map(Instruction::Ret);
+                }
+                ast::Instruction::ConstI(constant_type, value) => {
+                    use format::instruction_set::{IntegerConstant, PrimitiveType};
+
+                    macro_rules! convert_constant {
+                        ($destination_type: ty, $constant: expr) => {
+                            <$destination_type>::try_from(value.0)
+                                .map($constant)
+                                .map_err(|_| {
+                                    Error::new(
+                                        ErrorKind::ConstantIntegerOutOfRange(
+                                            constant_type.0,
+                                            value.0,
+                                        ),
+                                        Some(value.1.clone()),
+                                    )
+                                })
+                        };
+                    }
+
+                    let constant = match constant_type.0 {
+                        PrimitiveType::S8 => convert_constant!(i8, IntegerConstant::S8),
+                        PrimitiveType::U8 => convert_constant!(u8, IntegerConstant::U8),
+                        PrimitiveType::S16 => convert_constant!(i16, IntegerConstant::S16),
+                        PrimitiveType::U16 => convert_constant!(u16, IntegerConstant::U16),
+                        PrimitiveType::S32 => convert_constant!(i32, IntegerConstant::S32),
+                        PrimitiveType::U32 => convert_constant!(u32, IntegerConstant::U32),
+                        PrimitiveType::S64 => convert_constant!(i64, IntegerConstant::S64),
+                        PrimitiveType::U64 => convert_constant!(u64, IntegerConstant::U64),
+                        invalid_type => Err(Error::new(
+                            ErrorKind::InvalidConstantIntegerType(invalid_type),
+                            Some(constant_type.1.clone()),
+                        )),
+                    };
+
+                    next_instruction = match constant {
+                        Ok(literal) => Some(Instruction::ConstI(literal)),
+                        Err(error) => {
+                            errors.push(error);
+                            None
+                        }
+                    };
+                    expected_return_count = 1;
+                }
+            }
+
+            let return_registers = &statement.results.0;
+            let actual_return_count = return_registers.len();
+
+            if actual_return_count == expected_return_count {
+                if let Some(instruction) = next_instruction {
+                    instructions.push(instruction)
+                }
+            } else {
+                errors.push_with_location(
+                    ErrorKind::InvalidReturnRegisterCount {
+                        expected: expected_return_count,
+                        actual: actual_return_count,
+                    },
+                    statement.results.1.clone(),
+                )
+            }
+
+            for name in &statement.results.0 {
+                if let Err(error) = register_lookup.insert_temporary(name) {
+                    errors.push_with_location(
+                        ErrorKind::DuplicateRegister {
+                            name: name.identifier().clone(),
+                            original: error,
+                        },
+                        name.location().clone(),
+                    )
+                }
+            }
         }
 
         format::CodeBlock {

@@ -257,7 +257,7 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 .or_not()
                 .map(|results| results.unwrap_or_else(Vec::new));
 
-            result_registers
+            with_position(result_registers)
                 .then(full_instruction)
                 .map(|(results, instruction)| {
                     Some(ast::Statement {
@@ -454,7 +454,7 @@ mod tests {
                                 )),
                                 arguments: Vec::new(),
                                 instructions: vec![ast::Statement {
-                                    results: Vec::new(),
+                                    results: (Vec::new(), Position { start: 61, end: 62 }),
                                     instruction: (
                                         ast::Instruction::Ret(vec![
                                             ast::RegisterSymbol((

@@ -181,6 +181,10 @@ impl<'a> RegisterMap<'a> {
     ) -> Result<indices::Register, ast::Position> {
         self.insert(name, false)
     }
+
+    pub fn get(&self, name: &'a ast::RegisterSymbol) -> Option<indices::Register> {
+        self.lookup.get(name.identifier()).map(|(index, _)| *index)
+    }
 }
 
 #[cfg(test)]
@@ -223,5 +227,12 @@ mod tests {
         assert_eq!(Err(42), get_value(&key_1));
         assert_eq!(Err(255), get_value(&key_3));
         assert_eq!(Err(0xFFFF), get_value(&key_4));
+        assert_eq!(
+            map.into_vec()
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<u32>>(),
+            vec![42, 0xFFFF, 255]
+        );
     }
 }

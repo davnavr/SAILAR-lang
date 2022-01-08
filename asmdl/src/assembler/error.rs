@@ -6,7 +6,13 @@ pub enum ErrorKind {
     MissingDirective(&'static str),
     DuplicateDirective,
     InvalidFormatVersion,
+    UndefinedRegister(ast::Identifier),
     InvalidConstantIntegerType(ast::PrimitiveType),
+    ConstantIntegerOutOfRange(ast::PrimitiveType, i128),
+    InvalidReturnRegisterCount {
+        expected: usize,
+        actual: usize,
+    },
     DuplicateRegister {
         name: ast::Identifier,
         original: ast::Position,
@@ -30,9 +36,24 @@ impl std::fmt::Display for ErrorKind {
             }
             Self::DuplicateDirective => f.write_str("duplicate directive"),
             Self::InvalidFormatVersion => f.write_str("invalid format version"),
+            Self::UndefinedRegister(name) => {
+                write!(f, "a register with the symbol %{} was not defined", name)
+            }
             Self::InvalidConstantIntegerType(kind) => {
                 write!(f, "{} is not a valid constant integer type", kind)
             }
+            Self::ConstantIntegerOutOfRange(integer_type, value) => {
+                write!(
+                    f,
+                    "{} is not a valid value for constant integers of type {}",
+                    value, integer_type
+                )
+            }
+            Self::InvalidReturnRegisterCount { expected, actual } => write!(
+                f,
+                "expected {} return registers but got {}",
+                expected, actual
+            ),
             Self::DuplicateRegister { name, .. } => {
                 write!(f, "a register with the name %{} already exists", name)
             }
