@@ -66,11 +66,25 @@ fn main() -> Result<(), registir::writer::Error> {
         }
 
         for error in assembler_errors {
+            use asmdl::assembler::ErrorKind as AssemblerError;
+
             let position = error.location().cloned().unwrap_or_default();
-            create_report(&position)
-                .with_label(Label::new((source_path, position)).with_message(error.kind()))
-                .finish()
-                .eprint(&mut source)?;
+            let mut report = create_report(&position)
+                .with_label(Label::new((source_path, position)).with_message(error.kind()));
+
+            report = match error.kind() {
+                AssemblerError::InvalidFormatVersion => {
+                    let minimum_version =
+                        registir::format::FormatVersion::minimum_supported_version();
+                    report.with_note(format!(
+                        "minimum supported version is {}.{}",
+                        minimum_version.major, minimum_version.minor
+                    ))
+                }
+                _ => report,
+            };
+
+            report.finish().eprint(&mut source)?;
         }
 
         std::process::exit(1)
