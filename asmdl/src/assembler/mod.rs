@@ -298,7 +298,7 @@ pub fn assemble_declarations<'a>(
                     );
                 }
             }
-            _ => todo!(),
+            _ => (),
         }
     }
 

@@ -56,13 +56,20 @@ impl<'a, I, V> IndexedMap<'a, I, (&'a ast::Identifier, V)> {
             hash_map::Entry::Occupied(mut target) => {
                 let target_index = *target.get();
                 let last_index = self.values.len() - 1;
-                let last_name = self.values[last_index].0;
-                self.values.swap(target_index, last_index);
+                if target_index != last_index {
+                    let last_name = self.values[last_index].0;
+                    self.values.swap(target_index, last_index);
 
-                // Target item is moved to last index, so lookup has to be adjusted.
-                let previous_target_index = target.insert(last_index);
-                target.remove();
-                *self.lookup.get_mut(last_name).unwrap() = previous_target_index;
+                    // Target item is moved to last index, so lookup has to be adjusted.
+                    let previous_target_index = target.insert(last_index);
+                    target.remove();
+                    *self
+                        .lookup
+                        .get_mut(last_name)
+                        .expect("valid key for last entry") = previous_target_index;
+                } else {
+                    target.remove();
+                }
 
                 Some(self.values.swap_remove(last_index).1)
             }
