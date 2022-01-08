@@ -12,23 +12,19 @@ macro_rules! symbol_type {
         #[derive(Clone, Debug, Eq, PartialEq)]
         pub struct $symbol_type(pub Positioned<Identifier>);
 
+        impl $symbol_type {
+            pub fn identifier(&self) -> &Identifier {
+                &self.0 .0
+            }
+
+            pub fn location(&self) -> &Position {
+                &self.0 .1
+            }
+        }
+
         impl From<$symbol_type> for Identifier {
             fn from(identifier: $symbol_type) -> Identifier {
                 identifier.0 .0
-            }
-        }
-
-        impl<'a> From<&'a $symbol_type> for &'a Identifier {
-            fn from(identifier: &'a $symbol_type) -> Self {
-                &identifier.0 .0
-            }
-        }
-
-        impl std::ops::Deref for $symbol_type {
-            type Target = Identifier;
-
-            fn deref(&self) -> &Self::Target {
-                &self.0 .0
             }
         }
     };

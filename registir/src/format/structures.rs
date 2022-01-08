@@ -45,3 +45,21 @@ impl<T> Deref for ByteLengthEncoded<T> {
         &self.0
     }
 }
+
+impl<T> From<T> for ByteLengthEncoded<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> From<Vec<T>> for LengthEncodedVector<T> {
+    fn from(values: Vec<T>) -> Self {
+        Self(values)
+    }
+}
+
+impl<T> From<Vec<T>> for ByteLengthEncoded<LengthEncodedVector<T>> {
+    fn from(values: Vec<T>) -> Self {
+        Self(LengthEncodedVector(values))
+    }
+}

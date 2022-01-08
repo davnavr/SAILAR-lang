@@ -7,6 +7,18 @@ pub enum ErrorKind {
     DuplicateDirective,
     InvalidFormatVersion,
     InvalidConstantIntegerType(ast::PrimitiveType),
+    DuplicateRegister {
+        name: ast::Identifier,
+        original: ast::Position,
+    },
+    DuplicateBlock {
+        name: ast::Identifier,
+        original: ast::Position,
+    },
+    DuplicateCode {
+        name: ast::Identifier,
+        original: ast::Position,
+    },
 }
 
 impl std::fmt::Display for ErrorKind {
@@ -20,6 +32,19 @@ impl std::fmt::Display for ErrorKind {
             Self::InvalidFormatVersion => f.write_str("invalid format version"),
             Self::InvalidConstantIntegerType(kind) => {
                 write!(f, "{} is not a valid constant integer type", kind)
+            }
+            Self::DuplicateRegister { name, .. } => {
+                write!(f, "a register with the name %{} already exists", name)
+            }
+            Self::DuplicateBlock { name, .. } => {
+                write!(f, "a code block with the name ${} already exists", name)
+            }
+            Self::DuplicateCode { name, .. } => {
+                write!(
+                    f,
+                    "a code declaration with the name @{} already exists",
+                    name
+                )
             }
         }
     }
@@ -56,16 +81,16 @@ impl From<ErrorKind> for Error {
 }
 
 pub(crate) struct Builder {
-    committed: usize,
     errors: Vec<Error>,
 }
 
 impl Builder {
     pub(crate) fn new() -> Self {
-        Self {
-            committed: 0,
-            errors: Vec::new(),
-        }
+        Self { errors: Vec::new() }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.errors.is_empty()
     }
 
     pub(crate) fn push(&mut self, error: Error) {
@@ -74,14 +99,6 @@ impl Builder {
 
     pub(crate) fn push_with_location(&mut self, kind: ErrorKind, location: ast::Position) {
         self.push(Error::with_location(kind, location))
-    }
-
-    /// Returns `true` if no new errors were generated.
-    pub(crate) fn commit(&mut self) -> bool {
-        let new_length = self.errors.len();
-        let success = self.committed == new_length;
-        self.committed = new_length;
-        success
     }
 
     pub(crate) fn into_vec(&mut self) -> Vec<Error> {
