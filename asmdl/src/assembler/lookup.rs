@@ -2,13 +2,13 @@ use crate::ast;
 use registir::format::indices;
 use std::{collections::hash_map, marker::PhantomData};
 
-pub struct IndexedMap<'a, I, V> {
+pub struct IndexedMap<I, K, V> {
     values: Vec<V>,
-    lookup: hash_map::HashMap<&'a ast::Identifier, usize>,
+    lookup: hash_map::HashMap<K, usize>,
     phantom: PhantomData<I>,
 }
 
-impl<'a, I, V> IndexedMap<'a, I, V> {
+impl<I, K, V> IndexedMap<I, K, V> {
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -32,26 +32,51 @@ impl<'a, I, V> IndexedMap<'a, I, V> {
     }
 }
 
-impl<'a, I, V> IndexedMap<'a, I, V>
+impl<I, K, V> IndexedMap<I, K, V>
 where
+    K: Eq + std::hash::Hash,
     usize: TryInto<I>,
     <usize as TryInto<I>>::Error: std::fmt::Debug,
 {
-    pub fn insert(&mut self, key: &'a ast::Identifier, value: V) -> Result<I, &V> {
+    pub fn get_index(&self, key: K) -> Option<I> {
+        self.lookup
+            .get(&key)
+            .map(|&index| index.try_into().unwrap())
+    }
+
+    fn try_insert_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
         let index = self.values.len();
         match self.lookup.insert(key, index) {
             None => {
-                self.values.push(value);
+                self.values.push(value());
                 Ok(index.try_into().unwrap())
             }
-            Some(existing_index) => Err(&self.values[existing_index]),
+            Some(existing_index) => Err((
+                existing_index.try_into().unwrap(),
+                &self.values[existing_index],
+            )),
+        }
+    }
+
+    pub fn insert(&mut self, key: K, value: V) -> Result<I, &V> {
+        self.try_insert_with(key, || value)
+            .map_err(|(_, existing)| existing)
+    }
+
+    pub fn insert_or_get_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> I {
+        match self.try_insert_with(key, value) {
+            Ok(index) => index,
+            Err((index, _)) => index,
         }
     }
 }
 
-impl<'a, I, V> IndexedMap<'a, I, (&'a ast::Identifier, V)> {
+impl<I, K, V> IndexedMap<I, K, (K, V)>
+where
+    K: Copy + Eq + std::hash::Hash,
+{
     /// Removes the element associated with the specified identifier, and replaces it with the last value.
-    pub fn swap_remove(&mut self, key: &'a ast::Identifier) -> Option<V> {
+    pub fn swap_remove(&mut self, key: K) -> Option<V> {
         match self.lookup.entry(key) {
             hash_map::Entry::Occupied(mut target) => {
                 let target_index = *target.get();
@@ -65,7 +90,7 @@ impl<'a, I, V> IndexedMap<'a, I, (&'a ast::Identifier, V)> {
                     target.remove();
                     *self
                         .lookup
-                        .get_mut(last_name)
+                        .get_mut(&last_name)
                         .expect("valid key for last entry") = previous_target_index;
                 } else {
                     target.remove();
@@ -211,7 +236,8 @@ mod tests {
 
     #[test]
     fn indexed_map_swap_remove_is_correct() {
-        let mut map = lookup::IndexedMap::<u32, (&'_ ast::Identifier, u32)>::new();
+        let mut map =
+            lookup::IndexedMap::<u32, &'_ ast::Identifier, (&'_ ast::Identifier, u32)>::new();
         let key_1 = ast::Identifier::try_from("foo").unwrap();
         map.insert(&key_1, (&key_1, 42)).unwrap();
         let key_2 = ast::Identifier::try_from("entry").unwrap();

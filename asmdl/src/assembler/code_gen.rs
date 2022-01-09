@@ -1,10 +1,10 @@
 use crate::assembler::{self, *};
 
 pub type CodeBlockLookup<'a> =
-    lookup::IndexedMap<'a, u32, (&'a ast::Identifier, CodeBlockAssembler<'a>)>;
+    lookup::IndexedMap<u32, &'a ast::Identifier, (&'a ast::Identifier, CodeBlockAssembler<'a>)>;
 
 pub type FunctionCodeLookup<'a> =
-    lookup::IndexedMap<'a, format::indices::Code, FunctionBodyAssembler<'a>>;
+    lookup::IndexedMap<format::indices::Code, &'a ast::Identifier, FunctionBodyAssembler<'a>>;
 
 pub struct CodeBlockAssembler<'a> {
     location: &'a ast::Position,

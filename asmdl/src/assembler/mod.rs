@@ -126,11 +126,11 @@ fn assemble_items<D, T, A: FnMut(&D) -> Option<T>>(definitions: &[D], mut assemb
 
 mod code_gen;
 mod definitions;
+mod signatures;
 
 type IdentifierLookup = lookup::IndexedSet<format::indices::Identifier, format::Identifier>;
+
 //type NamespaceLookup
-//type TypeSignatureLookup
-//type FunctionSignatureLookup
 
 type SymbolLookup<'a> = std::collections::HashMap<&'a ast::Identifier, &'a ast::Position>;
 
@@ -142,8 +142,8 @@ pub fn assemble_declarations<'a>(
     let mut module_format = None;
     let mut identifiers = IdentifierLookup::new();
     //let mut namespaces
-    //let mut type_signatures
-    //let mut function_signatures
+    let mut type_signatures = signatures::TypeLookup::new();
+    let mut function_signatures = signatures::FunctionLookup::new();
     let mut function_bodies = code_gen::FunctionCodeLookup::new();
 
     let mut function_definitions = definitions::FunctionLookup::new();
@@ -249,6 +249,8 @@ pub fn assemble_declarations<'a>(
                     &mut symbol_lookup,
                     &mut identifiers,
                     &mut function_bodies,
+                    &mut type_signatures,
+                    &mut function_signatures,
                 )
             });
 
@@ -276,7 +278,7 @@ pub fn assemble_declarations<'a>(
                 defined_functions: format::LenVecBytes::from(assembled_function_definitions),
             }),
             struct_layouts: format::LenVecBytes::from(Vec::new()),
-            entry_point: format::LenBytes(None), // TODO: Look up entry point
+            entry_point: format::LenBytes(todo!("find entry point")), // TODO: Look up entry point
         });
     } else {
         module = None;

@@ -6,8 +6,11 @@ pub struct FunctionAssembler<'a> {
     pub declarations: &'a [ast::Positioned<ast::FunctionDeclaration>],
 }
 
-pub type FunctionLookup<'a> =
-    lookup::IndexedMap<'a, format::indices::FunctionDefinition, FunctionAssembler<'a>>;
+pub type FunctionLookup<'a> = lookup::IndexedMap<
+    format::indices::FunctionDefinition,
+    &'a ast::Identifier,
+    FunctionAssembler<'a>,
+>;
 
 impl<'a> FunctionAssembler<'a> {
     pub(crate) fn assemble(
@@ -16,6 +19,8 @@ impl<'a> FunctionAssembler<'a> {
         symbols: &mut SymbolLookup<'a>,
         identifiers: &mut IdentifierLookup,
         code_lookup: &mut code_gen::FunctionCodeLookup<'a>,
+        type_signatures: &mut signatures::TypeLookup<'a>,
+        function_signatures: &mut signatures::FunctionLookup,
     ) -> Option<format::Function> {
         let export_symbol_index = self.export_symbol.as_ref().map(|(symbol, location)| {
             if let Some(existing) = symbols.insert(symbol, location) {
@@ -46,7 +51,23 @@ impl<'a> FunctionAssembler<'a> {
                         )
                     }
                 }
-                ast::FunctionDeclaration::Body(body) => todo!(),
+                ast::FunctionDeclaration::Body(body) => {
+                    if function_body.is_none() {
+                        function_body = Some(match body {
+                            ast::FunctionBodyDeclaration::Defined(body_symbol) => code_lookup
+                                .get_index(body_symbol.identifier())
+                                .map(format::FunctionBody::Defined),
+                            ast::FunctionBodyDeclaration::External { .. } => {
+                                todo!("external function bodies are not yet supported")
+                            }
+                        });
+                    } else {
+                        errors.push_with_location(
+                            ErrorKind::DuplicateDirective,
+                            declaration.1.clone(),
+                        )
+                    }
+                }
             }
         }
 
@@ -64,7 +85,7 @@ impl<'a> FunctionAssembler<'a> {
             )
         }
 
-        if let (Some(name), Some(body)) = (function_name, function_body) {
+        if let (Some(name), Some(Some(body))) = (function_name, function_body) {
             Some(format::Function {
                 name,
                 symbol: export_symbol_index,

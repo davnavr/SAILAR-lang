@@ -72,7 +72,7 @@ impl From<LiteralString> for String {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Type {
     Primitive(PrimitiveType),
 }
