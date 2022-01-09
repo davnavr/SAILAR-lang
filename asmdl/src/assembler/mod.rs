@@ -191,6 +191,8 @@ pub fn assemble_declarations<'a>(
                     definitions::FunctionAssembler {
                         declarations,
                         location: &node.1,
+                        parameter_types,
+                        return_types,
                         export_symbol,
                     },
                 ) {

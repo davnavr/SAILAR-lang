@@ -2,6 +2,8 @@ use crate::assembler::*;
 
 pub struct FunctionAssembler<'a> {
     pub location: &'a ast::Position,
+    pub parameter_types: signatures::ParameterSet<'a>,
+    pub return_types: signatures::ParameterSet<'a>,
     pub export_symbol: &'a Option<ast::Positioned<ast::Identifier>>,
     pub declarations: &'a [ast::Positioned<ast::FunctionDeclaration>],
 }
@@ -20,7 +22,7 @@ impl<'a> FunctionAssembler<'a> {
         identifiers: &mut IdentifierLookup,
         code_lookup: &mut code_gen::FunctionCodeLookup<'a>,
         type_signatures: &mut signatures::TypeLookup<'a>,
-        function_signatures: &mut signatures::FunctionLookup,
+        function_signatures: &mut signatures::FunctionLookup<'a>,
     ) -> Option<format::Function> {
         let export_symbol_index = self.export_symbol.as_ref().map(|(symbol, location)| {
             if let Some(existing) = symbols.insert(symbol, location) {
@@ -89,7 +91,7 @@ impl<'a> FunctionAssembler<'a> {
             Some(format::Function {
                 name,
                 symbol: export_symbol_index,
-                signature: todo!(),
+                signature: function_signatures.get(type_signatures, self.parameter_types, self.return_types),
                 body,
             })
         } else {

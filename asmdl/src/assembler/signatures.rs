@@ -28,7 +28,7 @@ impl<'a> TypeLookup<'a> {
     }
 }
 
-type ParameterSet<'a> = &'a [ast::Positioned<ast::Type>];
+pub type ParameterSet<'a> = &'a [ast::Positioned<ast::Type>];
 
 pub struct FunctionLookup<'a> {
     lookup: lookup::IndexedMap<
