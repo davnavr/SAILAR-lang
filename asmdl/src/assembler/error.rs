@@ -134,7 +134,7 @@ impl Builder {
         self.push(Error::with_location(kind, location))
     }
 
-    pub(crate) fn into_vec(&mut self) -> Vec<Error> {
-        std::mem::replace(&mut self.errors, Vec::new())
+    pub(crate) fn drain_to_vec(&mut self) -> Vec<Error> {
+        std::mem::take(&mut self.errors)
     }
 }

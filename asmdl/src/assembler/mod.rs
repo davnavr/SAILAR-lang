@@ -134,8 +134,8 @@ type IdentifierLookup = lookup::IndexedSet<format::indices::Identifier, format::
 
 type SymbolLookup<'a> = std::collections::HashMap<&'a ast::Identifier, &'a ast::Position>;
 
-pub fn assemble_declarations<'a>(
-    declarations: &'a [ast::Positioned<ast::TopLevelDeclaration>],
+pub fn assemble_declarations(
+    declarations: &[ast::Positioned<ast::TopLevelDeclaration>],
 ) -> Result<format::Module, Vec<Error>> {
     let mut errors = error::Builder::new();
     let mut module_header = None;
@@ -153,10 +153,10 @@ pub fn assemble_declarations<'a>(
     for node in declarations {
         match &node.0 {
             ast::TopLevelDeclaration::Module(declarations) => {
-                assemble_module_header(&mut errors, &mut module_header, &declarations, &node.1)
+                assemble_module_header(&mut errors, &mut module_header, declarations, &node.1)
             }
             ast::TopLevelDeclaration::Format(declarations) => {
-                assemble_module_format(&mut errors, &mut module_format, &declarations, &node.1)
+                assemble_module_format(&mut errors, &mut module_format, declarations, &node.1)
             }
             ast::TopLevelDeclaration::Code {
                 symbol,
@@ -235,7 +235,7 @@ pub fn assemble_declarations<'a>(
             let mut block_lookup = code_gen::CodeBlockLookup::new();
             let mut register_map = lookup::RegisterMap::new();
 
-            assemble_items(&function_bodies.values(), |body| {
+            assemble_items(function_bodies.values(), |body| {
                 body.assemble(&mut errors, &mut block_lookup, &mut register_map)
             })
         };
@@ -245,7 +245,7 @@ pub fn assemble_declarations<'a>(
         let mut symbol_lookup = SymbolLookup::new();
 
         let assembled_function_definitions =
-            assemble_items(&function_definitions.values(), |definition| {
+            assemble_items(function_definitions.values(), |definition| {
                 definition.assemble(
                     &mut errors,
                     &mut symbol_lookup,
@@ -271,10 +271,10 @@ pub fn assemble_declarations<'a>(
             integer_size: format::numeric::IntegerSize::I4,
             format_version: format,
             header: format::LenBytes(header),
-            identifiers: format::LenVecBytes::from(identifiers.into_vec()),
+            identifiers: format::LenVecBytes::from(identifiers.drain_to_vec()),
             namespaces: format::LenVecBytes::from(Vec::new()),
-            type_signatures: format::LenVecBytes::from(type_signatures.into_vec()),
-            function_signatures: format::LenVecBytes::from(function_signatures.into_vec()),
+            type_signatures: format::LenVecBytes::from(type_signatures.drain_to_vec()),
+            function_signatures: format::LenVecBytes::from(function_signatures.drain_to_vec()),
             function_bodies: format::LenVecBytes::from(assembled_function_bodies),
             data: format::LenVecBytes::from(Vec::new()),
             imports: format::LenBytes(format::ModuleImports {
@@ -301,7 +301,7 @@ pub fn assemble_declarations<'a>(
         Some(result) if errors.is_empty() => Ok(result),
         _ => {
             assert!(!errors.is_empty());
-            Err(errors.into_vec())
+            Err(errors.drain_to_vec())
         }
     }
 }

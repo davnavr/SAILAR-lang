@@ -21,9 +21,9 @@ impl<I, K, V> IndexedMap<I, K, V> {
         &self.values
     }
 
-    pub fn into_vec(&mut self) -> Vec<V> {
+    pub fn drain_to_vec(&mut self) -> Vec<V> {
         self.lookup.clear();
-        std::mem::replace(&mut self.values, Vec::new())
+        std::mem::take(&mut self.values)
     }
 
     pub fn clear(&mut self) {
@@ -132,7 +132,7 @@ where
             .unwrap()
     }
 
-    pub fn into_vec(&mut self) -> Vec<T> {
+    pub fn drain_to_vec(&mut self) -> Vec<T> {
         let mut buffer = Vec::new();
         buffer.resize_with(self.lookup.len(), std::mem::MaybeUninit::<T>::zeroed);
 
@@ -224,7 +224,7 @@ mod tests {
         set.insert_or_get(String::from("a"));
         set.insert_or_get(String::from("test"));
         assert_eq!(
-            set.into_vec(),
+            set.drain_to_vec(),
             vec![
                 String::from("this"),
                 String::from("is"),
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(Err(255), get_value(&key_3));
         assert_eq!(Err(0xFFFF), get_value(&key_4));
         assert_eq!(
-            map.into_vec()
+            map.drain_to_vec()
                 .into_iter()
                 .map(|(_, value)| value)
                 .collect::<Vec<u32>>(),

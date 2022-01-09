@@ -76,10 +76,7 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
     }
 
     fn filter_parsed_declarations<D>(declarations: Vec<Option<D>>) -> Vec<D> {
-        declarations
-            .into_iter()
-            .filter_map(|declaration| declaration)
-            .collect()
+        declarations.into_iter().flatten().collect()
     }
 
     fn directive_with_declarations<A, N, D, P, Q, F>(

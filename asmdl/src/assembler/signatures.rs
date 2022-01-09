@@ -12,8 +12,8 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn into_vec(&mut self) -> Vec<format::TypeSignature> {
-        self.lookup.into_vec()
+    pub fn drain_to_vec(&mut self) -> Vec<format::TypeSignature> {
+        self.lookup.drain_to_vec()
     }
 
     pub(crate) fn get(
@@ -45,8 +45,8 @@ impl<'a> FunctionLookup<'a> {
         }
     }
 
-    pub fn into_vec(&mut self) -> Vec<format::FunctionSignature> {
-        self.lookup.into_vec()
+    pub fn drain_to_vec(&mut self) -> Vec<format::FunctionSignature> {
+        self.lookup.drain_to_vec()
     }
 
     pub(crate) fn get(

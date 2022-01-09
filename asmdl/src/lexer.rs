@@ -34,23 +34,23 @@ impl std::fmt::Display for Token {
             Self::Semicolon => f.write_char(';'),
             Self::Directive(contents) => {
                 f.write_char('.')?;
-                f.write_str(&contents)
+                f.write_str(contents)
             }
             Self::GlobalIdentifier(identifier) => {
                 f.write_char('@')?;
-                f.write_str(&identifier)
+                f.write_str(identifier)
             }
             Self::LocalIdentifier(identifier) => {
                 f.write_char('%')?;
-                f.write_str(&identifier)
+                f.write_str(identifier)
             }
             Self::RegisterIdentifier(identifier) => {
                 f.write_char('$')?;
-                f.write_str(&identifier)
+                f.write_str(identifier)
             }
             Self::LiteralInteger(value) => std::fmt::Display::fmt(value, f),
             Self::LiteralString(literal) => std::fmt::Display::fmt(literal, f),
-            Self::Keyword(keyword) => f.write_str(&keyword),
+            Self::Keyword(keyword) => f.write_str(keyword),
         }
     }
 }
