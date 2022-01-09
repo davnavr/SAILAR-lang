@@ -91,7 +91,11 @@ impl<'a> FunctionAssembler<'a> {
             Some(format::Function {
                 name,
                 symbol: export_symbol_index,
-                signature: function_signatures.get(type_signatures, self.parameter_types, self.return_types),
+                signature: function_signatures.get(
+                    type_signatures,
+                    self.parameter_types,
+                    self.return_types,
+                ),
                 body,
             })
         } else {

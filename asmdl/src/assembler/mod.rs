@@ -256,14 +256,25 @@ pub fn assemble_declarations<'a>(
                 )
             });
 
+        let entry_point_index = entry_point_name.and_then(|name| {
+            let result = function_definitions.get_index(name.identifier());
+            if result.is_none() {
+                errors.push_with_location(
+                    ErrorKind::UndefinedGlobal(name.identifier().clone()),
+                    name.location().clone(),
+                );
+            }
+            result
+        });
+
         module = Some(format::Module {
             integer_size: format::numeric::IntegerSize::I4,
             format_version: format,
             header: format::LenBytes(header),
             identifiers: format::LenVecBytes::from(identifiers.into_vec()),
             namespaces: format::LenVecBytes::from(Vec::new()),
-            type_signatures: format::LenVecBytes::from(Vec::new()),
-            function_signatures: format::LenVecBytes::from(Vec::new()),
+            type_signatures: format::LenVecBytes::from(type_signatures.into_vec()),
+            function_signatures: format::LenVecBytes::from(function_signatures.into_vec()),
             function_bodies: format::LenVecBytes::from(assembled_function_bodies),
             data: format::LenVecBytes::from(Vec::new()),
             imports: format::LenBytes(format::ModuleImports {
@@ -280,7 +291,7 @@ pub fn assemble_declarations<'a>(
                 defined_functions: format::LenVecBytes::from(assembled_function_definitions),
             }),
             struct_layouts: format::LenVecBytes::from(Vec::new()),
-            entry_point: format::LenBytes(todo!("find entry point")), // TODO: Look up entry point
+            entry_point: format::LenBytes(entry_point_index),
         });
     } else {
         module = None;
