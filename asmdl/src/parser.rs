@@ -285,11 +285,13 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
     };
 
     let function_attributes = {
-        let function_types = || between_parenthesis_or_else(
-            with_position(primitive_type.map(ast::Type::Primitive))
-                .separated_by(just(Token::Comma)),
-            Vec::new,
-        );
+        let function_types = || {
+            between_parenthesis_or_else(
+                with_position(primitive_type.map(ast::Type::Primitive))
+                    .separated_by(just(Token::Comma)),
+                Vec::new,
+            )
+        };
         function_types().then(keyword("returns").ignore_then(
             function_types().then(keyword("export").ignore_then(identifier_literal()).or_not()),
         ))

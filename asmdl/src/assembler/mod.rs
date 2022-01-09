@@ -124,327 +124,15 @@ fn assemble_items<D, T, A: FnMut(&D) -> Option<T>>(definitions: &[D], mut assemb
     assembled
 }
 
-struct CodeBlockAssembler<'a> {
-    location: &'a ast::Position,
-    input_registers: &'a [ast::RegisterSymbol],
-    instructions: &'a [ast::Statement],
-}
-
-impl<'a> CodeBlockAssembler<'a> {
-    fn assemble(
-        &self,
-        errors: &mut error::Builder,
-        _block_lookup: &CodeBlockLookup<'a>,
-        register_lookup: &mut lookup::RegisterMap<'a>,
-    ) -> format::CodeBlock {
-        fn lookup_register<'a>(
-            errors: &mut error::Builder,
-            register_lookup: &mut lookup::RegisterMap<'a>,
-            register: &'a ast::RegisterSymbol,
-        ) -> Option<format::indices::Register> {
-            let index = register_lookup.get(register);
-            if index.is_none() {
-                errors.push_with_location(
-                    ErrorKind::UndefinedRegister(register.identifier().clone()),
-                    register.location().clone(),
-                );
-            }
-            index
-        }
-
-        fn lookup_many_registers<'a>(
-            errors: &mut error::Builder,
-            register_lookup: &mut lookup::RegisterMap<'a>,
-            registers: &'a [ast::RegisterSymbol],
-        ) -> Option<format::LenVec<format::indices::Register>> {
-            let mut indices = Vec::with_capacity(registers.len());
-            let mut success = true;
-
-            for name in registers {
-                match lookup_register(errors, register_lookup, name) {
-                    Some(index) if success => indices.push(index),
-                    Some(_) => (),
-                    None => success = false,
-                }
-            }
-
-            if success {
-                Some(format::LenVec(indices))
-            } else {
-                None
-            }
-        }
-
-        register_lookup.clear();
-
-        for register in self.input_registers {
-            if let Err(original) = register_lookup.insert_input(register) {
-                errors.push_with_location(
-                    ErrorKind::DuplicateRegister {
-                        name: register.identifier().clone(),
-                        original,
-                    },
-                    register.location().clone(),
-                );
-            }
-        }
-
-        let mut instructions = Vec::with_capacity(self.instructions.len());
-
-        for statement in self.instructions {
-            use format::instruction_set::Instruction;
-
-            let expected_return_count;
-            let next_instruction;
-            match &statement.instruction.0 {
-                ast::Instruction::Nop => {
-                    expected_return_count = 0;
-                    next_instruction = Some(Instruction::Nop);
-                }
-                ast::Instruction::Ret(registers) => {
-                    expected_return_count = 0;
-                    next_instruction = lookup_many_registers(errors, register_lookup, registers)
-                        .map(Instruction::Ret);
-                }
-                ast::Instruction::ConstI(constant_type, value) => {
-                    use format::instruction_set::{IntegerConstant, PrimitiveType};
-
-                    macro_rules! convert_constant {
-                        ($destination_type: ty, $constant: expr) => {
-                            <$destination_type>::try_from(value.0)
-                                .map($constant)
-                                .map_err(|_| {
-                                    Error::new(
-                                        ErrorKind::ConstantIntegerOutOfRange(
-                                            constant_type.0,
-                                            value.0,
-                                        ),
-                                        Some(value.1.clone()),
-                                    )
-                                })
-                        };
-                    }
-
-                    let constant = match constant_type.0 {
-                        PrimitiveType::S8 => convert_constant!(i8, IntegerConstant::S8),
-                        PrimitiveType::U8 => convert_constant!(u8, IntegerConstant::U8),
-                        PrimitiveType::S16 => convert_constant!(i16, IntegerConstant::S16),
-                        PrimitiveType::U16 => convert_constant!(u16, IntegerConstant::U16),
-                        PrimitiveType::S32 => convert_constant!(i32, IntegerConstant::S32),
-                        PrimitiveType::U32 => convert_constant!(u32, IntegerConstant::U32),
-                        PrimitiveType::S64 => convert_constant!(i64, IntegerConstant::S64),
-                        PrimitiveType::U64 => convert_constant!(u64, IntegerConstant::U64),
-                        invalid_type => Err(Error::new(
-                            ErrorKind::InvalidConstantIntegerType(invalid_type),
-                            Some(constant_type.1.clone()),
-                        )),
-                    };
-
-                    next_instruction = match constant {
-                        Ok(literal) => Some(Instruction::ConstI(literal)),
-                        Err(error) => {
-                            errors.push(error);
-                            None
-                        }
-                    };
-                    expected_return_count = 1;
-                }
-            }
-
-            let return_registers = &statement.results.0;
-            let actual_return_count = return_registers.len();
-
-            if actual_return_count == expected_return_count {
-                if let Some(instruction) = next_instruction {
-                    instructions.push(instruction)
-                }
-            } else {
-                errors.push_with_location(
-                    ErrorKind::InvalidReturnRegisterCount {
-                        expected: expected_return_count,
-                        actual: actual_return_count,
-                    },
-                    statement.results.1.clone(),
-                )
-            }
-
-            for name in &statement.results.0 {
-                if let Err(error) = register_lookup.insert_temporary(name) {
-                    errors.push_with_location(
-                        ErrorKind::DuplicateRegister {
-                            name: name.identifier().clone(),
-                            original: error,
-                        },
-                        name.location().clone(),
-                    )
-                }
-            }
-        }
-
-        format::CodeBlock {
-            input_register_count: format::numeric::UInteger(
-                self.input_registers.len().try_into().unwrap(),
-            ),
-            exception_handler: None,
-            instructions: format::LenVecBytes::from(instructions),
-        }
-    }
-}
-
-struct FunctionBodyAssembler<'a> {
-    location: &'a ast::Position,
-    declarations: &'a [ast::Positioned<ast::CodeDeclaration>],
-}
-
-impl<'a> FunctionBodyAssembler<'a> {
-    fn assemble(
-        &self,
-        errors: &mut error::Builder,
-        block_lookup: &mut CodeBlockLookup<'a>,
-        register_lookup: &mut lookup::RegisterMap<'a>,
-    ) -> Option<format::Code> {
-        block_lookup.clear();
-        let mut entry_block_symbol = None;
-
-        for declaration in self.declarations {
-            match &declaration.0 {
-                ast::CodeDeclaration::Entry(symbol) => {
-                    if entry_block_symbol.is_none() {
-                        entry_block_symbol = Some(symbol)
-                    } else {
-                        errors.push_with_location(
-                            ErrorKind::DuplicateDirective,
-                            declaration.1.clone(),
-                        )
-                    }
-                }
-                ast::CodeDeclaration::Block {
-                    name,
-                    arguments: input_registers,
-                    instructions,
-                } => {
-                    let block_name = name.identifier();
-                    if let Err(existing) = block_lookup.insert(
-                        block_name,
-                        (
-                            block_name,
-                            CodeBlockAssembler {
-                                input_registers,
-                                instructions,
-                                location: &declaration.1,
-                            },
-                        ),
-                    ) {
-                        errors.push_with_location(
-                            ErrorKind::DuplicateBlock {
-                                name: block_name.clone(),
-                                original: existing.1.location.clone(),
-                            },
-                            declaration.1.clone(),
-                        )
-                    }
-                }
-            }
-        }
-
-        if let Some(entry_block_name) = entry_block_symbol {
-            Some(format::Code {
-                entry_block: block_lookup
-                    .swap_remove(entry_block_name.identifier())
-                    .expect("entry block should exist in lookup")
-                    .assemble(errors, block_lookup, register_lookup),
-                blocks: format::LenVec(assemble_items(block_lookup.values(), |(_, block)| {
-                    Some(block.assemble(errors, block_lookup, register_lookup))
-                })),
-            })
-        } else {
-            errors.push_with_location(
-                ErrorKind::MissingDirective("missing entry block"),
-                self.location.clone(),
-            );
-            None
-        }
-    }
-}
-
-struct FunctionDefinitionAssembler<'a> {
-    location: &'a ast::Position,
-    export_symbol: &'a Option<ast::Positioned<ast::Identifier>>,
-    declarations: &'a [ast::Positioned<ast::FunctionDeclaration>],
-}
-
-impl<'a> FunctionDefinitionAssembler<'a> {
-    fn assemble(
-        &self,
-        errors: &mut error::Builder,
-        symbols: &mut SymbolLookup<'a>,
-        identifiers: &mut IdentifierLookup,
-        code_lookup: &mut FunctionCodeLookup<'a>,
-    ) -> Option<format::Function> {
-        let export_symbol_index = self.export_symbol.as_ref().map(|(symbol, location)| {
-            if let Some(existing) = symbols.insert(symbol, location) {
-                errors.push_with_location(
-                    ErrorKind::DuplicateSymbol {
-                        symbol: symbol.clone(),
-                        original: existing.clone(),
-                    },
-                    location.clone(),
-                )
-            }
-
-            identifiers.insert_or_get(symbol.clone())
-        });
-
-        let mut function_name = None;
-        let mut function_body = None;
-
-        for declaration in self.declarations {
-            match &declaration.0 {
-                ast::FunctionDeclaration::Name((name, _)) => if function_name.is_none() {
-                    function_name = Some(identifiers.insert_or_get(name.clone()))
-                } else {
-                    errors.push_with_location(ErrorKind::DuplicateDirective, declaration.1.clone())
-                },
-            }
-        }
-
-        if function_name.is_none() {
-            errors.push_with_location(ErrorKind::MissingDirective("function name"), self.location.clone())
-        }
-
-        if function_body.is_none() {
-            errors.push_with_location(ErrorKind::MissingDirective("function body"), self.location.clone())
-        }
-
-        if let (Some(name), Some(body)) = (function_name, function_body) {
-            Some(format::Function {
-                name,
-                symbol: export_symbol_index,
-                signature: todo!(),
-                body
-            })
-        }
-        else {
-            None
-        }
-    }
-}
+mod code_gen;
+mod definitions;
 
 type IdentifierLookup = lookup::IndexedSet<format::indices::Identifier, format::Identifier>;
 //type NamespaceLookup
 //type TypeSignatureLookup
 //type FunctionSignatureLookup
 
-type CodeBlockLookup<'a> =
-    lookup::IndexedMap<'a, u32, (&'a ast::Identifier, CodeBlockAssembler<'a>)>;
-
-type FunctionCodeLookup<'a> =
-    lookup::IndexedMap<'a, format::indices::Code, FunctionBodyAssembler<'a>>;
-
 type SymbolLookup<'a> = std::collections::HashMap<&'a ast::Identifier, &'a ast::Position>;
-
-type FunctionDefinitionLookup<'a> =
-    lookup::IndexedMap<'a, format::indices::FunctionDefinition, FunctionDefinitionAssembler<'a>>;
 
 pub fn assemble_declarations<'a>(
     declarations: &'a [ast::Positioned<ast::TopLevelDeclaration>],
@@ -456,9 +144,9 @@ pub fn assemble_declarations<'a>(
     //let mut namespaces
     //let mut type_signatures
     //let mut function_signatures
-    let mut function_bodies = FunctionCodeLookup::new();
+    let mut function_bodies = code_gen::FunctionCodeLookup::new();
 
-    let mut function_definitions = FunctionDefinitionLookup::new();
+    let mut function_definitions = definitions::FunctionLookup::new();
 
     let mut entry_point_name = None;
 
@@ -476,7 +164,7 @@ pub fn assemble_declarations<'a>(
             } => {
                 if let Err(error) = function_bodies.insert(
                     symbol.identifier(),
-                    FunctionBodyAssembler {
+                    code_gen::FunctionBodyAssembler {
                         declarations,
                         location: &node.1,
                     },
@@ -494,11 +182,13 @@ pub fn assemble_declarations<'a>(
             ast::TopLevelDeclaration::Function {
                 symbol,
                 exported: export_symbol,
+                parameter_types,
+                return_types,
                 declarations,
             } => {
                 if let Err(error) = function_definitions.insert(
                     symbol.identifier(),
-                    FunctionDefinitionAssembler {
+                    definitions::FunctionAssembler {
                         declarations,
                         location: &node.1,
                         export_symbol,
@@ -540,7 +230,7 @@ pub fn assemble_declarations<'a>(
     if let (Some(header), Some(format)) = (module_header, module_format) {
         let assembled_function_bodies = {
             // These collections are reused as function bodies are assembled.
-            let mut block_lookup = CodeBlockLookup::new();
+            let mut block_lookup = code_gen::CodeBlockLookup::new();
             let mut register_map = lookup::RegisterMap::new();
 
             assemble_items(&function_bodies.values(), |body| {
@@ -554,7 +244,12 @@ pub fn assemble_declarations<'a>(
 
         let assembled_function_definitions =
             assemble_items(&function_definitions.values(), |definition| {
-                definition.assemble(&mut errors, &mut symbol_lookup, &mut identifiers, &mut function_bodies)
+                definition.assemble(
+                    &mut errors,
+                    &mut symbol_lookup,
+                    &mut identifiers,
+                    &mut function_bodies,
+                )
             });
 
         module = Some(format::Module {
