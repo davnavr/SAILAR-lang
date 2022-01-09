@@ -73,9 +73,8 @@ impl From<LiteralString> for String {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum TypeSignature {
+pub enum Type {
     Primitive(PrimitiveType),
-    Array(Box<TypeSignature>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -187,6 +186,8 @@ pub enum TopLevelDeclaration {
     },
     Function {
         symbol: GlobalSymbol,
+        parameter_types: Vec<Positioned<Type>>,
+        return_types: Vec<Positioned<Type>>,
         exported: Option<Positioned<Identifier>>,
         declarations: Vec<Positioned<FunctionDeclaration>>,
     },

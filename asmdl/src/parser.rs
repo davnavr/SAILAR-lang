@@ -10,7 +10,7 @@ pub type Tree = Vec<ast::Positioned<ast::TopLevelDeclaration>>;
 
 fn parser() -> impl Parser<Token, Tree, Error = Error> {
     use chumsky::{
-        primitive::{choice, custom, empty, end, filter, filter_map, just},
+        primitive::{choice, empty, end, filter, filter_map, just},
         recovery,
     };
 
@@ -284,6 +284,17 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         ))
     };
 
+    let function_attributes = {
+        let function_types = || between_parenthesis_or_else(
+            with_position(primitive_type.map(ast::Type::Primitive))
+                .separated_by(just(Token::Comma)),
+            Vec::new,
+        );
+        function_types().then(keyword("returns").ignore_then(
+            function_types().then(keyword("export").ignore_then(identifier_literal()).or_not()),
+        ))
+    };
+
     let function_declaration = {
         let body_declaration = choice((
             keyword("defined")
@@ -323,12 +334,16 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         symbolic_declaration(
             "function",
             global_symbol,
-            keyword("export").ignore_then(identifier_literal()).or_not(),
+            function_attributes,
             with_position_optional(function_declaration),
-            |symbol, exported, declarations| ast::TopLevelDeclaration::Function {
-                symbol,
-                exported,
-                declarations,
+            |symbol, (parameter_types, (return_types, exported)), declarations| {
+                ast::TopLevelDeclaration::Function {
+                    symbol,
+                    exported,
+                    parameter_types,
+                    return_types,
+                    declarations,
+                }
             },
         ),
     ));
