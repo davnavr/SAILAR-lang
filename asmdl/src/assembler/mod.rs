@@ -134,7 +134,7 @@ impl<'a> CodeBlockAssembler<'a> {
     fn assemble(
         &self,
         errors: &mut error::Builder,
-        block_lookup: &CodeBlockLookup<'a>,
+        _block_lookup: &CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
         fn lookup_register<'a>(
@@ -367,6 +367,69 @@ impl<'a> FunctionBodyAssembler<'a> {
     }
 }
 
+struct FunctionDefinitionAssembler<'a> {
+    location: &'a ast::Position,
+    export_symbol: &'a Option<ast::Positioned<ast::Identifier>>,
+    declarations: &'a [ast::Positioned<ast::FunctionDeclaration>],
+}
+
+impl<'a> FunctionDefinitionAssembler<'a> {
+    fn assemble(
+        &self,
+        errors: &mut error::Builder,
+        symbols: &mut SymbolLookup<'a>,
+        identifiers: &mut IdentifierLookup,
+        code_lookup: &mut FunctionCodeLookup<'a>,
+    ) -> Option<format::Function> {
+        let export_symbol_index = self.export_symbol.as_ref().map(|(symbol, location)| {
+            if let Some(existing) = symbols.insert(symbol, location) {
+                errors.push_with_location(
+                    ErrorKind::DuplicateSymbol {
+                        symbol: symbol.clone(),
+                        original: existing.clone(),
+                    },
+                    location.clone(),
+                )
+            }
+
+            identifiers.insert_or_get(symbol.clone())
+        });
+
+        let mut function_name = None;
+        let mut function_body = None;
+
+        for declaration in self.declarations {
+            match &declaration.0 {
+                ast::FunctionDeclaration::Name((name, _)) => if function_name.is_none() {
+                    function_name = Some(identifiers.insert_or_get(name.clone()))
+                } else {
+                    errors.push_with_location(ErrorKind::DuplicateDirective, declaration.1.clone())
+                },
+            }
+        }
+
+        if function_name.is_none() {
+            errors.push_with_location(ErrorKind::MissingDirective("function name"), self.location.clone())
+        }
+
+        if function_body.is_none() {
+            errors.push_with_location(ErrorKind::MissingDirective("function body"), self.location.clone())
+        }
+
+        if let (Some(name), Some(body)) = (function_name, function_body) {
+            Some(format::Function {
+                name,
+                symbol: export_symbol_index,
+                signature: todo!(),
+                body
+            })
+        }
+        else {
+            None
+        }
+    }
+}
+
 type IdentifierLookup = lookup::IndexedSet<format::indices::Identifier, format::Identifier>;
 //type NamespaceLookup
 //type TypeSignatureLookup
@@ -375,10 +438,13 @@ type IdentifierLookup = lookup::IndexedSet<format::indices::Identifier, format::
 type CodeBlockLookup<'a> =
     lookup::IndexedMap<'a, u32, (&'a ast::Identifier, CodeBlockAssembler<'a>)>;
 
-type FunctionBodyLookup<'a> =
+type FunctionCodeLookup<'a> =
     lookup::IndexedMap<'a, format::indices::Code, FunctionBodyAssembler<'a>>;
 
-//type FunctionDefinitionLookup<'a> = lookup::IndexedMap<'a, format::indices::FunctionDefinition, FunctionDefinitionAssembler<'a>>;
+type SymbolLookup<'a> = std::collections::HashMap<&'a ast::Identifier, &'a ast::Position>;
+
+type FunctionDefinitionLookup<'a> =
+    lookup::IndexedMap<'a, format::indices::FunctionDefinition, FunctionDefinitionAssembler<'a>>;
 
 pub fn assemble_declarations<'a>(
     declarations: &'a [ast::Positioned<ast::TopLevelDeclaration>],
@@ -390,9 +456,11 @@ pub fn assemble_declarations<'a>(
     //let mut namespaces
     //let mut type_signatures
     //let mut function_signatures
-    let mut function_bodies = FunctionBodyLookup::new();
+    let mut function_bodies = FunctionCodeLookup::new();
 
-    //let mut function_definitions = FunctionDefinitionLookup::new();
+    let mut function_definitions = FunctionDefinitionLookup::new();
+
+    let mut entry_point_name = None;
 
     for node in declarations {
         match &node.0 {
@@ -414,15 +482,45 @@ pub fn assemble_declarations<'a>(
                     },
                 ) {
                     errors.push_with_location(
-                        ErrorKind::DuplicateCode {
+                        ErrorKind::DuplicateDeclaration {
                             name: symbol.identifier().clone(),
+                            kind: "code block",
                             original: error.location.clone(),
                         },
                         node.1.clone(),
                     );
                 }
             }
-            _ => (),
+            ast::TopLevelDeclaration::Function {
+                symbol,
+                exported: export_symbol,
+                declarations,
+            } => {
+                if let Err(error) = function_definitions.insert(
+                    symbol.identifier(),
+                    FunctionDefinitionAssembler {
+                        declarations,
+                        location: &node.1,
+                        export_symbol,
+                    },
+                ) {
+                    errors.push_with_location(
+                        ErrorKind::DuplicateDeclaration {
+                            name: symbol.identifier().clone(),
+                            kind: "function definition",
+                            original: error.location.clone(),
+                        },
+                        node.1.clone(),
+                    );
+                }
+            }
+            ast::TopLevelDeclaration::Entry(name) => {
+                if entry_point_name.is_none() {
+                    entry_point_name = Some(name);
+                } else {
+                    errors.push_with_location(ErrorKind::DuplicateDirective, node.1.clone())
+                }
+            }
         }
     }
 
@@ -445,10 +543,19 @@ pub fn assemble_declarations<'a>(
             let mut block_lookup = CodeBlockLookup::new();
             let mut register_map = lookup::RegisterMap::new();
 
-            assemble_items(&function_bodies.into_vec(), |body| {
+            assemble_items(&function_bodies.values(), |body| {
                 body.assemble(&mut errors, &mut block_lookup, &mut register_map)
             })
         };
+
+        // NOTE: Should ALL symbols in a module be unique, or will a type with the same symbol as a function with the same symbol as a global be allowed?
+        // Currently, all symbols are unique.
+        let mut symbol_lookup = SymbolLookup::new();
+
+        let assembled_function_definitions =
+            assemble_items(&function_definitions.values(), |definition| {
+                definition.assemble(&mut errors, &mut symbol_lookup, &mut identifiers, &mut function_bodies)
+            });
 
         module = Some(format::Module {
             integer_size: format::numeric::IntegerSize::I4,
@@ -471,10 +578,10 @@ pub fn assemble_declarations<'a>(
                 defined_structs: format::LenVecBytes::from(Vec::new()),
                 defined_globals: format::LenVecBytes::from(Vec::new()),
                 defined_fields: format::LenVecBytes::from(Vec::new()),
-                defined_functions: format::LenVecBytes::from(Vec::new()),
+                defined_functions: format::LenVecBytes::from(assembled_function_definitions),
             }),
             struct_layouts: format::LenVecBytes::from(Vec::new()),
-            entry_point: format::LenBytes(None),
+            entry_point: format::LenBytes(None), // TODO: Look up entry point
         });
     } else {
         module = None;

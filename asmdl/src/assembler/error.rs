@@ -21,8 +21,13 @@ pub enum ErrorKind {
         name: ast::Identifier,
         original: ast::Position,
     },
-    DuplicateCode {
+    DuplicateDeclaration {
+        kind: &'static str,
         name: ast::Identifier,
+        original: ast::Position,
+    },
+    DuplicateSymbol {
+        symbol: ast::Identifier,
         original: ast::Position,
     },
 }
@@ -60,13 +65,14 @@ impl std::fmt::Display for ErrorKind {
             Self::DuplicateBlock { name, .. } => {
                 write!(f, "a code block with the name ${} already exists", name)
             }
-            Self::DuplicateCode { name, .. } => {
-                write!(
-                    f,
-                    "a code declaration with the name @{} already exists",
-                    name
-                )
+            Self::DuplicateDeclaration { name, kind, .. } => {
+                write!(f, "a {} with the name @{} already exists", kind, name)
             }
+            Self::DuplicateSymbol { symbol, .. } => write!(
+                f,
+                "a declaration with the symbol \"{}\" already exists",
+                symbol
+            ),
         }
     }
 }
