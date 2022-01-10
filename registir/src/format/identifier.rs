@@ -26,29 +26,25 @@ impl Display for Identifier {
     }
 }
 
-impl TryFrom<&[char]> for Identifier {
-    type Error = ();
+macro_rules! identifier_conversion_from {
+    ($source_type: ty, $source: ident, $conversion: expr) => {
+        impl TryFrom<$source_type> for Identifier {
+            type Error = ();
 
-    fn try_from(chars: &[char]) -> Result<Self, Self::Error> {
-        if chars.is_empty() {
-            Err(())
-        } else {
-            Ok(Self(chars.iter().collect()))
+            fn try_from($source: $source_type) -> Result<Self, Self::Error> {
+                if $source.is_empty() {
+                    Err(())
+                } else {
+                    Ok(Self($conversion))
+                }
+            }
         }
-    }
+    };
 }
 
-impl TryFrom<&str> for Identifier {
-    type Error = ();
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if s.is_empty() {
-            Err(())
-        } else {
-            Ok(Self(String::from(s)))
-        }
-    }
-}
+identifier_conversion_from!(&[char], chars, chars.iter().collect());
+identifier_conversion_from!(&str, s, String::from(s));
+identifier_conversion_from!(String, s, s);
 
 impl std::ops::Deref for Identifier {
     type Target = str;

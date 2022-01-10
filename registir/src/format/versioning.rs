@@ -43,6 +43,12 @@ impl<T: Into<UInteger>> std::iter::FromIterator<T> for Numbers {
     }
 }
 
+impl From<&[u32]> for Numbers {
+    fn from(numbers: &[u32]) -> Self {
+        Self(LenVec(numbers.iter().cloned().map(UInteger).collect()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::format::{numeric::UInteger, FormatVersion};

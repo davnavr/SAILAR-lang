@@ -1,651 +1,490 @@
-use crate::{ast, lexer};
-use combine::{stream::easy, stream::StreamErrorFor, Parser};
+use crate::{
+    ast,
+    lexer::{self, Token},
+};
+use chumsky::{self, Parser};
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum Error {
-    InvalidFormatVersion(i128),
-    ParseFailed(Vec<easy::Error<Box<lexer::Token>, Box<lexer::Token>>>),
-}
+pub type Error = chumsky::error::Simple<Token>;
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidFormatVersion(value) => write!(
-                f,
-                "{} is not a valid format version, since it cannot be represented in a single byte",
-                value
-            ),
-            Self::ParseFailed(error) => {
-                for e in error {
-                    std::fmt::Display::fmt(e, f)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
+pub type Tree = Vec<ast::Positioned<ast::TopLevelDeclaration>>;
 
-#[derive(Debug)]
-pub struct PositionedParserError {
-    pub position: Option<ast::Position>,
-    pub error: Error,
-}
+fn parser() -> impl Parser<Token, Tree, Error = Error> {
+    use chumsky::{
+        primitive::{choice, empty, end, filter, filter_map, just},
+        recovery,
+    };
 
-#[derive(Clone, Debug)]
-pub struct TokenStream<'a> {
-    tokens: &'a [lexer::PositionedToken],
-}
-
-impl<'a> combine::StreamOnce for TokenStream<'a> {
-    type Token = &'a lexer::PositionedToken;
-    type Range = Self::Token;
-    type Position = Option<ast::Position>;
-    type Error = easy::Errors<Self::Token, Self::Range, Self::Position>;
-
-    fn uncons(&mut self) -> Result<Self::Token, StreamErrorFor<Self>> {
-        match self.tokens.split_first() {
-            Some((parsed, remaining)) => {
-                self.tokens = remaining;
-                Ok(parsed)
-            }
-            None => Err(easy::Error::end_of_input()),
-        }
-    }
-}
-
-impl<'a> combine::Positioned for TokenStream<'a> {
-    fn position(&self) -> Self::Position {
-        self.tokens.first().map(|token| token.position)
-    }
-}
-
-impl<'a> combine::stream::ResetStream for TokenStream<'a> {
-    type Checkpoint = &'a [lexer::PositionedToken];
-
-    fn checkpoint(&self) -> Self::Checkpoint {
-        combine::stream::ResetStream::checkpoint(&self.tokens)
-    }
-
-    fn reset(&mut self, checkpoint: Self::Checkpoint) -> Result<(), Self::Error> {
-        combine::stream::ResetStream::reset(&mut self.tokens, checkpoint)
-            .map_err(|_| unimplemented!())
-    }
-}
-
-type ParserInput<'a> = combine::stream::state::Stream<TokenStream<'a>, Vec<PositionedParserError>>;
-
-fn expect_token<'a>(
-    expected: lexer::Token,
-) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
-    combine::satisfy(move |token: &lexer::PositionedToken| token.token == expected)
-}
-
-fn positioned<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    parser: P,
-) -> impl Parser<ParserInput<'a>, Output = ast::Positioned<T>> {
-    (combine::position(), parser).and_then(|(position, value)| match position {
-        Some(position) => Ok(ast::Positioned { value, position }),
-        None => Err(easy::Error::end_of_input()),
-    })
-}
-
-fn global_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::GlobalSymbol> {
-    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::GlobalIdentifier(id) => Some(ast::GlobalSymbol(ast::Positioned {
-            position: token.position,
-            value: id.clone(),
-        })),
-        _ => None,
-    })
-}
-
-fn local_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LocalSymbol> {
-    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::LocalIdentifier(id) => Some(ast::LocalSymbol(ast::Positioned {
-            position: token.position,
-            value: id.clone(),
-        })),
-        _ => None,
-    })
-}
-
-fn register_symbol<'a>() -> impl Parser<ParserInput<'a>, Output = ast::RegisterSymbol> {
-    combine::satisfy_map(|token: &lexer::PositionedToken| match &token.token {
-        lexer::Token::RegisterIdentifier(id) => Some(ast::RegisterSymbol(ast::Positioned {
-            position: token.position,
-            value: id.clone(),
-        })),
-        _ => None,
-    })
-}
-
-fn keyword<'a>(
-    name: &'static str,
-) -> impl Parser<ParserInput<'a>, Output = &'a lexer::PositionedToken> {
-    expect_token(lexer::Token::Keyword(String::from(name)))
-}
-
-fn directive<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    name: &'static str,
-    parser: P,
-) -> impl Parser<ParserInput<'a>, Output = T> {
-    expect_token(lexer::Token::Directive(String::from(name)))
-        .with(parser)
-        .skip(expect_token(lexer::Token::Semicolon))
-}
-
-fn literal_integer<'a>() -> impl Parser<ParserInput<'a>, Output = i128> {
-    combine::satisfy_map(|token: &'a lexer::PositionedToken| match token.token {
-        lexer::Token::LiteralInteger(value) => Some(value),
-        _ => None,
-    })
-}
-
-fn literal_integer_sized<'a, T: TryFrom<i128, Error = std::num::TryFromIntError>>(
-) -> impl Parser<ParserInput<'a>, Output = T> {
-    literal_integer().and_then(|value: i128| {
-        T::try_from(value).map_err(|error| easy::Error::Other(Box::new(error)))
-    })
-}
-
-fn literal_string<'a>() -> impl Parser<ParserInput<'a>, Output = ast::LiteralString> {
-    combine::satisfy_map(|token: &'a lexer::PositionedToken| match &token.token {
-        lexer::Token::LiteralString(value) => Some(value.clone()),
-        _ => None,
-    })
-}
-
-fn between_tokens<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    parser: P,
-    open: lexer::Token,
-    close: lexer::Token,
-) -> impl Parser<ParserInput<'a>, Output = T> {
-    combine::between(expect_token(open), expect_token(close), parser)
-}
-
-fn between_brackets<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    parser: P,
-) -> impl Parser<ParserInput<'a>, Output = T> {
-    between_tokens(
-        parser,
-        lexer::Token::OpenBracket,
-        lexer::Token::CloseBracket,
-    )
-}
-
-fn between_parenthesis<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    parser: P,
-) -> impl Parser<ParserInput<'a>, Output = T> {
-    between_tokens(
-        parser,
-        lexer::Token::OpenParenthesis,
-        lexer::Token::CloseParenthesis,
-    )
-}
-
-fn format_version<'a>(
-    name: &'static str,
-) -> impl Parser<ParserInput<'a>, Output = registir::format::numeric::UInteger> {
-    directive(name, literal_integer_sized::<u32>()).map(registir::format::numeric::UInteger)
-}
-
-fn format_declaration<'a>() -> impl combine::Parser<ParserInput<'a>, Output = ast::FormatDeclaration>
-{
-    combine::choice((
-        format_version("major").map(ast::FormatDeclaration::Major),
-        format_version("minor").map(ast::FormatDeclaration::Minor),
-    ))
-}
-
-fn name_directive<'a, D, N: Fn(ast::Positioned<ast::LiteralString>) -> D>(
-    name_mapper: N,
-) -> impl Parser<ParserInput<'a>, Output = D> {
-    directive("name", positioned(literal_string())).map(name_mapper)
-}
-
-fn module_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::ModuleDeclaration> {
-    combine::choice((
-        name_directive(ast::ModuleDeclaration::Name),
-        directive(
-            "version",
-            combine::many::<Vec<_>, _, _>(literal_integer_sized::<u32>()),
-        )
-        .map(ast::ModuleDeclaration::Version),
-    ))
-}
-
-fn data_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::DataKind> {
-    combine::choice((
-        keyword("bytes").map(|_| unimplemented!()),
-        keyword("string").with(literal_string().map(|content| ast::DataKind::String { content })),
-    ))
-}
-
-fn primitive_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::PrimitiveType> {
-    combine::choice((
-        keyword("u8").with(combine::value(ast::PrimitiveType::U8)),
-        keyword("s8").with(combine::value(ast::PrimitiveType::S8)),
-        keyword("u16").with(combine::value(ast::PrimitiveType::U16)),
-        keyword("s16").with(combine::value(ast::PrimitiveType::S16)),
-        keyword("u32").with(combine::value(ast::PrimitiveType::U32)),
-        keyword("s32").with(combine::value(ast::PrimitiveType::S32)),
-        keyword("u64").with(combine::value(ast::PrimitiveType::U64)),
-        keyword("s64").with(combine::value(ast::PrimitiveType::S64)),
-    ))
-}
-
-fn type_signature<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeSignature> {
-    combine::choice((primitive_type().map(ast::TypeSignature::Primitive),))
-}
-
-fn numeric_type<'a>() -> impl Parser<ParserInput<'a>, Output = ast::NumericType> {
-    primitive_type().map(ast::NumericType::Primitive)
-}
-
-fn overflow_modifier<'a>(
-) -> impl Parser<ParserInput<'a>, Output = Option<ast::Positioned<ast::OverflowModifier>>> {
-    combine::optional(positioned(combine::choice((
-        keyword("ovf.halt").with(combine::value(ast::OverflowModifier::Halt)),
-        keyword("ovf.flag").with(combine::value(ast::OverflowModifier::Flag)),
-    ))))
-}
-
-fn basic_arithmetic_operation<'a, I: 'a + Fn(ast::BasicArithmeticOperation) -> ast::Instruction>(
-    name: &'static str,
-    separator: &'static str,
-    instruction: I,
-) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
-    keyword(name)
-        .with((
-            positioned(numeric_type()),
-            register_symbol(),
-            keyword(separator).with(register_symbol()),
-            overflow_modifier(),
-        ))
-        .map(move |(return_type, x, y, overflow_modifier)| {
-            instruction(ast::BasicArithmeticOperation {
-                return_type,
-                x,
-                y,
-                overflow_modifier,
-            })
+    fn directive<O, P: Parser<Token, O, Error = Error>>(
+        name: &'static str,
+        contents: P,
+    ) -> impl Parser<Token, Option<O>, Error = Error> {
+        filter(move |token| match token {
+            Token::Directive(directive_name) => directive_name == name,
+            _ => false,
         })
-}
+        .ignore_then(contents.map(Some))
+        //.recover_with(recovery::skip_until([Token::Semicolon], |_| None))
+        .then_ignore(just(Token::Semicolon))
+    }
 
-fn division_operation<'a, I: 'a + Fn(ast::DivisionOperation) -> ast::Instruction>(
-    name: &'static str,
-    instruction: I,
-) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
-    keyword(name)
-        .with((
-            positioned(numeric_type()),
-            register_symbol(),
-            keyword("over").with(register_symbol()),
-            combine::choice((
-                keyword("or")
-                    .with(register_symbol())
-                    .map(ast::DivideByZeroModifier::Return),
-                keyword("zeroed.halt").with(combine::value(ast::DivideByZeroModifier::Halt)),
-            )),
-            overflow_modifier(),
-        ))
-        .map(
-            move |(
-                return_type,
-                numerator,
-                denominator,
-                divide_by_zero_modifier,
-                overflow_modifier,
-            )| {
-                instruction(ast::DivisionOperation {
-                    return_type,
-                    numerator,
-                    denominator,
-                    divide_by_zero_modifier,
-                    overflow_modifier,
+    fn between_brackets_or_else<O, P: Parser<Token, O, Error = Error>, F: Fn() -> O>(
+        inner: P,
+        err: F,
+    ) -> impl Parser<Token, O, Error = Error> {
+        inner
+            .delimited_by(Token::OpenBracket, Token::CloseBracket)
+            .recover_with(recovery::nested_delimiters(
+                Token::OpenBracket,
+                Token::CloseBracket,
+                [],
+                move |_| err(),
+            ))
+    }
+
+    fn between_parenthesis_or_else<O, P: Parser<Token, O, Error = Error>, F: Fn() -> O>(
+        inner: P,
+        err: F,
+    ) -> impl Parser<Token, O, Error = Error> {
+        inner
+            .delimited_by(Token::OpenParenthesis, Token::CloseParenthesis)
+            .recover_with(recovery::nested_delimiters(
+                Token::OpenParenthesis,
+                Token::CloseParenthesis,
+                [],
+                move |_| err(),
+            ))
+    }
+
+    fn directive_between_brackets<A, B, P, Q, F>(
+        name: &'static str,
+        outer: P,
+        inner: Q,
+        err: F,
+    ) -> impl Parser<Token, Option<(A, B)>, Error = Error>
+    where
+        P: Parser<Token, A, Error = Error>,
+        Q: Parser<Token, B, Error = Error>,
+        F: Fn() -> B,
+    {
+        directive(name, outer.then(between_brackets_or_else(inner, err)))
+    }
+
+    fn with_position<O, P: Parser<Token, O, Error = Error>>(
+        parser: P,
+    ) -> impl Parser<Token, (O, ast::Position), Error = Error> {
+        parser.map_with_span(|value, position| (value, position))
+    }
+
+    fn filter_parsed_declarations<D>(declarations: Vec<Option<D>>) -> Vec<D> {
+        declarations.into_iter().flatten().collect()
+    }
+
+    fn directive_with_declarations<A, N, D, P, Q, F>(
+        name: &'static str,
+        attributes: P,
+        declaration: Q,
+        declarer: F,
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, A, Error = Error>,
+        Q: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(A, Vec<N>) -> D,
+    {
+        directive_between_brackets(name, attributes, declaration.repeated(), Vec::new).map(
+            move |content| {
+                content.map(|(attributes, nodes)| {
+                    declarer(attributes, filter_parsed_declarations(nodes))
                 })
             },
         )
-}
+    }
 
-fn bitwise_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
-    name: &'static str,
-    separator: Option<&'static str>,
-    instruction: I,
-) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
-    keyword(name)
-        .with((
-            positioned(numeric_type()),
-            match separator {
-                Some(separator) => combine::parser::combinator::Either::Left(
-                    register_symbol().skip(keyword(separator)),
-                ),
-                None => combine::parser::combinator::Either::Right(register_symbol()),
-            },
-            register_symbol(),
-        ))
-        .map(move |(result_type, x, y)| instruction(ast::BitwiseOperation { result_type, x, y }))
-}
-
-fn bitwise_shift_operation<'a, I: 'a + Fn(ast::BitwiseOperation) -> ast::Instruction>(
-    name: &'static str,
-    instruction: I,
-) -> impl Parser<ParserInput<'a>, Output = ast::Instruction> {
-    bitwise_operation(name, Some("by"), instruction)
-}
-
-fn many_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
-    combine::sep_by(register_symbol(), expect_token(lexer::Token::Comma))
-}
-
-fn input_register_symbols<'a>() -> impl Parser<ParserInput<'a>, Output = Vec<ast::RegisterSymbol>> {
-    combine::optional(keyword("with").with(many_register_symbols())).map(Option::unwrap_or_default)
-}
-
-fn tail_call_behavior<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TailCall> {
-    combine::choice((
-        keyword("tail.required").with(combine::value(ast::TailCall::Required)),
-        keyword("tail.prohibited").with(combine::value(ast::TailCall::Prohibited)),
-        combine::value(ast::TailCall::Allowed),
-    ))
-}
-
-fn code_statement<'a>() -> impl Parser<ParserInput<'a>, Output = ast::Statement> {
-    (
-        combine::optional(
-            combine::sep_by1::<Vec<_>, _, _, _>(
-                register_symbol(),
-                expect_token(lexer::Token::Comma),
-            )
-            .skip(expect_token(lexer::Token::Equals)),
-        )
-        .map(Option::unwrap_or_default),
-        positioned(combine::choice((
-            combine::choice((
-                keyword("nop").with(combine::value(ast::Instruction::Nop)),
-                keyword("ret").with(many_register_symbols().map(ast::Instruction::Ret)),
-                keyword("call")
-                    .with((
-                        tail_call_behavior(),
-                        global_symbol(),
-                        many_register_symbols(),
-                    ))
-                    .map(|(tail_call, method, arguments)| ast::Instruction::Call {
-                        tail_call,
-                        method,
-                        arguments,
-                    }),
-            )),
-            // Branch instructions
-            combine::choice((
-                keyword("br")
-                    .with((local_symbol(), input_register_symbols()))
-                    .map(|(target, input_registers)| ast::Instruction::Br(target, input_registers)),
-                keyword("br.if")
-                    .with((
-                        register_symbol(),
-                        keyword("then").with(local_symbol()),
-                        keyword("else").with(local_symbol()),
-                        input_register_symbols(),
-                    ))
-                    .map(|(condition, true_branch, false_branch, input_registers)| {
-                        ast::Instruction::BrIf {
-                            condition,
-                            true_branch,
-                            false_branch,
-                            input_registers,
-                        }
-                    }),
-            )),
-            // Arithmetic instructions
-            combine::choice((
-                basic_arithmetic_operation("add", "and", ast::Instruction::Add),
-                basic_arithmetic_operation("sub", "from", ast::Instruction::Sub),
-                basic_arithmetic_operation("mul", "by", ast::Instruction::Mul),
-                division_operation("div", ast::Instruction::Div),
-            )),
-            // Bitwise instructions
-            combine::choice((
-                bitwise_operation("and", None, ast::Instruction::And),
-                bitwise_operation("or", None, ast::Instruction::Or),
-                keyword("not")
-                    .with((positioned(numeric_type()), register_symbol()))
-                    .map(move |(result_type, value)| ast::Instruction::Not(result_type, value)),
-                bitwise_operation("xor", None, ast::Instruction::Xor),
-                bitwise_shift_operation("sh.l", ast::Instruction::ShL),
-                bitwise_shift_operation("sh.r", ast::Instruction::ShR),
-                bitwise_shift_operation("rot.l", ast::Instruction::RotL),
-                bitwise_shift_operation("rot.r", ast::Instruction::RotR),
-            )),
-            keyword("const.i").with(
-                (positioned(primitive_type()), positioned(literal_integer()))
-                    .map(|(ty, value)| ast::Instruction::ConstI(ty, value)),
-            ),
-        ))),
-    )
-        .map(|(registers, instruction)| ast::Statement {
-            registers,
-            instruction,
+    let global_symbol = {
+        filter_map(|position, token| match token {
+            Token::GlobalIdentifier(symbol) => Ok(ast::GlobalSymbol((symbol, position))),
+            _ => Err(Error::custom(position, "expected global symbol")),
         })
-        .skip(expect_token(lexer::Token::Semicolon))
-}
+    };
 
-fn code_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::CodeDeclaration> {
-    combine::choice((
-        directive("entry", local_symbol()).map(ast::CodeDeclaration::Entry),
-        directive(
-            "block",
-            (
-                local_symbol(),
-                combine::optional(between_parenthesis(combine::sep_by::<Vec<_>, _, _, _>(
-                    register_symbol(),
-                    expect_token(lexer::Token::Comma),
-                ))),
-                between_brackets(combine::many(code_statement())),
-            ),
+    let local_symbol = filter_map(|position, token| match token {
+        Token::LocalIdentifier(symbol) => Ok(ast::LocalSymbol((symbol, position))),
+        _ => Err(Error::custom(position, "expected local symbol")),
+    });
+
+    let register_symbol = filter_map(|position, token| match token {
+        Token::RegisterIdentifier(symbol) => Ok(ast::RegisterSymbol((symbol, position))),
+        _ => Err(Error::custom(position, "expected register symbol")),
+    });
+
+    fn with_position_optional<O, P: Parser<Token, Option<O>, Error = Error>>(
+        parser: P,
+    ) -> impl Parser<Token, Option<ast::Positioned<O>>, Error = Error> {
+        with_position(parser).map(|(result, position)| result.map(|value| (value, position)))
+    }
+
+    fn simple_declaration<N, D, P, F>(
+        name: &'static str,
+        declaration: P,
+        declarer: F,
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(Vec<ast::Positioned<N>>) -> D,
+    {
+        directive_with_declarations(
+            name,
+            empty(),
+            with_position_optional(declaration),
+            move |(), nodes| declarer(nodes),
         )
-        .map(
-            |(name, arguments, instructions)| ast::CodeDeclaration::Block {
-                name,
-                arguments: arguments.unwrap_or_default(),
-                instructions,
+    }
+
+    fn symbolic_declaration<S, A, N, D, P, Q, R, F>(
+        name: &'static str,
+        symbol: P,
+        attributes: Q,
+        declaration: R,
+        declarer: F,
+    ) -> impl Parser<Token, Option<D>, Error = Error>
+    where
+        P: Parser<Token, S, Error = Error>,
+        Q: Parser<Token, A, Error = Error>,
+        R: Parser<Token, Option<N>, Error = Error>,
+        F: Fn(S, A, Vec<N>) -> D,
+    {
+        directive_with_declarations(
+            name,
+            symbol.then(attributes),
+            declaration,
+            move |(s, a), nodes| declarer(s, a, nodes),
+        )
+    }
+
+    let any_keyword = filter_map(|position, token| match token {
+        Token::Keyword(word) => Ok(word),
+        _ => Err(Error::custom(position, "expected keyword")),
+    });
+
+    let keyword = |word: &'static str| {
+        any_keyword.try_map(move |actual, position| {
+            if actual == word {
+                Ok(())
+            } else {
+                Err(Error::custom(
+                    position,
+                    format!("expected {} but got {}", word, actual),
+                ))
+            }
+        })
+    };
+
+    let integer_literal = filter_map(|position, token| match token {
+        Token::LiteralInteger(value) => Ok(value),
+        _ => Err(Error::custom(position, "expected integer literal")),
+    });
+
+    let string_literal = filter_map(|position, token| match token {
+        Token::LiteralString(value) => Ok(value),
+        _ => Err(Error::custom(position, "expected string literal")),
+    });
+
+    let identifier_literal = || {
+        with_position(string_literal.try_map(|literal, position| {
+            ast::Identifier::try_from(String::from(literal))
+                .map_err(|_| Error::custom(position, "Expected non-empty string literal"))
+        }))
+    };
+
+    let version_number = {
+        integer_literal.try_map(|value, position| {
+            u32::try_from(value).map_err(|_| Error::custom(position, "invalid version number"))
+        })
+    };
+
+    macro_rules! name_directive {
+        ($mapper: expr) => {
+            directive("name", identifier_literal().map($mapper))
+        };
+    }
+
+    let format_declaration = choice((
+        directive("major", version_number.map(ast::FormatDeclaration::Major)),
+        directive("minor", version_number.map(ast::FormatDeclaration::Minor)),
+    ));
+
+    let module_declaration = choice((
+        name_directive!(ast::ModuleDeclaration::Name),
+        directive(
+            "version",
+            version_number
+                .repeated()
+                .map(ast::ModuleDeclaration::Version),
+        ),
+    ));
+
+    let primitive_type = choice((keyword("s32").to(ast::PrimitiveType::S32),));
+
+    let many_registers = || register_symbol.separated_by(just(Token::Comma));
+
+    let code_declaration = {
+        // NOTE: Waiting for next stable release of chumsky for the then_with function
+        /* let instruction_parsers = {
+            let mut lookup = std::collections::HashMap::<&'static str, chumsky::BoxedParser<Token, ast::Instruction, Error>>::new();
+
+            lookup.insert("nop", empty().to(ast::Instruction::Nop).boxed());
+
+            lookup
+        }; */
+
+        let code_statement = {
+            //any_keyword
+            let full_instruction = with_position(choice((
+                keyword("nop").to(ast::Instruction::Nop),
+                keyword("ret")
+                    .ignore_then(many_registers())
+                    .map(ast::Instruction::Ret),
+                keyword("const.i")
+                    .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
+                    .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
+            )));
+
+            let result_registers = many_registers()
+                .at_least(1)
+                .then_ignore(just(Token::Equals))
+                .or_not()
+                .map(|results| results.unwrap_or_else(Vec::new));
+
+            with_position(result_registers)
+                .then(full_instruction)
+                .map(|(results, instruction)| {
+                    Some(ast::Statement {
+                        results,
+                        instruction,
+                    })
+                })
+                .then_ignore(just(Token::Semicolon))
+        };
+
+        choice((
+            directive("entry", local_symbol.map(ast::CodeDeclaration::Entry)),
+            symbolic_declaration(
+                "block",
+                local_symbol,
+                between_parenthesis_or_else(many_registers(), Vec::new),
+                code_statement,
+                |name, arguments, instructions| ast::CodeDeclaration::Block {
+                    name,
+                    arguments,
+                    instructions,
+                },
+            ),
+        ))
+    };
+
+    let function_attributes = {
+        let function_types = || {
+            between_parenthesis_or_else(
+                with_position(primitive_type.map(ast::Type::Primitive))
+                    .separated_by(just(Token::Comma)),
+                Vec::new,
+            )
+        };
+        function_types().then(keyword("returns").ignore_then(
+            function_types().then(keyword("export").ignore_then(identifier_literal()).or_not()),
+        ))
+    };
+
+    let function_declaration = {
+        let body_declaration = choice((
+            keyword("defined")
+                .ignore_then(global_symbol)
+                .map(ast::FunctionBodyDeclaration::Defined),
+            keyword("external").ignore_then(chumsky::primitive::todo()),
+        ));
+
+        choice((
+            name_directive!(ast::FunctionDeclaration::Name),
+            directive("body", body_declaration.map(ast::FunctionDeclaration::Body)),
+        ))
+    };
+
+    let top_level_declaration = choice((
+        simple_declaration(
+            "format",
+            format_declaration,
+            ast::TopLevelDeclaration::Format,
+        ),
+        simple_declaration(
+            "module",
+            module_declaration,
+            ast::TopLevelDeclaration::Module,
+        ),
+        directive("entry", global_symbol.map(ast::TopLevelDeclaration::Entry)),
+        symbolic_declaration(
+            "code",
+            global_symbol,
+            empty(),
+            with_position_optional(code_declaration),
+            |symbol, (), declarations| ast::TopLevelDeclaration::Code {
+                symbol,
+                declarations,
             },
         ),
-    ))
-}
-
-fn type_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeModifier> {
-    combine::choice((
-        keyword("public").with(combine::value(ast::TypeModifier::Public)),
-        keyword("private").with(combine::value(ast::TypeModifier::Private)),
-    ))
-}
-
-fn method_types<'a>(
-) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<ast::TypeSignature>>> {
-    between_parenthesis(combine::sep_by(
-        positioned(type_signature()),
-        expect_token(lexer::Token::Comma),
-    ))
-}
-
-fn method_modifier<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodModifier> {
-    combine::choice((
-        keyword("public").with(combine::value(ast::MethodModifier::Public)),
-        keyword("private").with(combine::value(ast::MethodModifier::Private)),
-        keyword("instance").with(combine::value(ast::MethodModifier::Instance)),
-        keyword("initializer").with(combine::value(ast::MethodModifier::Initializer)),
-    ))
-}
-
-fn method_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::MethodDeclaration> {
-    combine::choice((
-        name_directive(ast::MethodDeclaration::Name),
-        directive(
-            "body",
-            combine::choice((keyword("defined")
-                .with(global_symbol())
-                .map(ast::MethodBodyDeclaration::Defined),)),
-        )
-        .map(ast::MethodDeclaration::Body),
-    ))
-}
-
-fn type_declaration<'a>() -> impl Parser<ParserInput<'a>, Output = ast::TypeDeclaration> {
-    combine::choice((
-        name_directive(ast::TypeDeclaration::Name),
-        directive("namespace", combine::many(positioned(literal_string())))
-            .map(ast::TypeDeclaration::Namespace),
-        directive(
-            "method",
-            (
-                global_symbol(),
-                method_types(),
-                combine::optional(keyword("returns").with(method_types()))
-                    .map(Option::unwrap_or_default),
-                combine::many::<Vec<_>, _, _>(positioned(method_modifier())),
-                declaration_block(method_declaration()),
-            ),
-        )
-        .map(
-            |(symbol, parameter_types, return_types, modifiers, declarations)| {
-                ast::TypeDeclaration::Method {
+        symbolic_declaration(
+            "function",
+            global_symbol,
+            function_attributes,
+            with_position_optional(function_declaration),
+            |symbol, (parameter_types, (return_types, exported)), declarations| {
+                ast::TopLevelDeclaration::Function {
                     symbol,
+                    exported,
                     parameter_types,
                     return_types,
-                    modifiers,
                     declarations,
                 }
             },
         ),
-    ))
+    ));
+
+    with_position_optional(top_level_declaration)
+        .repeated()
+        .map(filter_parsed_declarations)
+        .then_ignore(end())
 }
 
-fn declaration_block<'a, T, P: Parser<ParserInput<'a>, Output = T>>(
-    parser: P,
-) -> impl Parser<ParserInput<'a>, Output = Vec<ast::Positioned<T>>> {
-    between_brackets(combine::many(positioned(parser)))
-}
-
-fn top_level_declaration<'a>(
-) -> impl combine::Parser<ParserInput<'a>, Output = ast::TopLevelDeclaration> {
-    combine::choice((
-        directive("format", declaration_block(format_declaration()))
-            .map(ast::TopLevelDeclaration::Format),
-        directive("module", declaration_block(module_declaration()))
-            .map(ast::TopLevelDeclaration::Module),
-        directive("entry", global_symbol()).map(ast::TopLevelDeclaration::Entry),
-        directive(
-            "data",
-            (global_symbol(), data_declaration())
-                .map(|(symbol, kind)| ast::TopLevelDeclaration::Data { symbol, kind }),
-        ),
-        directive(
-            "code",
-            (global_symbol(), declaration_block(code_declaration())).map(
-                |(symbol, declarations)| ast::TopLevelDeclaration::Code {
-                    symbol,
-                    declarations,
-                },
-            ),
-        ),
-        directive(
-            "type",
+pub fn tree_from_str(input: &str) -> (Tree, Vec<lexer::Error>, Vec<Error>) {
+    let (tokens, lexer_errors) = lexer::tokens_from_str(input);
+    match tokens.last() {
+        Some((_, last)) => {
+            let (declarations, parser_errors) = parser()
+                .parse_recovery(chumsky::Stream::from_iter(last.clone(), tokens.into_iter()));
             (
-                global_symbol(),
-                combine::many::<Vec<_>, _, _>(positioned(type_modifier())),
-                declaration_block(type_declaration()),
+                declarations.unwrap_or_else(Vec::new),
+                lexer_errors,
+                parser_errors,
             )
-                .map(|(symbol, modifiers, declarations)| {
-                    ast::TopLevelDeclaration::Type {
-                        symbol,
-                        modifiers,
-                        declarations,
-                    }
-                }),
-        ),
-    ))
-}
-
-pub type ParseResult =
-    Result<Vec<ast::Positioned<ast::TopLevelDeclaration>>, Vec<PositionedParserError>>;
-
-pub fn parse_tokens(tokens: &[lexer::PositionedToken]) -> ParseResult {
-    match combine::many::<Vec<_>, _, _>(positioned(top_level_declaration())).parse(
-        combine::stream::state::Stream {
-            stream: TokenStream { tokens },
-            state: Vec::new(),
-        },
-    ) {
-        Ok((declarations, _)) => Ok(declarations),
-        // A good parser should return more than one error, but for now, this is good enough.
-        Err(error) => Err(vec![PositionedParserError {
-            error: Error::ParseFailed(
-                error
-                    .errors
-                    .into_iter()
-                    .map(|e| {
-                        e.map_token(|token| Box::new(token.token.clone()))
-                            .map_range(|token| Box::new(token.token.clone()))
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            position: error.position,
-        }]),
+        }
+        None => (Vec::new(), Vec::new(), Vec::new()),
     }
-}
-
-pub fn parse(declarations: &str) -> ParseResult {
-    parse_tokens(&lexer::lex(declarations))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{ast, parser};
+    use crate::{
+        ast::{self, Position, TopLevelDeclaration},
+        parser,
+    };
+
+    macro_rules! assert_success {
+        ($input: expr, $output: expr) => {
+            assert_eq!(
+                parser::tree_from_str($input),
+                ($output, Vec::new(), Vec::new())
+            )
+        };
+    }
 
     #[test]
     fn format_declaration_test() {
-        assert_eq!(
-            parser::parse(".format { .major 0; .minor 1; };").unwrap(),
-            vec![ast::Positioned::new(
-                0,
-                0,
-                ast::TopLevelDeclaration::Format(vec![
-                    ast::Positioned::new(
-                        0,
-                        10,
-                        ast::FormatDeclaration::Major(registir::format::numeric::UInteger(0))
+        assert_success!(
+            ".format { .major 0; .minor 0xA; };",
+            vec![(
+                TopLevelDeclaration::Format(vec![
+                    (
+                        ast::FormatDeclaration::Major(0),
+                        Position { start: 10, end: 19 }
                     ),
-                    ast::Positioned::new(
-                        0,
-                        20,
-                        ast::FormatDeclaration::Minor(registir::format::numeric::UInteger(1))
+                    (
+                        ast::FormatDeclaration::Minor(10),
+                        Position { start: 20, end: 31 }
                     )
-                ])
+                ]),
+                Position { start: 0, end: 34 }
             )]
         )
     }
 
     #[test]
     fn module_declaration_test() {
-        assert_eq!(
-            parser::parse(".module {\n    .name \"Hey\"; .version 1 0 0;\n};").unwrap(),
-            vec![ast::Positioned::new(
-                0,
-                0,
-                ast::TopLevelDeclaration::Module(vec![
-                    ast::Positioned::new(
-                        1,
-                        4,
-                        ast::ModuleDeclaration::Name(ast::Positioned::new(
-                            1,
-                            10,
-                            ast::LiteralString::from("Hey")
-                        ))
+        assert_success!(
+            ".module {\n    .name \"Hey\"; .version 1 0 0;\n};",
+            vec![(
+                TopLevelDeclaration::Module(vec![
+                    (
+                        ast::ModuleDeclaration::Name((
+                            ast::Identifier::try_from("Hey").unwrap(),
+                            Position { start: 20, end: 25 }
+                        )),
+                        Position { start: 14, end: 26 }
                     ),
-                    ast::Positioned::new(1, 17, ast::ModuleDeclaration::Version(vec![1, 0, 0]))
-                ])
+                    (
+                        ast::ModuleDeclaration::Version(vec![1, 0, 0]),
+                        Position { start: 27, end: 42 }
+                    )
+                ]),
+                Position { start: 0, end: 45 }
+            )]
+        )
+    }
+
+    #[test]
+    fn entry_point_declaration_test() {
+        assert_success!(
+            "\n.entry @my_main_function;\n\n",
+            vec![(
+                TopLevelDeclaration::Entry(ast::GlobalSymbol((
+                    ast::Identifier::try_from("my_main_function").unwrap(),
+                    Position { start: 8, end: 25 }
+                ))),
+                Position { start: 1, end: 26 }
+            )]
+        )
+    }
+
+    #[test]
+    fn basic_code_declaration_test() {
+        assert_success!(
+            ".code @code_test {\n  .entry $ENTRY;\n  .block $ENTRY () {\n    ret %non_existant;\n  };\n};\n",
+            vec![(
+                TopLevelDeclaration::Code {
+                    symbol: ast::GlobalSymbol((
+                        ast::Identifier::try_from("code_test").unwrap(),
+                        Position { start: 6, end: 16 }
+                    )),
+                    declarations: vec![
+                        (
+                            ast::CodeDeclaration::Entry(ast::LocalSymbol((
+                                ast::Identifier::try_from("ENTRY").unwrap(),
+                                Position { start: 28, end: 34 }
+                            ))),
+                            Position { start: 21, end: 35 }
+                        ),
+                        (
+                            ast::CodeDeclaration::Block {
+                                name: ast::LocalSymbol((
+                                    ast::Identifier::try_from("ENTRY").unwrap(),
+                                    Position { start: 45, end: 51 }
+                                )),
+                                arguments: Vec::new(),
+                                instructions: vec![ast::Statement {
+                                    results: (Vec::new(), Position { start: 61, end: 56 }),
+                                    instruction: (
+                                        ast::Instruction::Ret(vec![
+                                            ast::RegisterSymbol((
+                                                ast::Identifier::try_from("non_existant").unwrap(),
+                                                Position { start: 65, end: 78 }
+                                            ))
+                                        ]),
+                                        Position { start: 61, end: 78 }
+                                    )
+                                }]
+                            },
+                            Position { start: 38, end: 84 }
+                        )
+                    ]
+                },
+                Position { start: 0, end: 87 }
             )]
         )
     }

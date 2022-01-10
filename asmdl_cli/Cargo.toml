@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ariadne = "0.1.3"
 asmdl = { path = "../asmdl" }
 structopt = "0.3.25"
 registir = { path = "../registir" }

@@ -184,7 +184,7 @@ impl DivideByZeroBehavior {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BasicArithmeticOperation {
     pub overflow: OverflowBehavior,
     pub return_type: NumericType,
@@ -204,7 +204,7 @@ impl BasicArithmeticOperation {
 /// - [`return_type`]
 /// - [`numerator`]
 /// - [`denominator`]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DivisionOperation {
     pub overflow: OverflowBehavior,
     pub divide_by_zero: DivideByZeroBehavior,
@@ -219,7 +219,7 @@ impl DivisionOperation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BitwiseOperation {
     pub result_type: NumericType,
     pub x: RegisterIndex,
@@ -231,7 +231,7 @@ pub struct BitwiseOperation {
 /// - [`BitwiseShiftOperation::result_type()`]
 /// - [`BitwiseShiftOperation::value()`]
 /// - [`BitwiseShiftOperation::amount()`]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[repr(transparent)]
 pub struct BitwiseShiftOperation(pub BitwiseOperation);
 
@@ -290,7 +290,7 @@ impl TailCall {
 /// - [`CallInstruction::flags()`]
 /// - [`function`]
 /// - [`arguments`]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CallInstruction {
     pub tail_call: TailCall,
     pub function: FunctionIndex,
@@ -312,7 +312,7 @@ impl CallInstruction {
 /// corresponding unsigned integer counterparts, (e.g. an `f32` is reinpterpreted as a `u32`).
 ///
 /// TODO: Have not about conversions, maybe round towards 0 for float to signed int conversions?
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Instruction {
     /// ```txt
     /// nop;
