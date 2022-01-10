@@ -1,7 +1,9 @@
 use std::collections::hash_map;
 use std::sync::mpsc;
 
-pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace};
+pub use crate::interpreter::{
+    BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace,
+};
 pub use getmdl::loader::ModuleIdentifier;
 
 #[derive(Default)]
@@ -45,7 +47,7 @@ pub enum MessageReply {
 pub enum MessageKind {
     Continue,
     //SetBreakpoint(Breakpoint),
-    GetBreakpoints,
+    //GetBreakpoints,
     GetStackTrace,
     GetRegisters, // TODO: Allow selection of stack frame to show registers for.
 }

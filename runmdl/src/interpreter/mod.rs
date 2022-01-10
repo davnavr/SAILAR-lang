@@ -1,8 +1,8 @@
 use getmdl::loader;
 use registir::format;
 
-pub mod error;
 pub mod debugger;
+pub mod error;
 pub mod register;
 
 pub use format::{
@@ -17,7 +17,7 @@ pub use format::{
 
 pub use register::{NumericType, Register, RegisterType};
 
-pub use error::{ProgramHalt, Error, ErrorKind};
+pub use error::{Error, ErrorKind, ProgramHalt};
 
 pub type LoadedFunction<'l> = &'l loader::Function<'l>;
 
@@ -277,8 +277,10 @@ impl<'l> Interpreter<'l> {
         method: LoadedFunction<'l>,
     ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Register>>>> {
         let signature = method.signature()?;
-        let mut argument_registers = Register::initialize_many(signature.parameter_types().into_iter().copied());
-        let result_registers = Register::initialize_many(signature.return_types().into_iter().copied());
+        let mut argument_registers =
+            Register::initialize_many(signature.parameter_types().into_iter().copied());
+        let result_registers =
+            Register::initialize_many(signature.return_types().into_iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
@@ -578,8 +580,5 @@ pub fn run<'l>(
     let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);
     interpreter
         .execute_entry_point(arguments, entry_point)
-        .map_err(|kind| Error {
-            kind,
-            stack_trace: interpreter.stack_trace(),
-        })
+        .map_err(|kind| Error::new(kind, interpreter.stack_trace()))
 }

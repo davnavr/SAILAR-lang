@@ -1,4 +1,4 @@
-use super::{RegisterIndex, JumpTarget, StackTrace};
+use super::{JumpTarget, RegisterIndex, StackTrace};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -52,11 +52,19 @@ impl std::fmt::Display for ErrorKind {
             Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
             Self::CallStackOverflow => f.write_str("exceeded maximum call stack depth"),
             Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
-            Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
-            Self::UndefinedRegister(RegisterIndex::Temporary(index)) => write!(f, "undefined temporary register {}", index),
+            Self::UndefinedRegister(RegisterIndex::Input(index)) => {
+                write!(f, "undefined input register {}", index)
+            }
+            Self::UndefinedRegister(RegisterIndex::Temporary(index)) => {
+                write!(f, "undefined temporary register {}", index)
+            }
             Self::UndefinedBlock(index) => write!(f, "undefined block {}", index.0),
-            Self::InputCountMismatch { expected, actual } => write!(f, "expected {} input values but got {}", expected, actual),
-            Self::ResultCountMismatch { expected, actual } => write!(f, "expected {} result values but got {}", expected, actual),
+            Self::InputCountMismatch { expected, actual } => {
+                write!(f, "expected {} input values but got {}", expected, actual)
+            }
+            Self::ResultCountMismatch { expected, actual } => {
+                write!(f, "expected {} result values but got {}", expected, actual)
+            }
             Self::Halt(reason) => write!(f, "program execution halted, {}", reason),
         }
     }
@@ -71,11 +79,12 @@ pub struct Error {
 }
 
 impl Error {
+    pub(crate) fn new(kind: ErrorKind, stack_trace: Vec<StackTrace>) -> Self {
+        Self { kind, stack_trace }
+    }
+
     pub(crate) fn with_no_stack_trace(kind: ErrorKind) -> Self {
-        Self {
-            kind,
-            stack_trace: Vec::new(),
-        }
+        Self::new(kind, Vec::new())
     }
 
     pub fn kind(&self) -> &ErrorKind {
