@@ -2,7 +2,8 @@ use super::{InstructionLocation, Register};
 
 /// Describes a stack frame in the call stack.
 #[derive(Clone, Debug)]
-pub struct StackTrace { // TODO: fields here should be private.
+pub struct StackTrace {
+    // TODO: fields here should be private.
     pub(crate) depth: usize,
     pub(crate) location: InstructionLocation,
     //pub(crate) method: debugger::FullMethodIdentifier,

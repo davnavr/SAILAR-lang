@@ -306,17 +306,46 @@ pub fn assemble_declarations(
     }
 }
 
+pub fn assemble_from_str(
+    input: &str,
+) -> Result<
+    format::Module,
+    (
+        Vec<crate::lexer::Error>,
+        Vec<crate::parser::Error>,
+        Vec<Error>,
+    ),
+> {
+    let (tree, lexer_errors, parser_errors) = crate::parser::tree_from_str(input);
+    let module;
+    let assembler_errors;
+
+    match assemble_declarations(&tree) {
+        Ok(assembled) => {
+            module = Some(assembled);
+            assembler_errors = Vec::new();
+        }
+        Err(errors) => {
+            module = None;
+            assembler_errors = errors;
+        }
+    }
+
+    match module {
+        Some(assembled) if lexer_errors.is_empty() && parser_errors.is_empty() => Ok(assembled),
+        _ => Err((lexer_errors, parser_errors, assembler_errors)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{assembler, parser};
+    use crate::assembler;
     use registir::format;
 
     macro_rules! assert_success {
-        ($input: expr, $checker: expr) => {{
-            let (tree, lexer_errors, parser_errors) = parser::tree_from_str($input);
-            assert_eq!((lexer_errors, parser_errors), (Vec::new(), Vec::new()));
-            $checker(assembler::assemble_declarations(&tree).unwrap());
-        }};
+        ($input: expr, $checker: expr) => {
+            $checker(assembler::assemble_from_str($input).unwrap())
+        };
     }
 
     #[test]
@@ -341,7 +370,7 @@ mod tests {
     #[test]
     fn return_program_test() {
         assert_success!(
-            include_str!(r"..\..\..\asmdl_cli\samples\return.txtmdl"),
+            include_str!(r"../../../asmdl_cli/samples/return.txtmdl"),
             |module: format::Module| {
                 use format::{
                     indices::{Register, TemporaryRegister},

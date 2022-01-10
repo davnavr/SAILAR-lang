@@ -246,6 +246,7 @@ dependencies = [
 name = "runmdl"
 version = "0.1.0"
 dependencies = [
+ "asmdl",
  "getmdl",
  "registir",
 ]
