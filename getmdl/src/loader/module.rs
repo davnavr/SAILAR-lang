@@ -2,10 +2,11 @@ use super::*;
 
 pub struct Module<'a> {
     source: format::Module,
+    function_signature_cache:
+        cache::IndexLookup<'a, format::indices::FunctionSignature, FunctionSignature<'a>>,
     //loaded_structs
     //loaded_globals
     loaded_functions: cache::IndexLookup<'a, format::indices::FunctionDefinition, Function<'a>>,
-    //function_lookup: RefCell<HashMap<format::indices>>
 }
 
 fn load_raw_cached<'a, I, T, L, F, C>(
@@ -17,12 +18,12 @@ fn load_raw_cached<'a, I, T, L, F, C>(
 where
     T: 'a,
     I: TryInto<usize> + Copy + Eq + std::hash::Hash + Into<format::numeric::UInteger>,
-    F: FnOnce(usize) -> Option<&'a T>,
+    F: FnOnce(usize) -> Result<Option<&'a T>>,
     C: FnOnce(&'a T) -> Result<L>,
 {
     lookup.insert_or_get(index, |index| {
         read_index(index, |raw_index| {
-            constructor(loader(raw_index).ok_or(Error::IndexOutOfBounds(index.into()))?)
+            constructor(loader(raw_index)?.ok_or(Error::IndexOutOfBounds(index.into()))?)
         })
     })
 }
@@ -31,6 +32,7 @@ impl<'a> Module<'a> {
     pub(crate) fn new(source: format::Module) -> Self {
         Self {
             source,
+            function_signature_cache: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
         }
     }
@@ -51,7 +53,7 @@ impl<'a> Module<'a> {
         &'a self,
         index: format::indices::TypeSignature,
     ) -> Result<&'a format::TypeSignature> {
-        read_index_from(index, &self.source.type_signatures.0, Ok)
+        read_index_from(index, &self.source.type_signatures, Ok)
     }
 
     fn collect_type_signatures_raw(
@@ -65,6 +67,34 @@ impl<'a> Module<'a> {
         Ok(types)
     }
 
+    pub fn load_function_signature_raw(
+        &'a self,
+        index: format::indices::FunctionSignature,
+    ) -> Result<&'a format::FunctionSignature> {
+        read_index_from(index, &self.source.function_signatures, Ok)
+    }
+
+    pub fn load_function_signature(
+        &'a self,
+        index: format::indices::FunctionSignature,
+    ) -> Result<&'a FunctionSignature<'a>> {
+        load_raw_cached(
+            &self.function_signature_cache,
+            index,
+            |_| self.load_function_signature_raw(index).map(Some),
+            |signature| {
+                Ok(FunctionSignature::new(
+                    self.collect_type_signatures_raw(&signature.return_types)?,
+                    self.collect_type_signatures_raw(&signature.parameter_types)?,
+                ))
+            },
+        )
+    }
+
+    pub fn load_code_raw(&'a self, index: format::indices::Code) -> Result<&'a format::Code> {
+        read_index_from(index, &self.source.function_bodies, Ok)
+    }
+
     pub fn load_function_definition_raw(
         &'a self,
         index: format::indices::FunctionDefinition,
@@ -74,7 +104,7 @@ impl<'a> Module<'a> {
             index,
             |raw_index| {
                 let functions: &[_] = &self.source.definitions.defined_functions;
-                functions.get(raw_index)
+                Ok(functions.get(raw_index))
             },
             |source| Ok(Function::new(self, source)),
         )

@@ -16,7 +16,7 @@ pub use format::{
 
 pub use register::{NumericType, Register, RegisterType};
 
-pub type LoadedMethod<'l> = &'l loader::Method<'l>;
+pub type LoadedFunction<'l> = &'l loader::Function<'l>;
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -39,10 +39,9 @@ impl std::error::Error for ProgramHalt {}
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    LoadError(loader::LoadError),
+    LoadError(loader::Error),
     CallStackUnderflow,
     CallStackOverflow,
-    DirectAbstractMethodCall,
     UnexpectedEndOfBlock,
     UndefinedRegister(RegisterIndex),
     UndefinedBlock(JumpTarget),
@@ -61,7 +60,7 @@ macro_rules! error_kind_conversion {
     };
 }
 
-error_kind_conversion!(loader::LoadError, LoadError);
+error_kind_conversion!(loader::Error, LoadError);
 error_kind_conversion!(ProgramHalt, Halt);
 
 impl std::fmt::Display for ErrorKind {
@@ -70,7 +69,6 @@ impl std::fmt::Display for ErrorKind {
             Self::LoadError(error) => std::fmt::Display::fmt(error, f),
             Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
             Self::CallStackOverflow => f.write_str("exceeded maximum call stack depth"),
-            Self::DirectAbstractMethodCall => write!(f, "attempt to call abstract method with call, when call.virt should have been used instead"),
             Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
             Self::UndefinedRegister(RegisterIndex::Input(index)) => write!(f, "undefined input register {}", index),
             Self::UndefinedRegister(RegisterIndex::Temporary(index)) => write!(f, "undefined temporary register {}", index),
@@ -172,7 +170,7 @@ struct StackFrame<'l> {
     depth: usize,
     input_registers: Vec<Register>,
     result_registers: std::rc::Rc<std::cell::RefCell<Vec<Register>>>,
-    current_method: LoadedMethod<'l>,
+    current_method: LoadedFunction<'l>,
     code: &'l format::Code,
     block_index: BlockIndex,
     instructions: &'l [Instruction],
@@ -187,7 +185,7 @@ impl<'l> StackFrame<'l> {
         depth: usize,
         input_registers: Vec<Register>,
         result_registers: Vec<Register>,
-        current_method: LoadedMethod<'l>,
+        current_method: LoadedFunction<'l>,
         code: &'l format::Code,
     ) -> Self {
         Self {
@@ -289,7 +287,7 @@ impl<'l> StackFrame<'l> {
         StackTrace {
             depth: self.depth,
             location: self.location(),
-            method: self.current_method.identifier().unwrap(),
+            method: self.current_method.symbol().unwrap(),
             input_registers: self.input_registers.clone().into_boxed_slice(),
             temporary_registers: self.temporary_registers.clone().into_boxed_slice(),
         }
@@ -337,11 +335,11 @@ impl<'l> Interpreter<'l> {
     fn invoke_method(
         &mut self,
         arguments: &[Register],
-        method: LoadedMethod<'l>,
+        method: LoadedFunction<'l>,
     ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Register>>>> {
-        let signature = method.raw_signature_types()?;
-        let mut argument_registers = Register::initialize_many(signature.parameter_types);
-        let result_registers = Register::initialize_many(signature.return_types);
+        let signature = method.signature()?;
+        let mut argument_registers = Register::initialize_many(signature.parameter_types().into_iter().copied());
+        let result_registers = Register::initialize_many(signature.return_types().into_iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
@@ -355,7 +353,7 @@ impl<'l> Interpreter<'l> {
         }
 
         match method.raw_body() {
-            format::MethodBody::Defined(code_index) => {
+            format::FunctionBody::Defined(code_index) => {
                 let code = method.declaring_module().load_code_raw(*code_index)?;
                 let call_stack_depth = self.stack_frames.len();
 
@@ -375,8 +373,7 @@ impl<'l> Interpreter<'l> {
 
                 Ok(self.current_frame()?.result_registers.clone())
             }
-            format::MethodBody::Abstract => Err(ErrorKind::DirectAbstractMethodCall),
-            format::MethodBody::External { .. } => todo!("TODO: add support for external calls"),
+            format::FunctionBody::External { .. } => todo!("TODO: add support for external calls"),
         }
     }
 
@@ -655,7 +652,7 @@ impl<'l> Interpreter<'l> {
         message
     }
 
-    fn debugger_message_loop(&mut self, default_method: LoadedMethod<'l>) {
+    fn debugger_message_loop(&mut self, default_method: LoadedFunction<'l>) {
         loop {
             match self.expect_debugger_message() {
                 Some(message) => match message.message() {
@@ -710,7 +707,7 @@ impl<'l> Interpreter<'l> {
     fn execute_entry_point(
         &mut self,
         arguments: &[Register],
-        entry_point: LoadedMethod<'l>,
+        entry_point: LoadedFunction<'l>,
     ) -> Result<Vec<Register>> {
         // Wait for the debugger, if one is attached, to tell the application to start.
         self.debugger_message_loop(entry_point);
@@ -760,7 +757,7 @@ impl std::error::Error for Error {}
 pub fn run<'l>(
     loader: &'l loader::Loader<'l>,
     arguments: &[Register],
-    entry_point: LoadedMethod<'l>,
+    entry_point: LoadedFunction<'l>,
     debugger_message_channel: Option<debugger::MessageReceiver>,
 ) -> std::result::Result<Vec<Register>, Error> {
     let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);

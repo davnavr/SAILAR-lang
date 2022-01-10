@@ -27,8 +27,8 @@ pub enum Error {
     InvalidReturnValueType(interpreter::register::TryFromRegisterValueError),
 }
 
-impl From<loader::LoadError> for Error {
-    fn from(error: loader::LoadError) -> Self {
+impl From<loader::Error> for Error {
+    fn from(error: loader::Error) -> Self {
         Self::InterpreterError(interpreter::Error::with_no_stack_trace(
             interpreter::ErrorKind::LoadError(error),
         ))
