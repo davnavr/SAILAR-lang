@@ -79,4 +79,12 @@ impl<'a> Module<'a> {
             |source| Ok(Function::new(self, source)),
         )
     }
+
+    /// Retrieves the entry point for the application, if it exists.
+    pub fn entry_point(&'a self) -> Result<Option<&'a Function<'a>>> {
+        match self.source.entry_point.0 {
+            Some(entry_point) => self.load_function_definition_raw(entry_point).map(Some),
+            None => Ok(None),
+        }
+    }
 }
