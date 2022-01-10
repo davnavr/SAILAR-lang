@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn module_header_test() {
         assert_success!(
-            ".module { .name \"Test\"; .version 1 2 3; };",
+            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 3; };",
             |module: format::Module| {
                 let header = module.header.0;
                 assert_eq!(
@@ -333,6 +333,31 @@ mod tests {
                     header.identifier.version,
                     format::VersionNumbers::from_iter(vec![1u32, 2, 3].into_iter())
                 );
+                assert!(module.format_version.is_supported());
+            }
+        )
+    }
+
+    #[test]
+    fn return_program_test() {
+        assert_success!(
+            include_str!(r"..\..\..\asmdl_cli\samples\return.txtmdl"),
+            |module: format::Module| {
+                use format::{
+                    indices::{Register, TemporaryRegister},
+                    instruction_set::{Instruction, IntegerConstant},
+                };
+                let code = &module.function_bodies[0];
+                assert_eq!(
+                    code.entry_block.instructions.0 .0,
+                    vec![
+                        Instruction::ConstI(IntegerConstant::S32(0)),
+                        Instruction::Ret(format::LenVec(vec![Register::Temporary(
+                            TemporaryRegister::from(0)
+                        )]))
+                    ]
+                );
+                assert!(code.blocks.is_empty());
             }
         )
     }

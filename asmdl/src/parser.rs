@@ -468,7 +468,7 @@ mod tests {
                                 )),
                                 arguments: Vec::new(),
                                 instructions: vec![ast::Statement {
-                                    results: (Vec::new(), Position { start: 61, end: 62 }),
+                                    results: (Vec::new(), Position { start: 61, end: 56 }),
                                     instruction: (
                                         ast::Instruction::Ret(vec![
                                             ast::RegisterSymbol((
