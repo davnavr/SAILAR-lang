@@ -1,4 +1,4 @@
-use super::{RegisterIndex, JumpTarget};
+use super::{RegisterIndex, JumpTarget, StackTrace};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -63,3 +63,34 @@ impl std::fmt::Display for ErrorKind {
 }
 
 impl std::error::Error for ErrorKind {}
+
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    stack_trace: Vec<StackTrace>,
+}
+
+impl Error {
+    pub(crate) fn with_no_stack_trace(kind: ErrorKind) -> Self {
+        Self {
+            kind,
+            stack_trace: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
+    pub fn stack_trace(&self) -> &[StackTrace] {
+        &self.stack_trace
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl std::error::Error for Error {}

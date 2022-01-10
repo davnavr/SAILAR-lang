@@ -17,7 +17,7 @@ pub use format::{
 
 pub use register::{NumericType, Register, RegisterType};
 
-pub use error::{ProgramHalt, ErrorKind};
+pub use error::{ProgramHalt, Error, ErrorKind};
 
 pub type LoadedFunction<'l> = &'l loader::Function<'l>;
 
@@ -28,7 +28,7 @@ type Result<T> = std::result::Result<T, ErrorKind>;
 pub struct StackTrace {
     depth: usize,
     location: InstructionLocation,
-    method: debugger::FullMethodIdentifier,
+    //method: debugger::FullMethodIdentifier,
     input_registers: Box<[Register]>,
     temporary_registers: Box<[Register]>,
 }
@@ -42,9 +42,9 @@ impl StackTrace {
         &self.location
     }
 
-    pub fn method(&self) -> &debugger::FullMethodIdentifier {
-        &self.method
-    }
+    // pub fn method(&self) -> &debugger::FullMethodIdentifier {
+    //     &self.method
+    // }
 
     pub fn input_registers(&self) -> &[Register] {
         &self.input_registers
@@ -226,7 +226,7 @@ impl<'l> StackFrame<'l> {
         StackTrace {
             depth: self.depth,
             location: self.location(),
-            method: self.current_method.symbol().unwrap(),
+            //method: self.current_method.symbol().unwrap(),
             input_registers: self.input_registers.clone().into_boxed_slice(),
             temporary_registers: self.temporary_registers.clone().into_boxed_slice(),
         }
@@ -455,8 +455,8 @@ impl<'l> Interpreter<'l> {
         current_frame.instructions = &new_block.instructions;
 
         if let Some(debugger) = debugger {
-            current_frame.breakpoints.source = debugger
-                .breakpoints_in_block(current_frame.current_method, current_frame.block_index);
+            // current_frame.breakpoints.source = debugger
+            //     .breakpoints_in_block(current_frame.current_method, current_frame.block_index);
             current_frame.breakpoints.index = 0;
         }
 
@@ -595,29 +595,29 @@ impl<'l> Interpreter<'l> {
         loop {
             match self.expect_debugger_message() {
                 Some(message) => match message.message() {
-                    debugger::MessageKind::SetBreakpoint(breakpoint) => {
-                        let method = breakpoint
-                            .method
-                            .as_ref()
-                            .map(|method_name| self.loader.lookup_method(method_name))
-                            .map(|methods| {
-                                if methods.len() != 1 {
-                                    todo!("how to handle method not found for breakpoint?")
-                                } else {
-                                    methods[0]
-                                }
-                            })
-                            .unwrap_or(default_method);
-                        self.debugger
-                            .as_mut()
-                            .unwrap()
-                            .set_breakpoint(method, &breakpoint.instruction_location())
-                    }
-                    debugger::MessageKind::GetBreakpoints => {
-                        message.reply(debugger::MessageReply::Breakpoints(
-                            self.debugger.as_ref().unwrap().breakpoints(),
-                        ))
-                    }
+                    // debugger::MessageKind::SetBreakpoint(breakpoint) => {
+                    //     let method = breakpoint
+                    //         .method
+                    //         .as_ref()
+                    //         .map(|method_name| self.loader.lookup_method(method_name))
+                    //         .map(|methods| {
+                    //             if methods.len() != 1 {
+                    //                 todo!("how to handle method not found for breakpoint?")
+                    //             } else {
+                    //                 methods[0]
+                    //             }
+                    //         })
+                    //         .unwrap_or(default_method);
+                    //     self.debugger
+                    //         .as_mut()
+                    //         .unwrap()
+                    //         .set_breakpoint(method, &breakpoint.instruction_location())
+                    // }
+                    // debugger::MessageKind::GetBreakpoints => {
+                    //     message.reply(debugger::MessageReply::Breakpoints(
+                    //         self.debugger.as_ref().unwrap().breakpoints(),
+                    //     ))
+                    // }
                     debugger::MessageKind::GetStackTrace => {
                         message.reply(debugger::MessageReply::StackTrace(self.stack_trace()))
                     }
@@ -636,10 +636,10 @@ impl<'l> Interpreter<'l> {
 
     fn set_debugger_breakpoints(&mut self) {
         if let Some(debugger) = &self.debugger {
-            for frame in &mut self.stack_frames {
-                frame.breakpoints.source =
-                    debugger.breakpoints_in_block(frame.current_method, frame.block_index);
-            }
+            // for frame in &mut self.stack_frames {
+            //     frame.breakpoints.source =
+            //         debugger.breakpoints_in_block(frame.current_method, frame.block_index);
+            // }
         }
     }
 
@@ -661,37 +661,6 @@ impl<'l> Interpreter<'l> {
         Ok(entry_point_results.take())
     }
 }
-
-#[derive(Debug)]
-pub struct Error {
-    kind: ErrorKind,
-    stack_trace: Vec<StackTrace>,
-}
-
-impl Error {
-    pub(crate) fn with_no_stack_trace(kind: ErrorKind) -> Self {
-        Self {
-            kind,
-            stack_trace: Vec::new(),
-        }
-    }
-
-    pub fn kind(&self) -> &ErrorKind {
-        &self.kind
-    }
-
-    pub fn stack_trace(&self) -> &[StackTrace] {
-        &self.stack_trace
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.kind.fmt(f)
-    }
-}
-
-impl std::error::Error for Error {}
 
 pub fn run<'l>(
     loader: &'l loader::Loader<'l>,

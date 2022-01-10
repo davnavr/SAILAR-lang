@@ -1,14 +1,14 @@
 use std::collections::hash_map;
 use std::sync::mpsc;
 
-pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedMethod, Register, StackTrace};
-pub use getmdl::loader::{FullIdentifier, FullMethodIdentifier, ModuleIdentifier};
+pub use crate::interpreter::{BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace};
+pub use getmdl::loader::ModuleIdentifier;
 
 #[derive(Default)]
 pub struct Breakpoint {
     pub block: BlockIndex,
     pub instruction: usize,
-    pub method: Option<FullMethodIdentifier>,
+    //pub method: Option<FullMethodIdentifier>,
 }
 
 impl Breakpoint {
@@ -23,9 +23,9 @@ impl Breakpoint {
 impl std::fmt::Display for Breakpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let location = self.instruction_location();
-        if let Some(ref method_name) = self.method {
-            write!(f, "{} ", method_name)?;
-        }
+        // if let Some(ref method_name) = self.method {
+        //     write!(f, "{} ", method_name)?;
+        // }
 
         write!(
             f,
@@ -38,13 +38,13 @@ impl std::fmt::Display for Breakpoint {
 
 pub enum MessageReply {
     StackTrace(Vec<StackTrace>), // TODO: Use Rc<Vec> in message reply to reduce heap allocations?
-    Breakpoints(Vec<Breakpoint>),
+    //Breakpoints(Vec<Breakpoint>),
     Registers(Vec<Register>), // TODO: Also include input registers.
 }
 
 pub enum MessageKind {
     Continue,
-    SetBreakpoint(Breakpoint),
+    //SetBreakpoint(Breakpoint),
     GetBreakpoints,
     GetStackTrace,
     GetRegisters, // TODO: Allow selection of stack frame to show registers for.
@@ -111,7 +111,7 @@ impl BlockBreakpoints {
 
 pub(crate) struct Debugger<'l> {
     breakpoints:
-        hash_map::HashMap<LoadedMethod<'l>, hash_map::HashMap<BlockIndex, BlockBreakpoints>>,
+        hash_map::HashMap<LoadedFunction<'l>, hash_map::HashMap<BlockIndex, BlockBreakpoints>>,
     receiver: MessageReceiver,
 }
 
@@ -127,43 +127,43 @@ impl<'l: 'd, 'd> Debugger<'l> {
         self.receiver.recv()
     }
 
-    /// Retrieves the breakpoints in the specified code block in ascending order.
-    pub(crate) fn breakpoints_in_block(
-        &'d self,
-        method: LoadedMethod<'l>,
-        block: BlockIndex,
-    ) -> Option<BreakpointsReference> {
-        self.breakpoints.get(method).and_then(|block_breakpoints| {
-            block_breakpoints.get(&block).map(BlockBreakpoints::indices)
-        })
-    }
+    // /// Retrieves the breakpoints in the specified code block in ascending order.
+    // pub(crate) fn breakpoints_in_block(
+    //     &'d self,
+    //     method: LoadedFunction<'l>,
+    //     block: BlockIndex,
+    // ) -> Option<BreakpointsReference> {
+    //     self.breakpoints.get(method).and_then(|block_breakpoints| {
+    //         block_breakpoints.get(&block).map(BlockBreakpoints::indices)
+    //     })
+    // }
 
-    pub(crate) fn set_breakpoint(
-        &mut self,
-        method: LoadedMethod<'l>,
-        location: &InstructionLocation,
-    ) {
-        self.breakpoints
-            .entry(method)
-            .or_insert_with(hash_map::HashMap::new)
-            .entry(location.block_index)
-            .or_insert_with(BlockBreakpoints::new)
-            .insert(location.code_index)
-    }
+    // pub(crate) fn set_breakpoint(
+    //     &mut self,
+    //     method: LoadedMethod<'l>,
+    //     location: &InstructionLocation,
+    // ) {
+    //     self.breakpoints
+    //         .entry(method)
+    //         .or_insert_with(hash_map::HashMap::new)
+    //         .entry(location.block_index)
+    //         .or_insert_with(BlockBreakpoints::new)
+    //         .insert(location.code_index)
+    // }
 
-    pub(crate) fn breakpoints<'a>(&'a self) -> Vec<Breakpoint> {
-        let mut breakpoints = Vec::new();
-        for (&method, block_breakpoints) in self.breakpoints.iter() {
-            for (&block, code_indices) in block_breakpoints {
-                for &index in code_indices.indices().borrow().iter() {
-                    breakpoints.push(Breakpoint {
-                        block,
-                        instruction: index,
-                        method: Some(method.identifier().unwrap()),
-                    });
-                }
-            }
-        }
-        breakpoints
-    }
+    // pub(crate) fn breakpoints<'a>(&'a self) -> Vec<Breakpoint> {
+    //     let mut breakpoints = Vec::new();
+    //     for (&method, block_breakpoints) in self.breakpoints.iter() {
+    //         for (&block, code_indices) in block_breakpoints {
+    //             for &index in code_indices.indices().borrow().iter() {
+    //                 breakpoints.push(Breakpoint {
+    //                     block,
+    //                     instruction: index,
+    //                     method: Some(method.identifier().unwrap()),
+    //                 });
+    //             }
+    //         }
+    //     }
+    //     breakpoints
+    // }
 }
