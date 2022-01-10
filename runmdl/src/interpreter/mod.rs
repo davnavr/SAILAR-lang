@@ -1,6 +1,7 @@
 use getmdl::loader;
 use registir::format;
 
+pub mod call_stack;
 pub mod debugger;
 pub mod error;
 pub mod register;
@@ -15,45 +16,15 @@ pub use format::{
     type_system::PrimitiveType,
 };
 
-pub use register::{NumericType, Register, RegisterType};
+pub use call_stack::StackTrace;
 
 pub use error::{Error, ErrorKind, ProgramHalt};
+
+pub use register::{NumericType, Register, RegisterType};
 
 pub type LoadedFunction<'l> = &'l loader::Function<'l>;
 
 type Result<T> = std::result::Result<T, ErrorKind>;
-
-/// Describes a stack frame in the call stack.
-#[derive(Clone, Debug)]
-pub struct StackTrace {
-    depth: usize,
-    location: InstructionLocation,
-    //method: debugger::FullMethodIdentifier,
-    input_registers: Box<[Register]>,
-    temporary_registers: Box<[Register]>,
-}
-
-impl StackTrace {
-    pub fn depth(&self) -> usize {
-        self.depth
-    }
-
-    pub fn location(&self) -> &InstructionLocation {
-        &self.location
-    }
-
-    // pub fn method(&self) -> &debugger::FullMethodIdentifier {
-    //     &self.method
-    // }
-
-    pub fn input_registers(&self) -> &[Register] {
-        &self.input_registers
-    }
-
-    pub fn temporary_registers(&self) -> &[Register] {
-        &self.temporary_registers
-    }
-}
 
 /// Refers to a block in a method body, where a value of `None` refers to the entry block.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
