@@ -295,43 +295,43 @@ fn block_instruction<W: Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        Instruction::Br(target, input_registers) => {
-            unsigned_index(out, *target, size)?;
-            length_encoded_indices(out, input_registers, size)
-        }
-        Instruction::BrIf {
-            condition,
-            true_branch,
-            false_branch,
-            input_registers,
-        } => {
-            unsigned_index(out, *condition, size)?;
-            unsigned_index(out, *true_branch, size)?;
-            unsigned_index(out, *false_branch, size)?;
-            length_encoded_indices(out, input_registers, size)
-        }
-        Instruction::Call(call) => {
-            write(out, call.flags().bits())?;
-            unsigned_index(out, call.function, size)?;
-            length_encoded_indices(out, &call.arguments, size)
-        }
-        Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
-            basic_arithmetic_operation(out, operation, size)
-        }
-        Instruction::Div(operation) => division_operation(out, operation, size),
-        Instruction::And(operation)
-        | Instruction::Or(operation)
-        | Instruction::Xor(operation)
-        | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
-            bitwise_operation(out, operation, size)
-        }
-        Instruction::Not(result_type, value) => {
-            numeric_type(out, *result_type)?;
-            unsigned_index(out, *value, size)
-        }
+        // Instruction::Br(target, input_registers) => {
+        //     unsigned_index(out, *target, size)?;
+        //     length_encoded_indices(out, input_registers, size)
+        // }
+        // Instruction::BrIf {
+        //     condition,
+        //     true_branch,
+        //     false_branch,
+        //     input_registers,
+        // } => {
+        //     unsigned_index(out, *condition, size)?;
+        //     unsigned_index(out, *true_branch, size)?;
+        //     unsigned_index(out, *false_branch, size)?;
+        //     length_encoded_indices(out, input_registers, size)
+        // }
+        // Instruction::Call(call) => {
+        //     write(out, call.flags().bits())?;
+        //     unsigned_index(out, call.function, size)?;
+        //     length_encoded_indices(out, &call.arguments, size)
+        // }
+        // Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
+        //     basic_arithmetic_operation(out, operation, size)
+        // }
+        // Instruction::Div(operation) => division_operation(out, operation, size),
+        // Instruction::And(operation)
+        // | Instruction::Or(operation)
+        // | Instruction::Xor(operation)
+        // | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
+        //     bitwise_operation(out, operation, size)
+        // }
+        // Instruction::Not(result_type, value) => {
+        //     numeric_type(out, *result_type)?;
+        //     unsigned_index(out, *value, size)
+        // }
         Instruction::ConstI(constant) => match constant {
             IntegerConstant::S8(value) => {
                 primitive_type(out, PrimitiveType::S8)?;

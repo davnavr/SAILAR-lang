@@ -326,112 +326,112 @@ pub enum Instruction {
     ///
     /// Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
-    /// ```txt
-    /// br <target>;
-    /// br <target> with <input1>, <input2>, ...;
-    /// ```
-    /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
-    Br(JumpTarget, LenVec<RegisterIndex>),
-    /// ```txt
-    /// br.if <condition> then <true> else <false>;
-    /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
-    /// ```
-    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
-    /// otherwise, control flow is transferred to the `false` block.
-    BrIf {
-        condition: RegisterIndex,
-        true_branch: JumpTarget,
-        false_branch: JumpTarget,
-        input_registers: LenVec<RegisterIndex>,
-    },
-    /// ```txt
-    /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <function> <argument0>, <argument1>, ...;
-    /// ```
-    /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
-    ///
-    /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
-    /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
-    /// function's signature.
-    Call(CallInstruction),
+    // /// ```txt
+    // /// br <target>;
+    // /// br <target> with <input1>, <input2>, ...;
+    // /// ```
+    // /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
+    // Br(JumpTarget, LenVec<RegisterIndex>),
+    // /// ```txt
+    // /// br.if <condition> then <true> else <false>;
+    // /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
+    // /// ```
+    // /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
+    // /// otherwise, control flow is transferred to the `false` block.
+    // BrIf {
+    //     condition: RegisterIndex,
+    //     true_branch: JumpTarget,
+    //     false_branch: JumpTarget,
+    //     input_registers: LenVec<RegisterIndex>,
+    // },
+    // /// ```txt
+    // /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <function> <argument0>, <argument1>, ...;
+    // /// ```
+    // /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
+    // ///
+    // /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
+    // /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
+    // /// function's signature.
+    // Call(CallInstruction),
 
-    /// ```txt
-    /// <sum> = add <numeric type> <x> and <y>;
-    /// <sum> = add <numeric type> <x> and <y> ovf.halt;
-    /// <sum>, <overflowed> = add <numeric type> <x> and <y> ovf.flag;
-    /// ```
-    /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
-    Add(BasicArithmeticOperation),
-    /// ```txt
-    /// <result> = sub <numeric type> <x> from <y>;
-    /// <result> = sub <numeric type> <x> from <y> ovf.halt;
-    /// <result>, <overflowed> = sub <numeric type> <x> from <y> ovf.flag;
-    /// ```
-    /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
-    /// the difference.
-    Sub(BasicArithmeticOperation),
-    /// ```txt
-    /// <product> = mul <numeric type> <x> by <y>;
-    /// <product> = mul <numeric type> <x> by <y> ovf.halt;
-    /// <product>, <overflowed> = mul <numeric type> <x> by <y> ovf.flag;
-    /// ```
-    /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
-    Mul(BasicArithmeticOperation),
-    /// ```txt
-    /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan>;
-    /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
-    /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> or <nan> ovf.flag;
-    /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt;
-    /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.halt;
-    /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.flag;
-    /// ```
-    /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
-    Div(DivisionOperation),
-    /// ```txt
-    /// <result> = and <numeric type> <x> <y>;
-    /// ```
-    /// Returns the bitwise `AND` of the values in the `x` and `y` registers converted to the specified numeric type.
-    And(BitwiseOperation),
-    /// ```txt
-    /// <result> = or <numeric type> <x> <y>;
-    /// ```
-    /// Returns the bitwise `OR` of the values in the `x` and `y` registers converted to the specified numeric type.
-    Or(BitwiseOperation),
-    /// ```txt
-    /// <result> = not <numeric type> <value>;
-    /// ```
-    /// Returns the bitwise `NOT` of the value in the specified register converted to the specified numeric type.
-    Not(NumericType, RegisterIndex),
-    /// ```txt
-    /// <result> = xor <numeric type> <x> <y>;
-    /// ```
-    /// Returns the bitwise `XOR` of the values in the `x` and `y` registers converted to the specified numeric type.
-    Xor(BitwiseOperation),
+    // /// ```txt
+    // /// <sum> = add <numeric type> <x> and <y>;
+    // /// <sum> = add <numeric type> <x> and <y> ovf.halt;
+    // /// <sum>, <overflowed> = add <numeric type> <x> and <y> ovf.flag;
+    // /// ```
+    // /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
+    // Add(BasicArithmeticOperation),
+    // /// ```txt
+    // /// <result> = sub <numeric type> <x> from <y>;
+    // /// <result> = sub <numeric type> <x> from <y> ovf.halt;
+    // /// <result>, <overflowed> = sub <numeric type> <x> from <y> ovf.flag;
+    // /// ```
+    // /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
+    // /// the difference.
+    // Sub(BasicArithmeticOperation),
+    // /// ```txt
+    // /// <product> = mul <numeric type> <x> by <y>;
+    // /// <product> = mul <numeric type> <x> by <y> ovf.halt;
+    // /// <product>, <overflowed> = mul <numeric type> <x> by <y> ovf.flag;
+    // /// ```
+    // /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
+    // Mul(BasicArithmeticOperation),
+    // /// ```txt
+    // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan>;
+    // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
+    // /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> or <nan> ovf.flag;
+    // /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt;
+    // /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.halt;
+    // /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.flag;
+    // /// ```
+    // /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
+    // Div(DivisionOperation),
+    // /// ```txt
+    // /// <result> = and <numeric type> <x> <y>;
+    // /// ```
+    // /// Returns the bitwise `AND` of the values in the `x` and `y` registers converted to the specified numeric type.
+    // And(BitwiseOperation),
+    // /// ```txt
+    // /// <result> = or <numeric type> <x> <y>;
+    // /// ```
+    // /// Returns the bitwise `OR` of the values in the `x` and `y` registers converted to the specified numeric type.
+    // Or(BitwiseOperation),
+    // /// ```txt
+    // /// <result> = not <numeric type> <value>;
+    // /// ```
+    // /// Returns the bitwise `NOT` of the value in the specified register converted to the specified numeric type.
+    // Not(NumericType, RegisterIndex),
+    // /// ```txt
+    // /// <result> = xor <numeric type> <x> <y>;
+    // /// ```
+    // /// Returns the bitwise `XOR` of the values in the `x` and `y` registers converted to the specified numeric type.
+    // Xor(BitwiseOperation),
 
-    /// ```txt
-    /// <result> = sh.l <numeric type> <value> by <amount>;
-    /// ```
-    /// Shifts the value in the `value` register converted to the specified integer type to the left by the amount in the
-    /// `amount` register.
-    ShL(BitwiseShiftOperation),
-    /// ```txt
-    /// <result> = sh.r <numeric type> <value> by <amount>;
-    /// ```
-    /// Shifts the value in the `value` register converted to the specified integer type to the right by the amount in the
-    /// `amount` register, inserting a `0` bit if the numeric type is an unsigned integer type, or copying the sign bit if the
-    /// type is a signed integer type.
-    ShR(BitwiseShiftOperation),
-    /// ```txt
-    /// <result> = rot.l <numeric type> <value> by <amount>;
-    /// ```
-    /// Rotates the value in the specified `value` register converted to the specified numeric type left by the amount in the
-    /// `amount` register.
-    RotL(BitwiseShiftOperation),
-    /// ```txt
-    /// <result> = rot.r <numeric type> <value> by <amount>;
-    /// ```
-    /// Rotates the value in the specified `value` register converted to the specified numeric type right by the amount in the
-    /// `amount` register.
-    RotR(BitwiseShiftOperation),
+    // /// ```txt
+    // /// <result> = sh.l <numeric type> <value> by <amount>;
+    // /// ```
+    // /// Shifts the value in the `value` register converted to the specified integer type to the left by the amount in the
+    // /// `amount` register.
+    // ShL(BitwiseShiftOperation),
+    // /// ```txt
+    // /// <result> = sh.r <numeric type> <value> by <amount>;
+    // /// ```
+    // /// Shifts the value in the `value` register converted to the specified integer type to the right by the amount in the
+    // /// `amount` register, inserting a `0` bit if the numeric type is an unsigned integer type, or copying the sign bit if the
+    // /// type is a signed integer type.
+    // ShR(BitwiseShiftOperation),
+    // /// ```txt
+    // /// <result> = rot.l <numeric type> <value> by <amount>;
+    // /// ```
+    // /// Rotates the value in the specified `value` register converted to the specified numeric type left by the amount in the
+    // /// `amount` register.
+    // RotL(BitwiseShiftOperation),
+    // /// ```txt
+    // /// <result> = rot.r <numeric type> <value> by <amount>;
+    // /// ```
+    // /// Rotates the value in the specified `value` register converted to the specified numeric type right by the amount in the
+    // /// `amount` register.
+    // RotR(BitwiseShiftOperation),
 
     /// ```txt
     /// <result> = const.i <integer type> <value>;
@@ -452,21 +452,21 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
-            Instruction::Br(_, _) => Opcode::Br,
-            Instruction::BrIf { .. } => Opcode::BrIf,
-            Instruction::Call(_) => Opcode::Call,
-            Instruction::Add(_) => Opcode::Add,
-            Instruction::Sub(_) => Opcode::Sub,
-            Instruction::Mul(_) => Opcode::Mul,
-            Instruction::Div(_) => Opcode::Div,
-            Instruction::And(_) => Opcode::And,
-            Instruction::Or(_) => Opcode::Or,
-            Instruction::Not { .. } => Opcode::Not,
-            Instruction::Xor(_) => Opcode::Xor,
-            Instruction::ShL(_) => Opcode::ShL,
-            Instruction::ShR(_) => Opcode::ShR,
-            Instruction::RotL(_) => Opcode::RotL,
-            Instruction::RotR(_) => Opcode::RotR,
+            // Instruction::Br(_, _) => Opcode::Br,
+            // Instruction::BrIf { .. } => Opcode::BrIf,
+            // Instruction::Call(_) => Opcode::Call,
+            // Instruction::Add(_) => Opcode::Add,
+            // Instruction::Sub(_) => Opcode::Sub,
+            // Instruction::Mul(_) => Opcode::Mul,
+            // Instruction::Div(_) => Opcode::Div,
+            // Instruction::And(_) => Opcode::And,
+            // Instruction::Or(_) => Opcode::Or,
+            // Instruction::Not { .. } => Opcode::Not,
+            // Instruction::Xor(_) => Opcode::Xor,
+            // Instruction::ShL(_) => Opcode::ShL,
+            // Instruction::ShR(_) => Opcode::ShR,
+            // Instruction::RotL(_) => Opcode::RotL,
+            // Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
             Instruction::Break => Opcode::Break,
         }
@@ -477,25 +477,25 @@ impl Instruction {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
-            | Instruction::Br(_, _)
-            | Instruction::BrIf { .. }
+            // | Instruction::Br(_, _)
+            // | Instruction::BrIf { .. }
             | Instruction::Break => 0,
-            Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
-            Instruction::Add(BasicArithmeticOperation { overflow, .. })
-            | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
-            | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
-            | Instruction::Div(DivisionOperation { overflow, .. }) => match overflow {
-                OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
-                OverflowBehavior::Flag => 2,
-            },
-            Instruction::And(_)
-            | Instruction::Or(_)
-            | Instruction::Not { .. }
-            | Instruction::Xor(_)
-            | Instruction::ShL(_)
-            | Instruction::ShR(_)
-            | Instruction::RotL(_)
-            | Instruction::RotR(_)
+            // Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
+            // Instruction::Add(BasicArithmeticOperation { overflow, .. })
+            // | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
+            // | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
+            // | Instruction::Div(DivisionOperation { overflow, .. }) => match overflow {
+            //     OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
+            //     OverflowBehavior::Flag => 2,
+            // },
+            // Instruction::And(_)
+            // | Instruction::Or(_)
+            // | Instruction::Not { .. }
+            // | Instruction::Xor(_)
+            // | Instruction::ShL(_)
+            // | Instruction::ShR(_)
+            // | Instruction::RotL(_)
+            // | Instruction::RotR(_)
             | Instruction::ConstI(_) => 1,
         }
     }

@@ -406,48 +406,48 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
-        Opcode::Br => Ok(Instruction::Br(
-            unsigned_index(src, size)?,
-            length_encoded_indices(src, size)?,
-        )),
-        Opcode::BrIf => Ok(Instruction::BrIf {
-            condition: unsigned_index(src, size)?,
-            true_branch: unsigned_index(src, size)?,
-            false_branch: unsigned_index(src, size)?,
-            input_registers: length_encoded_indices(src, size)?,
-        }),
-        Opcode::Call => {
-            let flags = call_flags(src)?;
-            // TODO: Check that call flags are valid.
-            Ok(Instruction::Call(
-                format::instruction_set::CallInstruction {
-                    tail_call: if flags.contains(CallFlags::TAIL_CALL_REQUIRED) {
-                        TailCall::Required
-                    } else if flags.contains(CallFlags::TAIL_CALL_PROHIBITED) {
-                        TailCall::Prohibited
-                    } else {
-                        TailCall::Allowed
-                    },
-                    function: unsigned_index(src, size)?,
-                    arguments: length_encoded_indices(src, size)?,
-                },
-            ))
-        }
-        Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
-        Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
-        Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
-        Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
-        Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
-        Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
-        Opcode::Not => Ok(Instruction::Not(
-            numeric_type(src)?,
-            unsigned_index(src, size)?,
-        )),
-        Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
-        Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
-        Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),
-        Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
-        Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
+        // Opcode::Br => Ok(Instruction::Br(
+        //     unsigned_index(src, size)?,
+        //     length_encoded_indices(src, size)?,
+        // )),
+        // Opcode::BrIf => Ok(Instruction::BrIf {
+        //     condition: unsigned_index(src, size)?,
+        //     true_branch: unsigned_index(src, size)?,
+        //     false_branch: unsigned_index(src, size)?,
+        //     input_registers: length_encoded_indices(src, size)?,
+        // }),
+        // Opcode::Call => {
+        //     let flags = call_flags(src)?;
+        //     // TODO: Check that call flags are valid.
+        //     Ok(Instruction::Call(
+        //         format::instruction_set::CallInstruction {
+        //             tail_call: if flags.contains(CallFlags::TAIL_CALL_REQUIRED) {
+        //                 TailCall::Required
+        //             } else if flags.contains(CallFlags::TAIL_CALL_PROHIBITED) {
+        //                 TailCall::Prohibited
+        //             } else {
+        //                 TailCall::Allowed
+        //             },
+        //             function: unsigned_index(src, size)?,
+        //             arguments: length_encoded_indices(src, size)?,
+        //         },
+        //     ))
+        // }
+        // Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
+        // Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
+        // Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
+        // Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
+        // Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
+        // Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
+        // Opcode::Not => Ok(Instruction::Not(
+        //     numeric_type(src)?,
+        //     unsigned_index(src, size)?,
+        // )),
+        // Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
+        // Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
+        // Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),
+        // Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
+        // Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
         Opcode::Break => Ok(Instruction::Break),
         Opcode::Continuation => unreachable!(),
