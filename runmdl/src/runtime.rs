@@ -1,20 +1,37 @@
 use crate::interpreter;
 use getmdl::loader;
 
+const DEFAULT_CALL_STACK_MAX_DEPTH: usize = 0xFF;
+
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
+    call_stack_capacity: usize,
 }
 
-#[derive(Default)]
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
+    call_stack_capacity: usize,
+}
+
+impl<'l> Default for Initializer<'l> {
+    fn default() -> Self {
+        Self {
+            runtime: None,
+            loader: None,
+            call_stack_capacity: DEFAULT_CALL_STACK_MAX_DEPTH,
+        }
+    }
 }
 
 impl<'l> Initializer<'l> {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_call_stack_capacity(&mut self, maximum_depth: usize) {
+        self.call_stack_capacity = maximum_depth;
     }
 }
 
@@ -47,7 +64,11 @@ impl<'l> Runtime<'l> {
         application: registir::format::Module,
     ) -> &'l Self {
         let (loader, program) = loader::Loader::initialize(&mut initializer.loader, application);
-        initializer.runtime.insert(Self { loader, program })
+        initializer.runtime.insert(Self {
+            loader,
+            program,
+            call_stack_capacity: initializer.call_stack_capacity,
+        })
     }
 
     pub fn loader(&'l self) -> &'l loader::Loader<'l> {
@@ -63,7 +84,7 @@ impl<'l> Runtime<'l> {
     pub fn invoke_entry_point(
         &'l self,
         argv: &[&str],
-        //max_stack_capacity: usize,
+        // NOTE: Move debugger to Initializer struct.
         debugger_channel: Option<interpreter::debugger::MessageReceiver>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
@@ -75,7 +96,13 @@ impl<'l> Runtime<'l> {
             .entry_point()?
             .ok_or(Error::MissingEntryPoint)?;
 
-        let results = interpreter::run(&self.loader, &[], entry_point, debugger_channel)?;
+        let results = interpreter::run(
+            &self.loader,
+            &[],
+            entry_point,
+            self.call_stack_capacity,
+            debugger_channel,
+        )?;
 
         match results.as_slice() {
             [] => Ok(0),

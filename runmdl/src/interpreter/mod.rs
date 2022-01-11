@@ -54,8 +54,6 @@ pub struct InstructionLocation {
     pub code_index: usize,
 }
 
-const DEFAULT_CALL_STACK_MAX_DEPTH: usize = 0xFF;
-
 struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
@@ -66,11 +64,12 @@ struct Interpreter<'l> {
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
+        call_stack_capacity: usize,
         debugger_receiver: Option<debugger::MessageReceiver>,
     ) -> Self {
         Self {
             loader,
-            call_stack: CallStack::new(DEFAULT_CALL_STACK_MAX_DEPTH),
+            call_stack: CallStack::new(call_stack_capacity),
             debugger: debugger_receiver
                 .map(|message_source| debugger::Debugger::new(message_source)),
         }
@@ -294,9 +293,11 @@ pub fn run<'l>(
     loader: &'l loader::Loader<'l>,
     arguments: &[Register],
     entry_point: LoadedFunction<'l>,
+    call_stack_capacity: usize,
     debugger_message_channel: Option<debugger::MessageReceiver>,
 ) -> std::result::Result<Vec<Register>, Error> {
-    let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);
+    let mut interpreter =
+        Interpreter::initialize(loader, call_stack_capacity, debugger_message_channel);
     interpreter
         .execute_entry_point(arguments, entry_point)
         .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))
