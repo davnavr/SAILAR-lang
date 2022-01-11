@@ -36,21 +36,19 @@ impl TraceFrame {
 
 pub type Trace = Vec<TraceFrame>;
 
-pub(crate) type ResultRegisters = std::rc::Rc<std::cell::RefCell<Vec<Register>>>;
-
-fn new_result_registers(registers: Vec<Register>) -> ResultRegisters {
-    std::rc::Rc::new(std::cell::RefCell::new(registers))
-}
-
 pub(crate) struct Registers {
     inputs: Vec<Register>,
-    results: ResultRegisters, // TODO: Maybe a regular Vec could be used for return registers, and popping a stack frame could return the result registers.
+    results: Vec<Register>,
     temporaries: Vec<Register>,
 }
 
 impl Registers {
     pub fn define_temporary(&mut self, temporary: Register) {
         self.temporaries.push(temporary)
+    }
+
+    pub fn append_temporaries(&mut self, temporaries: &mut Vec<Register>) {
+        self.temporaries.append(temporaries)
     }
 
     /// Retrieves the register associated with the specified index.
@@ -87,11 +85,8 @@ impl Registers {
         &self.temporaries
     }
 
-    pub fn results_mut(&self) -> std::cell::RefMut<[Register]> {
-        std::cell::RefMut::map(
-            std::cell::RefCell::borrow_mut(&self.results),
-            Vec::as_mut_slice,
-        )
+    pub fn results_mut(&mut self) -> &mut [Register] {
+        &mut self.results
     }
 }
 
@@ -232,11 +227,12 @@ impl<'l> Stack<'l> {
         self.peek_mut().ok_or(ErrorKind::CallStackUnderflow)
     }
 
-    pub(crate) fn pop(&mut self) -> Result<()> {
+    pub(crate) fn pop(&mut self) -> Result<Vec<Register>> {
         match self.current.take() {
             Some(mut current) => {
+                let results = std::mem::take(&mut current.registers.results);
                 self.current = current.previous.take();
-                Ok(())
+                Ok(results)
             }
             None => Err(ErrorKind::CallStackUnderflow),
         }
@@ -246,7 +242,7 @@ impl<'l> Stack<'l> {
         &mut self,
         function: LoadedFunction<'l>,
         arguments: &[Register],
-    ) -> Result<ResultRegisters> {
+    ) -> Result<()> {
         let depth = self.depth() + 1;
         if depth > self.capacity {
             return Err(ErrorKind::CallStackOverflow);
@@ -255,9 +251,8 @@ impl<'l> Stack<'l> {
         let signature = function.signature()?;
         let mut argument_registers =
             Register::initialize_many(signature.parameter_types().into_iter().copied());
-        let result_registers = new_result_registers(Register::initialize_many(
-            signature.return_types().into_iter().copied(),
-        ));
+        let result_registers =
+            Register::initialize_many(signature.return_types().into_iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
@@ -280,7 +275,7 @@ impl<'l> Stack<'l> {
                     previous,
                     registers: Registers {
                         inputs: argument_registers,
-                        results: result_registers.clone(),
+                        results: result_registers,
                         temporaries: Vec::new(),
                     },
                     instructions: InstructionPointer {
@@ -291,7 +286,7 @@ impl<'l> Stack<'l> {
                 }));
 
                 //self.set_debugger_breakpoints();
-                Ok(result_registers)
+                Ok(())
             }
             format::FunctionBody::External { .. } => todo!("external calls not yet supported"),
         }

@@ -179,18 +179,21 @@ impl<'l> Interpreter<'l> {
         Ok(())
     }
 
-    fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
+    fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<Vec<Register>> {
         let current_frame = self.call_stack.current_mut()?;
+        let mut entry_point_results = Vec::new();
 
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
-                // Copy results into the registers of the previous frame.
-                Register::copy_many_raw(
-                    &current_frame.registers.get_many(indices)?,
-                    &mut current_frame.registers.results_mut(),
-                );
-                self.call_stack.pop()?;
+                let mut results = self.call_stack.pop()?;
+
+                match self.call_stack.peek_mut() {
+                    Some(previous_frame) => {
+                        previous_frame.registers.append_temporaries(&mut results)
+                    }
+                    None => entry_point_results = results,
+                }
             }
             Instruction::ConstI(value) => current_frame
                 .registers
@@ -201,7 +204,8 @@ impl<'l> Interpreter<'l> {
                 // self.set_debugger_breakpoints();
             }
         }
-        Ok(())
+
+        Ok(entry_point_results)
     }
 
     fn expect_debugger_message(&mut self) -> Option<debugger::Message> {
@@ -275,14 +279,14 @@ impl<'l> Interpreter<'l> {
         // Wait for the debugger, if one is attached, to tell the application to start.
         self.debugger_message_loop(entry_point);
 
-        let entry_point_results = self.call_stack.push(entry_point, arguments)?;
+        self.call_stack.push(entry_point, arguments)?;
 
+        let mut entry_point_results = Vec::new();
         while let Some(instruction) = self.next_instruction()? {
             // TODO: Check if a breakpoint has been hit.
-            self.execute_instruction(instruction)?;
+            entry_point_results = self.execute_instruction(instruction)?;
         }
-
-        Ok(entry_point_results.take())
+        Ok(entry_point_results)
     }
 }
 
