@@ -16,7 +16,9 @@ pub use format::{
     type_system::PrimitiveType,
 };
 
-pub use call_stack::StackTrace;
+pub use call_stack::{
+    Frame as StackFrame, Stack as CallStack, Trace as StackTrace, TraceFrame as StackTraceFrame,
+};
 
 pub use error::{Error, ErrorKind, ProgramHalt};
 
@@ -52,163 +54,12 @@ pub struct InstructionLocation {
     pub code_index: usize,
 }
 
-static BREAK_INSTRUCTION: &'static Instruction = &Instruction::Break;
-
-#[derive(Default)]
-struct StackFrameBreakPoints {
-    source: Option<debugger::BreakpointsReference>,
-    index: usize,
-}
-
-impl StackFrameBreakPoints {
-    fn is_empty(&self) -> bool {
-        match self.source {
-            None => true,
-            Some(ref indices) => indices.borrow().len() == self.index,
-        }
-    }
-
-    fn next(&mut self) -> Option<usize> {
-        self.source.as_ref().and_then(|indices| {
-            let index = indices.borrow().get(self.index).copied();
-            index
-        })
-    }
-}
-
-struct StackFrame<'l> {
-    depth: usize,
-    input_registers: Vec<Register>,
-    result_registers: std::rc::Rc<std::cell::RefCell<Vec<Register>>>,
-    current_method: LoadedFunction<'l>,
-    code: &'l format::Code,
-    block_index: BlockIndex,
-    instructions: &'l [Instruction],
-    breakpoints: StackFrameBreakPoints,
-    temporary_registers: Vec<Register>,
-    //register_arena: typed_arena::Arena<Register>, // TODO: If arena is used for a frame's registers, have the arena be tied to the frame's lifetime.
-}
-
-impl<'l> StackFrame<'l> {
-    /// Creates a new stack frame for executing the specified method's entry block.
-    fn new(
-        depth: usize,
-        input_registers: Vec<Register>,
-        result_registers: Vec<Register>,
-        current_method: LoadedFunction<'l>,
-        code: &'l format::Code,
-    ) -> Self {
-        Self {
-            depth,
-            input_registers,
-            result_registers: std::rc::Rc::new(std::cell::RefCell::new(result_registers)),
-            current_method,
-            code,
-            block_index: BlockIndex::entry(),
-            instructions: &code.entry_block.instructions,
-            breakpoints: StackFrameBreakPoints::default(),
-            temporary_registers: Vec::new(),
-        }
-    }
-
-    fn code_index(&self) -> usize {
-        (self.instructions.as_ptr() as usize
-            - self.current_block().instructions.0.as_ptr() as usize)
-            / std::mem::size_of::<Instruction>()
-    }
-
-    fn breakpoint_hit(&mut self) -> bool {
-        if self.breakpoints.is_empty() {
-            false
-        } else {
-            let current_index = self.code_index();
-            match self.breakpoints.next() {
-                Some(offset) => {
-                    if offset <= current_index {
-                        self.breakpoints.index += 1;
-                    }
-                    offset == current_index
-                }
-                None => false,
-            }
-        }
-    }
-
-    fn next_instruction(&mut self) -> Option<&'l Instruction> {
-        if self.breakpoint_hit() {
-            Some(BREAK_INSTRUCTION)
-        } else {
-            let next = self.instructions.first();
-            if next.is_some() {
-                self.instructions = &self.instructions[1..];
-            }
-            next
-        }
-    }
-
-    fn define_temporary(&mut self, temporary: Register) {
-        self.temporary_registers.push(temporary)
-    }
-
-    fn register(&self, index: RegisterIndex) -> Result<&Register> {
-        macro_rules! lookup_register {
-            ($register_index: expr, $register_lookup: expr) => {{
-                let raw_index = usize::try_from($register_index)
-                    .map_err(|_| ErrorKind::UndefinedRegister(index))?;
-                $register_lookup
-                    .get(raw_index)
-                    .ok_or(ErrorKind::UndefinedRegister(index))
-            }};
-        }
-
-        match index {
-            RegisterIndex::Temporary(temporary_index) => {
-                lookup_register!(temporary_index, self.temporary_registers)
-            }
-            RegisterIndex::Input(input_index) => {
-                lookup_register!(input_index, self.input_registers)
-            }
-        }
-    }
-
-    fn many_registers(&self, indices: &[RegisterIndex]) -> Result<Vec<&Register>> {
-        let mut registers = Vec::with_capacity(indices.len());
-        for index in indices {
-            registers.push(self.register(*index)?);
-        }
-        Ok(registers)
-    }
-
-    fn current_block(&self) -> &'l format::CodeBlock {
-        match self.block_index {
-            BlockIndex(None) => &self.code.entry_block,
-            BlockIndex(Some(other_index)) => &self.code.blocks[other_index],
-        }
-    }
-
-    fn location(&self) -> InstructionLocation {
-        InstructionLocation {
-            block_index: self.block_index,
-            code_index: self.code_index(),
-        }
-    }
-
-    fn stack_trace(&self) -> StackTrace {
-        StackTrace {
-            depth: self.depth,
-            location: self.location(),
-            //method: self.current_method.symbol().unwrap(),
-            input_registers: self.input_registers.clone().into_boxed_slice(),
-            temporary_registers: self.temporary_registers.clone().into_boxed_slice(),
-        }
-    }
-}
+const DEFAULT_CALL_STACK_MAX_DEPTH: usize = 0xFF;
 
 struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
-    stack_frames: Vec<StackFrame<'l>>,
-    max_stack_depth: usize,
+    call_stack: CallStack<'l>,
     debugger: Option<debugger::Debugger<'l>>,
 }
 
@@ -219,79 +70,16 @@ impl<'l> Interpreter<'l> {
     ) -> Self {
         Self {
             loader,
-            stack_frames: Vec::new(),
-            max_stack_depth: 0xFF,
+            call_stack: CallStack::new(DEFAULT_CALL_STACK_MAX_DEPTH),
             debugger: debugger_receiver
                 .map(|message_source| debugger::Debugger::new(message_source)),
         }
     }
 
-    fn current_frame(&mut self) -> Result<&mut StackFrame<'l>> {
-        self.stack_frames
-            .last_mut()
-            .ok_or(ErrorKind::CallStackUnderflow)
-    }
-
-    fn stack_trace(&self) -> Vec<StackTrace> {
-        self.stack_frames
-            .iter()
-            .map(|frame| frame.stack_trace())
-            .collect()
-    }
-
-    /// Pushes a new stack frame for calling the specified method.
-    ///
-    /// Returns a vector containing the registers that will contain the results of executing the method.
-    fn invoke_method(
-        &mut self,
-        arguments: &[Register],
-        method: LoadedFunction<'l>,
-    ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Register>>>> {
-        let signature = method.signature()?;
-        let mut argument_registers =
-            Register::initialize_many(signature.parameter_types().into_iter().copied());
-        let result_registers =
-            Register::initialize_many(signature.return_types().into_iter().copied());
-
-        if argument_registers.len() != arguments.len() {
-            return Err(ErrorKind::InputCountMismatch {
-                expected: argument_registers.len(),
-                actual: arguments.len(),
-            });
-        }
-
-        for (i, register) in argument_registers.iter_mut().enumerate() {
-            register.value = arguments[i].value.clone();
-        }
-
-        match method.raw_body() {
-            format::FunctionBody::Defined(code_index) => {
-                let code = method.declaring_module().load_code_raw(*code_index)?;
-                let call_stack_depth = self.stack_frames.len();
-
-                if call_stack_depth > self.max_stack_depth {
-                    return Err(ErrorKind::CallStackOverflow);
-                }
-
-                self.stack_frames.push(StackFrame::new(
-                    self.stack_frames.len(),
-                    argument_registers,
-                    result_registers,
-                    method,
-                    code,
-                ));
-
-                self.set_debugger_breakpoints();
-
-                Ok(self.current_frame()?.result_registers.clone())
-            }
-            format::FunctionBody::External { .. } => todo!("TODO: add support for external calls"),
-        }
-    }
-
     fn next_instruction(&mut self) -> Result<Option<&'l Instruction>> {
-        match self.stack_frames.last_mut() {
+        match self.call_stack.peek_mut() {
             Some(current_frame) => current_frame
+                .instructions
                 .next_instruction()
                 .map(Some)
                 .ok_or(ErrorKind::UnexpectedEndOfBlock),
@@ -306,7 +94,7 @@ impl<'l> Interpreter<'l> {
     ) -> Result<()> {
         match behavior {
             OverflowBehavior::Ignore => (),
-            OverflowBehavior::Flag => frame.define_temporary(Register::from(overflowed)),
+            OverflowBehavior::Flag => frame.registers.define_temporary(Register::from(overflowed)),
             OverflowBehavior::Halt => {
                 if overflowed {
                     return Err(ErrorKind::Halt(ProgramHalt::IntegerOverflow));
@@ -325,10 +113,10 @@ impl<'l> Interpreter<'l> {
     ) -> Result<()> {
         let (result, overflowed) = o(
             RegisterType::from(operation.return_type),
-            frame.register(operation.x)?,
-            frame.register(operation.y)?,
+            frame.registers.get(operation.x)?,
+            frame.registers.get(operation.y)?,
         );
-        frame.define_temporary(result);
+        frame.registers.define_temporary(result);
         Self::handle_value_overflow(frame, operation.overflow, overflowed)
     }
 
@@ -339,15 +127,15 @@ impl<'l> Interpreter<'l> {
         operation: &instruction_set::DivisionOperation,
         o: O,
     ) -> Result<()> {
-        let numerator = frame.register(operation.numerator)?;
-        let denominator = frame.register(operation.denominator)?;
+        let numerator = frame.registers.get(operation.numerator)?;
+        let denominator = frame.registers.get(operation.denominator)?;
         match o(
             RegisterType::from(operation.return_type),
             numerator,
             denominator,
         ) {
             Some((result, overflowed)) => {
-                frame.define_temporary(result);
+                frame.registers.define_temporary(result);
                 Self::handle_value_overflow(frame, operation.overflow, overflowed)
             }
             None => match operation.divide_by_zero {
@@ -368,10 +156,10 @@ impl<'l> Interpreter<'l> {
         operation: &'l instruction_set::BitwiseOperation,
         o: O,
     ) -> Result<()> {
-        frame.define_temporary(o(
+        frame.registers.define_temporary(o(
             operation.result_type,
-            frame.register(operation.x)?,
-            frame.register(operation.y)?,
+            frame.registers.get(operation.x)?,
+            frame.registers.get(operation.y)?,
         ));
         Ok(())
     }
@@ -383,78 +171,34 @@ impl<'l> Interpreter<'l> {
         operation: &'l instruction_set::BitwiseShiftOperation,
         o: O,
     ) -> Result<()> {
-        frame.define_temporary(o(
+        frame.registers.define_temporary(o(
             *operation.result_type(),
-            frame.register(*operation.value())?,
-            frame.register(*operation.amount())?,
+            frame.registers.get(*operation.value())?,
+            frame.registers.get(*operation.amount())?,
         ));
         Ok(())
     }
 
-    fn jump_to_block(
-        current_frame: &mut StackFrame<'l>,
-        debugger: Option<&debugger::Debugger<'l>>,
-        target: JumpTarget,
-        inputs: &[RegisterIndex],
-    ) -> Result<()> {
-        // Replace input registers with new inputs.
-        current_frame.input_registers = {
-            let mut new_inputs = vec![Register::uninitialized(); inputs.len()];
-            Register::copy_many_raw(&current_frame.many_registers(inputs)?, &mut new_inputs);
-            new_inputs
-        };
-
-        current_frame.temporary_registers.clear();
-
-        // Index into the method body's other blocks, NONE of the indices refer to the entry block.
-        let new_block_index = usize::try_from(target).unwrap();
-        let new_block = current_frame
-            .code
-            .blocks
-            .get(new_block_index)
-            .ok_or(ErrorKind::UndefinedBlock(target))?;
-
-        {
-            let expected = usize::try_from(new_block.input_register_count).unwrap();
-            if expected != inputs.len() {
-                return Err(ErrorKind::InputCountMismatch {
-                    expected,
-                    actual: inputs.len(),
-                });
-            }
-        }
-
-        current_frame.block_index = BlockIndex(Some(new_block_index));
-        current_frame.instructions = &new_block.instructions;
-
-        if let Some(debugger) = debugger {
-            // current_frame.breakpoints.source = debugger
-            //     .breakpoints_in_block(current_frame.current_method, current_frame.block_index);
-            current_frame.breakpoints.index = 0;
-        }
-
-        Ok(())
-    }
-
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<()> {
+        let current_frame = self.call_stack.current_mut()?;
+
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
-                let current_frame = self.current_frame()?;
                 // Copy results into the registers of the previous frame.
                 Register::copy_many_raw(
-                    &current_frame.many_registers(indices)?,
-                    current_frame.result_registers.borrow_mut().as_mut_slice(),
+                    &current_frame.registers.get_many(indices)?,
+                    &mut current_frame.registers.results_mut(),
                 );
-                self.stack_frames.pop();
+                self.call_stack.pop()?;
             }
-            Instruction::ConstI(value) => self
-                .current_frame()?
+            Instruction::ConstI(value) => current_frame
+                .registers
                 .define_temporary(Register::from(*value)),
             Instruction::Break => {
-                let current_method = self.current_frame()?.current_method;
-                self.debugger_message_loop(current_method);
-                self.set_debugger_breakpoints();
+                // let current_method = self.current_frame()?.current_method;
+                // self.debugger_message_loop(current_method);
+                // self.set_debugger_breakpoints();
             }
         }
         Ok(())
@@ -498,14 +242,14 @@ impl<'l> Interpreter<'l> {
                     //         self.debugger.as_ref().unwrap().breakpoints(),
                     //     ))
                     // }
-                    debugger::MessageKind::GetStackTrace => {
-                        message.reply(debugger::MessageReply::StackTrace(self.stack_trace()))
-                    }
+                    debugger::MessageKind::GetStackTrace => message.reply(
+                        debugger::MessageReply::StackTrace(self.call_stack.stack_trace()),
+                    ),
                     debugger::MessageKind::GetRegisters => {
-                        let frame = self.current_frame().unwrap();
-                        message.reply(debugger::MessageReply::Registers(
-                            frame.temporary_registers.clone(),
-                        ))
+                        let frame = self.call_stack.current().unwrap();
+                        message.reply(debugger::MessageReply::Registers(Vec::from(
+                            frame.registers.temporaries(),
+                        )))
                     }
                     debugger::MessageKind::Continue => return, // TODO: When continue is recevied, store the reply_channel somewhere so a reply can be sent when breakpoint is hit?
                 },
@@ -531,7 +275,7 @@ impl<'l> Interpreter<'l> {
         // Wait for the debugger, if one is attached, to tell the application to start.
         self.debugger_message_loop(entry_point);
 
-        let entry_point_results = self.invoke_method(arguments, entry_point)?;
+        let entry_point_results = self.call_stack.push(entry_point, arguments)?;
 
         while let Some(instruction) = self.next_instruction()? {
             // TODO: Check if a breakpoint has been hit.
@@ -551,5 +295,5 @@ pub fn run<'l>(
     let mut interpreter = Interpreter::initialize(loader, debugger_message_channel);
     interpreter
         .execute_entry_point(arguments, entry_point)
-        .map_err(|kind| Error::new(kind, interpreter.stack_trace()))
+        .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))
 }

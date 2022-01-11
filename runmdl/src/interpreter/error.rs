@@ -1,4 +1,4 @@
-use super::{JumpTarget, RegisterIndex, StackTrace};
+use super::{call_stack, JumpTarget, RegisterIndex};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -75,11 +75,11 @@ impl std::error::Error for ErrorKind {}
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
-    stack_trace: Vec<StackTrace>,
+    stack_trace: call_stack::Trace,
 }
 
 impl Error {
-    pub(crate) fn new(kind: ErrorKind, stack_trace: Vec<StackTrace>) -> Self {
+    pub(crate) fn new(kind: ErrorKind, stack_trace: call_stack::Trace) -> Self {
         Self { kind, stack_trace }
     }
 
@@ -91,7 +91,7 @@ impl Error {
         &self.kind
     }
 
-    pub fn stack_trace(&self) -> &[StackTrace] {
+    pub fn stack_trace(&self) -> &[call_stack::TraceFrame] {
         &self.stack_trace
     }
 }

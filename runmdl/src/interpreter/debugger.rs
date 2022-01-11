@@ -39,7 +39,7 @@ impl std::fmt::Display for Breakpoint {
 }
 
 pub enum MessageReply {
-    StackTrace(Vec<StackTrace>), // TODO: Use Rc<Vec> in message reply to reduce heap allocations?
+    StackTrace(StackTrace), // TODO: Use Rc<Vec> in message reply to reduce heap allocations?
     //Breakpoints(Vec<Breakpoint>),
     Registers(Vec<Register>), // TODO: Also include input registers.
 }
