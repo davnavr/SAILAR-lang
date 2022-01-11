@@ -6,11 +6,13 @@ mod cache;
 mod error;
 mod function;
 mod module;
+mod symbol;
 
 pub use error::Error;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
+pub use symbol::{Symbol, SymbolKind};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

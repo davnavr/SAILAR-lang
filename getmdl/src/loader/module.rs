@@ -7,6 +7,7 @@ pub struct Module<'a> {
     //loaded_structs
     //loaded_globals
     loaded_functions: cache::IndexLookup<'a, format::indices::FunctionDefinition, Function<'a>>,
+    function_lookup_cache: RefCell<hash_map::HashMap<Identifier, &'a Function<'a>>>,
 }
 
 fn load_raw_cached<'a, I, T, L, F, C>(
@@ -34,6 +35,7 @@ impl<'a> Module<'a> {
             source,
             function_signature_cache: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
+            function_lookup_cache: RefCell::new(hash_map::HashMap::new()),
         }
     }
 
@@ -115,6 +117,38 @@ impl<'a> Module<'a> {
         match self.source.entry_point.0 {
             Some(entry_point) => self.load_function_definition_raw(entry_point).map(Some),
             None => Ok(None),
+        }
+    }
+
+    pub fn lookup_function(&'a self, symbol: Identifier) -> Option<&'a Function<'a>> {
+        match self.function_lookup_cache.borrow_mut().entry(symbol) {
+            hash_map::Entry::Vacant(vacant) => {
+                let mut index = 0u32;
+                for definition in self.source.definitions.0.defined_functions.iter() {
+                    if let Some(actual_symbol) = definition
+                        .symbol
+                        .and_then(|symbol_index| self.load_identifier_raw(symbol_index).ok())
+                    {
+                        if actual_symbol != vacant.key() {
+                            continue;
+                        }
+
+                        let loaded = self
+                            .loaded_functions
+                            .insert_or_get::<(), _>(
+                                format::indices::FunctionDefinition::from(index),
+                                |_| Ok(Function::new(self, &definition)),
+                            )
+                            .unwrap();
+
+                        return Some(*vacant.insert(loaded) as &'a _);
+                    }
+
+                    index += 1;
+                }
+                None
+            }
+            hash_map::Entry::Occupied(occupied) => Some(occupied.get()),
         }
     }
 }

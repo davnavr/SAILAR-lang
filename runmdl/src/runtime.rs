@@ -50,6 +50,15 @@ impl<'l> Runtime<'l> {
         initializer.runtime.insert(Self { loader, program })
     }
 
+    pub fn loader(&'l self) -> &'l loader::Loader<'l> {
+        &self.loader
+    }
+
+    /// Returns the module containing the entry point to execute.
+    pub fn program(&'l self) -> &'l loader::Module<'l> {
+        &self.program
+    }
+
     /// Interprets the entry point of the program, supplying the specified arguments.
     pub fn invoke_entry_point(
         &'l self,
