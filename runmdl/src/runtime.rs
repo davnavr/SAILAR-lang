@@ -85,7 +85,7 @@ impl<'l> Runtime<'l> {
         &'l self,
         argv: &[&str],
         // NOTE: Move debugger to Initializer struct.
-        debugger_channel: Option<interpreter::debugger::MessageReceiver>,
+        debugger: Option<interpreter::debugger::Debugger<'l>>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
@@ -101,7 +101,7 @@ impl<'l> Runtime<'l> {
             &[],
             entry_point,
             self.call_stack_capacity,
-            debugger_channel,
+            debugger,
         )?;
 
         match results.as_slice() {

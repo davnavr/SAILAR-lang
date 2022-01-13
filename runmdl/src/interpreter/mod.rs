@@ -54,24 +54,23 @@ pub struct InstructionLocation {
     pub code_index: usize,
 }
 
-struct Interpreter<'l> {
+pub struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
     call_stack: CallStack<'l>,
-    debugger: Option<debugger::Debugger<'l>>,
+    debugger: debugger::Debugger<'l>,
 }
 
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
         call_stack_capacity: usize,
-        debugger_receiver: Option<debugger::MessageReceiver>,
+        debugger: Option<debugger::Debugger<'l>>,
     ) -> Self {
         Self {
             loader,
             call_stack: CallStack::new(call_stack_capacity),
-            debugger: debugger_receiver
-                .map(|message_source| debugger::Debugger::new(message_source)),
+            debugger: debugger.unwrap_or_default(),
         }
     }
 
@@ -207,62 +206,25 @@ impl<'l> Interpreter<'l> {
         Ok(entry_point_results)
     }
 
-    fn expect_debugger_message(&mut self) -> Option<debugger::Message> {
-        let message = self
-            .debugger
-            .as_ref()
-            .and_then(|debugger| debugger.receive_message().ok());
-        if message.is_none() {
-            self.debugger = None;
-        }
-        message
-    }
+    fn debugger_message_loop(&mut self) {
+        let mut debugger = std::mem::take(&mut self.debugger);
 
-    fn debugger_message_loop(&mut self, default_method: LoadedFunction<'l>) {
         loop {
-            match self.expect_debugger_message() {
-                Some(message) => match message.message() {
-                    // debugger::MessageKind::SetBreakpoint(breakpoint) => {
-                    //     let method = breakpoint
-                    //         .method
-                    //         .as_ref()
-                    //         .map(|method_name| self.loader.lookup_method(method_name))
-                    //         .map(|methods| {
-                    //             if methods.len() != 1 {
-                    //                 todo!("how to handle method not found for breakpoint?")
-                    //             } else {
-                    //                 methods[0]
-                    //             }
-                    //         })
-                    //         .unwrap_or(default_method);
-                    //     self.debugger
-                    //         .as_mut()
-                    //         .unwrap()
-                    //         .set_breakpoint(method, &breakpoint.instruction_location())
-                    // }
-                    // debugger::MessageKind::GetBreakpoints => {
-                    //     message.reply(debugger::MessageReply::Breakpoints(
-                    //         self.debugger.as_ref().unwrap().breakpoints(),
-                    //     ))
-                    // }
-                    debugger::MessageKind::GetStackTrace => message.reply(
-                        debugger::MessageReply::StackTrace(self.call_stack.stack_trace()),
-                    ),
-                    debugger::MessageKind::GetRegisters => {
-                        let frame = self.call_stack.current().unwrap();
-                        message.reply(debugger::MessageReply::Registers(Vec::from(
-                            frame.registers.temporaries(),
-                        )))
-                    }
-                    debugger::MessageKind::Continue => return, // TODO: When continue is recevied, store the reply_channel somewhere so a reply can be sent when breakpoint is hit?
-                },
-                None => return,
+            match debugger.run(self) {
+                debugger::Reply::Continue => break,
+                debugger::Reply::Wait => continue,
+                debugger::Reply::Detach => {
+                    debugger.detach();
+                    break;
+                }
             }
         }
+
+        self.debugger = debugger;
     }
 
     fn set_debugger_breakpoints(&mut self) {
-        if let Some(debugger) = &self.debugger {
+        if self.debugger.is_attached() {
             // for frame in &mut self.stack_frames {
             //     frame.breakpoints.source =
             //         debugger.breakpoints_in_block(frame.current_method, frame.block_index);
@@ -276,7 +238,7 @@ impl<'l> Interpreter<'l> {
         entry_point: LoadedFunction<'l>,
     ) -> Result<Vec<Register>> {
         // Wait for the debugger, if one is attached, to tell the application to start.
-        self.debugger_message_loop(entry_point);
+        self.debugger_message_loop();
 
         self.call_stack.push(entry_point, arguments)?;
 
@@ -294,10 +256,9 @@ pub fn run<'l>(
     arguments: &[Register],
     entry_point: LoadedFunction<'l>,
     call_stack_capacity: usize,
-    debugger_message_channel: Option<debugger::MessageReceiver>,
+    debugger: Option<debugger::Debugger<'l>>,
 ) -> std::result::Result<Vec<Register>, Error> {
-    let mut interpreter =
-        Interpreter::initialize(loader, call_stack_capacity, debugger_message_channel);
+    let mut interpreter = Interpreter::initialize(loader, call_stack_capacity, debugger);
     interpreter
         .execute_entry_point(arguments, entry_point)
         .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))
