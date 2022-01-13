@@ -7,7 +7,7 @@ pub struct Module<'a> {
     //loaded_structs
     //loaded_globals
     loaded_functions: cache::IndexLookup<'a, format::indices::FunctionDefinition, Function<'a>>,
-    function_lookup_cache: RefCell<hash_map::HashMap<Identifier, &'a Function<'a>>>,
+    function_lookup_cache: RefCell<hash_map::HashMap<Symbol<'a>, &'a Function<'a>>>,
 }
 
 fn load_raw_cached<'a, I, T, L, F, C>(
@@ -120,7 +120,7 @@ impl<'a> Module<'a> {
         }
     }
 
-    pub fn lookup_function(&'a self, symbol: Identifier) -> Option<&'a Function<'a>> {
+    pub fn lookup_function(&'a self, symbol: Symbol<'a>) -> Option<&'a Function<'a>> {
         match self.function_lookup_cache.borrow_mut().entry(symbol) {
             hash_map::Entry::Vacant(vacant) => {
                 let mut index = 0u32;
@@ -129,7 +129,7 @@ impl<'a> Module<'a> {
                         .symbol
                         .and_then(|symbol_index| self.load_identifier_raw(symbol_index).ok())
                     {
-                        if actual_symbol != vacant.key() {
+                        if actual_symbol != vacant.key().as_ref() {
                             continue;
                         }
 

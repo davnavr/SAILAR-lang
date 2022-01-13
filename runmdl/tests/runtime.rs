@@ -1,4 +1,4 @@
-use getmdl::loader::Identifier;
+use getmdl::loader::{Identifier, Symbol};
 
 mod setup;
 
@@ -30,7 +30,7 @@ fn has_entry_point_symbol() {
         |runtime| {
             assert!(runtime
                 .program()
-                .lookup_function(Identifier::try_from("Helper").unwrap())
+                .lookup_function(Symbol::Owned(Identifier::try_from("Helper").unwrap()))
                 .is_some())
         },
     );

@@ -1,37 +1,18 @@
 use super::{format, Identifier, ModuleIdentifier};
+use std::borrow::Cow;
 
-//pub enum AASymbol<'a> {
-//    Owned(Identifier),
-//    Borrowed(&'a Identifier)
-//}
+pub type ModuleSymbol<'a> = Cow<'a, ModuleIdentifier>;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum SymbolKind<P, F> {
-    Partial(P),
-    Full(F),
-}
-
-pub trait Symbol: Sized {
-    type Partial: Sized;
-
-    fn print(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
-
-    //fn parse
-}
-
-// impl Symbol for ModuleIdentifier {
-//     type Partial = Identifier;
-
-// }
+pub type Symbol<'a> = Cow<'a, Identifier>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Function {
-    module: ModuleIdentifier,
-    symbol: Identifier,
+pub struct Function<'a> {
+    module: ModuleSymbol<'a>,
+    symbol: Symbol<'a>,
 }
 
-impl Function {
-    pub fn new(module: ModuleIdentifier, symbol: Identifier) -> Self {
+impl<'a> Function<'a> {
+    pub fn new(module: ModuleSymbol<'a>, symbol: Symbol<'a>) -> Self {
         Self { module, symbol }
     }
 
