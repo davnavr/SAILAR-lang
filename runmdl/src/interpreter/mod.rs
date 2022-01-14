@@ -207,7 +207,7 @@ impl<'l> Interpreter<'l> {
     }
 
     fn debugger_message_loop(&mut self) {
-        if let Some(mut debugger) = self.debugger.take() {
+        if let Some(debugger) = self.debugger.take() {
             loop {
                 match debugger.inspect(self) {
                     debugger::Reply::Continue => {

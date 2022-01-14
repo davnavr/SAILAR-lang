@@ -40,12 +40,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut debugger;
 
-        runtime.invoke_entry_point(application_arguments.as_ref(), if interpreter_arguments.interactive {
-            debugger = debugger::CommandLineDebugger::new();
-            Some(&mut debugger as &mut dyn runmdl::interpreter::debugger::Debugger)
-        } else {
-            None
-        })
+        runtime.invoke_entry_point(
+            application_arguments.as_ref(),
+            if interpreter_arguments.interactive {
+                debugger = debugger::CommandLineDebugger::new();
+                Some(&mut debugger as &mut dyn runmdl::interpreter::debugger::Debugger)
+            } else {
+                None
+            },
+        )
     };
 
     match result {
