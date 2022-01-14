@@ -58,19 +58,19 @@ pub struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
     call_stack: CallStack<'l>,
-    debugger: debugger::Debugger<'l>,
+    debugger: Option<&'l mut dyn debugger::Debugger>,
 }
 
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
         call_stack_capacity: usize,
-        debugger: Option<debugger::Debugger<'l>>,
+        debugger: Option<&'l mut dyn debugger::Debugger>,
     ) -> Self {
         Self {
             loader,
             call_stack: CallStack::new(call_stack_capacity),
-            debugger: debugger.unwrap_or_default(),
+            debugger,
         }
     }
 
@@ -207,24 +207,25 @@ impl<'l> Interpreter<'l> {
     }
 
     fn debugger_message_loop(&mut self) {
-        let mut debugger = std::mem::take(&mut self.debugger);
-
-        loop {
-            match debugger.run(self) {
-                debugger::Reply::Continue => break,
-                debugger::Reply::Wait => continue,
-                debugger::Reply::Detach => {
-                    debugger.detach();
-                    break;
+        if let Some(mut debugger) = self.debugger.take() {
+            loop {
+                match debugger.inspect(self) {
+                    debugger::Reply::Continue => {
+                        self.debugger = Some(debugger);
+                        return;
+                    },
+                    debugger::Reply::Wait => continue,
+                    debugger::Reply::Detach => {
+                        self.debugger = None;
+                        return;
+                    }
                 }
             }
         }
-
-        self.debugger = debugger;
     }
 
     fn set_debugger_breakpoints(&mut self) {
-        if self.debugger.is_attached() {
+        if self.debugger.is_some() {
             // for frame in &mut self.stack_frames {
             //     frame.breakpoints.source =
             //         debugger.breakpoints_in_block(frame.current_method, frame.block_index);
@@ -256,7 +257,7 @@ pub fn run<'l>(
     arguments: &[Register],
     entry_point: LoadedFunction<'l>,
     call_stack_capacity: usize,
-    debugger: Option<debugger::Debugger<'l>>,
+    debugger: Option<&'l mut dyn debugger::Debugger>,
 ) -> std::result::Result<Vec<Register>, Error> {
     let mut interpreter = Interpreter::initialize(loader, call_stack_capacity, debugger);
     interpreter

@@ -85,7 +85,7 @@ impl<'l> Runtime<'l> {
         &'l self,
         argv: &[&str],
         // NOTE: Move debugger to Initializer struct.
-        debugger: Option<interpreter::debugger::Debugger<'l>>,
+        debugger: Option<&'l mut dyn interpreter::debugger::Debugger>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
