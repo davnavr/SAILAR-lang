@@ -4,7 +4,7 @@ use std::{fmt::Write as _, io::Write as _};
 
 type ErrorMessage = std::borrow::Cow<'static, str>;
 
-type CommandResult = Result<debugger::Reply, ErrorMessage>;
+type CommandResult = Result<Option<debugger::Reply>, ErrorMessage>;
 
 // TODO: Split this file into multiple modules.
 // trait CommandAction {
@@ -28,10 +28,10 @@ impl Command {
         commands: &CommandLookup,
         arguments: &[&str],
         interpreter: &mut Interpreter,
-    ) -> debugger::Reply {
+    ) -> Option<debugger::Reply> {
         (self.command)(commands, arguments, interpreter).unwrap_or_else(|error| {
             eprintln!("Error: {}", error);
-            debugger::Reply::Wait
+            None
         })
     }
 }
@@ -130,13 +130,13 @@ impl CommandLineDebugger {
                 );
             }
 
-            Ok(debugger::Reply::Wait)
+            Ok(None)
         });
 
         command!(
             "detach",
             "stops debugging and continues execution of the program",
-            |_, _, _| { Ok(debugger::Reply::Detach) }
+            |_, _, _| { Ok(Some(debugger::Reply::Detach)) }
         );
 
         command!(
@@ -159,7 +159,7 @@ impl CommandLineDebugger {
                 match matches.first() {
                     Some(function) if matches.len() == 1 => {
                         todo!();
-                        Ok(debugger::Reply::Wait)
+                        Ok(None)
                     }
                     Some(_) => Err("multiples matches for function symbol")?,
                     None => Err("no function found with symbol")?
@@ -178,7 +178,7 @@ impl CommandLineDebugger {
                 );
             }
 
-            Ok(debugger::Reply::Wait)
+            Ok(None)
         });
 
         // command!("where", "prints a stack trace", |_, _, interpreter| {
@@ -206,17 +206,19 @@ impl debugger::Debugger for CommandLineDebugger {
             self.started = true;
         }
 
-        print!("> ");
-        std::io::stdout().flush().unwrap();
+        loop {
+            print!("> ");
+            std::io::stdout().flush().unwrap();
 
-        if let Some((name, arguments)) = self.input_buffer.read_command() {
-            if let Some(command) = self.commands.commands.get(name) {
-                return command.execute(&self.commands, &arguments, interpreter);
-            } else {
-                eprintln!("'{}' is not a valid command", name);
+            if let Some((name, arguments)) = self.input_buffer.read_command() {
+                if let Some(command) = self.commands.commands.get(name) {
+                    if let Some(reply) = command.execute(&self.commands, &arguments, interpreter) {
+                        return reply;
+                    }
+                } else {
+                    eprintln!("'{}' is not a valid command", name);
+                }
             }
         }
-
-        debugger::Reply::Wait
     }
 }

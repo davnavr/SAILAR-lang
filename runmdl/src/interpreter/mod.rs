@@ -216,19 +216,9 @@ impl<'l> Interpreter<'l> {
 
     fn debugger_message_loop(&mut self) {
         if let Some(debugger) = self.debugger.take() {
-            // TODO: Have loop be in debugger instead, Reply should just be a Continue or Detach.
-            loop {
-                match debugger.inspect(self) {
-                    debugger::Reply::Continue => {
-                        self.debugger = Some(debugger);
-                        return;
-                    }
-                    debugger::Reply::Wait => continue,
-                    debugger::Reply::Detach => {
-                        self.debugger = None;
-                        return;
-                    }
-                }
+            match debugger.inspect(self) {
+                debugger::Reply::Continue => self.debugger = Some(debugger),
+                debugger::Reply::Detach => self.debugger = None,
             }
         }
     }

@@ -9,8 +9,6 @@ pub enum Reply {
     /// Indicates that the interpreter can continue execution until another breakpoint is hit.
     Continue,
     Detach,
-    /// Indicates that execution should not continue.
-    Wait,
 }
 
 pub trait Debugger {
