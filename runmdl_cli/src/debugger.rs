@@ -1,8 +1,7 @@
 use runmdl::interpreter::{debugger, Interpreter};
+use std::io::Write as _;
 
 type CommandResult = Result<debugger::Reply, String>;
-
-type CommandLookup = std::collections::HashMap<&'static str, Command>;
 
 #[derive(Clone, Copy)]
 struct Command {
@@ -10,8 +9,18 @@ struct Command {
     command: &'static dyn Fn(&CommandLookup, &[&str], &mut Interpreter) -> CommandResult,
 }
 
+struct CommandLookup {
+    commands: std::collections::BTreeMap<&'static str, Command>,
+    name_width: usize,
+}
+
 impl Command {
-    fn execute(&self, commands: &CommandLookup, arguments: &[&str], interpreter: &mut Interpreter) -> debugger::Reply {
+    fn execute(
+        &self,
+        commands: &CommandLookup,
+        arguments: &[&str],
+        interpreter: &mut Interpreter,
+    ) -> debugger::Reply {
         (self.command)(commands, arguments, interpreter).unwrap_or_else(|error| {
             eprintln!("Error: {}", error);
             debugger::Reply::Wait
@@ -44,16 +53,21 @@ impl InputCache {
 
 pub struct CommandLineDebugger {
     started: bool,
-    commands: std::collections::HashMap<&'static str, Command>,
+    commands: CommandLookup,
     input_buffer: InputCache,
 }
 
 impl CommandLineDebugger {
     pub fn new() -> Self {
-        let mut commands = std::collections::HashMap::new();
+        let mut commands = std::collections::BTreeMap::new();
+        let mut command_name_width = 0usize;
 
         macro_rules! command {
-            ($name: expr, $description: expr, $command: expr) => {
+            ($name: expr, $description: expr, $command: expr) => {{
+                if $name.len() > command_name_width {
+                    command_name_width = $name.len();
+                }
+
                 commands.insert(
                     $name,
                     Command {
@@ -61,24 +75,34 @@ impl CommandLineDebugger {
                         command: &$command,
                     },
                 );
-            };
+            }};
         }
 
         command!("help", "lists all commands", |commands, _, _| {
-            for (name, Command { description, .. }) in commands {
-                println!("- {}, {}", name, description);
+            for (name, Command { description, .. }) in &commands.commands {
+                println!(
+                    "{:width$} - {}",
+                    name,
+                    description,
+                    width = commands.name_width
+                );
             }
 
             Ok(debugger::Reply::Wait)
         });
 
-        command!("detach", "stops debugging and continues execution of the program", |_, _, _| {
-            Ok(debugger::Reply::Detach)
-        });
+        command!(
+            "detach",
+            "stops debugging and continues execution of the program",
+            |_, _, _| { Ok(debugger::Reply::Detach) }
+        );
 
         Self {
             started: false,
-            commands,
+            commands: CommandLookup {
+                commands,
+                name_width: command_name_width,
+            },
             input_buffer: InputCache {
                 line_buffer: String::new(),
             },
@@ -93,14 +117,17 @@ impl debugger::Debugger for CommandLineDebugger {
             self.started = true;
         }
 
+        print!("> ");
+        std::io::stdout().flush().unwrap();
+
         if let Some((name, arguments)) = self.input_buffer.read_command() {
-            if let Some(command) = self.commands.get(name) {
+            if let Some(command) = self.commands.commands.get(name) {
                 return command.execute(&self.commands, &arguments, interpreter);
             } else {
                 eprintln!("'{}' is not a valid command", name);
             }
         }
-        
+
         debugger::Reply::Wait
     }
 }
