@@ -2,39 +2,7 @@ use registir::format::Identifier;
 use runmdl::interpreter::{debugger, Interpreter};
 use std::{fmt::Write as _, io::Write as _};
 
-type ErrorMessage = std::borrow::Cow<'static, str>;
-
-type CommandResult = Result<Option<debugger::Reply>, ErrorMessage>;
-
-// TODO: Split this file into multiple modules.
-// trait CommandAction {
-//    type Arguments;
-// }
-
-#[derive(Clone, Copy)]
-struct Command {
-    description: &'static str,
-    command: &'static dyn Fn(&CommandLookup, &[&str], &mut Interpreter) -> CommandResult,
-}
-
-struct CommandLookup {
-    commands: std::collections::BTreeMap<&'static str, Command>,
-    name_width: usize,
-}
-
-impl Command {
-    fn execute(
-        &self,
-        commands: &CommandLookup,
-        arguments: &[&str],
-        interpreter: &mut Interpreter,
-    ) -> Option<debugger::Reply> {
-        (self.command)(commands, arguments, interpreter).unwrap_or_else(|error| {
-            eprintln!("Error: {}", error);
-            None
-        })
-    }
-}
+mod commands;
 
 struct InputCache {
     line_buffer: String,
@@ -95,7 +63,7 @@ impl std::fmt::Display for ModuleSymbol<'_> {
 
 pub struct CommandLineDebugger {
     started: bool,
-    commands: CommandLookup,
+    commands: commands::Lookup,
     input_buffer: InputCache,
 }
 
@@ -112,7 +80,7 @@ impl CommandLineDebugger {
 
                 commands.insert(
                     $name,
-                    Command {
+                    commands::Command {
                         description: $description,
                         command: &$command,
                     },
@@ -121,7 +89,7 @@ impl CommandLineDebugger {
         }
 
         command!("help", "lists all commands", |commands, _, _| {
-            for (name, Command { description, .. }) in &commands.commands {
+            for (name, commands::Command { description, .. }) in &commands.commands {
                 println!(
                     "{:width$} - {}",
                     name,
@@ -188,7 +156,7 @@ impl CommandLineDebugger {
 
         Self {
             started: false,
-            commands: CommandLookup {
+            commands: commands::Lookup {
                 commands,
                 name_width: command_name_width,
             },

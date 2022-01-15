@@ -1,7 +1,7 @@
 use runmdl::runtime;
 use structopt::StructOpt;
 
-mod debugger;
+mod debugging;
 
 #[derive(StructOpt)]
 struct Arguments {
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runtime.invoke_entry_point(
             application_arguments.as_ref(),
             if interpreter_arguments.interactive {
-                debugger = debugger::CommandLineDebugger::new();
+                debugger = debugging::CommandLineDebugger::new();
                 Some(&mut debugger as &mut dyn runmdl::interpreter::debugger::Debugger)
             } else {
                 None
