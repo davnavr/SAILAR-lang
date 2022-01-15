@@ -1,7 +1,15 @@
+use registir::format::Identifier;
 use runmdl::interpreter::{debugger, Interpreter};
-use std::io::Write as _;
+use std::{fmt::Write as _, io::Write as _};
 
-type CommandResult = Result<debugger::Reply, String>;
+type ErrorMessage = std::borrow::Cow<'static, str>;
+
+type CommandResult = Result<debugger::Reply, ErrorMessage>;
+
+// TODO: Split this file into multiple modules.
+// trait CommandAction {
+//    type Arguments;
+// }
 
 #[derive(Clone, Copy)]
 struct Command {
@@ -51,6 +59,40 @@ impl InputCache {
     }
 }
 
+#[derive(Debug)]
+pub struct Location<'a>(pub &'a debugger::InstructionLocation);
+
+impl std::fmt::Display for Location<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let Self(location) = self;
+        write!(
+            f,
+            "at block {} index {}",
+            location.block_index, location.code_index
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct ModuleSymbol<'a>(pub &'a debugger::ModuleIdentifier);
+
+impl std::fmt::Display for ModuleSymbol<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.name)?;
+        let version = &self.0.version;
+        if version.is_empty() {
+            f.write_str(", v")?;
+            for (i, number) in version.0.into_iter().enumerate() {
+                if i > 0 {
+                    f.write_char('.')?;
+                }
+                std::fmt::Display::fmt(&number, f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 pub struct CommandLineDebugger {
     started: bool,
     commands: CommandLookup,
@@ -96,6 +138,53 @@ impl CommandLineDebugger {
             "stops debugging and continues execution of the program",
             |_, _, _| { Ok(debugger::Reply::Detach) }
         );
+
+        command!(
+            "break",
+            "sets a breakpoint in the specified function",
+            |_, arguments, interpreter| {
+                // TODO: Allow selecting of module to lookup function in.
+                let function_name =
+                    arguments
+                        .first()
+                        .ok_or("missing function name")
+                        .and_then(|name| {
+                            Identifier::try_from(*name).map_err(|_| "empty function name")
+                        })?;
+
+                let matches = interpreter
+                    .loader()
+                    .lookup_function(debugger::Symbol::Owned(function_name));
+
+                match matches.first() {
+                    Some(function) if matches.len() == 1 => {
+                        todo!();
+                        Ok(debugger::Reply::Wait)
+                    }
+                    Some(_) => Err("multiples matches for function symbol")?,
+                    None => Err("no function found with symbol")?
+                }
+            }
+        );
+
+        command!("points", "lists all breakpoints", |_, _, interpreter| {
+            for breakpoint in interpreter.call_stack().breakpoints_mut().iter() {
+                let function = breakpoint.function();
+                println!(
+                    "- {} from {} {}",
+                    function.symbol(),
+                    ModuleSymbol(function.module()),
+                    Location(breakpoint.location())
+                );
+            }
+
+            Ok(debugger::Reply::Wait)
+        });
+
+        // command!("where", "prints a stack trace", |_, _, interpreter| {
+        //     let frames = interpreter.call_stack().stack_trace();
+        //     Ok(debugger::Reply::Wait)
+        // });
 
         Self {
             started: false,

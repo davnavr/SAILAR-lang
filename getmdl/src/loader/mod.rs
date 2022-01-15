@@ -88,4 +88,14 @@ impl<'a> Loader<'a> {
     ) -> std::result::Result<&'a Module<'a>, ()> {
         self.loaded_modules.borrow().get(name).copied().ok_or(())
     }
+
+    pub fn lookup_function(&'a self, name: Symbol<'a>) -> Vec<&'a Function<'a>> {
+        let mut results = Vec::new();
+        for module in self.loaded_modules.borrow().values() {
+            if let Some(function) = module.lookup_function(name.clone()) {
+                results.push(function);
+            }
+        }
+        results
+    }
 }

@@ -1,8 +1,6 @@
 use crate::interpreter;
 
-pub use interpreter::{
-    BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace,
-};
+pub use interpreter::{BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace};
 
 pub use getmdl::loader::{FunctionSymbol, ModuleIdentifier, Symbol};
 

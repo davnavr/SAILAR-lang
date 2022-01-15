@@ -4,6 +4,12 @@ use crate::format::{numeric::UInteger, LenVec};
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Numbers(pub LenVec<UInteger>);
 
+impl Numbers {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// Specifies what version of the module format is being used, placed after the module's integer size field.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Format {

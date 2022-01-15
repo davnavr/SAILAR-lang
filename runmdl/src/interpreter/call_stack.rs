@@ -1,15 +1,18 @@
 use super::*;
-use std::borrow::{Borrow as _, BorrowMut as _};
+use std::{
+    borrow::{Borrow as _, BorrowMut as _},
+    collections::hash_set,
+};
 
 /// Describes a stack frame in the call stack.
 #[derive(Clone, Debug)]
 pub struct TraceFrame {
     // TODO: fields here should be private.
-    pub(crate) depth: usize,
-    pub(crate) location: InstructionLocation,
-    //pub(crate) method: debugger::FullMethodIdentifier,
-    pub(crate) input_registers: Box<[Register]>,
-    pub(crate) temporary_registers: Box<[Register]>,
+    depth: usize,
+    location: InstructionLocation,
+    function: debugger::FunctionSymbol<'static>,
+    input_registers: Box<[Register]>,
+    temporary_registers: Box<[Register]>,
 }
 
 impl TraceFrame {
@@ -21,9 +24,9 @@ impl TraceFrame {
         &self.location
     }
 
-    // pub fn method(&self) -> &debugger::FullMethodIdentifier {
-    //     &self.method
-    // }
+    pub fn function(&self) -> &debugger::FunctionSymbol<'static> {
+        &self.function
+    }
 
     pub fn input_registers(&self) -> &[Register] {
         &self.input_registers
@@ -130,7 +133,7 @@ impl<'l> InstructionPointer<'l> {
     }
 
     pub fn next_instruction(&mut self) -> Option<&'l Instruction> {
-        // if self.breakpoint_hit() {
+        // if self.breakpoint_hit() || self.move_next {
         //     Some(BREAK_INSTRUCTION)
         // } else {
         let next = self.instructions.first();
@@ -185,9 +188,44 @@ impl<'l> Frame<'l> {
     }
 }
 
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct Breakpoint {
+    location: InstructionLocation,
+    function: debugger::FunctionSymbol<'static>,
+}
+
+impl Breakpoint {
+    pub fn new(location: InstructionLocation, function: debugger::FunctionSymbol<'static>) -> Self {
+        Self { location, function }
+    }
+
+    pub fn location(&self) -> &InstructionLocation {
+        &self.location
+    }
+
+    pub fn function(&self) -> &debugger::FunctionSymbol<'static> {
+        &self.function
+    }
+}
+
+pub struct BreakpointLookup {
+    lookup: hash_set::HashSet<Breakpoint>,
+}
+
+impl BreakpointLookup {
+    pub fn insert(&mut self, breakpoint: Breakpoint) {
+        todo!()
+    }
+
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = &Breakpoint> {
+        self.lookup.iter()
+    }
+}
+
 pub struct Stack<'l> {
     current: Option<Box<Frame<'l>>>,
     capacity: usize,
+    breakpoints: BreakpointLookup,
 }
 
 impl<'l> Stack<'l> {
@@ -195,6 +233,9 @@ impl<'l> Stack<'l> {
         Self {
             current: None,
             capacity,
+            breakpoints: BreakpointLookup {
+                lookup: hash_set::HashSet::new(),
+            },
         }
     }
 
@@ -212,11 +253,8 @@ impl<'l> Stack<'l> {
         trace
     }
 
-    pub fn current(&self) -> Result<&Frame<'l>> {
-        self.current
-            .as_ref()
-            .map(Box::borrow)
-            .ok_or(ErrorKind::CallStackUnderflow)
+    pub fn breakpoints_mut(&mut self) -> &mut BreakpointLookup {
+        &mut self.breakpoints
     }
 
     pub(crate) fn peek_mut(&mut self) -> Option<&mut Frame<'l>> {

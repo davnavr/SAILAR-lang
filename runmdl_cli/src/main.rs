@@ -1,4 +1,4 @@
-use runmdl::{interpreter, runtime};
+use runmdl::runtime;
 use structopt::StructOpt;
 
 mod debugger;

@@ -48,7 +48,7 @@ impl std::fmt::Display for BlockIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InstructionLocation {
     pub block_index: BlockIndex,
     pub code_index: usize,
@@ -72,6 +72,14 @@ impl<'l> Interpreter<'l> {
             call_stack: CallStack::new(call_stack_capacity),
             debugger,
         }
+    }
+
+    pub fn call_stack(&mut self) -> &mut CallStack<'l> {
+        &mut self.call_stack
+    }
+
+    pub fn loader(&self) -> &'l loader::Loader<'l> {
+        self.loader
     }
 
     fn next_instruction(&mut self) -> Result<Option<&'l Instruction>> {
@@ -208,12 +216,13 @@ impl<'l> Interpreter<'l> {
 
     fn debugger_message_loop(&mut self) {
         if let Some(debugger) = self.debugger.take() {
+            // TODO: Have loop be in debugger instead, Reply should just be a Continue or Detach.
             loop {
                 match debugger.inspect(self) {
                     debugger::Reply::Continue => {
                         self.debugger = Some(debugger);
                         return;
-                    },
+                    }
                     debugger::Reply::Wait => continue,
                     debugger::Reply::Detach => {
                         self.debugger = None;
