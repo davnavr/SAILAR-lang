@@ -532,9 +532,7 @@ fn struct_definition<W: Write>(
 ) -> Result {
     unsigned_index(out, definition.name, size)?;
     write(out, definition.flags().bits())?;
-    if let Some(symbol) = definition.symbol {
-        unsigned_index(out, symbol, size)?;
-    }
+    unsigned_index(out, definition.symbol, size)?;
     unsigned_index(out, definition.layout, size)?;
     length_encoded_indices(out, &definition.fields, size)
 }
@@ -546,9 +544,7 @@ fn global_definition<W: Write>(
 ) -> Result {
     unsigned_index(out, definition.name, size)?;
     write(out, definition.flags().bits())?;
-    if let Some(symbol) = definition.symbol {
-        unsigned_index(out, symbol, size)?;
-    }
+    unsigned_index(out, definition.symbol, size)?;
     unsigned_index(out, definition.signature, size)
 }
 
@@ -560,9 +556,7 @@ fn field_definition<W: Write>(
     unsigned_index(out, definition.owner, size)?;
     unsigned_index(out, definition.name, size)?;
     write(out, definition.flags().bits())?;
-    if let Some(symbol) = definition.symbol {
-        unsigned_index(out, symbol, size)?;
-    }
+    unsigned_index(out, definition.symbol, size)?;
     unsigned_index(out, definition.signature, size)
 }
 
@@ -574,9 +568,7 @@ fn function_definition<W: Write>(
     unsigned_index(out, definition.name, size)?;
     unsigned_index(out, definition.signature, size)?;
     write(out, definition.flags().bits())?;
-    if let Some(symbol) = definition.symbol {
-        unsigned_index(out, symbol, size)?;
-    }
+    unsigned_index(out, definition.symbol, size)?;
 
     match definition.body {
         format::FunctionBody::Defined(body) => unsigned_index(out, body, size),

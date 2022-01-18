@@ -1,7 +1,8 @@
 use crate::{
     buffers,
     format::{
-        self, flags,
+        self,
+        flags::{self, ExportFlag as _},
         instruction_set::{self, CallFlags, Instruction, Opcode, TailCall},
         numeric, type_system,
     },
@@ -531,25 +532,14 @@ fn namespace_definition<R: Read>(
     })
 }
 
-fn symbol<F: flags::ExportFlag, R: Read>(
-    src: &mut R,
-    flags: F,
-    size: numeric::IntegerSize,
-) -> Result<Option<format::indices::Identifier>> {
-    if flags.is_export() {
-        unsigned_index(src, size).map(Some)
-    } else {
-        Ok(None)
-    }
-}
-
 fn struct_definition<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::Struct> {
     let name = unsigned_index(src, size)?;
     let flags = byte_flags(src, flags::Struct::from_bits, Error::InvalidStructFlags)?;
 
     Ok(format::Struct {
         name,
-        symbol: symbol(src, flags, size)?,
+        is_export: flags.is_export(),
+        symbol: unsigned_index(src, size)?,
         layout: unsigned_index(src, size)?,
         fields: length_encoded_indices(src, size)?,
     })
@@ -570,7 +560,8 @@ fn function_definition<R: Read>(
     Ok(format::Function {
         name,
         signature,
-        symbol: symbol(src, flags, size)?,
+        is_export: flags.is_export(),
+        symbol: unsigned_index(src, size)?,
         body: if flags.contains(flags::Function::IS_EXTERNAL) {
             format::FunctionBody::External {
                 library: unsigned_index(src, size)?,

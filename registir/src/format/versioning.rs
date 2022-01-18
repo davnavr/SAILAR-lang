@@ -19,7 +19,7 @@ pub struct Format {
 
 static MINIMUM_FORMAT_VERSION: Format = Format {
     major: UInteger(0),
-    minor: UInteger(3),
+    minor: UInteger(5),
 };
 
 impl Format {

@@ -165,20 +165,19 @@ pub struct ModuleImports {
     pub imported_functions: LenVecBytes<FunctionImport>,
 }
 
-pub type Symbol = Option<indices::Identifier>;
-
 /// Represents a collection of fields which form a type.
 ///
 /// # Structure
 /// - [`name`]
 /// - [`Struct::flags()`]
-/// - [`symbol`] (if [`flags::Struct::IS_EXPORT`] is set)
+/// - [`symbol`]
 /// - [`layout`]
 /// - [`fields`]
 #[derive(Debug)]
 pub struct Struct {
     pub name: indices::Identifier,
-    pub symbol: Symbol,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
     pub layout: indices::TypeLayout, // TODO: Could merge field vector and layout struct, to ensure that for explicit layouts, the index of a field is right next to its offset.
     /// The list of fields that make up this struct, the [`Field::owner`] must point to the current struct.
     pub fields: LenVec<indices::FieldDefinition>,
@@ -188,7 +187,7 @@ pub struct Struct {
 
 impl Struct {
     pub fn flags(&self) -> flags::Struct {
-        if self.symbol.is_some() {
+        if self.is_export {
             flags::Struct::IS_EXPORT
         } else {
             flags::Struct::NONE
@@ -200,7 +199,7 @@ macro_rules! field_flags {
     ($field_record_type: ty) => {
         impl $field_record_type {
             pub fn flags(&self) -> flags::Field {
-                let mut flags = if self.symbol.is_some() {
+                let mut flags = if self.is_export {
                     flags::Field::IS_EXPORT
                 } else {
                     flags::Field::NONE
@@ -219,13 +218,14 @@ macro_rules! field_flags {
 /// # Structure
 /// - [`name`]
 /// - [`Global::flags()`]
-/// - [`symbol`] (if [`flags::Field::IS_EXPORT`] is set)
+/// - [`symbol`]
 /// - [`signature`]
 #[derive(Debug)]
 pub struct Global {
     pub name: indices::Identifier,
+    pub is_export: bool,
     pub is_mutable: bool,
-    pub symbol: Symbol,
+    pub symbol: indices::Identifier,
     pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,
 }
@@ -244,8 +244,9 @@ field_flags!(Global);
 pub struct Field {
     pub owner: indices::StructDefinition,
     pub name: indices::Identifier,
+    pub is_export: bool,
     pub is_mutable: bool,
-    pub symbol: Symbol,
+    pub symbol: indices::Identifier,
     pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,
 }
@@ -270,13 +271,14 @@ pub enum FunctionBody {
 /// - [`name`]
 /// - [`signature`]
 /// - [`flags()`]
-/// - [`symbol`] (if [`flags::Function::IS_EXPORT`] is set)
+/// - [`symbol`]
 /// - [`body`]
 #[derive(Debug)]
 pub struct Function {
     pub name: indices::Identifier,
     pub signature: indices::FunctionSignature,
-    pub symbol: Symbol,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
     pub body: FunctionBody,
     //pub annotations: LengthEncodedVector<>,
     //pub type_parameters: (),
@@ -284,7 +286,7 @@ pub struct Function {
 
 impl Function {
     pub fn flags(&self) -> flags::Function {
-        let mut flags = if self.symbol.is_some() {
+        let mut flags = if self.is_export {
             flags::Function::IS_EXPORT
         } else {
             flags::Function::NONE
