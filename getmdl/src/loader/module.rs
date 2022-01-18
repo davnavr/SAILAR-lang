@@ -35,6 +35,7 @@ impl<'a> Module<'a> {
             source,
             function_signature_cache: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
+            // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
             function_lookup_cache: RefCell::new(hash_map::HashMap::new()),
         }
     }
@@ -120,19 +121,17 @@ impl<'a> Module<'a> {
         }
     }
 
+    /// Searches for an exported function corresponding to the given symbol.
     pub fn lookup_function(&'a self, symbol: Symbol<'a>) -> Option<&'a Function<'a>> {
         match self.function_lookup_cache.borrow_mut().entry(symbol) {
             hash_map::Entry::Vacant(vacant) => {
                 let mut index = 0u32;
                 for definition in self.source.definitions.0.defined_functions.iter() {
-                    if let Some(actual_symbol) = definition
-                        .symbol
-                        .and_then(|symbol_index| self.load_identifier_raw(symbol_index).ok())
+                    if let Some(actual_symbol) = self
+                        .load_identifier_raw(definition.symbol)
+                        .ok()
+                        .filter(|s| *s == vacant.key().as_ref() && definition.is_export)
                     {
-                        if actual_symbol != vacant.key().as_ref() {
-                            continue;
-                        }
-
                         let loaded = self
                             .loaded_functions
                             .insert_or_get::<(), _>(

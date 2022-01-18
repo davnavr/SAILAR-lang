@@ -36,11 +36,12 @@ impl<'a> Function<'a> {
         Self { source, module }
     }
 
-    pub fn symbol(&'a self) -> Result<Option<&'a Identifier>> {
-        match self.source.symbol {
-            Some(symbol) => self.module.load_identifier_raw(symbol).map(Some),
-            None => Ok(None),
-        }
+    pub fn is_export(&'a self) -> bool {
+        self.source.is_export
+    }
+
+    pub fn symbol(&'a self) -> Result<&'a Identifier> {
+        self.module.load_identifier_raw(self.source.symbol)
     }
 
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
