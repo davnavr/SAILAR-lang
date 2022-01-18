@@ -289,9 +289,11 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 Vec::new,
             )
         };
-        function_types().then(keyword("returns").ignore_then(
-            function_types().then(keyword("export").ignore_then(identifier_literal()).or_not()),
-        ))
+        function_types().then(
+            keyword("returns")
+                .ignore_then(function_types())
+                .then(keyword("export").or_not()),
+        )
     };
 
     let function_declaration = {
@@ -335,10 +337,10 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
             global_symbol,
             function_attributes,
             with_position_optional(function_declaration),
-            |symbol, (parameter_types, (return_types, exported)), declarations| {
+            |symbol, (parameter_types, (return_types, is_export)), declarations| {
                 ast::TopLevelDeclaration::Function {
+                    is_export: is_export.is_some(),
                     symbol,
-                    exported,
                     parameter_types,
                     return_types,
                     declarations,

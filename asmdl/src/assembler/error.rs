@@ -26,10 +26,6 @@ pub enum ErrorKind {
         name: ast::Identifier,
         original: ast::Position,
     },
-    DuplicateSymbol {
-        symbol: ast::Identifier,
-        original: ast::Position,
-    },
     UndefinedGlobal(ast::Identifier),
 }
 
@@ -69,11 +65,6 @@ impl std::fmt::Display for ErrorKind {
             Self::DuplicateDeclaration { name, kind, .. } => {
                 write!(f, "a {} with the name @{} already exists", kind, name)
             }
-            Self::DuplicateSymbol { symbol, .. } => write!(
-                f,
-                "a declaration with the symbol \"{}\" already exists",
-                symbol
-            ),
             Self::UndefinedGlobal(symbol) => write!(
                 f,
                 "unable to find declaration corresponding to the symbol @{}",

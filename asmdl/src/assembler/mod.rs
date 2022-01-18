@@ -181,19 +181,21 @@ pub fn assemble_declarations(
             }
             ast::TopLevelDeclaration::Function {
                 symbol,
-                exported: export_symbol,
+                is_export,
                 parameter_types,
                 return_types,
                 declarations,
             } => {
+                let symbol_name = symbol.identifier();
                 if let Err(error) = function_definitions.insert(
-                    symbol.identifier(),
+                    symbol_name,
                     definitions::FunctionAssembler {
                         declarations,
+                        symbol: symbol_name,
+                        is_export: *is_export,
                         location: &node.1,
                         parameter_types,
                         return_types,
-                        export_symbol,
                     },
                 ) {
                     errors.push_with_location(
@@ -351,7 +353,7 @@ mod tests {
     #[test]
     fn module_header_test() {
         assert_success!(
-            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 3; };",
+            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 5; };",
             |module: format::Module| {
                 let header = module.header.0;
                 assert_eq!(

@@ -186,9 +186,9 @@ pub enum TopLevelDeclaration {
     },
     Function {
         symbol: GlobalSymbol,
+        is_export: bool,
         parameter_types: Vec<Positioned<Type>>,
         return_types: Vec<Positioned<Type>>,
-        exported: Option<Positioned<Identifier>>,
         declarations: Vec<Positioned<FunctionDeclaration>>,
     },
 }

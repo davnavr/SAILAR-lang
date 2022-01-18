@@ -2,9 +2,10 @@ use crate::assembler::*;
 
 pub struct FunctionAssembler<'a> {
     pub location: &'a ast::Position,
+    pub is_export: bool,
+    pub symbol: &'a ast::Identifier,
     pub parameter_types: signatures::ParameterSet<'a>,
     pub return_types: signatures::ParameterSet<'a>,
-    pub export_symbol: &'a Option<ast::Positioned<ast::Identifier>>,
     pub declarations: &'a [ast::Positioned<ast::FunctionDeclaration>],
 }
 
@@ -24,20 +25,6 @@ impl<'a> FunctionAssembler<'a> {
         type_signatures: &mut signatures::TypeLookup<'a>,
         function_signatures: &mut signatures::FunctionLookup<'a>,
     ) -> Option<format::Function> {
-        let export_symbol_index = self.export_symbol.as_ref().map(|(symbol, location)| {
-            if let Some(existing) = symbols.insert(symbol, location) {
-                errors.push_with_location(
-                    ErrorKind::DuplicateSymbol {
-                        symbol: symbol.clone(),
-                        original: existing.clone(),
-                    },
-                    location.clone(),
-                )
-            }
-
-            identifiers.insert_or_get(symbol.clone())
-        });
-
         let mut function_name = None;
         let mut function_body = None;
 
@@ -90,7 +77,8 @@ impl<'a> FunctionAssembler<'a> {
         if let (Some(name), Some(Some(body))) = (function_name, function_body) {
             Some(format::Function {
                 name,
-                symbol: export_symbol_index,
+                is_export: self.is_export,
+                symbol: identifiers.insert_or_get(self.symbol.clone()),
                 signature: function_signatures.get(
                     type_signatures,
                     self.parameter_types,

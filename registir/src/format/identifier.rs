@@ -26,7 +26,7 @@ impl Display for Identifier {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct IdentifierConversionError;
 
 impl Display for IdentifierConversionError {
