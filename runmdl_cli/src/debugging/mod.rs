@@ -167,8 +167,7 @@ impl debugger::Debugger for CommandLineDebugger {
                     if let Some(reply) = command.execute(&self.commands, &input, interpreter) {
                         return reply;
                     }
-                }
-                else {
+                } else {
                     eprintln!("'{}' is not a valid command", name);
                 }
             }

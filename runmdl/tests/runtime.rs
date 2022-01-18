@@ -12,7 +12,7 @@ fn has_entry_point_symbol() {
 
         .format {
             .major 0;
-            .minor 3;
+            .minor 5;
         };
 
         .code @code {
@@ -22,7 +22,7 @@ fn has_entry_point_symbol() {
             };
         };
 
-        .function @f () returns () export "Helper" {
+        .function @Helper () returns () export {
             .name "unused";
             .body defined @code;
         };
