@@ -38,10 +38,10 @@ impl Command {
     pub fn execute(
         &self,
         commands: &Lookup,
-        arguments: &[&str],
+        input: &[&str],
         interpreter: &mut Interpreter,
     ) -> Option<debugger::Reply> {
-        (self.command)(commands, arguments, interpreter).unwrap_or_else(|error| {
+        (self.command)(commands, input, interpreter).unwrap_or_else(|error| {
             eprintln!("Error: {}", error);
             None
         })

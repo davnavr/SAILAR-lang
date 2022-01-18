@@ -89,16 +89,21 @@ impl CommandLineDebugger {
         command!(
             "break",
             "sets a breakpoint in the specified function",
-            |_, args, interpreter| {
+            |_, command, interpreter| {
                 #[derive(clap::Parser, Debug)]
-                #[clap(name = "break", about, global_setting(clap::AppSettings::DisableHelpFlag))]
+                #[clap(
+                    name = "break",
+                    about,
+                    global_setting(clap::AppSettings::DisableHelpFlag)
+                )]
                 struct Arguments {
                     /// The symbol name of the function to set a breakpoint in.
                     #[clap(short, long, parse(try_from_str = std::convert::TryFrom::try_from), value_name = "SYMBOL")]
                     function: Identifier,
                 }
 
-                let arguments = Arguments::try_parse_from(args).map_err(|error| error.to_string())?;
+                let arguments =
+                    Arguments::try_parse_from(command).map_err(|error| error.to_string())?;
 
                 let matches = interpreter
                     .loader()
@@ -156,12 +161,14 @@ impl debugger::Debugger for CommandLineDebugger {
             print!("> ");
             std::io::stdout().flush().unwrap();
 
-            if let Some((name, arguments)) = self.input_buffer.read_command() {
+            let input = self.input_buffer.read_command();
+            if let Some(name) = input.first() {
                 if let Some(command) = self.commands.commands.get(name) {
-                    if let Some(reply) = command.execute(&self.commands, &arguments, interpreter) {
+                    if let Some(reply) = command.execute(&self.commands, &input, interpreter) {
                         return reply;
                     }
-                } else {
+                }
+                else {
                     eprintln!("'{}' is not a valid command", name);
                 }
             }
