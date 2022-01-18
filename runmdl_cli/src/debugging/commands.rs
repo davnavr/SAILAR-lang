@@ -1,12 +1,27 @@
 use runmdl::interpreter::{debugger, Interpreter};
+use std::borrow::Cow;
 
-type ErrorMessage = std::borrow::Cow<'static, str>;
+#[derive(thiserror::Error, Debug)]
+pub(super) enum Error {
+    #[error("{0}")]
+    Message(Cow<'static, str>),
+    #[error(transparent)]
+    ArgumentError(#[from] clap::Error),
+}
 
-type Result = std::result::Result<Option<debugger::Reply>, ErrorMessage>;
+impl From<&'static str> for Error {
+    fn from(message: &'static str) -> Self {
+        Self::Message(Cow::Borrowed(message))
+    }
+}
 
-// trait Action {
-//    type Arguments;
-// }
+impl From<String> for Error {
+    fn from(message: String) -> Self {
+        Self::Message(Cow::Owned(message))
+    }
+}
+
+pub(super) type Result = std::result::Result<Option<debugger::Reply>, Error>;
 
 #[derive(Clone, Copy)]
 pub struct Command {

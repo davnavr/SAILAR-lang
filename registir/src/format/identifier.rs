@@ -15,25 +15,36 @@ impl Identifier {
 }
 
 impl Debug for Identifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         Debug::fmt(&self.0, f)
     }
 }
 
 impl Display for Identifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         Display::fmt(&self.0, f)
     }
 }
 
+#[derive(Debug)]
+pub struct IdentifierConversionError;
+
+impl Display for IdentifierConversionError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.write_str("identifier must not be empty")
+    }
+}
+
+impl std::error::Error for IdentifierConversionError {}
+
 macro_rules! identifier_conversion_from {
     ($source_type: ty, $source: ident, $conversion: expr) => {
         impl TryFrom<$source_type> for Identifier {
-            type Error = ();
+            type Error = IdentifierConversionError;
 
             fn try_from($source: $source_type) -> Result<Self, Self::Error> {
                 if $source.is_empty() {
-                    Err(())
+                    Err(IdentifierConversionError)
                 } else {
                     Ok(Self($conversion))
                 }

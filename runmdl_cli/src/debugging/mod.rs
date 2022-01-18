@@ -1,31 +1,10 @@
+use clap::Parser as _;
 use registir::format::Identifier;
 use runmdl::interpreter::{debugger, Interpreter};
 use std::{fmt::Write as _, io::Write as _};
 
 mod commands;
-
-struct InputCache {
-    line_buffer: String,
-}
-
-impl InputCache {
-    fn read_command(&mut self) -> Option<(&str, Vec<&str>)> {
-        // Line and argument buffers are not cached, though this probably doesn't impact performance.
-        self.line_buffer.clear();
-        std::io::stdin().read_line(&mut self.line_buffer).unwrap();
-
-        let mut arguments = self.line_buffer.split_whitespace();
-
-        arguments.next().map(|command_name| {
-            let mut v = {
-                let (min_capacity, max_capacity) = arguments.size_hint();
-                Vec::with_capacity(max_capacity.unwrap_or(min_capacity))
-            };
-            v.extend(arguments);
-            (command_name, v)
-        })
-    }
-}
+mod input;
 
 #[derive(Debug)]
 pub struct Location<'a>(pub &'a debugger::InstructionLocation);
@@ -64,7 +43,7 @@ impl std::fmt::Display for ModuleSymbol<'_> {
 pub struct CommandLineDebugger {
     started: bool,
     commands: commands::Lookup,
-    input_buffer: InputCache,
+    input_buffer: input::Cache,
 }
 
 impl CommandLineDebugger {
@@ -110,19 +89,20 @@ impl CommandLineDebugger {
         command!(
             "break",
             "sets a breakpoint in the specified function",
-            |_, arguments, interpreter| {
-                // TODO: Allow selecting of module to lookup function in.
-                let function_name =
-                    arguments
-                        .first()
-                        .ok_or("missing function name")
-                        .and_then(|name| {
-                            Identifier::try_from(*name).map_err(|_| "empty function name")
-                        })?;
+            |_, args, interpreter| {
+                #[derive(clap::Parser, Debug)]
+                #[clap(name = "break", about, global_setting(clap::AppSettings::DisableHelpFlag))]
+                struct Arguments {
+                    /// The symbol name of the function to set a breakpoint in.
+                    #[clap(short, long, parse(try_from_str = std::convert::TryFrom::try_from), value_name = "SYMBOL")]
+                    function: Identifier,
+                }
+
+                let arguments = Arguments::try_parse_from(args).map_err(|error| error.to_string())?;
 
                 let matches = interpreter
                     .loader()
-                    .lookup_function(debugger::Symbol::Owned(function_name));
+                    .lookup_function(debugger::Symbol::Owned(arguments.function));
 
                 match matches.first() {
                     Some(function) if matches.len() == 1 => {
@@ -130,7 +110,7 @@ impl CommandLineDebugger {
                         Ok(None)
                     }
                     Some(_) => Err("multiples matches for function symbol")?,
-                    None => Err("no function found with symbol")?
+                    None => Err("no function found with symbol")?,
                 }
             }
         );
@@ -160,9 +140,7 @@ impl CommandLineDebugger {
                 commands,
                 name_width: command_name_width,
             },
-            input_buffer: InputCache {
-                line_buffer: String::new(),
-            },
+            input_buffer: input::Cache::default(),
         }
     }
 }

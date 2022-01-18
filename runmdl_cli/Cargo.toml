@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "3.0.7", features = ["derive"] }
 runmdl = { path = "../runmdl" }
 registir = { path = "../registir" }
-structopt = "0.3.25"
+thiserror = "1.0.30"
 
 [[bin]]
 name = "runmdl"

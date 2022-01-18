@@ -1,15 +1,16 @@
+use clap::{self, Parser as _};
 use runmdl::runtime;
-use structopt::StructOpt;
 
 mod debugging;
 
-#[derive(StructOpt)]
+#[derive(clap::Parser, Debug)]
+#[clap()]
 struct Arguments {
     /// Path to the program to run.
-    #[structopt(long, short)]
+    #[clap(long, short)]
     program: std::path::PathBuf,
     /// If set, launches the debugger.
-    #[structopt(long)]
+    #[clap(long)]
     interactive: bool,
 }
 
@@ -17,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let all_arguments: Vec<String> = std::env::args().collect();
     let application_arguments_start = all_arguments.iter().position(|arg| arg == "--");
 
-    let interpreter_arguments = Arguments::from_iter(
+    let interpreter_arguments = Arguments::parse_from(
         &all_arguments[0..application_arguments_start.unwrap_or(all_arguments.len())],
     );
 
