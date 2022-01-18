@@ -1,77 +1,43 @@
 use crate::ast;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(thiserror::Error, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ErrorKind {
+    #[error("missing directive {0}")]
     MissingDirective(&'static str),
+    #[error("duplicate directive")]
     DuplicateDirective,
+    #[error("invalid format version")]
     InvalidFormatVersion,
+    #[error("a register with the symbol %{0} was not defined")]
     UndefinedRegister(ast::Identifier),
+    #[error("{0} is not a valid constant integer type")]
     InvalidConstantIntegerType(ast::PrimitiveType),
+    #[error("{1} is not a valid value for constant integers of type {0}")]
     ConstantIntegerOutOfRange(ast::PrimitiveType, i128),
+    #[error("expected {expected} return registers but got {actual}")]
     InvalidReturnRegisterCount {
         expected: usize,
         actual: usize,
     },
+    #[error("a register with the name %{name} already exists")]
     DuplicateRegister {
         name: ast::Identifier,
         original: ast::Position,
     },
+    #[error("a code block with the name ${name} already exists")]
     DuplicateBlock {
         name: ast::Identifier,
         original: ast::Position,
     },
+    #[error("a {kind} with the name @{name} already exists")]
     DuplicateDeclaration {
         kind: &'static str,
         name: ast::Identifier,
         original: ast::Position,
     },
+    #[error("unable to find declaration corresponding to the symbol @{0}")]
     UndefinedGlobal(ast::Identifier),
-}
-
-impl std::fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MissingDirective(description) => {
-                f.write_str("missing directive: ")?;
-                f.write_str(description)
-            }
-            Self::DuplicateDirective => f.write_str("duplicate directive"),
-            Self::InvalidFormatVersion => f.write_str("invalid format version"),
-            Self::UndefinedRegister(name) => {
-                write!(f, "a register with the symbol %{} was not defined", name)
-            }
-            Self::InvalidConstantIntegerType(kind) => {
-                write!(f, "{} is not a valid constant integer type", kind)
-            }
-            Self::ConstantIntegerOutOfRange(integer_type, value) => {
-                write!(
-                    f,
-                    "{} is not a valid value for constant integers of type {}",
-                    value, integer_type
-                )
-            }
-            Self::InvalidReturnRegisterCount { expected, actual } => write!(
-                f,
-                "expected {} return registers but got {}",
-                expected, actual
-            ),
-            Self::DuplicateRegister { name, .. } => {
-                write!(f, "a register with the name %{} already exists", name)
-            }
-            Self::DuplicateBlock { name, .. } => {
-                write!(f, "a code block with the name ${} already exists", name)
-            }
-            Self::DuplicateDeclaration { name, kind, .. } => {
-                write!(f, "a {} with the name @{} already exists", kind, name)
-            }
-            Self::UndefinedGlobal(symbol) => write!(
-                f,
-                "unable to find declaration corresponding to the symbol @{}",
-                symbol
-            ),
-        }
-    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
