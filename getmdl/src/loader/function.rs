@@ -61,3 +61,12 @@ impl<'a> Function<'a> {
         self.module.load_function_signature(self.source.signature)
     }
 }
+
+impl<'a> std::fmt::Debug for &'a Function<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Function")
+            .field("is_export", &self.is_export())
+            .field("symbol", &self.symbol().ok())
+            .finish()
+    }
+}

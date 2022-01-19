@@ -1,12 +1,18 @@
 use crate::format::{numeric::UInteger, LenVec};
 
 /// A length-encoded array of variable-length unsigned integers used to indicate a version.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Default, Eq, PartialEq, Hash)]
 pub struct Numbers(pub LenVec<UInteger>);
 
 impl Numbers {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+impl std::fmt::Debug for Numbers {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
     }
 }
 

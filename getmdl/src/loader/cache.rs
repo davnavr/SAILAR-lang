@@ -29,3 +29,13 @@ where
         }
     }
 }
+
+impl<'a, I, T> std::fmt::Debug for &'a IndexLookup<'a, I, T> where I: std::fmt::Debug, &'a T: std::fmt::Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut map = f.debug_map();
+        for (key, value) in self.lookup.borrow().iter() {
+            map.entry(key, value);
+        }
+        map.finish()
+    }
+}

@@ -151,3 +151,13 @@ impl<'a> Module<'a> {
         }
     }
 }
+
+impl<'a> std::fmt::Debug for &'a Module<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Module")
+            .field("identifier", self.identifier())
+            .field("format_version", &self.source.format_version)
+            .field("loaded_functions", &&self.loaded_functions)
+            .finish()
+    }
+}
