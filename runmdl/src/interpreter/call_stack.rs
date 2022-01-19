@@ -1,7 +1,7 @@
 use super::*;
 use std::{
     borrow::{Borrow as _, BorrowMut as _},
-    collections::hash_set,
+    collections::{hash_map, BTreeSet, VecDeque},
 };
 
 /// Describes a stack frame in the call stack.
@@ -102,7 +102,11 @@ pub(crate) struct InstructionPointer<'l> {
     code: &'l format::Code,
     block_index: BlockIndex,
     instructions: &'l [Instruction],
+    /// Instruction offsets marking where breakpoints are placed, in increasing order.
+    breakpoints: VecDeque<usize>,
 }
+
+static BREAK: &'static Instruction = &Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
     pub fn current_block(&self) -> &'l format::CodeBlock {
@@ -132,24 +136,39 @@ impl<'l> InstructionPointer<'l> {
         }
     }
 
-    pub fn next_instruction(&mut self) -> Option<&'l Instruction> {
-        // if self.breakpoint_hit() || self.move_next {
-        //     Some(BREAK_INSTRUCTION)
-        // } else {
-        let next = self.instructions.first();
-        if next.is_some() {
-            self.instructions = &self.instructions[1..];
+    fn check_breakpoint_hit(&mut self) -> bool {
+        match self.breakpoints.front() {
+            Some(&next) => {
+                let current_index = self.code_index();
+                if next <= current_index {
+                    self.breakpoints.pop_front();
+                }
+                next == current_index
+            }
+            None => false,
         }
-        next
-        //}
+    }
+
+    pub fn next_instruction(&mut self) -> Option<&'l Instruction> {
+        if self.check_breakpoint_hit()
+        /* || self.move_next */
+        {
+            Some(BREAK)
+        } else {
+            let next = self.instructions.first();
+            if next.is_some() {
+                self.instructions = &self.instructions[1..];
+            }
+            next
+        }
     }
 }
 
 pub struct Frame<'l> {
     depth: usize,
     previous: Option<Box<Frame<'l>>>,
-    pub(crate) registers: Registers,
-    pub(crate) instructions: InstructionPointer<'l>,
+    pub(super) registers: Registers,
+    pub(super) instructions: InstructionPointer<'l>,
 }
 
 impl<'l> Frame<'l> {
@@ -157,7 +176,7 @@ impl<'l> Frame<'l> {
         todo!()
     }
 
-    pub(crate) fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
+    pub(super) fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
         // Replace input registers with new inputs.
         self.registers.inputs.clear();
         self.registers.inputs.extend_from_slice(inputs);
@@ -208,17 +227,67 @@ impl Breakpoint {
     }
 }
 
+#[derive(Default)]
 pub struct BreakpointLookup {
-    lookup: hash_set::HashSet<Breakpoint>,
+    lookup: hash_map::HashMap<
+        debugger::FunctionSymbol<'static>,
+        hash_map::HashMap<BlockIndex, BTreeSet<usize>>,
+    >,
 }
 
 impl BreakpointLookup {
-    pub fn insert(&mut self, breakpoint: Breakpoint) {
-        self.lookup.insert(breakpoint);
+    fn copy_breakpoints_to(
+        &mut self,
+        function: &debugger::FunctionSymbol<'static>,
+        block: BlockIndex,
+        destination: &mut VecDeque<usize>,
+    ) {
+        destination.clear();
+        if let Some(indices) = self
+            .lookup
+            .get(&function)
+            .and_then(|block_lookup| block_lookup.get(&block))
+        {
+            if destination.capacity() < indices.len() {
+                destination.reserve_exact(indices.len() - destination.capacity());
+            }
+            for &index in indices {
+                destination.push_back(index);
+            }
+        }
     }
 
-    pub fn iter(&self) -> impl std::iter::Iterator<Item = &Breakpoint> {
-        self.lookup.iter()
+    pub fn insert(&mut self, breakpoint: Breakpoint) {
+        let blocks = match self.lookup.entry(breakpoint.function) {
+            hash_map::Entry::Occupied(occupied) => occupied.into_mut(),
+            hash_map::Entry::Vacant(vacant) => vacant.insert(hash_map::HashMap::new()),
+        };
+
+        let points = match blocks.entry(breakpoint.location.block_index) {
+            hash_map::Entry::Occupied(occupied) => occupied.into_mut(),
+            hash_map::Entry::Vacant(vacant) => vacant.insert(BTreeSet::new()),
+        };
+
+        points.insert(breakpoint.location.code_index);
+    }
+
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = Breakpoint> + '_ {
+        self.lookup
+            .iter()
+            .map(|(function, block_lookup)| {
+                block_lookup.iter()
+                    .map(move |(&block_index, indices)| {
+                        indices.iter().map(move |&code_index| Breakpoint {
+                            location: InstructionLocation {
+                                block_index,
+                                code_index,
+                            },
+                            function: function.clone(),
+                        })
+                    })
+                    .flatten()
+            })
+            .flatten()
     }
 }
 
@@ -233,9 +302,7 @@ impl<'l> Stack<'l> {
         Self {
             current: None,
             capacity,
-            breakpoints: BreakpointLookup {
-                lookup: hash_set::HashSet::new(),
-            },
+            breakpoints: BreakpointLookup::default(),
         }
     }
 
@@ -270,6 +337,7 @@ impl<'l> Stack<'l> {
             Some(mut current) => {
                 let results = std::mem::take(&mut current.registers.results);
                 self.current = current.previous.take();
+                // TODO: Update breakpoints.
                 Ok(results)
             }
             None => Err(ErrorKind::CallStackUnderflow),
@@ -308,6 +376,13 @@ impl<'l> Stack<'l> {
                 let code = function.declaring_module().load_code_raw(*code_index)?;
                 let previous = self.current.take();
 
+                let mut breakpoints = VecDeque::new();
+                self.breakpoints_mut().copy_breakpoints_to(
+                    &function.full_symbol()?.to_owned(),
+                    BlockIndex::entry(),
+                    &mut breakpoints,
+                );
+
                 self.current = Some(Box::new(Frame {
                     depth: depth,
                     previous,
@@ -320,8 +395,11 @@ impl<'l> Stack<'l> {
                         code,
                         block_index: BlockIndex::entry(),
                         instructions: &code.entry_block.instructions,
+                        breakpoints,
                     },
                 }));
+
+                // TODO: update breakpoints.
 
                 //self.set_debugger_breakpoints();
                 Ok(())

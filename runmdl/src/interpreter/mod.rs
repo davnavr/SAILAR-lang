@@ -58,14 +58,14 @@ pub struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
     call_stack: CallStack<'l>,
-    debugger: Option<Box<&'l mut dyn debugger::Debugger>>,
+    debugger: Option<&'l mut dyn debugger::Debugger>,
 }
 
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
         call_stack_capacity: usize,
-        debugger: Option<Box<&'l mut dyn debugger::Debugger>>,
+        debugger: Option<&'l mut dyn debugger::Debugger>,
     ) -> Self {
         Self {
             loader,
@@ -257,8 +257,7 @@ pub fn run<'l>(
     call_stack_capacity: usize,
     debugger: Option<&'l mut dyn debugger::Debugger>,
 ) -> std::result::Result<Vec<Register>, Error> {
-    let mut interpreter =
-        Interpreter::initialize(loader, call_stack_capacity, debugger.map(Box::new));
+    let mut interpreter = Interpreter::initialize(loader, call_stack_capacity, debugger);
     interpreter
         .execute_entry_point(arguments, entry_point)
         .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))

@@ -1,5 +1,5 @@
 use super::{Identifier, ModuleIdentifier};
-use std::borrow::{Cow, ToOwned};
+use std::borrow::Cow;
 
 pub type Module<'a> = Cow<'a, ModuleIdentifier>;
 
