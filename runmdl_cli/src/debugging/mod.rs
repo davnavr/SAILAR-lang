@@ -1,7 +1,7 @@
 use clap::Parser as _;
 use registir::format::Identifier;
 use runmdl::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
-use std::{fmt::Write as _, io::Write as _};
+use std::{fmt::{Display, Formatter, Write as _}, io::Write as _};
 
 mod commands;
 mod input;
@@ -9,8 +9,8 @@ mod input;
 #[derive(Debug)]
 pub struct Location<'a>(pub &'a debugger::InstructionLocation);
 
-impl std::fmt::Display for Location<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for Location<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let Self(location) = self;
         write!(
             f,
@@ -23,8 +23,8 @@ impl std::fmt::Display for Location<'_> {
 #[derive(Debug)]
 pub struct ModuleSymbol<'a>(pub &'a debugger::ModuleIdentifier);
 
-impl std::fmt::Display for ModuleSymbol<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for ModuleSymbol<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", self.0.name)?;
         let version = &self.0.version;
         if version.is_empty() {
@@ -33,10 +33,19 @@ impl std::fmt::Display for ModuleSymbol<'_> {
                 if i > 0 {
                     f.write_char('.')?;
                 }
-                std::fmt::Display::fmt(&number, f)?;
+                Display::fmt(&number, f)?;
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FunctionSymbol<'a>(pub &'a debugger::FunctionSymbol<'static>);
+
+impl Display for FunctionSymbol<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "\"{}\" from {}", self.0.symbol(), ModuleSymbol(self.0.module()))
     }
 }
 
@@ -142,9 +151,8 @@ impl CommandLineDebugger {
             for breakpoint in interpreter.call_stack().breakpoints_mut().iter() {
                 let function = breakpoint.function();
                 println!(
-                    "- {} from {} {}",
-                    function.symbol(),
-                    ModuleSymbol(function.module()),
+                    "- {} {}",
+                    FunctionSymbol(function),
                     Location(breakpoint.location())
                 );
             }
@@ -152,16 +160,16 @@ impl CommandLineDebugger {
             Ok(None)
         });
 
-        // command!("where", "prints a stack trace", |_, _, interpreter| {
-        //     let frames = interpreter.call_stack().stack_trace();
-        //     Ok(debugger::Reply::Wait)
-        // });
+        command!("where", "prints a stack trace", |_, _, interpreter| {
+            for frame in interpreter.call_stack().stack_trace() {
+                println!("- {} {}", FunctionSymbol(frame.function()), Location(frame.location()));
+            }
+            Ok(None)
+        });
 
-        command!(
-            "cont",
-            "continues execution of the program",
-            |_, _, _| { Ok(Some(debugger::Reply::Continue)) }
-        );
+        command!("cont", "continues execution of the program", |_, _, _| {
+            Ok(Some(debugger::Reply::Continue))
+        });
 
         Self {
             started: false,

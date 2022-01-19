@@ -7,7 +7,6 @@ use std::{
 /// Describes a stack frame in the call stack.
 #[derive(Clone, Debug)]
 pub struct TraceFrame {
-    // TODO: fields here should be private.
     depth: usize,
     location: InstructionLocation,
     function: debugger::FunctionSymbol<'static>,
@@ -98,7 +97,7 @@ impl Registers {
 //     //External(&'l )
 // }
 
-pub(crate) struct InstructionPointer<'l> {
+pub(super) struct InstructionPointer<'l> {
     code: &'l format::Code,
     block_index: BlockIndex,
     instructions: &'l [Instruction],
@@ -122,6 +121,13 @@ impl<'l> InstructionPointer<'l> {
                 .as_ptr()
                 .offset_from(self.current_block().instructions.0.as_ptr()) as usize
         }) / std::mem::size_of::<Instruction>()
+    }
+
+    fn location(&self) -> InstructionLocation {
+        InstructionLocation {
+            block_index: self.block_index,
+            code_index: self.code_index(),
+        }
     }
 
     fn jump(&mut self, target: JumpTarget) -> Result<()> {
@@ -167,13 +173,20 @@ impl<'l> InstructionPointer<'l> {
 pub struct Frame<'l> {
     depth: usize,
     previous: Option<Box<Frame<'l>>>,
+    function: LoadedFunction<'l>,
     pub(super) registers: Registers,
     pub(super) instructions: InstructionPointer<'l>,
 }
 
 impl<'l> Frame<'l> {
     pub fn trace(&self) -> TraceFrame {
-        todo!()
+        TraceFrame {
+            depth: self.depth,
+            location: self.instructions.location(),
+            function: self.function.full_symbol().unwrap().to_owned(),
+            input_registers: self.registers.inputs.clone().into_boxed_slice(),
+            temporary_registers: self.registers.temporaries.clone().into_boxed_slice(),
+        }
     }
 
     pub(super) fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
@@ -384,7 +397,8 @@ impl<'l> Stack<'l> {
                 );
 
                 self.current = Some(Box::new(Frame {
-                    depth: depth,
+                    depth,
+                    function,
                     previous,
                     registers: Registers {
                         inputs: argument_registers,
