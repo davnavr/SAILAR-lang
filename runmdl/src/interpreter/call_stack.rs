@@ -116,11 +116,11 @@ impl<'l> InstructionPointer<'l> {
     }
 
     pub fn code_index(&self) -> usize {
-        (unsafe {
+        unsafe {
             self.instructions
                 .as_ptr()
                 .offset_from(self.current_block().instructions.0.as_ptr()) as usize
-        }) / std::mem::size_of::<Instruction>()
+        }
     }
 
     fn location(&self) -> InstructionLocation {
@@ -143,6 +143,7 @@ impl<'l> InstructionPointer<'l> {
     }
 
     fn check_breakpoint_hit(&mut self) -> bool {
+        dbg!(self.code_index());
         match self.breakpoints.front() {
             Some(&next) => {
                 let current_index = self.code_index();

@@ -49,6 +49,12 @@ impl Display for FunctionSymbol<'_> {
     }
 }
 
+fn print_registers(prefix: char, registers: &[debugger::Register]) {
+    for (index, register) in registers.iter().enumerate() {
+        println!("  %{}{} = {}", prefix, index, register);
+    }
+}
+
 pub struct CommandLineDebugger {
     started: bool,
     commands: commands::Lookup,
@@ -116,8 +122,7 @@ impl CommandLineDebugger {
                     instruction: usize,
                 }
 
-                let arguments =
-                    Arguments::try_parse_from(command).map_err(|error| error.to_string())?;
+                let arguments = Arguments::try_parse_from(command)?;
 
                 let matches = interpreter
                     .loader()
@@ -160,9 +165,26 @@ impl CommandLineDebugger {
             Ok(None)
         });
 
-        command!("where", "prints a stack trace", |_, _, interpreter| {
+        command!("where", "prints a stack trace", |_, command, interpreter| {
+            #[derive(clap::Parser, Debug)]
+            #[clap(
+                name = "where",
+                about,
+                global_setting(clap::AppSettings::DisableHelpFlag)
+            )]
+            struct Arguments {
+                #[clap(long)]
+                show_registers: bool,
+            }
+
+            let arguments = Arguments::try_parse_from(command)?;
+
             for frame in interpreter.call_stack().stack_trace() {
                 println!("- {} {}", FunctionSymbol(frame.function()), Location(frame.location()));
+                if arguments.show_registers {
+                    print_registers('i', frame.input_registers());
+                    print_registers('t', frame.temporary_registers());
+                }
             }
             Ok(None)
         });
