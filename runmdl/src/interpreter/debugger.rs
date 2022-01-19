@@ -14,3 +14,18 @@ pub enum Reply {
 pub trait Debugger {
     fn inspect(&mut self, interpreter: &mut interpreter::Interpreter) -> Reply;
 }
+
+impl<T> Debugger for T
+where
+    T: FnMut(&mut interpreter::Interpreter) -> Reply,
+{
+    fn inspect(&mut self, interpreter: &mut interpreter::Interpreter) -> Reply {
+        self(interpreter)
+    }
+}
+
+impl Debugger for () {
+    fn inspect(&mut self, _: &mut interpreter::Interpreter) -> Reply {
+        Reply::Detach
+    }
+}

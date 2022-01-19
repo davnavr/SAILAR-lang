@@ -289,7 +289,8 @@ impl BreakpointLookup {
         self.lookup
             .iter()
             .map(|(function, block_lookup)| {
-                block_lookup.iter()
+                block_lookup
+                    .iter()
                     .map(move |(&block_index, indices)| {
                         indices.iter().map(move |&code_index| Breakpoint {
                             location: InstructionLocation {
@@ -305,14 +306,16 @@ impl BreakpointLookup {
     }
 }
 
+pub use std::num::NonZeroUsize as StackCapacity;
+
 pub struct Stack<'l> {
     current: Option<Box<Frame<'l>>>,
-    capacity: usize,
+    capacity: StackCapacity,
     breakpoints: BreakpointLookup,
 }
 
 impl<'l> Stack<'l> {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: StackCapacity) -> Self {
         Self {
             current: None,
             capacity,
@@ -364,7 +367,7 @@ impl<'l> Stack<'l> {
         arguments: &[Register],
     ) -> Result<()> {
         let depth = self.depth() + 1;
-        if depth > self.capacity {
+        if depth > self.capacity.get() {
             return Err(ErrorKind::CallStackOverflow);
         }
 

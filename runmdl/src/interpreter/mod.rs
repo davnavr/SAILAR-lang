@@ -17,7 +17,8 @@ pub use format::{
 };
 
 pub use call_stack::{
-    Frame as StackFrame, Stack as CallStack, Trace as StackTrace, TraceFrame as StackTraceFrame,
+    Frame as StackFrame, Stack as CallStack, StackCapacity as CallStackCapacity,
+    Trace as StackTrace, TraceFrame as StackTraceFrame,
 };
 
 pub use error::{Error, ErrorKind, LoaderError, ProgramHalt};
@@ -64,7 +65,7 @@ pub struct Interpreter<'l> {
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
-        call_stack_capacity: usize,
+        call_stack_capacity: CallStackCapacity,
         debugger: Option<&'l mut dyn debugger::Debugger>,
     ) -> Self {
         Self {
@@ -254,8 +255,8 @@ pub fn run<'l>(
     loader: &'l loader::Loader<'l>,
     arguments: &[Register],
     entry_point: LoadedFunction<'l>,
-    call_stack_capacity: usize,
-    debugger: Option<&'l mut dyn debugger::Debugger>,
+    call_stack_capacity: CallStackCapacity,
+    debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
 ) -> std::result::Result<Vec<Register>, Error> {
     let mut interpreter = Interpreter::initialize(loader, call_stack_capacity, debugger);
     interpreter

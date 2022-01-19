@@ -1,18 +1,19 @@
-use crate::interpreter;
+use crate::interpreter::{self, debugger};
 use getmdl::loader;
 
-const DEFAULT_CALL_STACK_MAX_DEPTH: usize = 0xFF;
+const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::CallStackCapacity =
+    unsafe { interpreter::CallStackCapacity::new_unchecked(0xFF) };
 
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
-    call_stack_capacity: usize,
+    call_stack_capacity: interpreter::CallStackCapacity,
 }
 
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
-    call_stack_capacity: usize,
+    call_stack_capacity: interpreter::CallStackCapacity,
 }
 
 impl<'l> Default for Initializer<'l> {
@@ -30,8 +31,8 @@ impl<'l> Initializer<'l> {
         Self::default()
     }
 
-    pub fn set_call_stack_capacity(&mut self, maximum_depth: usize) {
-        self.call_stack_capacity = maximum_depth;
+    pub fn set_call_stack_capacity(&mut self, capacity: interpreter::CallStackCapacity) {
+        self.call_stack_capacity = capacity;
     }
 }
 
@@ -84,8 +85,7 @@ impl<'l> Runtime<'l> {
     pub fn invoke_entry_point(
         &'l self,
         argv: &[&str],
-        // NOTE: Move debugger to Initializer struct.
-        debugger: Option<&'l mut dyn interpreter::debugger::Debugger>,
+        debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
