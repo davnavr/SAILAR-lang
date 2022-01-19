@@ -1,4 +1,4 @@
-use runmdl::interpreter::{debugger, Interpreter};
+use runmdl::interpreter::{debugger, Interpreter, LoaderError};
 use std::borrow::Cow;
 
 #[derive(thiserror::Error, Debug)]
@@ -7,6 +7,9 @@ pub(super) enum Error {
     Message(Cow<'static, str>),
     #[error(transparent)]
     ArgumentError(#[from] clap::Error),
+    #[error(transparent)]
+    LoaderError(#[from] LoaderError),
+    //RuntimeError(#[from] )
 }
 
 impl From<&'static str> for Error {

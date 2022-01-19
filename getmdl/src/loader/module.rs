@@ -45,6 +45,10 @@ impl<'a> Module<'a> {
         &self.source.header.0.identifier
     }
 
+    pub fn full_symbol(&'a self) -> ModuleSymbol<'a> {
+        ModuleSymbol::Borrowed(self.identifier())
+    }
+
     pub fn load_identifier_raw(
         &'a self,
         index: format::indices::Identifier,
@@ -121,7 +125,7 @@ impl<'a> Module<'a> {
         }
     }
 
-    /// Searches for an exported function corresponding to the given symbol.
+    /// Searches for a function defined in this module corresponding to the given symbol.
     pub fn lookup_function(&'a self, symbol: Symbol<'a>) -> Option<&'a Function<'a>> {
         match self.function_lookup_cache.borrow_mut().entry(symbol) {
             hash_map::Entry::Vacant(vacant) => {
@@ -130,7 +134,7 @@ impl<'a> Module<'a> {
                     if let Some(actual_symbol) = self
                         .load_identifier_raw(definition.symbol)
                         .ok()
-                        .filter(|s| *s == vacant.key().as_ref() && definition.is_export)
+                        .filter(|s| *s == vacant.key().as_ref())
                     {
                         let loaded = self
                             .loaded_functions

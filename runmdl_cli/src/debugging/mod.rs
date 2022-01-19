@@ -1,6 +1,6 @@
 use clap::Parser as _;
 use registir::format::Identifier;
-use runmdl::interpreter::{debugger, Interpreter};
+use runmdl::interpreter::{call_stack, debugger, Interpreter, InstructionLocation, BlockIndex};
 use std::{fmt::Write as _, io::Write as _};
 
 mod commands;
@@ -100,6 +100,10 @@ impl CommandLineDebugger {
                     /// The symbol name of the function to set a breakpoint in.
                     #[clap(short, long, parse(try_from_str = std::convert::TryFrom::try_from), value_name = "SYMBOL")]
                     function: Identifier,
+                    #[clap(short, long, default_value_t)]
+                    block: usize,
+                    #[clap(short, long, default_value_t)]
+                    instruction: usize,
                 }
 
                 let arguments =
@@ -111,7 +115,19 @@ impl CommandLineDebugger {
 
                 match matches.first() {
                     Some(function) if matches.len() == 1 => {
-                        todo!();
+                        let success = interpreter.call_stack().breakpoints_mut().insert(
+                            call_stack::Breakpoint::new(InstructionLocation {
+                                block_index: debugger::BlockIndex(if arguments.block == 0 {
+                                    None
+                                } else {
+                                    Some(arguments.block - 1)
+                                }),
+                                code_index: arguments.instruction,
+                            },
+                            function.full_symbol()?.to_owned())
+                        );
+
+                        todo!("try to set breakpoint");
                         Ok(None)
                     }
                     Some(_) => Err("multiples matches for function symbol")?,

@@ -20,7 +20,7 @@ pub use call_stack::{
     Frame as StackFrame, Stack as CallStack, Trace as StackTrace, TraceFrame as StackTraceFrame,
 };
 
-pub use error::{Error, ErrorKind, ProgramHalt};
+pub use error::{Error, ErrorKind, LoaderError, ProgramHalt};
 
 pub use register::{NumericType, Register, RegisterType};
 

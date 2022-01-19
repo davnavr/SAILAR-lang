@@ -12,7 +12,7 @@ pub use error::Error;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
-pub use symbol::{Function as FunctionSymbol, Symbol};
+pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

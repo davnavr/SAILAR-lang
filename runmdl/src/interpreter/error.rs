@@ -18,10 +18,12 @@ impl std::fmt::Display for ProgramHalt {
 
 impl std::error::Error for ProgramHalt {}
 
+pub type LoaderError = getmdl::loader::Error;
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    LoadError(getmdl::loader::Error),
+    LoadError(LoaderError),
     CallStackUnderflow,
     CallStackOverflow,
     UnexpectedEndOfBlock,

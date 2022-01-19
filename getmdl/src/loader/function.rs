@@ -44,6 +44,10 @@ impl<'a> Function<'a> {
         self.module.load_identifier_raw(self.source.symbol)
     }
 
+    pub fn full_symbol(&'a self) -> Result<FunctionSymbol<'a>> {
+        Ok(FunctionSymbol::new(self.module.full_symbol(), Symbol::Borrowed(self.symbol()?)))
+    }
+
     pub fn declaring_module(&'a self) -> &'a Module<'a> {
         self.module
     }

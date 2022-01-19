@@ -1,18 +1,18 @@
-use super::{format, Identifier, ModuleIdentifier};
-use std::borrow::Cow;
+use super::{Identifier, ModuleIdentifier};
+use std::borrow::{Cow, ToOwned};
 
-pub type ModuleSymbol<'a> = Cow<'a, ModuleIdentifier>;
+pub type Module<'a> = Cow<'a, ModuleIdentifier>;
 
 pub type Symbol<'a> = Cow<'a, Identifier>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Function<'a> {
-    module: ModuleSymbol<'a>,
+    module: Module<'a>,
     symbol: Symbol<'a>,
 }
 
 impl<'a> Function<'a> {
-    pub fn new(module: ModuleSymbol<'a>, symbol: Symbol<'a>) -> Self {
+    pub fn new(module: Module<'a>, symbol: Symbol<'a>) -> Self {
         Self { module, symbol }
     }
 
@@ -22,5 +22,12 @@ impl<'a> Function<'a> {
 
     pub fn symbol(&self) -> &Identifier {
         &self.symbol
+    }
+
+    pub fn to_owned<'b>(&self) -> Function<'b> {
+        Function {
+            module: Cow::Owned(self.module.clone().into_owned()),
+            symbol: Cow::Owned(self.symbol.clone().into_owned()),
+        }
     }
 }
