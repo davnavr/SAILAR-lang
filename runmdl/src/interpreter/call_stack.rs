@@ -214,7 +214,7 @@ pub struct BreakpointLookup {
 
 impl BreakpointLookup {
     pub fn insert(&mut self, breakpoint: Breakpoint) {
-        todo!()
+        self.lookup.insert(breakpoint);
     }
 
     pub fn iter(&self) -> impl std::iter::Iterator<Item = &Breakpoint> {

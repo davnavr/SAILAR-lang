@@ -1,6 +1,6 @@
 use clap::Parser as _;
 use registir::format::Identifier;
-use runmdl::interpreter::{call_stack, debugger, Interpreter, InstructionLocation, BlockIndex};
+use runmdl::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
 use std::{fmt::Write as _, io::Write as _};
 
 mod commands;
@@ -96,6 +96,7 @@ impl CommandLineDebugger {
                     about,
                     global_setting(clap::AppSettings::DisableHelpFlag)
                 )]
+                // TODO: COuld have get and set subcommands and have set be the "main" one.
                 struct Arguments {
                     /// The symbol name of the function to set a breakpoint in.
                     #[clap(short, long, parse(try_from_str = std::convert::TryFrom::try_from), value_name = "SYMBOL")]
@@ -115,19 +116,20 @@ impl CommandLineDebugger {
 
                 match matches.first() {
                     Some(function) if matches.len() == 1 => {
-                        let success = interpreter.call_stack().breakpoints_mut().insert(
-                            call_stack::Breakpoint::new(InstructionLocation {
-                                block_index: debugger::BlockIndex(if arguments.block == 0 {
-                                    None
-                                } else {
-                                    Some(arguments.block - 1)
-                                }),
-                                code_index: arguments.instruction,
-                            },
-                            function.full_symbol()?.to_owned())
+                        interpreter.call_stack().breakpoints_mut().insert(
+                            call_stack::Breakpoint::new(
+                                InstructionLocation {
+                                    block_index: debugger::BlockIndex(if arguments.block == 0 {
+                                        None
+                                    } else {
+                                        Some(arguments.block - 1)
+                                    }),
+                                    code_index: arguments.instruction,
+                                },
+                                function.full_symbol()?.to_owned(),
+                            ),
                         );
 
-                        todo!("try to set breakpoint");
                         Ok(None)
                     }
                     Some(_) => Err("multiples matches for function symbol")?,
@@ -154,6 +156,12 @@ impl CommandLineDebugger {
         //     let frames = interpreter.call_stack().stack_trace();
         //     Ok(debugger::Reply::Wait)
         // });
+
+        command!(
+            "cont",
+            "continues execution of the program",
+            |_, _, _| { Ok(Some(debugger::Reply::Continue)) }
+        );
 
         Self {
             started: false,
