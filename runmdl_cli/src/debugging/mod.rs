@@ -131,15 +131,13 @@ impl CommandLineDebugger {
                 match matches.first() {
                     Some(function) if matches.len() == 1 => {
                         interpreter.call_stack().breakpoints_mut().insert(
-                            call_stack::Breakpoint::new(
-                                InstructionLocation {
-                                    block_index: debugger::BlockIndex(if arguments.block == 0 {
-                                        None
-                                    } else {
-                                        Some(arguments.block - 1)
-                                    }),
-                                    code_index: arguments.instruction,
-                                },
+                            call_stack::Breakpoint::with_symbol(
+                                debugger::BlockIndex(if arguments.block == 0 {
+                                    None
+                                } else {
+                                    Some(arguments.block - 1)
+                                }),
+                                arguments.instruction,
                                 function.full_symbol()?.to_owned(),
                             ),
                         );

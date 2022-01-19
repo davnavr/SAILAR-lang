@@ -1,10 +1,18 @@
 use runmdl::runtime::{self, Runtime};
 
-pub fn initialize_from_str<F: for<'a> FnOnce(&'a Runtime<'a>) -> ()>(module: &str, body: F) {
+pub fn initialize_from_str<
+    D,
+    S: FnOnce(&registir::format::Module, &mut runtime::Initializer) -> D,
+    F: for<'a> FnOnce(&'a mut D, &'a Runtime<'a>) -> (),
+>(
+    module: &str,
+    setup: S,
+    body: F,
+) {
+    let program = asmdl::assembler::assemble_from_str(module).unwrap();
     let mut initializer = runtime::Initializer::new();
-    let runtime = Runtime::initialize(
-        &mut initializer,
-        asmdl::assembler::assemble_from_str(module).unwrap(),
-    );
-    body(&runtime)
+    let mut debugger = setup(&program, &mut initializer);
+    let runtime = Runtime::initialize(&mut initializer, program);
+
+    body(&mut debugger, &runtime);
 }

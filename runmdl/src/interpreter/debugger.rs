@@ -1,8 +1,10 @@
 use crate::interpreter;
 
-pub use interpreter::{BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace};
+pub use interpreter::{
+    call_stack::Breakpoint, BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace,
+};
 
-pub use getmdl::loader::{FunctionSymbol, ModuleIdentifier, Symbol};
+pub use getmdl::loader::{FunctionSymbol, ModuleIdentifier, ModuleSymbol, Symbol};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Reply {

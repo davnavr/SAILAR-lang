@@ -228,8 +228,52 @@ pub struct Breakpoint {
 }
 
 impl Breakpoint {
-    pub fn new(location: InstructionLocation, function: debugger::FunctionSymbol<'static>) -> Self {
+    pub fn with_location(
+        location: InstructionLocation,
+        function: debugger::FunctionSymbol<'static>,
+    ) -> Self {
         Self { location, function }
+    }
+
+    pub fn with_symbol(
+        block: BlockIndex,
+        instruction: usize,
+        function: debugger::FunctionSymbol<'static>,
+    ) -> Self {
+        Self::with_location(
+            InstructionLocation {
+                block_index: block,
+                code_index: instruction,
+            },
+            function,
+        )
+    }
+
+    pub fn new(
+        block: BlockIndex,
+        instruction: usize,
+        module: debugger::ModuleSymbol<'static>,
+        symbol: debugger::Symbol<'static>,
+    ) -> Self {
+        Self::with_symbol(
+            block,
+            instruction,
+            debugger::FunctionSymbol::new(module, symbol),
+        )
+    }
+
+    pub fn new_owned(
+        block: BlockIndex,
+        instruction: usize,
+        module: debugger::ModuleIdentifier,
+        symbol: registir::format::Identifier,
+    ) -> Self {
+        Self::new(
+            block,
+            instruction,
+            debugger::ModuleSymbol::Owned(module),
+            debugger::Symbol::Owned(symbol),
+        )
     }
 
     pub fn location(&self) -> &InstructionLocation {
