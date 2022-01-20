@@ -45,6 +45,42 @@ fn successful_function_symbol_lookup() {
 }
 
 #[test]
+fn call_stack_overflow() {
+    setup::initialize_from_str(
+        r#".module { .name "StackOverflowTest"; };
+
+.format {
+    .major 0;
+    .minor 5;
+};
+
+.code @code {
+    .entry $BLOCK;
+    .block $BLOCK () {
+        call @exploder;
+        ret;
+    };
+};
+
+.function @exploder () returns () export {
+    .name "boom";
+    .body defined @code;
+};
+
+.entry @exploder;
+"#,
+        |_, _| (),
+        |_, runtime| {
+            use runmdl::{interpreter::ErrorKind, runtime};
+            match runtime.invoke_entry_point(&[], None) {
+                Err(runtime::Error::InterpreterError(error)) if matches!(error.kind(), ErrorKind::CallStackOverflow(_)) => (),
+                result => panic!("unexpected result {:?}", result),
+            }
+        },
+    );
+}
+
+#[test]
 fn breakpoints_are_set_during_pause() {
     #[derive(Default)]
     struct CollectedData {
