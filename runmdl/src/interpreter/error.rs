@@ -1,4 +1,4 @@
-use super::{call_stack, JumpTarget, RegisterIndex};
+use super::{call_stack, JumpTarget, RegisterIndex, RegisterType};
 
 pub type LoaderError = getmdl::loader::Error;
 
@@ -21,6 +21,11 @@ pub enum ErrorKind {
     InputCountMismatch { expected: usize, actual: usize },
     #[error("expected {expected} result values but got {actual}")]
     ResultCountMismatch { expected: usize, actual: usize },
+    #[error("expected register to contain a value of type {expected} but got {actual}")]
+    RegisterTypeMismatch {
+        expected: RegisterType,
+        actual: RegisterType,
+    },
 }
 
 #[derive(Debug)]

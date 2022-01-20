@@ -94,103 +94,51 @@ impl<'l> Interpreter<'l> {
         }
     }
 
-    fn handle_value_overflow(
-        frame: &mut StackFrame<'l>,
-        behavior: OverflowBehavior,
-        overflowed: bool,
-    ) -> Result<()> {
-        match behavior {
-            OverflowBehavior::Ignore => (),
-            OverflowBehavior::Flag => frame.registers.define_temporary(Register::from(overflowed)),
-            OverflowBehavior::Halt => {
-                if overflowed {
-                    return Err(todo!("overflow"));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn basic_arithmetic_operation<
-        O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
-    >(
-        frame: &mut StackFrame<'l>,
-        operation: &'l instruction_set::BasicArithmeticOperation,
-        o: O,
-    ) -> Result<()> {
-        let (result, overflowed) = o(
-            RegisterType::from(operation.return_type),
-            frame.registers.get(operation.x)?,
-            frame.registers.get(operation.y)?,
-        );
-        frame.registers.define_temporary(result);
-        Self::handle_value_overflow(frame, operation.overflow, overflowed)
-    }
-
-    fn basic_division_operation<
-        O: FnOnce(RegisterType, &Register, &Register) -> Option<(Register, bool)>,
-    >(
-        frame: &mut StackFrame<'l>,
-        operation: &instruction_set::DivisionOperation,
-        o: O,
-    ) -> Result<()> {
-        let numerator = frame.registers.get(operation.numerator)?;
-        let denominator = frame.registers.get(operation.denominator)?;
-        match o(
-            RegisterType::from(operation.return_type),
-            numerator,
-            denominator,
-        ) {
-            Some((result, overflowed)) => {
-                frame.registers.define_temporary(result);
-                Self::handle_value_overflow(frame, operation.overflow, overflowed)
-            }
-            None => match operation.divide_by_zero {
-                #[allow(unused_variables)]
-                DivideByZeroBehavior::Return(return_index) => {
-                    // TODO: Use a function that converts the register value to operation.return_type
-                    todo!("handle div return for division by zero")
-                }
-                DivideByZeroBehavior::Halt => Err(todo!("div by zero")),
-            },
-        }
-    }
-
-    fn basic_bitwise_operation<
-        O: FnOnce(register::NumericType, &Register, &Register) -> Register,
-    >(
-        frame: &mut StackFrame<'l>,
-        operation: &'l instruction_set::BitwiseOperation,
-        o: O,
-    ) -> Result<()> {
-        frame.registers.define_temporary(o(
-            operation.result_type,
-            frame.registers.get(operation.x)?,
-            frame.registers.get(operation.y)?,
-        ));
-        Ok(())
-    }
-
-    fn bitwise_shift_operation<
-        O: FnOnce(register::NumericType, &Register, &Register) -> Register,
-    >(
-        frame: &mut StackFrame<'l>,
-        operation: &'l instruction_set::BitwiseShiftOperation,
-        o: O,
-    ) -> Result<()> {
-        frame.registers.define_temporary(o(
-            *operation.result_type(),
-            frame.registers.get(*operation.value())?,
-            frame.registers.get(*operation.amount())?,
-        ));
-        Ok(())
-    }
-
     fn execute_instruction(
         &mut self,
         instruction: &'l Instruction,
         entry_point_results: &mut Vec<Register>,
     ) -> Result<()> {
+        fn require_equal_register_types(x: &Register, y: &Register) -> Result<RegisterType> {
+            if x.value_type == y.value_type {
+                Ok(x.value_type)
+            } else {
+                Err(ErrorKind::RegisterTypeMismatch {
+                    expected: x.value_type,
+                    actual: y.value_type,
+                })
+            }
+        }
+
+        fn handle_value_overflow<'l>(
+            frame: &mut StackFrame<'l>,
+            behavior: OverflowBehavior,
+            overflowed: bool,
+        ) -> Result<()> {
+            match behavior {
+                OverflowBehavior::Ignore => (),
+                OverflowBehavior::Flag => {
+                    frame.registers.define_temporary(Register::from(overflowed))
+                }
+            }
+            Ok(())
+        }
+
+        fn basic_arithmetic_operation<
+            'l,
+            O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
+        >(
+            frame: &mut StackFrame<'l>,
+            operation: &'l instruction_set::BasicArithmeticOperation,
+            o: O,
+        ) -> Result<()> {
+            let x = frame.registers.get(operation.x)?;
+            let y = frame.registers.get(operation.y)?;
+            let (result, overflowed) = o(require_equal_register_types(x, y)?, x, y);
+            frame.registers.define_temporary(result);
+            handle_value_overflow(frame, operation.overflow, overflowed)
+        }
+
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
@@ -240,6 +188,21 @@ impl<'l> Interpreter<'l> {
 
                 self.call_stack.push(callee, &arguments)?;
             }
+            Instruction::Add(operation) => basic_arithmetic_operation(
+                self.call_stack.current_mut()?,
+                operation,
+                Register::overflowing_add,
+            )?,
+            Instruction::Sub(operation) => basic_arithmetic_operation(
+                self.call_stack.current_mut()?,
+                operation,
+                Register::overflowing_sub,
+            )?,
+            Instruction::Mul(operation) => basic_arithmetic_operation(
+                self.call_stack.current_mut()?,
+                operation,
+                Register::overflowing_mul,
+            )?,
             Instruction::ConstI(value) => self
                 .call_stack
                 .current_mut()?

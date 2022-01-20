@@ -73,7 +73,11 @@ fn call_stack_overflow() {
         |_, runtime| {
             use runmdl::{interpreter::ErrorKind, runtime};
             match runtime.invoke_entry_point(&[], None) {
-                Err(runtime::Error::InterpreterError(error)) if matches!(error.kind(), ErrorKind::CallStackOverflow(_)) => (),
+                Err(runtime::Error::InterpreterError(error))
+                    if matches!(error.kind(), ErrorKind::CallStackOverflow(_)) =>
+                {
+                    ()
+                }
                 result => panic!("unexpected result {:?}", result),
             }
         },
