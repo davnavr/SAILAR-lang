@@ -220,9 +220,9 @@ impl<'l> Interpreter<'l> {
                     .load_function_raw(call.function)?;
 
                 // TODO: Validate signature of callee.
-                let mut arguments = Vec::with_capacity(callee.raw_signature()?.return_types.len());
-
-                if arguments.len() != call.arguments.len() {
+                let mut arguments = Vec::with_capacity(callee.raw_signature()?.parameter_types.len());
+                
+                if arguments.capacity() != call.arguments.len() {
                     return Err(ErrorKind::InputCountMismatch {
                         expected: arguments.len(),
                         actual: call.arguments.len(),
