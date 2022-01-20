@@ -1,6 +1,6 @@
 use crate::ast;
 use registir::format::indices;
-use std::{collections::hash_map, marker::PhantomData};
+use std::{collections::hash_map, fmt::{Debug, Formatter}, marker::PhantomData};
 
 pub struct IndexedMap<I, K, V> {
     values: Vec<V>,
@@ -49,16 +49,20 @@ where
     }
 
     fn try_insert_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
-        let index = self.values.len();
-        match self.lookup.insert(key, index) {
-            None => {
+        match self.lookup.entry(key) {
+            hash_map::Entry::Vacant(vacant) => {
+                let index = self.values.len();
+                vacant.insert(index);
                 self.values.push(value());
                 Ok(index.try_into().unwrap())
             }
-            Some(existing_index) => Err((
-                existing_index.try_into().unwrap(),
-                &self.values[existing_index],
-            )),
+            hash_map::Entry::Occupied(occupied) => {
+                let index = *occupied.get();
+                Err((
+                    index.try_into().unwrap(),
+                    &self.values[index],
+                ))
+            }
         }
     }
 
@@ -104,6 +108,16 @@ where
             }
             hash_map::Entry::Vacant(_) => None,
         }
+    }
+}
+
+impl<I, K, V> Debug for IndexedMap<I, K, V> where K: Debug, V: Debug {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let mut items = f.debug_map();
+        for (ref key, &index) in &self.lookup {
+            items.entry(key, &(index, &self.values[index]));
+        }
+        items.finish()
     }
 }
 
@@ -264,5 +278,18 @@ mod tests {
                 .collect::<Vec<u32>>(),
             vec![42, 0xFFFF, 255]
         );
+    }
+
+    #[test]
+    fn indexed_map_insert_or_get() {
+        let mut map = lookup::IndexedMap::<u32, &'_ ast::Identifier, u32>::new();
+
+        let key_1 = ast::Identifier::try_from("food").unwrap();
+        map.insert(&key_1, 5).unwrap();
+
+        let key_2 = ast::Identifier::try_from("bard").unwrap();
+        map.insert(&key_2, 55).unwrap();
+
+        assert_eq!(1, map.insert_or_get_with(&key_2, || unreachable!()));
     }
 }
