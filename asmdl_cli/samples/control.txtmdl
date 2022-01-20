@@ -9,7 +9,9 @@
         br $END with %t_sum;
     };
     .block $END (%i_sum) {
-        ret %i_sum;
+        %t_two = const.i s32 2;
+        %t_result = add %t_two to %i_sum;
+        ret %t_result;
     };
 };
 

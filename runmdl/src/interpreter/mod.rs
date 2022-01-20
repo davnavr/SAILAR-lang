@@ -99,6 +99,17 @@ impl<'l> Interpreter<'l> {
         instruction: &'l Instruction,
         entry_point_results: &mut Vec<Register>,
     ) -> Result<()> {
+        fn collect_registers_from<'l>(
+            frame: &mut StackFrame<'l>,
+            indices: &'l [RegisterIndex],
+        ) -> Result<Vec<Register>> {
+            let mut registers = Vec::with_capacity(indices.len());
+            for index in indices.iter() {
+                registers.push(frame.registers.get(*index)?.clone());
+            }
+            Ok(registers)
+        }
+
         fn require_equal_register_types(x: &Register, y: &Register) -> Result<RegisterType> {
             if x.value_type == y.value_type {
                 Ok(x.value_type)
@@ -124,9 +135,7 @@ impl<'l> Interpreter<'l> {
             Ok(())
         }
 
-        fn basic_arithmetic_operation<
-            'l,
-        >(
+        fn basic_arithmetic_operation<'l>(
             frame: &mut StackFrame<'l>,
             operation: &'l instruction_set::BasicArithmeticOperation,
             o: fn(RegisterType, &Register, &Register) -> (Register, bool),
@@ -141,12 +150,8 @@ impl<'l> Interpreter<'l> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
-                let popped = self.call_stack.pop()?;
-                let mut results = Vec::with_capacity(indices.len());
-
-                for index in indices.iter() {
-                    results.push(popped.registers.get(*index)?.clone());
-                }
+                let mut popped = self.call_stack.pop()?;
+                let mut results = collect_registers_from(&mut popped, indices)?;
 
                 if popped.result_count != results.len() {
                     return Err(ErrorKind::ResultCountMismatch {
@@ -161,6 +166,16 @@ impl<'l> Interpreter<'l> {
                     }
                     None => *entry_point_results = results,
                 }
+            }
+            Instruction::Br {
+                target,
+                input_registers: input_register_indices,
+            } => {
+                let inputs = collect_registers_from(
+                    self.call_stack().current_mut()?,
+                    input_register_indices,
+                )?;
+                self.call_stack().current_jump_to(*target, &inputs)?
             }
             Instruction::Call(call) => {
                 let current_frame = self.call_stack.current()?;

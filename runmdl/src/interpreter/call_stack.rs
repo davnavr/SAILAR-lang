@@ -125,6 +125,7 @@ impl<'l> InstructionPointer<'l> {
         }
     }
 
+    // TODO: Allow jumping to entry block?
     fn jump(&mut self, target: JumpTarget) -> Result<()> {
         let index = usize::try_from(target).map_err(|_| ErrorKind::UndefinedBlock(target))?;
         match self.code.blocks.get(index) {
@@ -189,7 +190,12 @@ impl<'l> Frame<'l> {
         }
     }
 
-    pub(super) fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
+    /// Updates the instruction pointer to point at the specified target.
+    /// 
+    /// The breakpoint list must be updated afterward.
+    fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
+        self.registers.temporaries.clear();
+
         // Replace input registers with new inputs.
         self.registers.inputs.clear();
         self.registers.inputs.extend_from_slice(inputs);
@@ -203,18 +209,13 @@ impl<'l> Frame<'l> {
             .input_register_count
             .try_into()
             .unwrap();
+
         if expected_input_count != inputs.len() {
             return Err(ErrorKind::InputCountMismatch {
                 expected: expected_input_count,
                 actual: inputs.len(),
             });
         }
-
-        // if let Some(debugger) = debugger {
-        //     // current_frame.breakpoints.source = debugger
-        //     //     .breakpoints_in_block(current_frame.current_method, current_frame.block_index);
-        //     current_frame.breakpoints.index = 0;
-        // }
 
         Ok(())
     }
@@ -496,6 +497,20 @@ impl<'l> Stack<'l> {
 
     pub(super) fn update_current_breakpoints(&mut self) -> Result<()> {
         if let Some(mut current) = self.current.take() {
+            self.breakpoints.update_in(&mut current)?;
+            self.current = Some(current);
+        }
+        Ok(())
+    }
+
+    pub(super) fn current_jump_to(
+        &mut self,
+        target: JumpTarget,
+        inputs: &[Register],
+    ) -> Result<()> {
+        // Duplicate code with update_current_breakpoints
+        if let Some(mut current) = self.current.take() {
+            current.jump(target, inputs)?;
             self.breakpoints.update_in(&mut current)?;
             self.current = Some(current);
         }
