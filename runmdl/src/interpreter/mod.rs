@@ -126,15 +126,14 @@ impl<'l> Interpreter<'l> {
 
         fn basic_arithmetic_operation<
             'l,
-            O: FnOnce(RegisterType, &Register, &Register) -> (Register, bool),
         >(
             frame: &mut StackFrame<'l>,
             operation: &'l instruction_set::BasicArithmeticOperation,
-            o: O,
+            o: fn(RegisterType, &Register, &Register) -> (Register, bool),
         ) -> Result<()> {
             let x = frame.registers.get(operation.x)?;
             let y = frame.registers.get(operation.y)?;
-            let (result, overflowed) = o(require_equal_register_types(x, y)?, x, y);
+            let (result, overflowed) = o(require_equal_register_types(x, y)?, x, y); // TODO: Move check for equal register types into actual operation
             frame.registers.define_temporary(result);
             handle_value_overflow(frame, operation.overflow, overflowed)
         }
