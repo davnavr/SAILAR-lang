@@ -213,6 +213,9 @@ impl<'l> Interpreter<'l> {
                     None => entry_point_results = results,
                 }
             }
+            Instruction::Call(call) => {
+                todo!("call")
+            }
             Instruction::ConstI(value) => self
                 .call_stack
                 .current_mut()?

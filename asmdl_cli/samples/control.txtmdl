@@ -1,0 +1,32 @@
+.format { .major 0; .minor 5; };
+.module { .name "ControlTransferTests"; .version 1; };
+
+.code @code_helper {
+    .entry $ENTRY;
+    .block $ENTRY (%input) {
+        //%sum = add
+        %sum = const.i s32 123;
+        ret %sum;
+    };
+};
+
+.function @helper (s32) returns (s32) {
+    .name "Helper";
+    .body defined @code_helper;
+};
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t_input = const.i s32 5;
+        %t_exit = call @helper %t_input;
+        ret %t_exit;
+    };
+};
+
+.function @f () returns (s32) {
+    .name "Main";
+    .body defined @code_main;
+};
+
+.entry @f;

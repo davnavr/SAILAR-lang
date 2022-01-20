@@ -1,5 +1,5 @@
 pub use registir::format::{
-    instruction_set::{NumericType, OverflowBehavior, TailCall},
+    instruction_set::{NumericType, OverflowBehavior},
     type_system::PrimitiveType,
     Identifier,
 };
@@ -128,6 +128,10 @@ pub struct BitwiseOperation {
 pub enum Instruction {
     Nop,
     Ret(Vec<RegisterSymbol>),
+    Call {
+        function: GlobalSymbol,
+        arguments: Vec<RegisterSymbol>,
+    },
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
 }
 

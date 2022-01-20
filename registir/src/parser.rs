@@ -3,7 +3,7 @@ use crate::{
     format::{
         self,
         flags::{self, ExportFlag as _},
-        instruction_set::{self, CallFlags, Instruction, Opcode, TailCall},
+        instruction_set::{self, Instruction, Opcode},
         numeric, type_system,
     },
 };
@@ -394,15 +394,6 @@ fn bitwise_shift_operation<R: Read>(
     bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
 }
 
-fn call_flags<R: Read>(src: &mut R) -> Result<CallFlags> {
-    let bits = byte(src)?;
-    let flags: CallFlags = unsafe { std::mem::transmute(bits) };
-    if flags.contains(CallFlags::TAIL_CALL_MASK) {
-        return Err(Error::InvalidCallFlags(bits));
-    }
-    Ok(flags)
-}
-
 fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instruction> {
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
@@ -417,23 +408,12 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
         //     false_branch: unsigned_index(src, size)?,
         //     input_registers: length_encoded_indices(src, size)?,
         // }),
-        // Opcode::Call => {
-        //     let flags = call_flags(src)?;
-        //     // TODO: Check that call flags are valid.
-        //     Ok(Instruction::Call(
-        //         format::instruction_set::CallInstruction {
-        //             tail_call: if flags.contains(CallFlags::TAIL_CALL_REQUIRED) {
-        //                 TailCall::Required
-        //             } else if flags.contains(CallFlags::TAIL_CALL_PROHIBITED) {
-        //                 TailCall::Prohibited
-        //             } else {
-        //                 TailCall::Allowed
-        //             },
-        //             function: unsigned_index(src, size)?,
-        //             arguments: length_encoded_indices(src, size)?,
-        //         },
-        //     ))
-        // }
+        Opcode::Call => Ok(Instruction::Call(
+            format::instruction_set::CallInstruction {
+                function: unsigned_index(src, size)?,
+                arguments: length_encoded_indices(src, size)?,
+            },
+        )),
         // Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
         // Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
         // Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),

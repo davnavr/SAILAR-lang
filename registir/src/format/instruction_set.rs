@@ -257,50 +257,13 @@ impl BitwiseShiftOperation {
     }
 }
 
-bitflags! {
-    #[repr(transparent)]
-    pub struct CallFlags: u8 {
-        const NONE = 0;
-        const TAIL_CALL_REQUIRED = 0b0000_0001;
-        const TAIL_CALL_PROHIBITED = 0b0000_0010;
-        const TAIL_CALL_MASK = 0b0000_0011;
-        /// Applicable to the `call.virt` instruction, halts execution if the `this` argument is `null`.
-        const HALT_ON_NULL_THIS = 0b0000_0100;
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TailCall {
-    Allowed,
-    Required,
-    Prohibited,
-}
-
-impl TailCall {
-    pub fn flags(self) -> CallFlags {
-        match self {
-            Self::Allowed => CallFlags::NONE,
-            Self::Required => CallFlags::TAIL_CALL_REQUIRED,
-            Self::Prohibited => CallFlags::TAIL_CALL_PROHIBITED,
-        }
-    }
-}
-
 /// # Structure
-/// - [`CallInstruction::flags()`]
 /// - [`function`]
 /// - [`arguments`]
 #[derive(Debug, PartialEq)]
 pub struct CallInstruction {
-    pub tail_call: TailCall,
     pub function: FunctionIndex,
     pub arguments: LenVec<RegisterIndex>,
-}
-
-impl CallInstruction {
-    pub fn flags(&self) -> CallFlags {
-        self.tail_call.flags()
-    }
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
@@ -344,15 +307,17 @@ pub enum Instruction {
     //     false_branch: JumpTarget,
     //     input_registers: LenVec<RegisterIndex>,
     // },
-    // /// ```txt
-    // /// <result0>, <result1>, ... = call [tail.prohibited | tail.required] <function> <argument0>, <argument1>, ...;
-    // /// ```
-    // /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
-    // ///
-    // /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
-    // /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
-    // /// function's signature.
-    // Call(CallInstruction),
+    /// ```txt
+    /// <result0>, <result1>, ... = call <function> <argument0>, <argument1>, ...;
+    /// ```
+    /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
+    ///
+    /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
+    /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
+    /// function's signature.
+    Call(CallInstruction),
+    //CallIndr
+    //CallRet
 
     // /// ```txt
     // /// <sum> = add <numeric type> <x> and <y>;
@@ -432,7 +397,6 @@ pub enum Instruction {
     // /// Rotates the value in the specified `value` register converted to the specified numeric type right by the amount in the
     // /// `amount` register.
     // RotR(BitwiseShiftOperation),
-
     /// ```txt
     /// <result> = const.i <integer type> <value>;
     /// ```
@@ -454,7 +418,7 @@ impl Instruction {
             Instruction::Ret(_) => Opcode::Ret,
             // Instruction::Br(_, _) => Opcode::Br,
             // Instruction::BrIf { .. } => Opcode::BrIf,
-            // Instruction::Call(_) => Opcode::Call,
+            Instruction::Call(_) => Opcode::Call,
             // Instruction::Add(_) => Opcode::Add,
             // Instruction::Sub(_) => Opcode::Sub,
             // Instruction::Mul(_) => Opcode::Mul,
@@ -480,7 +444,7 @@ impl Instruction {
             // | Instruction::Br(_, _)
             // | Instruction::BrIf { .. }
             | Instruction::Break => 0,
-            // Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
+            Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             // Instruction::Add(BasicArithmeticOperation { overflow, .. })
             // | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             // | Instruction::Mul(BasicArithmeticOperation { overflow, .. })

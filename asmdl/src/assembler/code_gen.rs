@@ -6,6 +6,7 @@ pub type CodeBlockLookup<'a> =
 pub type FunctionCodeLookup<'a> =
     lookup::IndexedMap<format::indices::Code, &'a ast::Identifier, FunctionBodyAssembler<'a>>;
 
+#[derive(Clone)]
 pub struct CodeBlockAssembler<'a> {
     location: &'a ast::Position,
     input_registers: &'a [ast::RegisterSymbol],
@@ -16,7 +17,9 @@ impl<'a> CodeBlockAssembler<'a> {
     pub(crate) fn assemble(
         &self,
         errors: &mut error::Builder,
-        _block_lookup: &CodeBlockLookup<'a>,
+        // TODO: Have struct to handle lookup in definition or imports.
+        function_lookup: &definitions::FunctionLookup<'a>,
+        _block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
         fn lookup_register<'a>(
@@ -74,7 +77,7 @@ impl<'a> CodeBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
-            use format::instruction_set::Instruction;
+            use format::instruction_set::{self, FunctionIndex, Instruction};
 
             let expected_return_count;
             let next_instruction;
@@ -87,6 +90,32 @@ impl<'a> CodeBlockAssembler<'a> {
                     expected_return_count = 0;
                     next_instruction = lookup_many_registers(errors, register_lookup, registers)
                         .map(Instruction::Ret);
+                }
+                ast::Instruction::Call {
+                    function,
+                    arguments,
+                } => {
+                    if let Some((function_index, function)) =
+                        function_lookup.get(function.identifier())
+                    {
+                        expected_return_count = function.return_types.len();
+                        next_instruction =
+                            lookup_many_registers(errors, register_lookup, arguments).map(
+                                move |arguments| {
+                                    Instruction::Call(instruction_set::CallInstruction {
+                                        function: FunctionIndex::Defined(function_index),
+                                        arguments,
+                                    })
+                                },
+                            );
+                    } else {
+                        errors.push_with_location(
+                            ErrorKind::UndefinedGlobal(function.identifier().clone()),
+                            statement.instruction.1.clone(),
+                        );
+                        next_instruction = None;
+                        expected_return_count = 0;
+                    }
                 }
                 ast::Instruction::ConstI(constant_type, value) => {
                     use format::instruction_set::{IntegerConstant, PrimitiveType};
@@ -182,6 +211,7 @@ impl<'a> FunctionBodyAssembler<'a> {
     pub(crate) fn assemble(
         &self,
         errors: &mut error::Builder,
+        function_lookup: &mut definitions::FunctionLookup<'a>,
         block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> Option<format::Code> {
@@ -234,11 +264,14 @@ impl<'a> FunctionBodyAssembler<'a> {
                 entry_block: block_lookup
                     .swap_remove(entry_block_name.identifier())
                     .expect("entry block should exist in lookup")
-                    .assemble(errors, block_lookup, register_lookup),
-                blocks: format::LenVec(assembler::assemble_items(
-                    block_lookup.values(),
-                    |(_, block)| Some(block.assemble(errors, block_lookup, register_lookup)),
-                )),
+                    .assemble(errors, function_lookup, block_lookup, register_lookup),
+                blocks: {
+                    // Block lookup is cloned, otherwise it would need to be borrowed twice.
+                    let definitions: Vec<_> = block_lookup.values().clone();
+                    format::LenVec(assembler::assemble_items(&definitions, |(_, block)| {
+                        Some(block.assemble(errors, function_lookup, block_lookup, register_lookup))
+                    }))
+                },
             })
         } else {
             errors.push_with_location(

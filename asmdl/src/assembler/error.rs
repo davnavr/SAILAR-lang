@@ -16,10 +16,7 @@ pub enum ErrorKind {
     #[error("{1} is not a valid value for constant integers of type {0}")]
     ConstantIntegerOutOfRange(ast::PrimitiveType, i128),
     #[error("expected {expected} return registers but got {actual}")]
-    InvalidReturnRegisterCount {
-        expected: usize,
-        actual: usize,
-    },
+    InvalidReturnRegisterCount { expected: usize, actual: usize },
     #[error("a register with the name %{name} already exists")]
     DuplicateRegister {
         name: ast::Identifier,

@@ -243,6 +243,12 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 keyword("ret")
                     .ignore_then(many_registers())
                     .map(ast::Instruction::Ret),
+                keyword("call")
+                    .ignore_then(global_symbol.then(many_registers()))
+                    .map(|(function, arguments)| ast::Instruction::Call {
+                        function,
+                        arguments,
+                    }),
                 keyword("const.i")
                     .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
                     .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),

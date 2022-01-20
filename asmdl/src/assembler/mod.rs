@@ -238,7 +238,12 @@ pub fn assemble_declarations(
             let mut register_map = lookup::RegisterMap::new();
 
             assemble_items(function_bodies.values(), |body| {
-                body.assemble(&mut errors, &mut block_lookup, &mut register_map)
+                body.assemble(
+                    &mut errors,
+                    &mut function_definitions,
+                    &mut block_lookup,
+                    &mut register_map,
+                )
             })
         };
 

@@ -38,10 +38,14 @@ where
     usize: TryInto<I>,
     <usize as TryInto<I>>::Error: std::fmt::Debug,
 {
-    pub fn get_index(&self, key: K) -> Option<I> {
+    pub fn get(&self, key: K) -> Option<(I, &V)> {
         self.lookup
             .get(&key)
-            .map(|&index| index.try_into().unwrap())
+            .map(|&index| (index.try_into().unwrap(), &self.values[index]))
+    }
+
+    pub fn get_index(&self, key: K) -> Option<I> {
+        self.get(key).map(|(index, _)| index)
     }
 
     fn try_insert_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {

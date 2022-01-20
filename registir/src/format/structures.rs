@@ -1,4 +1,7 @@
-use std::{fmt::{Debug, Formatter}, ops::Deref};
+use std::{
+    fmt::{Debug, Formatter},
+    ops::Deref,
+};
 
 /// Represents data that is preceded by an unsigned integer indicating the byte length of the following data.
 #[derive(Default, Eq, PartialEq, PartialOrd)]
