@@ -184,7 +184,7 @@ impl<'a> RegisterMap<'a> {
                     index = indices::Register::Temporary(indices::TemporaryRegister::from(
                         self.temporary_count,
                     ));
-                    self.input_count += 1;
+                    self.temporary_count += 1;
                 }
 
                 entry.insert((index, name.location().clone()));
