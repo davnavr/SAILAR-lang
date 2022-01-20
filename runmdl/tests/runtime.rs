@@ -75,53 +75,52 @@ fn breakpoints_are_set_during_pause() {
 "#,
         |program, _| {
             let program_name = program.header.0.identifier.clone();
-            let data = std::rc::Rc::new(std::cell::RefCell::new(CollectedData::default()));
+            let returned_data = std::rc::Rc::new(std::cell::RefCell::new(CollectedData::default()));
             let mut pause_count = 0u8;
-            (
-                data.clone(),
-                move |interpreter: &mut interpreter::Interpreter| {
-                    use interpreter::debugger;
+            let data = returned_data.clone();
+            let debugger = move |interpreter: &mut interpreter::Interpreter| {
+                use interpreter::debugger;
 
-                    let call_stack = interpreter.call_stack();
-                    let trace = call_stack.stack_trace();
+                let call_stack = interpreter.call_stack();
+                let trace = call_stack.stack_trace();
 
-                    let reply = match pause_count {
-                        0 => {
-                            call_stack
-                                .breakpoints_mut()
-                                .insert(debugger::Breakpoint::new_owned(
-                                    debugger::BlockIndex::entry(),
-                                    1,
-                                    program_name.clone(),
-                                    registir::format::Identifier::try_from("test").unwrap(),
-                                ));
+                let reply = match pause_count {
+                    0 => {
+                        call_stack
+                            .breakpoints_mut()
+                            .insert(debugger::Breakpoint::new_owned(
+                                debugger::BlockIndex::entry(),
+                                1,
+                                program_name.clone(),
+                                registir::format::Identifier::try_from("test").unwrap(),
+                            ));
 
-                            debugger::Reply::Continue
-                        }
-                        1 => {
-                            call_stack
-                                .breakpoints_mut()
-                                .insert(debugger::Breakpoint::with_symbol(
-                                    debugger::BlockIndex::entry(),
-                                    2,
-                                    trace[0].function().clone(),
-                                ));
+                        debugger::Reply::Continue
+                    }
+                    1 => {
+                        call_stack
+                            .breakpoints_mut()
+                            .insert(debugger::Breakpoint::with_symbol(
+                                debugger::BlockIndex::entry(),
+                                2,
+                                trace[0].function().clone(),
+                            ));
 
-                            data.borrow_mut().value_1 =
-                                Some(i32::try_from(&trace[0].temporary_registers()[0]).unwrap());
-                            debugger::Reply::Continue
-                        }
-                        2.. => {
-                            data.borrow_mut().value_2 =
-                                Some(i32::try_from(&trace[0].temporary_registers()[1]).unwrap());
-                            debugger::Reply::Detach
-                        }
-                    };
+                        data.borrow_mut().value_1 =
+                            Some(i32::try_from(&trace[0].temporary_registers()[0]).unwrap());
+                        debugger::Reply::Continue
+                    }
+                    2.. => {
+                        data.borrow_mut().value_2 =
+                            Some(i32::try_from(&trace[0].temporary_registers()[1]).unwrap());
+                        debugger::Reply::Detach
+                    }
+                };
 
-                    pause_count += 1;
-                    reply
-                },
-            )
+                pause_count += 1;
+                reply
+            };
+            (returned_data, debugger)
         },
         |(data, debugger), runtime| {
             assert_eq!(42, runtime.invoke_entry_point(&[], Some(debugger)).unwrap());

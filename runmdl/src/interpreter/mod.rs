@@ -193,7 +193,19 @@ impl<'l> Interpreter<'l> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
-                let mut results = self.call_stack.pop()?;
+                let popped = self.call_stack.pop()?;
+                let mut results = Vec::with_capacity(indices.len());
+
+                for index in indices.iter() {
+                    results.push(popped.registers.get(*index)?.clone());
+                }
+
+                if popped.result_count != results.len() {
+                    return Err(ErrorKind::ResultCountMismatch {
+                        expected: popped.result_count,
+                        actual: results.len(),
+                    });
+                }
 
                 match self.call_stack.peek_mut() {
                     Some(previous_frame) => {

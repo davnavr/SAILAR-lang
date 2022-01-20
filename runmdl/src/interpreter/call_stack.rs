@@ -40,7 +40,6 @@ pub type Trace = Vec<TraceFrame>;
 
 pub(crate) struct Registers {
     inputs: Vec<Register>,
-    results: Vec<Register>,
     temporaries: Vec<Register>,
 }
 
@@ -85,10 +84,6 @@ impl Registers {
 
     pub fn temporaries(&self) -> &[Register] {
         &self.temporaries
-    }
-
-    pub fn results_mut(&mut self) -> &mut [Register] {
-        &mut self.results
     }
 }
 
@@ -143,7 +138,6 @@ impl<'l> InstructionPointer<'l> {
     }
 
     fn check_breakpoint_hit(&mut self) -> bool {
-        dbg!(self.code_index());
         match self.breakpoints.front() {
             Some(&next) => {
                 let current_index = self.code_index();
@@ -175,6 +169,7 @@ pub struct Frame<'l> {
     depth: usize,
     previous: Option<Box<Frame<'l>>>,
     function: LoadedFunction<'l>,
+    pub(super) result_count: usize,
     pub(super) registers: Registers,
     pub(super) instructions: InstructionPointer<'l>,
 }
@@ -350,6 +345,11 @@ impl BreakpointLookup {
     }
 }
 
+pub(super) struct PoppedFrame {
+    pub(super) registers: Vec<Register>,
+    pub(super) result_count: usize,
+}
+
 pub use std::num::NonZeroUsize as StackCapacity;
 
 pub struct Stack<'l> {
@@ -359,7 +359,7 @@ pub struct Stack<'l> {
 }
 
 impl<'l> Stack<'l> {
-    pub(crate) fn new(capacity: StackCapacity) -> Self {
+    pub(super) fn new(capacity: StackCapacity) -> Self {
         Self {
             current: None,
             capacity,
@@ -393,19 +393,17 @@ impl<'l> Stack<'l> {
         self.peek_mut().ok_or(ErrorKind::CallStackUnderflow)
     }
 
-    pub(crate) fn pop(&mut self) -> Result<Vec<Register>> {
+    pub(super) fn pop(&mut self) -> Result<Box<Frame<'l>>> {
         match self.current.take() {
             Some(mut current) => {
-                let results = std::mem::take(&mut current.registers.results);
                 self.current = current.previous.take();
-                // TODO: Update breakpoints.
-                Ok(results)
+                Ok(current)
             }
             None => Err(ErrorKind::CallStackUnderflow),
         }
     }
 
-    pub(crate) fn push(
+    pub(super) fn push(
         &mut self,
         function: LoadedFunction<'l>,
         arguments: &[Register],
@@ -418,8 +416,6 @@ impl<'l> Stack<'l> {
         let signature = function.signature()?;
         let mut argument_registers =
             Register::initialize_many(signature.parameter_types().into_iter().copied());
-        let result_registers =
-            Register::initialize_many(signature.return_types().into_iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
@@ -448,9 +444,9 @@ impl<'l> Stack<'l> {
                     depth,
                     function,
                     previous,
+                    result_count: signature.return_types().len(),
                     registers: Registers {
                         inputs: argument_registers,
-                        results: result_registers,
                         temporaries: Vec::new(),
                     },
                     instructions: InstructionPointer {
