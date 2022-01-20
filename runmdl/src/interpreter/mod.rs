@@ -175,7 +175,25 @@ impl<'l> Interpreter<'l> {
                     self.call_stack().current_mut()?,
                     input_register_indices,
                 )?;
+
                 self.call_stack().current_jump_to(*target, &inputs)?
+            }
+            Instruction::BrIf {
+                condition,
+                true_branch: true_target,
+                false_branch: false_target,
+                input_registers: input_register_indices,
+            } => {
+                let current = self.call_stack().current_mut()?;
+                let inputs = collect_registers_from(current, input_register_indices)?;
+                
+                let target = if current.registers.get(*condition)?.is_truthy() {
+                    *true_target
+                } else {
+                    *false_target
+                };
+
+                self.call_stack().current_jump_to(target, &inputs)?
             }
             Instruction::Call(call) => {
                 let current_frame = self.call_stack.current()?;

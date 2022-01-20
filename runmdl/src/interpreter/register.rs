@@ -162,6 +162,9 @@ impl std::fmt::UpperHex for Register {
 
 trait InterpretRegister {
     /// Interprets the value of the register, performing any necessary conversions.
+    #[deprecated(
+        note = "interpreting registers is not good, check the register type and extract the value safely instead."
+    )]
     fn interpret_register(register: &Register) -> Self;
 }
 
