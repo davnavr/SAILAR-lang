@@ -283,18 +283,18 @@ pub enum Instruction {
         target: JumpTarget,
         input_registers: LenVec<RegisterIndex>,
     },
-    // /// ```txt
-    // /// br.if <condition> then <true> else <false>;
-    // /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
-    // /// ```
-    // /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
-    // /// otherwise, control flow is transferred to the `false` block.
-    // BrIf {
-    //     condition: RegisterIndex,
-    //     true_branch: JumpTarget,
-    //     false_branch: JumpTarget,
-    //     input_registers: LenVec<RegisterIndex>,
-    // },
+    /// ```txt
+    /// br.if <condition> then <true> else <false>;
+    /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
+    /// ```
+    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
+    /// otherwise, control flow is transferred to the `false` block.
+    BrIf {
+        condition: RegisterIndex,
+        true_branch: JumpTarget,
+        false_branch: JumpTarget,
+        input_registers: LenVec<RegisterIndex>,
+    },
     /// ```txt
     /// <result0>, <result1>, ... = call <function> <argument0>, <argument1>, ...;
     /// ```
@@ -401,7 +401,7 @@ impl Instruction {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
             Instruction::Br { .. } => Opcode::Br,
-            //Instruction::BrIf { .. } => Opcode::BrIf,
+            Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Call(_) => Opcode::Call,
             Instruction::Add(_) => Opcode::Add,
             Instruction::Sub(_) => Opcode::Sub,
@@ -426,7 +426,7 @@ impl Instruction {
             Instruction::Nop
             | Instruction::Ret(_)
             | Instruction::Br { .. }
-            // | Instruction::BrIf { .. }
+            | Instruction::BrIf { .. }
             | Instruction::Break => 0,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })

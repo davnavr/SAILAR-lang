@@ -111,6 +111,12 @@ impl<'a> CodeBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
+            macro_rules! emit_instruction {
+                ($i: expr) => {
+                    (|| $i)()
+                };
+            }
+
             let expected_return_count;
             let next_instruction;
             match &statement.instruction.0 {
@@ -131,6 +137,26 @@ impl<'a> CodeBlockAssembler<'a> {
                             target: target_block,
                             input_registers,
                         });
+                }
+                ast::Instruction::BrIf {
+                    condition,
+                    true_branch,
+                    false_branch,
+                    inputs,
+                } => {
+                    expected_return_count = 0;
+                    next_instruction = emit_instruction!({
+                        Some(Instruction::BrIf {
+                            condition: lookup_register(errors, register_lookup, condition)?,
+                            true_branch: lookup_block(errors, block_lookup, true_branch)?,
+                            false_branch: lookup_block(errors, block_lookup, false_branch)?,
+                            input_registers: lookup_many_registers(
+                                errors,
+                                register_lookup,
+                                inputs,
+                            )?,
+                        })
+                    });
                 }
                 ast::Instruction::Call {
                     function,

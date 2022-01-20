@@ -110,6 +110,12 @@ pub enum Instruction {
         target: LocalSymbol,
         inputs: Vec<RegisterSymbol>,
     },
+    BrIf {
+        condition: RegisterSymbol,
+        true_branch: LocalSymbol,
+        false_branch: LocalSymbol,
+        inputs: Vec<RegisterSymbol>,
+    },
     Call {
         function: GlobalSymbol,
         arguments: Vec<RegisterSymbol>,

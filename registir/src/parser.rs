@@ -401,12 +401,12 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
             target: unsigned_index(src, size)?,
             input_registers: length_encoded_indices(src, size)?,
         }),
-        // Opcode::BrIf => Ok(Instruction::BrIf {
-        //     condition: unsigned_index(src, size)?,
-        //     true_branch: unsigned_index(src, size)?,
-        //     false_branch: unsigned_index(src, size)?,
-        //     input_registers: length_encoded_indices(src, size)?,
-        // }),
+        Opcode::BrIf => Ok(Instruction::BrIf {
+            condition: unsigned_index(src, size)?,
+            true_branch: unsigned_index(src, size)?,
+            false_branch: unsigned_index(src, size)?,
+            input_registers: length_encoded_indices(src, size)?,
+        }),
         Opcode::Call => Ok(Instruction::Call(
             format::instruction_set::CallInstruction {
                 function: unsigned_index(src, size)?,

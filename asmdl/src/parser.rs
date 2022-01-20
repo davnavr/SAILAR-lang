@@ -255,6 +255,13 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 };
             }
 
+            let branch_inputs = || {
+                keyword("with")
+                    .ignore_then(many_registers().at_least(1))
+                    .or_not()
+                    .map(Option::unwrap_or_default)
+            };
+
             let full_instruction = with_position(choice((
                 choice((
                     keyword("nop").to(ast::Instruction::Nop),
@@ -263,14 +270,19 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                         .map(ast::Instruction::Ret),
                     keyword("br")
                         .ignore_then(local_symbol)
-                        .then(
-                            keyword("with")
-                                .ignore_then(many_registers().at_least(1))
-                                .or_not(),
-                        )
-                        .map(|(target, inputs)| ast::Instruction::Br {
-                            target,
-                            inputs: inputs.unwrap_or_default(),
+                        .then(branch_inputs())
+                        .map(|(target, inputs)| ast::Instruction::Br { target, inputs }),
+                    keyword("br.if")
+                        .ignore_then(register_symbol.then_ignore(keyword("then")))
+                        .then(local_symbol.then_ignore(keyword("else")).then(local_symbol))
+                        .then(branch_inputs())
+                        .map(|((condition, (true_branch, false_branch)), inputs)| {
+                            ast::Instruction::BrIf {
+                                condition,
+                                true_branch,
+                                false_branch,
+                                inputs,
+                            }
                         }),
                     keyword("call")
                         .ignore_then(global_symbol.then(many_registers()))
