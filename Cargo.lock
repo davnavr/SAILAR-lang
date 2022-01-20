@@ -323,6 +323,7 @@ dependencies = [
  "asmdl",
  "getmdl",
  "registir",
+ "thiserror",
 ]
 
 [[package]]

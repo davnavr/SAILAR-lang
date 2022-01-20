@@ -445,7 +445,7 @@ impl<'l> Stack<'l> {
     ) -> Result<()> {
         let depth = self.depth() + 1;
         if depth > self.capacity.get() {
-            return Err(ErrorKind::CallStackOverflow);
+            return Err(ErrorKind::CallStackOverflow(self.capacity));
         }
 
         let signature = function.signature()?;

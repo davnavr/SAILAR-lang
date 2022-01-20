@@ -21,7 +21,7 @@ pub use call_stack::{
     Trace as StackTrace, TraceFrame as StackTraceFrame,
 };
 
-pub use error::{Error, ErrorKind, LoaderError, ProgramHalt};
+pub use error::{Error, ErrorKind, LoaderError};
 
 pub use register::{NumericType, Register, RegisterType};
 
@@ -104,7 +104,7 @@ impl<'l> Interpreter<'l> {
             OverflowBehavior::Flag => frame.registers.define_temporary(Register::from(overflowed)),
             OverflowBehavior::Halt => {
                 if overflowed {
-                    return Err(ErrorKind::Halt(ProgramHalt::IntegerOverflow));
+                    return Err(todo!("overflow"));
                 }
             }
         }
@@ -151,7 +151,7 @@ impl<'l> Interpreter<'l> {
                     // TODO: Use a function that converts the register value to operation.return_type
                     todo!("handle div return for division by zero")
                 }
-                DivideByZeroBehavior::Halt => Err(ErrorKind::Halt(ProgramHalt::DivideByZero)),
+                DivideByZeroBehavior::Halt => Err(todo!("div by zero")),
             },
         }
     }
@@ -186,7 +186,11 @@ impl<'l> Interpreter<'l> {
         Ok(())
     }
 
-    fn execute_instruction(&mut self, instruction: &'l Instruction, entry_point_results: &mut Vec<Register>) -> Result<()> {
+    fn execute_instruction(
+        &mut self,
+        instruction: &'l Instruction,
+        entry_point_results: &mut Vec<Register>,
+    ) -> Result<()> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
@@ -220,8 +224,9 @@ impl<'l> Interpreter<'l> {
                     .load_function_raw(call.function)?;
 
                 // TODO: Validate signature of callee.
-                let mut arguments = Vec::with_capacity(callee.raw_signature()?.parameter_types.len());
-                
+                let mut arguments =
+                    Vec::with_capacity(callee.raw_signature()?.parameter_types.len());
+
                 if arguments.capacity() != call.arguments.len() {
                     return Err(ErrorKind::InputCountMismatch {
                         expected: arguments.len(),

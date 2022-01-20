@@ -1,78 +1,27 @@
 use super::{call_stack, JumpTarget, RegisterIndex};
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum ProgramHalt {
-    IntegerOverflow,
-    DivideByZero,
-}
-
-impl std::fmt::Display for ProgramHalt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::IntegerOverflow => "arithmetic operation resulted in an integer overflow",
-            Self::DivideByZero => "attempt to divide number by zero",
-        })
-    }
-}
-
-impl std::error::Error for ProgramHalt {}
-
 pub type LoaderError = getmdl::loader::Error;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    LoadError(LoaderError),
+    #[error(transparent)]
+    LoadError(#[from] LoaderError),
+    #[error("call stack underflow occured")]
     CallStackUnderflow,
-    CallStackOverflow,
+    #[error("exceeded maximum call stack depth ({0})")]
+    CallStackOverflow(call_stack::StackCapacity),
+    #[error("end of block unexpectedly reached")]
     UnexpectedEndOfBlock,
+    #[error("undefined register {0}")]
     UndefinedRegister(RegisterIndex),
+    #[error("undefined block {0}")]
     UndefinedBlock(JumpTarget),
+    #[error("expected {expected} input values but got {actual}")]
     InputCountMismatch { expected: usize, actual: usize },
+    #[error("expected {expected} result values but got {actual}")]
     ResultCountMismatch { expected: usize, actual: usize },
-    Halt(ProgramHalt),
 }
-
-macro_rules! error_kind_conversion {
-    ($source_type: ty, $case: ident) => {
-        impl From<$source_type> for ErrorKind {
-            fn from(error: $source_type) -> Self {
-                Self::$case(error)
-            }
-        }
-    };
-}
-
-error_kind_conversion!(getmdl::loader::Error, LoadError);
-error_kind_conversion!(ProgramHalt, Halt);
-
-impl std::fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::LoadError(error) => std::fmt::Display::fmt(error, f),
-            Self::CallStackUnderflow => f.write_str("call stack underflow occured"),
-            Self::CallStackOverflow => f.write_str("exceeded maximum call stack depth"),
-            Self::UnexpectedEndOfBlock => write!(f, "end of block unexpectedly reached"),
-            Self::UndefinedRegister(RegisterIndex::Input(index)) => {
-                write!(f, "undefined input register {}", index)
-            }
-            Self::UndefinedRegister(RegisterIndex::Temporary(index)) => {
-                write!(f, "undefined temporary register {}", index)
-            }
-            Self::UndefinedBlock(index) => write!(f, "undefined block {}", index.0),
-            Self::InputCountMismatch { expected, actual } => {
-                write!(f, "expected {} input values but got {}", expected, actual)
-            }
-            Self::ResultCountMismatch { expected, actual } => {
-                write!(f, "expected {} result values but got {}", expected, actual)
-            }
-            Self::Halt(reason) => write!(f, "program execution halted, {}", reason),
-        }
-    }
-}
-
-impl std::error::Error for ErrorKind {}
 
 #[derive(Debug)]
 pub struct Error {

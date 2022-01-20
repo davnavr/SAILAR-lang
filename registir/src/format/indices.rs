@@ -1,4 +1,5 @@
 use crate::format::numeric::UInteger;
+use std::fmt::{Display, Formatter};
 
 pub trait SimpleIndex: TryFrom<usize> {
     fn index(self) -> Result<usize, std::num::TryFromIntError>;
@@ -53,9 +54,9 @@ macro_rules! index_type {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
+        impl Display for $name {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                Display::fmt(&self.0, f)
             }
         }
     };
@@ -189,6 +190,22 @@ macro_rules! double_index_type {
 
             fn try_from(index: $name) -> Result<usize, Self::Error> {
                 usize::try_from(UInteger::from(index))
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                let index = match self {
+                    Self::$case_name_1(value) => {
+                        f.write_str(stringify!($case_name_1))?;
+                        UInteger::from(*value)
+                    }
+                    Self::$case_name_2(value) => {
+                        f.write_str(stringify!($case_name_2))?;
+                        UInteger::from(*value)
+                    }
+                };
+                write!(f, " {}", index)
             }
         }
     };

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 getmdl = { path = "../getmdl" }
 registir = { path = "../registir" }
+thiserror = "1.0.30"
 
 [dev-dependencies]
 asmdl = { path = "../asmdl" }
