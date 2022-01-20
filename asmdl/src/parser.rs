@@ -238,20 +238,46 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
 
         let code_statement = {
             //any_keyword
+
+            macro_rules! basic_arithmetic_operation {
+                ($name: expr, $separator: expr, $instruction: expr) => {
+                    keyword($name)
+                        .ignore_then(register_symbol.then_ignore(keyword($separator)))
+                        .then(register_symbol)
+                        .then(keyword("ovf.flag").or_not())
+                        .map(|((x, y), overflow)| {
+                            $instruction(ast::BasicArithmeticOperation {
+                                x,
+                                y,
+                                flag_overflow: overflow.is_some(),
+                            })
+                        })
+                };
+            }
+
             let full_instruction = with_position(choice((
-                keyword("nop").to(ast::Instruction::Nop),
-                keyword("ret")
-                    .ignore_then(many_registers())
-                    .map(ast::Instruction::Ret),
-                keyword("call")
-                    .ignore_then(global_symbol.then(many_registers()))
-                    .map(|(function, arguments)| ast::Instruction::Call {
-                        function,
-                        arguments,
-                    }),
-                keyword("const.i")
-                    .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
-                    .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
+                choice((
+                    keyword("nop").to(ast::Instruction::Nop),
+                    keyword("ret")
+                        .ignore_then(many_registers())
+                        .map(ast::Instruction::Ret),
+                    keyword("call")
+                        .ignore_then(global_symbol.then(many_registers()))
+                        .map(|(function, arguments)| ast::Instruction::Call {
+                            function,
+                            arguments,
+                        }),
+                    keyword("const.i")
+                        .ignore_then(
+                            with_position(primitive_type).then(with_position(integer_literal)),
+                        )
+                        .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
+                )),
+                choice((
+                    basic_arithmetic_operation!("add", "to", ast::Instruction::Add),
+                    basic_arithmetic_operation!("sub", "from", ast::Instruction::Sub),
+                    basic_arithmetic_operation!("mul", "by", ast::Instruction::Mul),
+                )),
             )));
 
             let result_registers = many_registers()

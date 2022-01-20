@@ -22,6 +22,8 @@ impl<'a> CodeBlockAssembler<'a> {
         _block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
+        use format::instruction_set::{self, FunctionIndex, Instruction};
+
         fn lookup_register<'a>(
             errors: &mut error::Builder,
             register_lookup: &mut lookup::RegisterMap<'a>,
@@ -60,6 +62,22 @@ impl<'a> CodeBlockAssembler<'a> {
             }
         }
 
+        fn basic_arithmetic_operation<'a>(
+            errors: &mut error::Builder,
+            register_lookup: &mut lookup::RegisterMap<'a>,
+            operation: &'a ast::BasicArithmeticOperation,
+        ) -> Option<instruction_set::BasicArithmeticOperation> {
+            Some(instruction_set::BasicArithmeticOperation {
+                x: lookup_register(errors, register_lookup, &operation.x)?,
+                y: lookup_register(errors, register_lookup, &operation.y)?,
+                overflow: if operation.flag_overflow {
+                    instruction_set::OverflowBehavior::Flag
+                } else {
+                    instruction_set::OverflowBehavior::Ignore
+                },
+            })
+        }
+
         register_lookup.clear();
 
         for register in self.input_registers {
@@ -77,8 +95,6 @@ impl<'a> CodeBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
-            use format::instruction_set::{self, FunctionIndex, Instruction};
-
             let expected_return_count;
             let next_instruction;
             match &statement.instruction.0 {
@@ -116,6 +132,24 @@ impl<'a> CodeBlockAssembler<'a> {
                         next_instruction = None;
                         expected_return_count = 0;
                     }
+                }
+                ast::Instruction::Add(operation) => {
+                    expected_return_count = operation.return_count();
+                    next_instruction =
+                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                            .map(Instruction::Add);
+                }
+                ast::Instruction::Sub(operation) => {
+                    expected_return_count = operation.return_count();
+                    next_instruction =
+                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                            .map(Instruction::Sub);
+                }
+                ast::Instruction::Mul(operation) => {
+                    expected_return_count = operation.return_count();
+                    next_instruction =
+                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                            .map(Instruction::Mul);
                 }
                 ast::Instruction::ConstI(constant_type, value) => {
                     use format::instruction_set::{IntegerConstant, PrimitiveType};

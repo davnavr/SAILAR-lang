@@ -78,42 +78,20 @@ pub enum Type {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum OverflowModifier {
-    Halt,
-    Flag,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BasicArithmeticOperation {
-    pub return_type: Positioned<NumericType>,
     pub x: RegisterSymbol,
     pub y: RegisterSymbol,
-    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
+    pub flag_overflow: bool,
 }
 
-impl OverflowModifier {
-    pub fn behavior(modifier: &Option<Positioned<Self>>) -> OverflowBehavior {
-        match modifier {
-            Some((OverflowModifier::Halt, _)) => OverflowBehavior::Halt,
-            Some((OverflowModifier::Flag, _)) => OverflowBehavior::Flag,
-            None => OverflowBehavior::Ignore,
+impl BasicArithmeticOperation {
+    pub fn return_count(&self) -> usize {
+        if self.flag_overflow {
+            2
+        } else {
+            1
         }
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DivideByZeroModifier {
-    Return(RegisterSymbol),
-    Halt,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DivisionOperation {
-    pub return_type: Positioned<NumericType>,
-    pub numerator: RegisterSymbol,
-    pub denominator: RegisterSymbol,
-    pub overflow_modifier: Option<Positioned<OverflowModifier>>,
-    pub divide_by_zero_modifier: DivideByZeroModifier,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,6 +110,9 @@ pub enum Instruction {
         function: GlobalSymbol,
         arguments: Vec<RegisterSymbol>,
     },
+    Add(BasicArithmeticOperation),
+    Sub(BasicArithmeticOperation),
+    Mul(BasicArithmeticOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
 }
 

@@ -304,8 +304,8 @@ pub enum Instruction {
     //CallIndr
     //CallRet
     /// ```txt
-    /// <sum> = add <x> and <y>;
-    /// <sum>, <overflowed> = add <x> and <y> ovf.flag;
+    /// <sum> = add <x> to <y>;
+    /// <sum>, <overflowed> = add <x> to <y> ovf.flag;
     /// ```
     /// Returns the sum of the values in the `x` and `y` registers.
     Add(BasicArithmeticOperation),

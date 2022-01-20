@@ -1,6 +1,10 @@
 use crate::ast;
 use registir::format::indices;
-use std::{collections::hash_map, fmt::{Debug, Formatter}, marker::PhantomData};
+use std::{
+    collections::hash_map,
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 
 pub struct IndexedMap<I, K, V> {
     values: Vec<V>,
@@ -58,10 +62,7 @@ where
             }
             hash_map::Entry::Occupied(occupied) => {
                 let index = *occupied.get();
-                Err((
-                    index.try_into().unwrap(),
-                    &self.values[index],
-                ))
+                Err((index.try_into().unwrap(), &self.values[index]))
             }
         }
     }
@@ -111,7 +112,11 @@ where
     }
 }
 
-impl<I, K, V> Debug for IndexedMap<I, K, V> where K: Debug, V: Debug {
+impl<I, K, V> Debug for IndexedMap<I, K, V>
+where
+    K: Debug,
+    V: Debug,
+{
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let mut items = f.debug_map();
         for (ref key, &index) in &self.lookup {
