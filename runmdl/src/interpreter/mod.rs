@@ -187,9 +187,8 @@ impl<'l> Interpreter<'l> {
     }
 
     fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<Vec<Register>> {
-        let current_frame = self.call_stack.current_mut()?;
         let mut entry_point_results = Vec::new();
-
+        
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
@@ -214,12 +213,14 @@ impl<'l> Interpreter<'l> {
                     None => entry_point_results = results,
                 }
             }
-            Instruction::ConstI(value) => current_frame
+            Instruction::ConstI(value) => self
+                .call_stack
+                .current_mut()?
                 .registers
                 .define_temporary(Register::from(*value)),
             Instruction::Break => {
                 self.debugger_message_loop();
-                // self.set_debugger_breakpoints();
+                self.call_stack.update_current_breakpoints()?;
             }
         }
 

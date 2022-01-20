@@ -289,25 +289,45 @@ pub struct BreakpointLookup {
 }
 
 impl BreakpointLookup {
+    pub fn is_empty(&self) -> bool {
+        self.lookup.is_empty()
+    }
+
     fn copy_breakpoints_to(
         &mut self,
         function: &debugger::FunctionSymbol<'static>,
         block: BlockIndex,
+        current_instruction: usize,
         destination: &mut VecDeque<usize>,
     ) {
-        destination.clear();
-        if let Some(indices) = self
-            .lookup
-            .get(&function)
-            .and_then(|block_lookup| block_lookup.get(&block))
-        {
-            if destination.capacity() < indices.len() {
-                destination.reserve_exact(indices.len() - destination.capacity());
-            }
-            for &index in indices {
-                destination.push_back(index);
+        if !self.is_empty() {
+            destination.clear();
+
+            if let Some(indices) = self
+                .lookup
+                .get(&function)
+                .and_then(|block_lookup| block_lookup.get(&block))
+            {
+                if destination.capacity() < indices.len() {
+                    destination.reserve_exact(indices.len() - destination.capacity());
+                }
+
+                for &index in indices {
+                    if index > current_instruction {
+                        destination.push_back(index);
+                    }
+                }
             }
         }
+    }
+
+    fn update_in<'l>(&mut self, frame: &mut Frame<'l>) -> Result<()> {
+        Ok(self.copy_breakpoints_to(
+            &frame.function.full_symbol()?.to_owned(),
+            frame.instructions.block_index,
+            frame.instructions.code_index(),
+            &mut frame.instructions.breakpoints,
+        ))
     }
 
     pub fn insert(&mut self, breakpoint: Breakpoint) {
@@ -397,6 +417,9 @@ impl<'l> Stack<'l> {
         match self.current.take() {
             Some(mut current) => {
                 self.current = current.previous.take();
+                if let Some(new_current) = &mut self.current {
+                    self.breakpoints.update_in(new_current)?;
+                }
                 Ok(current)
             }
             None => Err(ErrorKind::CallStackUnderflow),
@@ -433,14 +456,7 @@ impl<'l> Stack<'l> {
                 let code = function.declaring_module().load_code_raw(*code_index)?;
                 let previous = self.current.take();
 
-                let mut breakpoints = VecDeque::new();
-                self.breakpoints_mut().copy_breakpoints_to(
-                    &function.full_symbol()?.to_owned(),
-                    BlockIndex::entry(),
-                    &mut breakpoints,
-                );
-
-                self.current = Some(Box::new(Frame {
+                let mut frame = Box::new(Frame {
                     depth,
                     function,
                     previous,
@@ -453,16 +469,24 @@ impl<'l> Stack<'l> {
                         code,
                         block_index: BlockIndex::entry(),
                         instructions: &code.entry_block.instructions,
-                        breakpoints,
+                        breakpoints: VecDeque::new(),
                     },
-                }));
+                });
 
-                // TODO: update breakpoints.
+                self.breakpoints.update_in(&mut frame)?;
+                self.current = Some(frame);
 
-                //self.set_debugger_breakpoints();
                 Ok(())
             }
             format::FunctionBody::External { .. } => todo!("external calls not yet supported"),
         }
+    }
+
+    pub(super) fn update_current_breakpoints(&mut self) -> Result<()> {
+        if let Some(mut current) = self.current.take() {
+            self.breakpoints.update_in(&mut current)?;
+            self.current = Some(current);
+        }
+        Ok(())
     }
 }
