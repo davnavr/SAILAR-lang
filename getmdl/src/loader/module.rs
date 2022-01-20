@@ -117,6 +117,13 @@ impl<'a> Module<'a> {
         )
     }
 
+    pub fn load_function_raw(&'a self, index: format::indices::Function) -> Result<&'a Function<'a>> {
+        match index {
+            format::indices::Function::Defined(defined_index) => self.load_function_definition_raw(defined_index),
+            format::indices::Function::Imported(_) => todo!("resolution of function imports is not yet supported"),
+        }
+    }
+
     /// Retrieves the entry point for the application, if it exists.
     pub fn entry_point(&'a self) -> Result<Option<&'a Function<'a>>> {
         match self.source.entry_point.0 {

@@ -175,6 +175,10 @@ pub struct Frame<'l> {
 }
 
 impl<'l> Frame<'l> {
+    pub fn function(&self) -> LoadedFunction<'l> {
+        self.function
+    }
+
     pub fn trace(&self) -> TraceFrame {
         TraceFrame {
             depth: self.depth,
@@ -405,11 +409,19 @@ impl<'l> Stack<'l> {
         &mut self.breakpoints
     }
 
-    pub(crate) fn peek_mut(&mut self) -> Option<&mut Frame<'l>> {
+    pub(super) fn peek(&self) -> Option<&Frame<'l>> {
+        self.current.as_ref().map(Box::borrow)
+    }
+
+    pub(super) fn current(&self) -> Result<&Frame<'l>> {
+        self.peek().ok_or(ErrorKind::CallStackUnderflow)
+    }
+
+    pub(super) fn peek_mut(&mut self) -> Option<&mut Frame<'l>> {
         self.current.as_mut().map(Box::borrow_mut)
     }
 
-    pub(crate) fn current_mut(&mut self) -> Result<&mut Frame<'l>> {
+    pub(super) fn current_mut(&mut self) -> Result<&mut Frame<'l>> {
         self.peek_mut().ok_or(ErrorKind::CallStackUnderflow)
     }
 

@@ -186,9 +186,7 @@ impl<'l> Interpreter<'l> {
         Ok(())
     }
 
-    fn execute_instruction(&mut self, instruction: &'l Instruction) -> Result<Vec<Register>> {
-        let mut entry_point_results = Vec::new();
-        
+    fn execute_instruction(&mut self, instruction: &'l Instruction, entry_point_results: &mut Vec<Register>) -> Result<()> {
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
@@ -210,11 +208,32 @@ impl<'l> Interpreter<'l> {
                     Some(previous_frame) => {
                         previous_frame.registers.append_temporaries(&mut results)
                     }
-                    None => entry_point_results = results,
+                    None => *entry_point_results = results,
                 }
             }
             Instruction::Call(call) => {
-                todo!("call")
+                let current_frame = self.call_stack.current()?;
+
+                let callee = current_frame
+                    .function()
+                    .declaring_module()
+                    .load_function_raw(call.function)?;
+
+                // TODO: Validate signature of callee.
+                let mut arguments = Vec::with_capacity(callee.raw_signature()?.return_types.len());
+
+                if arguments.len() != call.arguments.len() {
+                    return Err(ErrorKind::InputCountMismatch {
+                        expected: arguments.len(),
+                        actual: call.arguments.len(),
+                    });
+                }
+
+                for index in &call.arguments.0 {
+                    arguments.push(current_frame.registers.get(*index)?.clone());
+                }
+
+                self.call_stack.push(callee, &arguments)?;
             }
             Instruction::ConstI(value) => self
                 .call_stack
@@ -222,29 +241,20 @@ impl<'l> Interpreter<'l> {
                 .registers
                 .define_temporary(Register::from(*value)),
             Instruction::Break => {
-                self.debugger_message_loop();
+                self.debugger_loop();
                 self.call_stack.update_current_breakpoints()?;
             }
         }
 
-        Ok(entry_point_results)
+        Ok(())
     }
 
-    fn debugger_message_loop(&mut self) {
+    fn debugger_loop(&mut self) {
         if let Some(debugger) = self.debugger.take() {
             match debugger.inspect(self) {
                 debugger::Reply::Continue => self.debugger = Some(debugger),
                 debugger::Reply::Detach => self.debugger = None,
             }
-        }
-    }
-
-    fn set_debugger_breakpoints(&mut self) {
-        if self.debugger.is_some() {
-            // for frame in &mut self.stack_frames {
-            //     frame.breakpoints.source =
-            //         debugger.breakpoints_in_block(frame.current_method, frame.block_index);
-            // }
         }
     }
 
@@ -254,14 +264,13 @@ impl<'l> Interpreter<'l> {
         entry_point: LoadedFunction<'l>,
     ) -> Result<Vec<Register>> {
         // Wait for the debugger, if one is attached, to tell the application to start.
-        self.debugger_message_loop();
+        self.debugger_loop();
 
         self.call_stack.push(entry_point, arguments)?;
 
         let mut entry_point_results = Vec::new();
         while let Some(instruction) = self.next_instruction()? {
-            // TODO: Check if a breakpoint has been hit.
-            entry_point_results = self.execute_instruction(instruction)?;
+            self.execute_instruction(instruction, &mut entry_point_results)?;
         }
         Ok(entry_point_results)
     }
@@ -269,7 +278,7 @@ impl<'l> Interpreter<'l> {
 
 pub fn run<'l>(
     loader: &'l loader::Loader<'l>,
-    arguments: &[Register],
+    arguments: &[Register], //FnOnce(the heap) -> Vec<Register>
     entry_point: LoadedFunction<'l>,
     call_stack_capacity: CallStackCapacity,
     debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
