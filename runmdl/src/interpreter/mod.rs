@@ -235,7 +235,10 @@ impl<'l> Interpreter<'l> {
         if let Some(debugger) = self.debugger.take() {
             match debugger.inspect(self) {
                 debugger::Reply::Continue => self.debugger = Some(debugger),
-                debugger::Reply::Detach => self.debugger = None,
+                debugger::Reply::Detach => {
+                    self.call_stack().breakpoints_mut().clear();
+                    self.debugger = None;
+                }
             }
         }
     }

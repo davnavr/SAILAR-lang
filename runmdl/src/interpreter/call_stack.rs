@@ -96,6 +96,7 @@ pub(super) struct InstructionPointer<'l> {
     code: &'l format::Code,
     block_index: BlockIndex,
     instructions: &'l [Instruction],
+    last_breakpoint_hit: Option<usize>,
     /// Instruction offsets marking where breakpoints are placed, in increasing order.
     breakpoints: VecDeque<usize>,
 }
@@ -143,7 +144,7 @@ impl<'l> InstructionPointer<'l> {
             Some(&next) => {
                 let current_index = self.code_index();
                 if next <= current_index {
-                    self.breakpoints.pop_front();
+                    self.last_breakpoint_hit = self.breakpoints.pop_front();
                 }
                 next == current_index
             }
@@ -191,7 +192,7 @@ impl<'l> Frame<'l> {
     }
 
     /// Updates the instruction pointer to point at the specified target.
-    /// 
+    ///
     /// The breakpoint list must be updated afterward.
     fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
         self.registers.temporaries.clear();
@@ -298,11 +299,16 @@ impl BreakpointLookup {
         self.lookup.is_empty()
     }
 
+    pub(super) fn clear(&mut self) {
+        self.lookup.clear()
+    }
+
     fn copy_breakpoints_to(
         &mut self,
         function: &debugger::FunctionSymbol<'static>,
         block: BlockIndex,
         current_instruction: usize,
+        last_breakpoint_hit: Option<usize>,
         destination: &mut VecDeque<usize>,
     ) {
         if !self.is_empty() {
@@ -318,7 +324,7 @@ impl BreakpointLookup {
                 }
 
                 for &index in indices {
-                    if index > current_instruction {
+                    if index >= current_instruction && Some(index) != last_breakpoint_hit {
                         destination.push_back(index);
                     }
                 }
@@ -331,6 +337,7 @@ impl BreakpointLookup {
             &frame.function.full_symbol()?.to_owned(),
             frame.instructions.block_index,
             frame.instructions.code_index(),
+            frame.instructions.last_breakpoint_hit,
             &mut frame.instructions.breakpoints,
         ))
     }
@@ -368,11 +375,6 @@ impl BreakpointLookup {
             })
             .flatten()
     }
-}
-
-pub(super) struct PoppedFrame {
-    pub(super) registers: Vec<Register>,
-    pub(super) result_count: usize,
 }
 
 pub use std::num::NonZeroUsize as StackCapacity;
@@ -483,6 +485,7 @@ impl<'l> Stack<'l> {
                         block_index: BlockIndex::entry(),
                         instructions: &code.entry_block.instructions,
                         breakpoints: VecDeque::new(),
+                        last_breakpoint_hit: None,
                     },
                 });
 
@@ -516,4 +519,9 @@ impl<'l> Stack<'l> {
         }
         Ok(())
     }
+
+    // TODO: Could have a function that returns a struct that temporarily takes ownership of Current frame then puts it back on top of call stack.
+    //pub(super) fn something_current_frame(&mut self) -> CurrentFrame<'l>
+    // or
+    //pub(super) fn something_else_current_frame<F: FnOnce(&mut Frame<'l>)>(&mut self, f: F) -> Result<()>
 }
