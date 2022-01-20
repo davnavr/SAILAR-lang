@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let location = frame.location();
                 eprintln!(
                     "- {} at block {} instruction {}",
-                    "function name here", //frame.method(),
+                    debugging::FunctionSymbol(frame.function()),
                     location.block_index,
                     location.code_index
                 );
