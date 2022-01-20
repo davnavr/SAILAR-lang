@@ -294,10 +294,10 @@ fn block_instruction<W: Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        // Instruction::Br(target, input_registers) => {
-        //     unsigned_index(out, *target, size)?;
-        //     length_encoded_indices(out, input_registers, size)
-        // }
+        Instruction::Br { target, input_registers } => {
+            unsigned_index(out, *target, size)?;
+            length_encoded_indices(out, input_registers, size)
+        },
         // Instruction::BrIf {
         //     condition,
         //     true_branch,

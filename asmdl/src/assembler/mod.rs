@@ -347,7 +347,11 @@ pub fn assemble_from_str(
 #[cfg(test)]
 mod tests {
     use crate::assembler;
-    use registir::format;
+    use registir::format::{
+        self,
+        indices::{Register, TemporaryRegister},
+        instruction_set::{Instruction, IntegerConstant, JumpTarget},
+    };
 
     macro_rules! assert_success {
         ($input: expr, $checker: expr) => {
@@ -358,7 +362,7 @@ mod tests {
     #[test]
     fn module_header_test() {
         assert_success!(
-            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 5; };",
+            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 6; };",
             |module: format::Module| {
                 let header = module.header.0;
                 assert_eq!(
@@ -375,14 +379,10 @@ mod tests {
     }
 
     #[test]
-    fn return_program_test() {
+    fn return_sample_compiles_successfully() {
         assert_success!(
             include_str!(r"../../../asmdl_cli/samples/return.txtmdl"),
             |module: format::Module| {
-                use format::{
-                    indices::{Register, TemporaryRegister},
-                    instruction_set::{Instruction, IntegerConstant},
-                };
                 let code = &module.function_bodies[0];
                 assert_eq!(
                     code.entry_block.instructions.0 .0,
@@ -394,6 +394,26 @@ mod tests {
                     ]
                 );
                 assert!(code.blocks.is_empty());
+            }
+        )
+    }
+
+    #[test]
+    fn control_sample_compiles_successfully() {
+        assert_success!(
+            include_str!(r"../../../asmdl_cli/samples/control.txtmdl"),
+            |module: format::Module| {
+                let code = &module.function_bodies[0];
+                assert_eq!(1, code.blocks.len());
+                assert_eq!(
+                    &Instruction::Br {
+                        target: JumpTarget::from(0),
+                        input_registers: format::LenVec(vec![Register::Temporary(
+                            TemporaryRegister::from(1)
+                        )])
+                    },
+                    code.entry_block.instructions.0.last().unwrap()
+                );
             }
         )
     }

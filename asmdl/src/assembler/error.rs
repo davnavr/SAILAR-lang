@@ -35,6 +35,8 @@ pub enum ErrorKind {
     },
     #[error("unable to find declaration corresponding to the symbol @{0}")]
     UndefinedGlobal(ast::Identifier),
+    #[error("a block with the name ${0} was not defined")]
+    UndefinedBlock(ast::Identifier),
 }
 
 #[derive(Debug, Eq, PartialEq)]

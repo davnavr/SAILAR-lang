@@ -261,23 +261,32 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                     keyword("ret")
                         .ignore_then(many_registers())
                         .map(ast::Instruction::Ret),
+                    keyword("br")
+                        .ignore_then(local_symbol)
+                        .then(
+                            keyword("with")
+                                .ignore_then(many_registers().at_least(1))
+                                .or_not(),
+                        )
+                        .map(|(target, inputs)| ast::Instruction::Br {
+                            target,
+                            inputs: inputs.unwrap_or_default(),
+                        }),
                     keyword("call")
                         .ignore_then(global_symbol.then(many_registers()))
                         .map(|(function, arguments)| ast::Instruction::Call {
                             function,
                             arguments,
                         }),
-                    keyword("const.i")
-                        .ignore_then(
-                            with_position(primitive_type).then(with_position(integer_literal)),
-                        )
-                        .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
                 )),
                 choice((
                     basic_arithmetic_operation!("add", "to", ast::Instruction::Add),
                     basic_arithmetic_operation!("sub", "from", ast::Instruction::Sub),
                     basic_arithmetic_operation!("mul", "by", ast::Instruction::Mul),
                 )),
+                choice((keyword("const.i")
+                    .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
+                    .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),)),
             )));
 
             let result_registers = many_registers()

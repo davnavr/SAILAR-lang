@@ -19,10 +19,26 @@ impl<'a> CodeBlockAssembler<'a> {
         errors: &mut error::Builder,
         // TODO: Have struct to handle lookup in definition or imports.
         function_lookup: &definitions::FunctionLookup<'a>,
-        _block_lookup: &mut CodeBlockLookup<'a>,
+        block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
-        use format::instruction_set::{self, FunctionIndex, Instruction};
+        use format::instruction_set::{self, FunctionIndex, Instruction, JumpTarget};
+
+        fn lookup_block<'a>(
+            errors: &mut error::Builder,
+            block_lookup: &mut CodeBlockLookup<'a>,
+            block: &'a ast::LocalSymbol,
+        ) -> Option<JumpTarget> {
+            let target = block_lookup.get(block.identifier());
+            if target.is_none() {
+                errors.push_with_location(
+                    ErrorKind::UndefinedBlock(block.identifier().clone()),
+                    block.location().clone(),
+                )
+            }
+            // NOTE: Lookup no longer contains entry block, though restrictions could be loosened to allow branching to the entry block.
+            target.map(|(index, _)| JumpTarget::from(index))
+        }
 
         fn lookup_register<'a>(
             errors: &mut error::Builder,
@@ -106,6 +122,15 @@ impl<'a> CodeBlockAssembler<'a> {
                     expected_return_count = 0;
                     next_instruction = lookup_many_registers(errors, register_lookup, registers)
                         .map(Instruction::Ret);
+                }
+                ast::Instruction::Br { target, inputs } => {
+                    expected_return_count = 0;
+                    next_instruction = lookup_many_registers(errors, register_lookup, inputs)
+                        .zip(lookup_block(errors, block_lookup, target))
+                        .map(|(input_registers, target_block)| Instruction::Br {
+                            target: target_block,
+                            input_registers,
+                        });
                 }
                 ast::Instruction::Call {
                     function,

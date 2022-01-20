@@ -106,6 +106,10 @@ pub struct BitwiseOperation {
 pub enum Instruction {
     Nop,
     Ret(Vec<RegisterSymbol>),
+    Br {
+        target: LocalSymbol,
+        inputs: Vec<RegisterSymbol>,
+    },
     Call {
         function: GlobalSymbol,
         arguments: Vec<RegisterSymbol>,

@@ -397,10 +397,10 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
-        // Opcode::Br => Ok(Instruction::Br(
-        //     unsigned_index(src, size)?,
-        //     length_encoded_indices(src, size)?,
-        // )),
+        Opcode::Br => Ok(Instruction::Br {
+            target: unsigned_index(src, size)?,
+            input_registers: length_encoded_indices(src, size)?,
+        }),
         // Opcode::BrIf => Ok(Instruction::BrIf {
         //     condition: unsigned_index(src, size)?,
         //     true_branch: unsigned_index(src, size)?,

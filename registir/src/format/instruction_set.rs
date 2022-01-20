@@ -274,12 +274,15 @@ pub enum Instruction {
     ///
     /// Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
-    // /// ```txt
-    // /// br <target>;
-    // /// br <target> with <input1>, <input2>, ...;
-    // /// ```
-    // /// Unconditionally transfers control flow to the `target` block, with the specified `input` values.
-    // Br(JumpTarget, LenVec<RegisterIndex>),
+    /// ```txt
+    /// br <target>;
+    /// br <target> with <input1>, <input2>, ...;
+    /// ```
+    /// Unconditionally transfers control flow to the `target` block providing the specified `input` values.
+    Br {
+        target: JumpTarget,
+        input_registers: LenVec<RegisterIndex>,
+    },
     // /// ```txt
     // /// br.if <condition> then <true> else <false>;
     // /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
@@ -397,8 +400,8 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
-            // Instruction::Br(_, _) => Opcode::Br,
-            // Instruction::BrIf { .. } => Opcode::BrIf,
+            Instruction::Br { .. } => Opcode::Br,
+            //Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Call(_) => Opcode::Call,
             Instruction::Add(_) => Opcode::Add,
             Instruction::Sub(_) => Opcode::Sub,
@@ -422,7 +425,7 @@ impl Instruction {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
-            // | Instruction::Br(_, _)
+            | Instruction::Br { .. }
             // | Instruction::BrIf { .. }
             | Instruction::Break => 0,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),

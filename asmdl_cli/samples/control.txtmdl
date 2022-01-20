@@ -6,7 +6,10 @@
     .block $ENTRY (%i_input) {
         %t_value = const.i s32 4;
         %t_sum = add %t_value to %i_input;
-        ret %t_sum;
+        br $END with %t_sum;
+    };
+    .block $END (%i_sum) {
+        ret %i_sum;
     };
 };
 
