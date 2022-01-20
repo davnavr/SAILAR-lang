@@ -103,7 +103,7 @@ pub enum Opcode {
     Br,
     BrIf,
     Call,
-    Add,
+    Add = 16,
     Sub,
     Mul,
     Div,
@@ -130,8 +130,7 @@ bitflags! {
     #[repr(transparent)]
     pub struct ArithmeticFlags: u8 {
         const NONE = 0;
-        const HALT_ON_OVERFLOW = 0b0000_0001;
-        const FLAG_ON_OVERFLOW = 0b0000_0010;
+        const FLAG_ON_OVERFLOW = 0b0000_0001;
         const RETURN_VALUE_ON_DIVIDE_BY_ZERO = 0b0000_0100;
     }
 }
@@ -140,8 +139,6 @@ bitflags! {
 #[repr(u8)]
 pub enum OverflowBehavior {
     Ignore,
-    /// Indicates that program execution should immediately halt if an overflow occured.
-    Halt,
     /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
     Flag,
 }
@@ -150,7 +147,6 @@ impl OverflowBehavior {
     pub fn flags(self) -> ArithmeticFlags {
         match self {
             Self::Ignore => ArithmeticFlags::NONE,
-            Self::Halt => ArithmeticFlags::HALT_ON_OVERFLOW,
             Self::Flag => ArithmeticFlags::FLAG_ON_OVERFLOW,
         }
     }
@@ -158,9 +154,7 @@ impl OverflowBehavior {
 
 impl From<ArithmeticFlags> for OverflowBehavior {
     fn from(flags: ArithmeticFlags) -> Self {
-        if flags.contains(ArithmeticFlags::HALT_ON_OVERFLOW) {
-            Self::Halt
-        } else if flags.contains(ArithmeticFlags::FLAG_ON_OVERFLOW) {
+        if flags.contains(ArithmeticFlags::FLAG_ON_OVERFLOW) {
             Self::Flag
         } else {
             Self::Ignore
@@ -187,7 +181,6 @@ impl DivideByZeroBehavior {
 #[derive(Debug, PartialEq)]
 pub struct BasicArithmeticOperation {
     pub overflow: OverflowBehavior,
-    pub return_type: NumericType,
     pub x: RegisterIndex,
     pub y: RegisterIndex,
 }
@@ -267,14 +260,6 @@ pub struct CallInstruction {
 }
 
 /// Represents an instruction consisting of an opcode and one or more operands.
-///
-/// For instructions that take a vector of registers, such as `ret` or `call`, the length of the vector is
-/// included as usual to simplify parsing.
-///
-/// Floating-point numbers used in bitwise instructions such as [`And`] or [`Xor`] are simply reinterpreted as values of their
-/// corresponding unsigned integer counterparts, (e.g. an `f32` is reinpterpreted as a `u32`).
-///
-/// TODO: Have not about conversions, maybe round towards 0 for float to signed int conversions?
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
     /// ```txt
@@ -318,29 +303,25 @@ pub enum Instruction {
     Call(CallInstruction),
     //CallIndr
     //CallRet
-
-    // /// ```txt
-    // /// <sum> = add <numeric type> <x> and <y>;
-    // /// <sum> = add <numeric type> <x> and <y> ovf.halt;
-    // /// <sum>, <overflowed> = add <numeric type> <x> and <y> ovf.flag;
-    // /// ```
-    // /// Returns the sum of the values in the `x` and `y` registers converted to the specified type.
-    // Add(BasicArithmeticOperation),
-    // /// ```txt
-    // /// <result> = sub <numeric type> <x> from <y>;
-    // /// <result> = sub <numeric type> <x> from <y> ovf.halt;
-    // /// <result>, <overflowed> = sub <numeric type> <x> from <y> ovf.flag;
-    // /// ```
-    // /// Subtracts the value in the `x` register from the value in the `y` register converted to the specified type, and returns
-    // /// the difference.
-    // Sub(BasicArithmeticOperation),
-    // /// ```txt
-    // /// <product> = mul <numeric type> <x> by <y>;
-    // /// <product> = mul <numeric type> <x> by <y> ovf.halt;
-    // /// <product>, <overflowed> = mul <numeric type> <x> by <y> ovf.flag;
-    // /// ```
-    // /// Returns the product of the values in the `x` and `y` registers converted to the specified type.
-    // Mul(BasicArithmeticOperation),
+    /// ```txt
+    /// <sum> = add <x> and <y>;
+    /// <sum>, <overflowed> = add <x> and <y> ovf.flag;
+    /// ```
+    /// Returns the sum of the values in the `x` and `y` registers.
+    Add(BasicArithmeticOperation),
+    /// ```txt
+    /// <result> = sub <x> from <y>;
+    /// <result>, <overflowed> = sub <x> from <y> ovf.flag;
+    /// ```
+    /// Subtracts the value in the `x` register from the value in the `y` register, and returns
+    /// the difference.
+    Sub(BasicArithmeticOperation),
+    /// ```txt
+    /// <product> = mul <x> by <y>;
+    /// <product>, <overflowed> = mul <x> by <y> ovf.flag;
+    /// ```
+    /// Returns the product of the values in the `x` and `y` registers.
+    Mul(BasicArithmeticOperation),
     // /// ```txt
     // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan>;
     // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
@@ -419,9 +400,9 @@ impl Instruction {
             // Instruction::Br(_, _) => Opcode::Br,
             // Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Call(_) => Opcode::Call,
-            // Instruction::Add(_) => Opcode::Add,
-            // Instruction::Sub(_) => Opcode::Sub,
-            // Instruction::Mul(_) => Opcode::Mul,
+            Instruction::Add(_) => Opcode::Add,
+            Instruction::Sub(_) => Opcode::Sub,
+            Instruction::Mul(_) => Opcode::Mul,
             // Instruction::Div(_) => Opcode::Div,
             // Instruction::And(_) => Opcode::And,
             // Instruction::Or(_) => Opcode::Or,
@@ -445,13 +426,14 @@ impl Instruction {
             // | Instruction::BrIf { .. }
             | Instruction::Break => 0,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
-            // Instruction::Add(BasicArithmeticOperation { overflow, .. })
-            // | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
-            // | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
-            // | Instruction::Div(DivisionOperation { overflow, .. }) => match overflow {
-            //     OverflowBehavior::Ignore | OverflowBehavior::Halt => 1,
-            //     OverflowBehavior::Flag => 2,
-            // },
+            Instruction::Add(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
+            | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
+            //| Instruction::Div(DivisionOperation { overflow, .. })
+            => match overflow {
+                OverflowBehavior::Ignore => 1,
+                OverflowBehavior::Flag => 2,
+            },
             // Instruction::And(_)
             // | Instruction::Or(_)
             // | Instruction::Not { .. }
@@ -473,19 +455,6 @@ impl TryFrom<u32> for Opcode {
             Ok(unsafe { std::mem::transmute(value) })
         } else {
             Err(())
-        }
-    }
-}
-
-impl TryFrom<u8> for OverflowBehavior {
-    type Error = ();
-
-    fn try_from(tag: u8) -> Result<Self, Self::Error> {
-        match tag {
-            0 => Ok(OverflowBehavior::Ignore),
-            1 => Ok(OverflowBehavior::Halt),
-            2 => Ok(OverflowBehavior::Flag),
-            _ => Err(()),
         }
     }
 }

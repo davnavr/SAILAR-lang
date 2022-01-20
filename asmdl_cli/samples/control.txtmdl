@@ -1,12 +1,12 @@
-.format { .major 0; .minor 5; };
+.format { .major 0; .minor 6; };
 .module { .name "ControlTransferTests"; .version 1; };
 
 .code @code_helper {
     .entry $ENTRY;
-    .block $ENTRY (%input) {
-        //%sum = add
-        %sum = const.i s32 123;
-        ret %sum;
+    .block $ENTRY (%i_input) {
+        %t_value = const.i s32 4;
+        %t_sum = add %t_value and %i_input;
+        ret %t_sum;
     };
 };
 

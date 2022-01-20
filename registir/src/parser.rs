@@ -350,7 +350,6 @@ fn basic_arithmetic_operation<R: Read>(
     let flags = arithmetic_flags(src)?;
     Ok(instruction_set::BasicArithmeticOperation {
         overflow: instruction_set::OverflowBehavior::from(flags),
-        return_type: numeric_type(src)?,
         x: unsigned_index(src, size)?,
         y: unsigned_index(src, size)?,
     })
@@ -414,9 +413,9 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
                 arguments: length_encoded_indices(src, size)?,
             },
         )),
-        // Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
-        // Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
-        // Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
+        Opcode::Add => Ok(Instruction::Add(basic_arithmetic_operation(src, size)?)),
+        Opcode::Sub => Ok(Instruction::Sub(basic_arithmetic_operation(src, size)?)),
+        Opcode::Mul => Ok(Instruction::Mul(basic_arithmetic_operation(src, size)?)),
         // Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
         // Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
         // Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),

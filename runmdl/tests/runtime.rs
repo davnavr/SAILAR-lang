@@ -19,7 +19,7 @@ fn successful_function_symbol_lookup() {
 
 .format {
     .major 0;
-    .minor 5;
+    .minor 6;
 };
 
 .code @code {
@@ -51,7 +51,7 @@ fn call_stack_overflow() {
 
 .format {
     .major 0;
-    .minor 5;
+    .minor 6;
 };
 
 .code @code {
@@ -91,7 +91,7 @@ fn breakpoints_are_set_during_pause() {
     setup::initialize_from_str(
         r#".module { .name "BreakpointTest"; };
 
-.format { .major 0; .minor 5; };
+.format { .major 0; .minor 6; };
 
 .code @code {
     .entry $BLOCK;

@@ -1,4 +1,4 @@
-.format { .major 0; .minor 5; };
+.format { .major 0; .minor 6; };
 .module { .name "Return"; .version 1 0 0; };
 
 .code @code_main {

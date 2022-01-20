@@ -254,7 +254,6 @@ fn basic_arithmetic_operation<W: Write>(
     size: numeric::IntegerSize,
 ) -> Result {
     write(out, operation.flags().bits())?;
-    numeric_type(out, operation.return_type)?;
     unsigned_index(out, operation.x, size)?;
     unsigned_index(out, operation.y, size)
 }
@@ -314,9 +313,9 @@ fn block_instruction<W: Write>(
             unsigned_index(out, call.function, size)?;
             length_encoded_indices(out, &call.arguments, size)
         }
-        // Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
-        //     basic_arithmetic_operation(out, operation, size)
-        // }
+        Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
+            basic_arithmetic_operation(out, operation, size)
+        }
         // Instruction::Div(operation) => division_operation(out, operation, size),
         // Instruction::And(operation)
         // | Instruction::Or(operation)
