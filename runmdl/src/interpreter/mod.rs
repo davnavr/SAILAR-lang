@@ -168,18 +168,30 @@ impl<'l> Interpreter<'l> {
                 }
             }
             Instruction::Phi(lookup) => {
-                todo!()
+                let current_frame = self.call_stack.current_mut()?;
+
+                let previous_block = current_frame
+                    .instructions
+                    .previous_block()
+                    .ok_or(ErrorKind::PhiInstructionInEntryBlock)?;
+
+                let register_indices = lookup
+                    .get(JumpTarget::try_from(previous_block.to_raw()).unwrap())
+                    .ok_or(ErrorKind::MissingPhiInstructionEntry {
+                        missing: previous_block,
+                    })?;
+
+                let mut registers = collect_registers_from(current_frame, register_indices)?;
+                current_frame.registers.append_temporaries(&mut registers);
             }
             Instruction::Br {
                 target,
                 input_registers: input_register_indices,
             } => {
-                let inputs = collect_registers_from(
-                    self.call_stack().current_mut()?,
-                    input_register_indices,
-                )?;
+                let inputs =
+                    collect_registers_from(self.call_stack.current_mut()?, input_register_indices)?;
 
-                self.call_stack().current_jump_to(*target, &inputs)?
+                self.call_stack.current_jump_to(*target, &inputs)?
             }
             Instruction::BrIf {
                 condition,
@@ -187,7 +199,7 @@ impl<'l> Interpreter<'l> {
                 false_branch: false_target,
                 input_registers: input_register_indices,
             } => {
-                let current = self.call_stack().current_mut()?;
+                let current = self.call_stack.current_mut()?;
                 let inputs = collect_registers_from(current, input_register_indices)?;
 
                 let target = if current.registers.get(*condition)?.is_truthy() {
@@ -196,7 +208,7 @@ impl<'l> Interpreter<'l> {
                     *false_target
                 };
 
-                self.call_stack().current_jump_to(target, &inputs)?
+                self.call_stack.current_jump_to(target, &inputs)?
             }
             Instruction::Call(call) => {
                 let current_frame = self.call_stack.current()?;

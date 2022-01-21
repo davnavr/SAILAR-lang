@@ -1,4 +1,4 @@
-use super::{call_stack, JumpTarget, RegisterIndex, RegisterType};
+use super::{call_stack, BlockIndex, JumpTarget, RegisterIndex, RegisterType};
 
 pub type LoaderError = getmdl::loader::Error;
 
@@ -26,6 +26,10 @@ pub enum ErrorKind {
         expected: RegisterType,
         actual: RegisterType,
     },
+    #[error("phi instructions are prohibited in the entry block of a function")]
+    PhiInstructionInEntryBlock,
+    #[error("missing entry for block {missing} in phi instruction")]
+    MissingPhiInstructionEntry { missing: BlockIndex },
 }
 
 #[derive(Debug)]

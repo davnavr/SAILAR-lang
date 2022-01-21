@@ -325,11 +325,17 @@ pub enum Instruction {
     /// ```
     /// Returns the values in the specified registers and transfers control back to the calling function.
     ///
-    /// Should be the last instruction in a block.
+    /// # Requirements
+    /// A `ret` instruction should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
     /// ```txt
     /// <result0>, <result1>, ... = phi <value0>, <value1>, ... when <block0> or <value2>, <value3>, ... when <block1> or ...;
     /// ```
+    /// Selects values based on the previous block.
+    ///
+    /// # Requirements
+    /// A `phi` instruction cannot appear in the entry block. Additionally, an entry must exist for all blocks that can transfer
+    /// control to the block containing the instruction.
     Phi(PhiSelectionLookup),
     /// ```txt
     /// br <target>;
@@ -357,6 +363,7 @@ pub enum Instruction {
     /// ```
     /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
     ///
+    /// # Requirements
     /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
     /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
     /// function's signature.

@@ -95,6 +95,7 @@ impl Registers {
 pub(super) struct InstructionPointer<'l> {
     code: &'l format::Code,
     block_index: BlockIndex,
+    previous_block: Option<BlockIndex>,
     instructions: &'l [Instruction],
     last_breakpoint_hit: Option<usize>,
     /// Instruction offsets marking where breakpoints are placed, in increasing order.
@@ -104,11 +105,26 @@ pub(super) struct InstructionPointer<'l> {
 static BREAK: &'static Instruction = &Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
+    fn new(code: &'l format::Code) -> Self {
+        Self {
+            code,
+            block_index: BlockIndex::entry(),
+            previous_block: None,
+            instructions: &code.entry_block.instructions,
+            breakpoints: VecDeque::new(),
+            last_breakpoint_hit: None,
+        }
+    }
+
     pub fn current_block(&self) -> &'l format::CodeBlock {
         match self.block_index {
             BlockIndex(None) => &self.code.entry_block,
             BlockIndex(Some(other_index)) => &self.code.blocks[other_index],
         }
+    }
+
+    pub fn previous_block(&self) -> Option<BlockIndex> {
+        self.previous_block
     }
 
     pub fn code_index(&self) -> usize {
@@ -131,6 +147,7 @@ impl<'l> InstructionPointer<'l> {
         let index = usize::try_from(target).map_err(|_| ErrorKind::UndefinedBlock(target))?;
         match self.code.blocks.get(index) {
             Some(block) => {
+                self.previous_block = Some(self.block_index);
                 self.block_index = BlockIndex(Some(index));
                 self.instructions = &block.instructions;
                 Ok(())
@@ -480,13 +497,7 @@ impl<'l> Stack<'l> {
                         inputs: argument_registers,
                         temporaries: Vec::new(),
                     },
-                    instructions: InstructionPointer {
-                        code,
-                        block_index: BlockIndex::entry(),
-                        instructions: &code.entry_block.instructions,
-                        breakpoints: VecDeque::new(),
-                        last_breakpoint_hit: None,
-                    },
+                    instructions: InstructionPointer::new(code),
                 });
 
                 self.breakpoints.update_in(&mut frame)?;
