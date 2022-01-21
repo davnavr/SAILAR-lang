@@ -280,3 +280,65 @@ fn phi_is_correct() {
         },
     );
 }
+
+#[test]
+fn switch_is_correct() {
+    setup::initialize_from_str(
+        basic_module_str!(
+            SwitchTest,
+            r#"
+.code @code {
+    .entry $BLOCK;
+    .block $BLOCK (%i_input) {
+        switch s32 %i_input default $BRANCH_DEFAULT or 1 $BRANCH_ONE or 3 $BRANCH_THREE;
+    };
+    .block $BRANCH_ONE () {
+        %t_result = const.i s32 100;
+        ret %t_result;
+    };
+    .block $BRANCH_THREE () {
+        %t_result = const.i s32 333;
+        ret %t_result;
+    };
+    .block $BRANCH_DEFAULT () {
+        %t_result = const.i s32 0;
+        ret %t_result;
+    };
+};
+
+.function @test (s32) returns (s32) export {
+    .name "test";
+    .body defined @code;
+};
+"#
+        ),
+        |_, _| (),
+        |_, runtime| {
+            let test_function = runtime
+                .program()
+                .lookup_function(Symbol::Owned(Identifier::try_from("test").unwrap()))
+                .unwrap();
+
+            let mut arguments = [interpreter::Register::from(1i32)];
+
+            assert_eq!(
+                vec![interpreter::Register::from(100i32)],
+                runtime.invoke(test_function, &arguments, None).unwrap()
+            );
+
+            arguments[0] = interpreter::Register::from(3i32);
+
+            assert_eq!(
+                vec![interpreter::Register::from(333i32)],
+                runtime.invoke(test_function, &arguments, None).unwrap()
+            );
+
+            arguments[0] = interpreter::Register::from(4i32);
+
+            assert_eq!(
+                vec![interpreter::Register::from(0i32)],
+                runtime.invoke(test_function, &arguments, None).unwrap()
+            );
+        },
+    );
+}

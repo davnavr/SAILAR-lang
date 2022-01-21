@@ -403,7 +403,7 @@ pub enum Instruction {
     /// Returns the values in the specified registers and transfers control back to the calling function.
     ///
     /// # Requirements
-    /// A `ret` instruction should be the last instruction in a block.
+    /// - Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
     /// ```txt
     /// <result0>, <result1>, ... = phi <value0>, <value1>, ... when <block0> or <value2>, <value3>, ... when <block1> or ...;
@@ -411,8 +411,8 @@ pub enum Instruction {
     /// Selects values based on the previous block.
     ///
     /// # Requirements
-    /// A `phi` instruction cannot appear in the entry block. Additionally, an entry must exist for all blocks that can transfer
-    /// control to the block containing the instruction.
+    /// - Cannot appear in the entry block.
+    /// - An entry in the table must exist for all blocks that can transfer control to the block containing the instruction.
     Phi(PhiSelectionLookup),
     ///// ```txt
     ///// <result0>, <result1>, ... = select <condition> then <value0>, <value1>, ... else <value2>, <value3>, ...;
@@ -430,7 +430,8 @@ pub enum Instruction {
     /// Transfers control to one of several blocks depending on the value in the `comparison` register.
     ///
     /// # Requirements
-    /// The type of the value in the `comparison` register must be a non-native integer type, and must be the same as `cmptype`.
+    /// - Should be the last instruction in a block.
+    /// - The type of the value in the `comparison` register must be a non-native integer type, and must be the same as `cmptype`.
     Switch {
         comparison: RegisterIndex,
         // TODO: Use enum for integer type.
@@ -443,6 +444,9 @@ pub enum Instruction {
     /// br <target> with <input0>, <input1>, ...;
     /// ```
     /// Unconditionally transfers control flow to the `target` block providing the specified `input` values.
+    ///
+    /// # Requirements
+    /// - Should be the last instruction in a block.
     Br {
         target: JumpTarget,
         input_registers: LenVec<RegisterIndex>,
@@ -453,6 +457,9 @@ pub enum Instruction {
     /// ```
     /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
     /// otherwise, control flow is transferred to the `false` block.
+    ///
+    /// # Requirements
+    /// - Should be the last instruction in a block.
     BrIf {
         condition: RegisterIndex,
         true_branch: JumpTarget,
@@ -462,12 +469,12 @@ pub enum Instruction {
     /// ```txt
     /// <result0>, <result1>, ... = call <function> <argument0>, <argument1>, ...;
     /// ```
-    /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block.
+    /// Calls the specified `function`, supplying the values in the arguments registers as inputs to its entry block. The number
+    /// of temporary registers introduced is equal to the number of return values in the function's signature.
     ///
     /// # Requirements
-    /// The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
-    /// function. Additionally, the number of temporary registers introduced is equal to the number of return values in the
-    /// function's signature.
+    /// - The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
+    /// function.
     Call(CallInstruction),
     //CallIndr
     //CallRet
