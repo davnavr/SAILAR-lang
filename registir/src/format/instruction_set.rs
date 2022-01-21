@@ -1,5 +1,9 @@
-use crate::format::{indices, type_system, LenVec};
+use crate::{
+    format::{indices, type_system, LenVec},
+    hashing::IntegerHashBuilder,
+};
 use bitflags::bitflags;
+use std::collections::hash_map;
 
 pub use indices::{Function as FunctionIndex, Register as RegisterIndex};
 pub use type_system::PrimitiveType;
@@ -88,6 +92,15 @@ impl IntegerConstant {
 impl std::cmp::PartialEq for IntegerConstant {
     fn eq(&self, other: &Self) -> bool {
         self.value() == other.value()
+    }
+}
+
+impl std::hash::Hash for IntegerConstant {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        state.write_i128(self.value())
     }
 }
 
@@ -260,43 +273,55 @@ pub struct CallInstruction {
 }
 
 /// Maps jump targets to the values returned by a `phi` instruction.Instruction
-/// 
+///
 /// # Structure
 /// - [`value_count()`] (uinteger)
 /// - [`entry_count()`]
-/// - block1
+/// - block0
+/// - value0
 /// - value1
-/// - value2
 /// - ...
-/// - block2
+/// - block1
+/// - value2
+/// - value3
 /// - ...
 #[derive(Debug, PartialEq)]
 pub struct PhiSelectionLookup {
-    lookup: std::collections::HashMap<JumpTarget, Vec<RegisterIndex>>, // TODO: Use custom hasher for deterministic generation of lookups.
+    lookup: hash_map::HashMap<JumpTarget, Vec<RegisterIndex>, IntegerHashBuilder>,
     value_count: u8,
 }
 
 impl PhiSelectionLookup {
     pub fn with_capacity(value_count: u8, capacity: usize) -> Self {
         Self {
-            lookup: std::collections::HashMap::with_capacity(capacity),
+            lookup: hash_map::HashMap::with_capacity_and_hasher(
+                capacity,
+                IntegerHashBuilder::default(),
+            ),
             value_count,
         }
     }
 
     /// Inserts an entry into the map.
-    /// 
+    ///
     /// # Panics
     /// Panics if the number of registers is not equal to the `value_count`.
+    #[must_use]
     pub fn insert(&mut self, target: JumpTarget, registers: Vec<RegisterIndex>) -> bool {
         if usize::from(self.value_count) != registers.len() {
-            panic!("expected {} values but got {}", self.value_count, registers.len());
+            panic!(
+                "expected {} values but got {}",
+                self.value_count,
+                registers.len()
+            );
         }
         self.lookup.insert(target, registers).is_none()
     }
 
     pub fn iter(&self) -> impl std::iter::Iterator<Item = (JumpTarget, &'_ [RegisterIndex])> + '_ {
-        self.lookup.iter().map(|(target, registers)| (*target, registers.as_slice()))
+        self.lookup
+            .iter()
+            .map(|(target, registers)| (*target, registers.as_slice()))
     }
 
     pub fn get(&self, target: JumpTarget) -> Option<&[RegisterIndex]> {
@@ -309,6 +334,58 @@ impl PhiSelectionLookup {
 
     pub fn value_count(&self) -> u8 {
         self.value_count
+    }
+}
+
+/// Specifies the targets of a `switch` instruction.
+///
+/// # Structure
+/// - [`len()`]
+/// - value0
+/// - target0
+/// - value1
+/// - target1
+/// - ...
+#[derive(Debug, PartialEq)]
+pub struct SwitchLookupTable {
+    lookup: hash_map::HashMap<IntegerConstant, JumpTarget, IntegerHashBuilder>,
+}
+
+impl SwitchLookupTable {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            lookup: hash_map::HashMap::with_capacity_and_hasher(
+                capacity,
+                IntegerHashBuilder::default(),
+            ),
+        }
+    }
+
+    #[must_use]
+    pub fn insert(&mut self, value: IntegerConstant, target: JumpTarget) -> bool {
+        match self.lookup.entry(value) {
+            hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(target);
+                true
+            }
+            hash_map::Entry::Occupied(_) => false,
+        }
+    }
+
+    pub fn get(&self, value: &IntegerConstant) -> Option<JumpTarget> {
+        self.lookup.get(value).copied()
+    }
+
+    pub fn len(&self) -> usize {
+        self.lookup.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lookup.is_empty()
+    }
+
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = (&'_ IntegerConstant, JumpTarget)> + '_ {
+        self.lookup.iter().map(|(value, target)| (value, *target))
     }
 }
 
@@ -337,6 +414,30 @@ pub enum Instruction {
     /// A `phi` instruction cannot appear in the entry block. Additionally, an entry must exist for all blocks that can transfer
     /// control to the block containing the instruction.
     Phi(PhiSelectionLookup),
+    ///// ```txt
+    ///// <result0>, <result1>, ... = select <condition> then <value0>, <value1>, ... else <value2>, <value3>, ...;
+    ///// ```
+    ///// Used to select one set of values or the other depending on whether the value in the `condition` register is truthy,
+    ///// without requires blocks or branching.
+    //Select {
+    //    condition: RegisterIndex,
+    //    true_registers: LenVec<RegisterIndex>, // NOTE: Length of vectors should be the same anyway, could optimize away length.
+    //    false_registers: Vec<RegisterIndex>,
+    //},
+    /// ```txt
+    /// switch <comparison> <cmptype> to <target1> <value1> or <target2> <value2> or ... or <target0>;
+    /// ```
+    /// Transfers control to one of several blocks depending on the value in the `comparison` register.
+    ///
+    /// # Requirements
+    /// The type of the value in the `comparison` register must be a non-native integer type, and must be the same as `cmptype`.
+    Switch {
+        comparison: RegisterIndex,
+        // TODO: Use enum for integer type.
+        comparison_type: PrimitiveType,
+        default_target: JumpTarget,
+        target_lookup: SwitchLookupTable,
+    },
     /// ```txt
     /// br <target>;
     /// br <target> with <input0>, <input1>, ...;
@@ -465,6 +566,7 @@ impl Instruction {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
             Instruction::Phi(_) => Opcode::Phi,
+            Instruction::Switch { .. } => Opcode::Switch,
             Instruction::Br { .. } => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Call(_) => Opcode::Call,
@@ -490,6 +592,7 @@ impl Instruction {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
+            | Instruction::Switch { .. }
             | Instruction::Br { .. }
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,

@@ -9,117 +9,51 @@ use crate::{
 };
 use std::io::Read;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("the file magic indicates that it is not a valid binary module")]
     InvalidModuleMagic,
+    #[error("{0:#02X} is not a valid integer size value")]
     InvalidIntegerSize(u8),
+    #[error("The format version {}.{} is not supported", .0.major, .0.minor)]
     UnsupportedFormatVersion(format::FormatVersion),
+    #[error("{0} is not a valid data vector count")]
     InvalidDataVectorCount(numeric::UInteger),
+    #[error("expected to read {expected} bytes but got {actual}")]
     InvalidByteLength { expected: usize, actual: usize },
+    #[error("{0} is not a valid number of fields for the module header")]
     InvalidHeaderFieldCount(numeric::UInteger),
-    InvalidIdentifierCharacter(std::str::Utf8Error),
+    #[error(transparent)]
+    InvalidIdentifierCharacter(#[from] std::str::Utf8Error),
+    #[error("identifiers must not be empty")]
     EmptyIdentifier,
+    #[error("{0:#02X} is not a valid namespace flags combination")]
     InvalidNamespaceFlags(u8),
+    #[error("{0:#02X} is not a valid type signature tag")]
     InvalidTypeSignatureTag(u8),
+    #[error("{0:#02X} is not a valid primitive type")]
     InvalidPrimitiveType(u8),
+    #[error("{0} is not a constant integer type")]
     InvalidIntegerConstantType(type_system::PrimitiveType),
+    #[error("{0:#02X} is not a valid combination of code block flags")]
     InvalidCodeBlockFlags(u8),
+    #[error("{0:#02X} is not a valid opcode")]
     InvalidOpcode(u32),
+    #[error("duplicate switch branch for value {0:?}")]
+    DuplicateSwitchBranch(instruction_set::IntegerConstant),
+    #[error("{0:#02X} is not a valid arithmetic flags combination")]
     InvalidArithmeticFlags(u8),
+    #[error("{0:#02X} is not a valid numeric type")]
     InvalidNumericType(u8),
-    InvalidCallFlags(u8),
-    InvalidVisibilityFlags(u8),
+    #[error("{0:#02X} is not a valid struct flags combination")]
     InvalidStructFlags(u8),
+    #[error("{0:#02X} is not a valid function flags combination")]
     InvalidFunctionFlags(u8),
+    #[error("{0:#02X} is not a valid struct layout")]
     InvalidStructLayoutFlags(u8),
-    InputOutputError(std::io::Error),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidModuleMagic => {
-                f.write_str("the file magic indicates that it is not a valid binary module")
-            }
-            Self::InvalidIntegerSize(value) => {
-                write!(f, "{:#02X} is not a valid integer size value", value)
-            }
-            Self::UnsupportedFormatVersion(version) => write!(
-                f,
-                "The format version {}.{} is not supported",
-                version.major, version.minor
-            ),
-            Self::InvalidDataVectorCount(count) => {
-                write!(f, "{} is not a valid data vector count", count)
-            }
-            Self::InvalidByteLength { expected, actual } => {
-                write!(f, "expected to read {} bytes but got {}", expected, actual)
-            }
-            Self::InvalidHeaderFieldCount(count) => write!(
-                f,
-                "{} is not a valid number of fields for the module header",
-                count
-            ),
-            Self::EmptyIdentifier => f.write_str("Identifiers must not be empty"),
-            Self::InvalidNamespaceFlags(flags) => write!(
-                f,
-                "{:#02X} is not a valid combination of namespace flags",
-                flags
-            ),
-            Self::InvalidIdentifierCharacter(error) => error.fmt(f),
-            Self::InvalidTypeSignatureTag(tag) => {
-                write!(f, "{:#02X} is not a valid type signature tag", tag)
-            }
-            Self::InvalidPrimitiveType(tag) => {
-                write!(f, "{:#02X} is not a valid primitive type", tag)
-            }
-            Self::InvalidIntegerConstantType(tag) => {
-                write!(f, "{:?} is not a constant integer type", tag)
-            }
-            Self::InvalidCodeBlockFlags(flags) => write!(
-                f,
-                "{:#02X} is not a valid combination of code block flags",
-                flags
-            ),
-            Self::InvalidOpcode(opcode) => write!(f, "{} is not a valid opcode", opcode),
-            Self::InvalidArithmeticFlags(flags) => {
-                write!(
-                    f,
-                    "{:#02X} is not a valid arithmetic flags combination",
-                    flags
-                )
-            }
-            Self::InvalidNumericType(value) => {
-                write!(f, "{:#02X} is not a valid numeric type", value)
-            }
-            Self::InvalidCallFlags(flags) => {
-                write!(f, "{:#02X} is not a valid call flags combination", flags)
-            }
-            Self::InvalidVisibilityFlags(flag) => {
-                write!(f, "{:#02X} is not a valid visibility value", flag)
-            }
-            Self::InvalidStructFlags(flag) => {
-                write!(f, "{:#02X} is not a valid struct flags combination", flag)
-            }
-            Self::InvalidFunctionFlags(flag) => {
-                write!(f, "{:#02X} is not a valid function flags combination", flag)
-            }
-            Self::InvalidStructLayoutFlags(flag) => {
-                write!(f, "{:#02X} is not a valid struct layout", flag)
-            }
-            Self::InputOutputError(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::InputOutputError(error) => Some(error),
-            _ => None,
-        }
-    }
+    #[error(transparent)]
+    InputOutputError(#[from] std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -399,7 +333,10 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
         Opcode::Phi => {
             let value_count = u8::try_from(unsigned_integer(src, size)?.0).unwrap();
-            let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(value_count, unsigned_length(src, size)?);
+            let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(
+                value_count,
+                unsigned_length(src, size)?,
+            );
 
             // TODO: Error if value_count or entry_count is zero.
             assert!(value_count > 0);
@@ -419,6 +356,61 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
             }
 
             Ok(Instruction::Phi(lookup))
+        }
+        Opcode::Switch => {
+            let comparison = unsigned_index(src, size)?;
+            let comparison_type = {
+                let tag = unsafe { std::mem::transmute(byte(src)?) };
+                primitive_type(tag).ok_or(Error::InvalidPrimitiveType(tag as u8))?
+            };
+
+            let default_target = unsigned_index(src, size)?;
+
+            let mut target_lookup =
+                instruction_set::SwitchLookupTable::with_capacity(unsigned_length(src, size)?);
+
+            let next_value: fn(&mut R) -> Result<instruction_set::IntegerConstant> = {
+                use instruction_set::{IntegerConstant, PrimitiveType};
+
+                match comparison_type {
+                    PrimitiveType::S8 => |src| Ok(IntegerConstant::S8(byte(src)? as i8)),
+                    PrimitiveType::U8 => |src| Ok(IntegerConstant::U8(byte(src)?)),
+                    PrimitiveType::S16 => {
+                        |src| Ok(IntegerConstant::S16(i16::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    PrimitiveType::U16 => {
+                        |src| Ok(IntegerConstant::U16(u16::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    PrimitiveType::S32 => {
+                        |src| Ok(IntegerConstant::S32(i32::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    PrimitiveType::U32 => {
+                        |src| Ok(IntegerConstant::U32(u32::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    PrimitiveType::S64 => {
+                        |src| Ok(IntegerConstant::S64(i64::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    PrimitiveType::U64 => {
+                        |src| Ok(IntegerConstant::U64(u64::from_le_bytes(fixed_bytes(src)?)))
+                    }
+                    _ => return Err(Error::InvalidIntegerConstantType(comparison_type)),
+                }
+            };
+
+            for _ in 0..target_lookup.len() {
+                let value = next_value(src)?;
+                let target = unsigned_index(src, size)?;
+                if !target_lookup.insert(value, target) {
+                    return Err(Error::DuplicateSwitchBranch(value));
+                }
+            }
+
+            Ok(Instruction::Switch {
+                comparison,
+                comparison_type,
+                default_target,
+                target_lookup,
+            })
         }
         Opcode::Br => Ok(Instruction::Br {
             target: unsigned_index(src, size)?,

@@ -4,28 +4,15 @@ use crate::{
 };
 use std::io::Write;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("{0} is not a valid size for a vector")]
     VectorTooLarge(usize),
-    InputOutputError(std::io::Error),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::VectorTooLarge(size) => write!(f, "{} is not a valid size for a vector", size),
-            Self::InputOutputError(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Self::InputOutputError(error)
-    }
+    #[error("{0} is not a valid fixed-length integer type")]
+    InvalidFixedLengthIntegerType(type_system::PrimitiveType),
+    #[error(transparent)]
+    InputOutputError(#[from] std::io::Error),
 }
 
 pub type Result = std::result::Result<(), Error>;
@@ -305,10 +292,47 @@ fn block_instruction<W: Write>(
             }
             Ok(())
         }
-        Instruction::Br { target, input_registers } => {
+        Instruction::Switch {
+            comparison,
+            comparison_type,
+            default_target,
+            target_lookup,
+        } => {
+            unsigned_index(out, *comparison, size)?;
+            primitive_type(out, *comparison_type)?;
+            unsigned_index(out, *default_target, size)?;
+            unsigned_length(out, target_lookup.len(), size)?;
+
+            let write_value: fn(&mut W, value: i128) -> Result = {
+                match *comparison_type {
+                    PrimitiveType::S8 | PrimitiveType::U8 => |out, value| write(out, value as u8),
+                    PrimitiveType::S16 | PrimitiveType::U16 => {
+                        |out, value| write_bytes(out, &(value as u16).to_le_bytes())
+                    }
+                    PrimitiveType::S32 | PrimitiveType::U32 => {
+                        |out, value| write_bytes(out, &(value as u32).to_le_bytes())
+                    }
+                    PrimitiveType::S64 | PrimitiveType::U64 => {
+                        |out, value| write_bytes(out, &(value as u64).to_le_bytes())
+                    }
+                    _ => return Err(Error::InvalidFixedLengthIntegerType(*comparison_type)),
+                }
+            };
+
+            for (value, target) in target_lookup.iter() {
+                write_value(out, value.value())?;
+                unsigned_index(out, target, size)?;
+            }
+
+            Ok(())
+        }
+        Instruction::Br {
+            target,
+            input_registers,
+        } => {
             unsigned_index(out, *target, size)?;
             length_encoded_indices(out, input_registers, size)
-        },
+        }
         Instruction::BrIf {
             condition,
             true_branch,
