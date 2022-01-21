@@ -4,6 +4,7 @@ use registir::format;
 pub mod call_stack;
 pub mod debugger;
 pub mod error;
+pub mod mem;
 pub mod register;
 
 pub use format::{
@@ -22,6 +23,8 @@ pub use call_stack::{
 };
 
 pub use error::{Error, ErrorKind, LoaderError};
+
+pub use mem::{stack::Stack as ValueStack};
 
 pub use register::{NumericType, Register, RegisterType};
 
@@ -282,6 +285,10 @@ impl<'l> Interpreter<'l> {
                 .current_mut()?
                 .registers
                 .define_temporary(Register::from(*value)),
+            Instruction::Alloca { element_type, amount } => {
+
+                todo!("allocate on stack")
+            }
             Instruction::Break => {
                 self.debugger_loop();
                 self.call_stack.update_current_breakpoints()?;
