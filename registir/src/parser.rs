@@ -444,6 +444,10 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
         // Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
         // Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
+        Opcode::Alloca => Ok(Instruction::Alloca {
+            amount: unsigned_index(src, size)?,
+            element_type: unsigned_index(src, size)?,
+        }),
         Opcode::Break => Ok(Instruction::Break),
         Opcode::Continuation => unreachable!(),
         bad => todo!(

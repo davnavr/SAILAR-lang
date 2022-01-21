@@ -5,7 +5,9 @@ use crate::{
 use bitflags::bitflags;
 use std::collections::hash_map;
 
-pub use indices::{Function as FunctionIndex, Register as RegisterIndex};
+pub use indices::{
+    Function as FunctionIndex, Register as RegisterIndex, TypeSignature as TypeIndex,
+};
 pub use type_system::PrimitiveType;
 
 /// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
@@ -134,6 +136,13 @@ pub enum Opcode {
     RotR,
     ConstI,
     ConstF,
+    CmpEq,
+    CmpNe,
+    CmpLt,
+    CmpGt,
+    CmpLe,
+    CmpGe,
+    Alloca = 253,
     Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
     Continuation = 0xFF,
@@ -559,6 +568,17 @@ pub enum Instruction {
     /// Returns an integer of the specified type.
     ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
     /// ```txt
+    /// <result> = alloca <amount> of <type>;
+    /// <result> = alloca <amount> of <type>;
+    /// ```
+    /// Returns a suitably aligned pointer to newly allocated memory on the stack to contain `amount` elements of the specified
+    /// `type`. If the allocation fails, a `null` pointer is returned. The memory allocated is automatically freed when the
+    /// function returns.
+    Alloca {
+        amount: RegisterIndex,
+        element_type: TypeIndex,
+    },
+    /// ```txt
     /// break;
     /// ```
     /// Represents a breakpoint placed by a debugger.
@@ -590,6 +610,7 @@ impl Instruction {
             // Instruction::RotL(_) => Opcode::RotL,
             // Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
+            Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
         }
     }
@@ -621,7 +642,8 @@ impl Instruction {
             // | Instruction::ShR(_)
             // | Instruction::RotL(_)
             // | Instruction::RotR(_)
-            | Instruction::ConstI(_) => 1,
+            | Instruction::ConstI(_)
+            | Instruction::Alloca { .. } => 1,
         }
     }
 }

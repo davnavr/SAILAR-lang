@@ -399,6 +399,13 @@ fn block_instruction<W: Write>(
                 write_bytes(out, &value.to_le_bytes())
             }
         },
+        Instruction::Alloca {
+            amount,
+            element_type,
+        } => {
+            unsigned_index(out, *amount, size)?;
+            unsigned_index(out, *element_type, size)
+        }
     }
 }
 
