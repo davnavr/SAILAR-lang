@@ -268,6 +268,14 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                     keyword("ret")
                         .ignore_then(many_registers())
                         .map(ast::Instruction::Ret),
+                    keyword("phi")
+                        .ignore_then(
+                            (with_position(many_registers().at_least(1))
+                                .then(keyword("when").ignore_then(local_symbol)))
+                            .separated_by(keyword("or"))
+                            .at_least(1),
+                        )
+                        .map(ast::Instruction::Phi),
                     keyword("br")
                         .ignore_then(local_symbol)
                         .then(branch_inputs())

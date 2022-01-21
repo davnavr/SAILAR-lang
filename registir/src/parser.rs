@@ -397,6 +397,29 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
+        Opcode::Phi => {
+            let value_count = u8::try_from(unsigned_integer(src, size)?.0).unwrap();
+            let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(value_count, unsigned_length(src, size)?);
+
+            // TODO: Error if value_count or entry_count is zero.
+            assert!(value_count > 0);
+            assert!(lookup.entry_count() > 0);
+
+            for _ in 0..lookup.entry_count() {
+                let target = unsigned_index(src, size)?;
+                let mut registers = Vec::with_capacity(usize::from(value_count));
+
+                for _ in 0..value_count {
+                    registers.push(unsigned_index(src, size)?);
+                }
+
+                if !lookup.insert(target, registers) {
+                    panic!("add error for duplicate key in phi lookup")
+                }
+            }
+
+            Ok(Instruction::Phi(lookup))
+        }
         Opcode::Br => Ok(Instruction::Br {
             target: unsigned_index(src, size)?,
             input_registers: length_encoded_indices(src, size)?,

@@ -259,6 +259,59 @@ pub struct CallInstruction {
     pub arguments: LenVec<RegisterIndex>,
 }
 
+/// Maps jump targets to the values returned by a `phi` instruction.Instruction
+/// 
+/// # Structure
+/// - [`value_count()`] (uinteger)
+/// - [`entry_count()`]
+/// - block1
+/// - value1
+/// - value2
+/// - ...
+/// - block2
+/// - ...
+#[derive(Debug, PartialEq)]
+pub struct PhiSelectionLookup {
+    lookup: std::collections::HashMap<JumpTarget, Vec<RegisterIndex>>, // TODO: Use custom hasher for deterministic generation of lookups.
+    value_count: u8,
+}
+
+impl PhiSelectionLookup {
+    pub fn with_capacity(value_count: u8, capacity: usize) -> Self {
+        Self {
+            lookup: std::collections::HashMap::with_capacity(capacity),
+            value_count,
+        }
+    }
+
+    /// Inserts an entry into the map.
+    /// 
+    /// # Panics
+    /// Panics if the number of registers is not equal to the `value_count`.
+    pub fn insert(&mut self, target: JumpTarget, registers: Vec<RegisterIndex>) -> bool {
+        if usize::from(self.value_count) != registers.len() {
+            panic!("expected {} values but got {}", self.value_count, registers.len());
+        }
+        self.lookup.insert(target, registers).is_none()
+    }
+
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = (JumpTarget, &'_ [RegisterIndex])> + '_ {
+        self.lookup.iter().map(|(target, registers)| (*target, registers.as_slice()))
+    }
+
+    pub fn get(&self, target: JumpTarget) -> Option<&[RegisterIndex]> {
+        self.lookup.get(&target).map(Vec::as_slice)
+    }
+
+    pub fn entry_count(&self) -> usize {
+        self.lookup.len()
+    }
+
+    pub fn value_count(&self) -> u8 {
+        self.value_count
+    }
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
@@ -268,15 +321,19 @@ pub enum Instruction {
     /// Does absolutely nothing.
     Nop,
     /// ```txt
-    /// ret <value1>, <value2>, ...;
+    /// ret <value0>, <value1>, ...;
     /// ```
     /// Returns the values in the specified registers and transfers control back to the calling function.
     ///
     /// Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
     /// ```txt
+    /// <result0>, <result1>, ... = phi <value0>, <value1>, ... when <block0> or <value2>, <value3>, ... when <block1> or ...;
+    /// ```
+    Phi(PhiSelectionLookup),
+    /// ```txt
     /// br <target>;
-    /// br <target> with <input1>, <input2>, ...;
+    /// br <target> with <input0>, <input1>, ...;
     /// ```
     /// Unconditionally transfers control flow to the `target` block providing the specified `input` values.
     Br {
@@ -285,7 +342,7 @@ pub enum Instruction {
     },
     /// ```txt
     /// br.if <condition> then <true> else <false>;
-    /// br.if <condition> then <true> else <false> with <input1>, <input2>, ...;
+    /// br.if <condition> then <true> else <false> with <input0>, <input1>, ...;
     /// ```
     /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
     /// otherwise, control flow is transferred to the `false` block.
@@ -400,6 +457,7 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::Phi(_) => Opcode::Phi,
             Instruction::Br { .. } => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
             Instruction::Call(_) => Opcode::Call,
@@ -428,6 +486,7 @@ impl Instruction {
             | Instruction::Br { .. }
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,
+            Instruction::Phi(lookup) => lookup.value_count,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })

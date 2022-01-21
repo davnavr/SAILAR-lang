@@ -294,6 +294,17 @@ fn block_instruction<W: Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
+        Instruction::Phi(lookup) => {
+            unsigned_integer(out, numeric::UInteger::from(lookup.value_count()), size)?;
+            unsigned_length(out, lookup.entry_count(), size)?;
+            for (target, registers) in lookup.iter() {
+                unsigned_index(out, target, size)?;
+                for index in registers {
+                    unsigned_index(out, *index, size)?;
+                }
+            }
+            Ok(())
+        }
         Instruction::Br { target, input_registers } => {
             unsigned_index(out, *target, size)?;
             length_encoded_indices(out, input_registers, size)

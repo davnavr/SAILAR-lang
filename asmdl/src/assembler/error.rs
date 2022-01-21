@@ -27,6 +27,8 @@ pub enum ErrorKind {
         name: ast::Identifier,
         original: ast::Position,
     },
+    #[error("a set of registers to use for this phi instruction already exists for block ${0}")]
+    DuplicatePhiTargetBlock(ast::Identifier),
     #[error("a {kind} with the name @{name} already exists")]
     DuplicateDeclaration {
         kind: &'static str,

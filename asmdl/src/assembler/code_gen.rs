@@ -111,9 +111,9 @@ impl<'a> CodeBlockAssembler<'a> {
         let mut instructions = Vec::with_capacity(self.instructions.len());
 
         for statement in self.instructions {
-            macro_rules! emit_instruction {
+            macro_rules! try_some {
                 ($i: expr) => {
-                    (|| $i)()
+                    (|| Some($i))()
                 };
             }
 
@@ -128,6 +128,48 @@ impl<'a> CodeBlockAssembler<'a> {
                     expected_return_count = 0;
                     next_instruction = lookup_many_registers(errors, register_lookup, registers)
                         .map(Instruction::Ret);
+                }
+                ast::Instruction::Phi(entries) => {
+                    expected_return_count = entries
+                        .first()
+                        .expect("parser should ensure phi entries are not empty")
+                        .0
+                         .0
+                        .len();
+
+                    let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(
+                        u8::try_from(expected_return_count).unwrap(),
+                        entries.len(),
+                    );
+
+                    for (registers, target) in entries {
+                        if registers.0.len() != expected_return_count {
+                            errors.push_with_location(
+                                ErrorKind::InvalidReturnRegisterCount {
+                                    expected: expected_return_count,
+                                    actual: registers.0.len(),
+                                },
+                                registers.1.clone(),
+                            );
+                            continue;
+                        }
+
+                        let target_block = lookup_block(errors, block_lookup, target);
+
+                        let value_registers =
+                            lookup_many_registers(errors, register_lookup, &registers.0);
+
+                        try_some!({
+                            if !lookup.insert(target_block?, value_registers.map(|r| r.0)?) {
+                                errors.push_with_location(
+                                    ErrorKind::DuplicatePhiTargetBlock(target.identifier().clone()),
+                                    target.location().clone(),
+                                );
+                            }
+                        });
+                    }
+
+                    next_instruction = Some(Instruction::Phi(lookup));
                 }
                 ast::Instruction::Br { target, inputs } => {
                     expected_return_count = 0;
@@ -145,17 +187,15 @@ impl<'a> CodeBlockAssembler<'a> {
                     inputs,
                 } => {
                     expected_return_count = 0;
-                    next_instruction = emit_instruction!({
-                        Some(Instruction::BrIf {
-                            condition: lookup_register(errors, register_lookup, condition)?,
-                            true_branch: lookup_block(errors, block_lookup, true_branch)?,
-                            false_branch: lookup_block(errors, block_lookup, false_branch)?,
-                            input_registers: lookup_many_registers(
-                                errors,
-                                register_lookup,
-                                inputs,
-                            )?,
-                        })
+                    let condition_register = lookup_register(errors, register_lookup, condition);
+                    let true_target = lookup_block(errors, block_lookup, true_branch);
+                    let false_target = lookup_block(errors, block_lookup, false_branch);
+                    let input_registers = lookup_many_registers(errors, register_lookup, inputs);
+                    next_instruction = try_some!(Instruction::BrIf {
+                        condition: condition_register?,
+                        true_branch: true_target?,
+                        false_branch: false_target?,
+                        input_registers: input_registers?,
                     });
                 }
                 ast::Instruction::Call {
