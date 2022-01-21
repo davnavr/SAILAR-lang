@@ -186,7 +186,7 @@ impl<'l> Interpreter<'l> {
             } => {
                 let current = self.call_stack().current_mut()?;
                 let inputs = collect_registers_from(current, input_register_indices)?;
-                
+
                 let target = if current.registers.get(*condition)?.is_truthy() {
                     *true_target
                 } else {

@@ -160,6 +160,34 @@ impl std::fmt::UpperHex for Register {
     }
 }
 
+impl std::cmp::PartialEq for Register {
+    fn eq(&self, other: &Register) -> bool {
+        macro_rules! value_equals {
+            ($value_field: ident) => {
+                unsafe { self.value.$value_field == other.value.$value_field }
+            };
+        }
+
+        match self.value_type {
+            self_type if self_type != other.value_type => false,
+            RegisterType::Primitive(PrimitiveType::U8) => value_equals!(u_byte),
+            RegisterType::Primitive(PrimitiveType::S8) => value_equals!(s_byte),
+            RegisterType::Primitive(PrimitiveType::U16) => value_equals!(u_short),
+            RegisterType::Primitive(PrimitiveType::S16) => value_equals!(s_short),
+            RegisterType::Primitive(PrimitiveType::U32) => value_equals!(u_int),
+            RegisterType::Primitive(PrimitiveType::S32) => value_equals!(s_int),
+            RegisterType::Primitive(PrimitiveType::U64) => value_equals!(u_long),
+            RegisterType::Primitive(PrimitiveType::S64) => value_equals!(s_long),
+            RegisterType::Primitive(PrimitiveType::UNative) => value_equals!(u_native),
+            RegisterType::Primitive(PrimitiveType::SNative) => value_equals!(s_native),
+            RegisterType::Primitive(PrimitiveType::F32) => value_equals!(f_single),
+            RegisterType::Primitive(PrimitiveType::F64) => value_equals!(f_double),
+        }
+    }
+}
+
+impl std::cmp::Eq for Register {}
+
 trait InterpretRegister {
     /// Interprets the value of the register, performing any necessary conversions.
     #[deprecated(

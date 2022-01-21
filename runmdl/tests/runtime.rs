@@ -70,16 +70,14 @@ fn call_stack_overflow() {
 .entry @exploder;
 "#,
         |_, _| (),
-        |_, runtime| {
-            use runmdl::{interpreter::ErrorKind, runtime};
-            match runtime.invoke_entry_point(&[], None) {
-                Err(runtime::Error::InterpreterError(error))
-                    if matches!(error.kind(), ErrorKind::CallStackOverflow(_)) =>
-                {
-                    ()
+        |_, runtime| match runtime.invoke_entry_point(&[], None) {
+            Err(runmdl::runtime::Error::InterpreterError(error)) => match error.kind() {
+                interpreter::ErrorKind::CallStackOverflow(capacity) => {
+                    assert_eq!(error.stack_trace().len(), capacity.get())
                 }
-                result => panic!("unexpected result {:?}", result),
-            }
+                error => panic!("unexpected error kind {:?}", error),
+            },
+            result => panic!("unexpected result {:?}", result),
         },
     );
 }
@@ -166,6 +164,57 @@ fn breakpoints_are_set_during_pause() {
             assert_eq!(42, runtime.invoke_entry_point(&[], Some(debugger)).unwrap());
             assert_eq!(Some(5), data.borrow().value_1);
             assert_eq!(Some(42), data.borrow().value_2);
+        },
+    );
+}
+
+#[test]
+fn conditional_branching_is_correct() {
+    setup::initialize_from_str(
+        r#"
+.module { .name "IfTest"; };
+.format { .major 0; .minor 6; };
+
+.code @code {
+    .entry $BLOCK;
+    .block $BLOCK (%i_input) {
+        br.if %i_input then $RET_GOOD else $RET_BAD;
+    };
+    .block $RET_GOOD () {
+        %t_result = const.i u32 61453;
+        ret %t_result;
+    };
+    .block $RET_BAD () {
+        %t_result = const.i u32 2989;
+        ret %t_result;
+    };
+};
+
+.function @test (s32) returns (s32) export {
+    .name "test";
+    .body defined @code;
+};
+"#,
+        |_, _| (),
+        |_, runtime| {
+            let test_function = runtime
+                .program()
+                .lookup_function(Symbol::Owned(Identifier::try_from("test").unwrap()))
+                .unwrap();
+
+            let mut arguments = [interpreter::Register::from(5i32)];
+
+            assert_eq!(
+                vec![interpreter::Register::from(0xF00Di32)],
+                runtime.invoke(test_function, &arguments, None).unwrap()
+            );
+
+            arguments[0] = interpreter::Register::from(0i32);
+
+            assert_eq!(
+                vec![interpreter::Register::from(0xBADi32)],
+                runtime.invoke(test_function, &arguments, None).unwrap()
+            );
         },
     );
 }

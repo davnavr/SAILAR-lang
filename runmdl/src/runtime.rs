@@ -81,6 +81,23 @@ impl<'l> Runtime<'l> {
         &self.program
     }
 
+    pub fn invoke(
+        &'l self,
+        function: &'l loader::Function<'l>,
+        arguments: &[interpreter::Register],
+        debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
+    ) -> Result<Vec<interpreter::Register>, Error> {
+        let results = interpreter::run(
+            &self.loader,
+            arguments,
+            function,
+            self.call_stack_capacity,
+            debugger,
+        )?;
+
+        Ok(results)
+    }
+
     /// Interprets the entry point of the program, supplying the specified arguments.
     pub fn invoke_entry_point(
         &'l self,
@@ -91,16 +108,11 @@ impl<'l> Runtime<'l> {
             todo!("Command line arguments are not yet supported")
         }
 
-        let entry_point = self
-            .program
-            .entry_point()?
-            .ok_or(Error::MissingEntryPoint)?;
-
-        let results = interpreter::run(
-            &self.loader,
+        let results = self.invoke(
+            self.program
+                .entry_point()?
+                .ok_or(Error::MissingEntryPoint)?,
             &[],
-            entry_point,
-            self.call_stack_capacity,
             debugger,
         )?;
 
