@@ -147,12 +147,13 @@ where
     <usize as TryInto<I>>::Error: std::fmt::Debug,
 {
     pub fn insert_or_get(&mut self, value: T) -> I {
-        let index = self.lookup.len();
-        self.lookup
-            .insert(value, index)
-            .unwrap_or(index)
-            .try_into()
-            .unwrap()
+        let next_index = self.lookup.len();
+        let index = match self.lookup.entry(value) {
+            hash_map::Entry::Vacant(vacant) => *vacant.insert(next_index),
+            hash_map::Entry::Occupied(occupied) => *occupied.get(),
+        };
+
+        index.try_into().unwrap()
     }
 
     pub fn drain_to_vec(&mut self) -> Vec<T> {
