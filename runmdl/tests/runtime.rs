@@ -181,11 +181,11 @@ fn conditional_branching_is_correct() {
         br.if %i_input then $RET_GOOD else $RET_BAD;
     };
     .block $RET_GOOD () {
-        %t_result = const.i u32 61453;
+        %t_result = const.i s32 61453;
         ret %t_result;
     };
     .block $RET_BAD () {
-        %t_result = const.i u32 2989;
+        %t_result = const.i s32 2989;
         ret %t_result;
     };
 };
