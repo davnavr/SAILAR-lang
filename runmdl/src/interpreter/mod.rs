@@ -167,6 +167,9 @@ impl<'l> Interpreter<'l> {
                     None => *entry_point_results = results,
                 }
             }
+            Instruction::Phi(lookup) => {
+                todo!()
+            }
             Instruction::Br {
                 target,
                 input_registers: input_register_indices,

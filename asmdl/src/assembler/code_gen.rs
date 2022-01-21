@@ -173,12 +173,12 @@ impl<'a> CodeBlockAssembler<'a> {
                 }
                 ast::Instruction::Br { target, inputs } => {
                     expected_return_count = 0;
-                    next_instruction = lookup_many_registers(errors, register_lookup, inputs)
-                        .zip(lookup_block(errors, block_lookup, target))
-                        .map(|(input_registers, target_block)| Instruction::Br {
-                            target: target_block,
-                            input_registers,
-                        });
+                    let target_block = lookup_block(errors, block_lookup, target);
+                    let input_registers = lookup_many_registers(errors, register_lookup, inputs);
+                    next_instruction = try_some!(Instruction::Br {
+                        target: target_block?,
+                        input_registers: input_registers?,
+                    });
                 }
                 ast::Instruction::BrIf {
                     condition,

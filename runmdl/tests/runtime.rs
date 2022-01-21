@@ -3,6 +3,19 @@ use runmdl::interpreter;
 
 mod setup;
 
+macro_rules! basic_module_str {
+    ($name: ident, $contents: expr) => {{
+        use registir::format::FormatVersion;
+        &format!(
+            ".module {{ .name \"{}\"; }};\n.format {{ .major {}; .minor {}; }};\n{}",
+            stringify!($name),
+            FormatVersion::minimum_supported_version().major,
+            FormatVersion::minimum_supported_version().minor,
+            $contents
+        )
+    }};
+}
+
 #[test]
 fn returns_exit_code() {
     setup::initialize_from_str(
@@ -15,13 +28,9 @@ fn returns_exit_code() {
 #[test]
 fn successful_function_symbol_lookup() {
     setup::initialize_from_str(
-        r#".module { .name "SymbolTest"; };
-
-.format {
-    .major 0;
-    .minor 6;
-};
-
+        basic_module_str!(
+            SymbolTest,
+            r#"
 .code @code {
     .entry $BLOCK;
     .block $BLOCK () {
@@ -33,7 +42,8 @@ fn successful_function_symbol_lookup() {
     .name "unused";
     .body defined @code;
 };
-"#,
+        "#
+        ),
         |_, _| (),
         |_, runtime| {
             assert!(runtime
@@ -47,13 +57,9 @@ fn successful_function_symbol_lookup() {
 #[test]
 fn call_stack_overflow() {
     setup::initialize_from_str(
-        r#".module { .name "StackOverflowTest"; };
-
-.format {
-    .major 0;
-    .minor 6;
-};
-
+        basic_module_str!(
+            StackOverflowTest,
+            r#"
 .code @code {
     .entry $BLOCK;
     .block $BLOCK () {
@@ -68,7 +74,8 @@ fn call_stack_overflow() {
 };
 
 .entry @exploder;
-"#,
+"#
+        ),
         |_, _| (),
         |_, runtime| match runtime.invoke_entry_point(&[], None) {
             Err(runmdl::runtime::Error::InterpreterError(error)) => match error.kind() {
@@ -91,10 +98,9 @@ fn breakpoints_are_set_during_pause() {
     }
 
     setup::initialize_from_str(
-        r#".module { .name "BreakpointTest"; };
-
-.format { .major 0; .minor 6; };
-
+        basic_module_str!(
+            BreakpointTest,
+            r#"
 .code @code {
     .entry $BLOCK;
     .block $BLOCK () {
@@ -110,7 +116,8 @@ fn breakpoints_are_set_during_pause() {
 };
 
 .entry @test;
-"#,
+"#
+        ),
         |program, _| {
             let program_name = program.header.0.identifier.clone();
             let returned_data = std::rc::Rc::new(std::cell::RefCell::new(CollectedData::default()));
@@ -171,10 +178,9 @@ fn breakpoints_are_set_during_pause() {
 #[test]
 fn conditional_branching_is_correct() {
     setup::initialize_from_str(
-        r#"
-.module { .name "IfTest"; };
-.format { .major 0; .minor 6; };
-
+        basic_module_str!(
+            IfTest,
+            r#"
 .code @code {
     .entry $BLOCK;
     .block $BLOCK (%i_input) {
@@ -194,7 +200,8 @@ fn conditional_branching_is_correct() {
     .name "test";
     .body defined @code;
 };
-"#,
+"#
+        ),
         |_, _| (),
         |_, runtime| {
             let test_function = runtime
