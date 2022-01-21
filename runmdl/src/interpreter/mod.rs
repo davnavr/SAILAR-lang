@@ -176,7 +176,7 @@ impl<'l> Interpreter<'l> {
                     .ok_or(ErrorKind::PhiInstructionInEntryBlock)?;
 
                 let register_indices = lookup
-                    .get(JumpTarget::try_from(previous_block.to_raw()).unwrap())
+                    .get(JumpTarget::try_from(previous_block.to_raw() - 1).unwrap())
                     .ok_or(ErrorKind::MissingPhiInstructionEntry {
                         missing: previous_block,
                     })?;
