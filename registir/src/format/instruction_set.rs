@@ -425,7 +425,7 @@ pub enum Instruction {
     //    false_registers: Vec<RegisterIndex>,
     //},
     /// ```txt
-    /// switch <comparison> <cmptype> to <target1> <value1> or <target2> <value2> or ... or <target0>;
+    /// switch <cmptype> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
     /// ```
     /// Transfers control to one of several blocks depending on the value in the `comparison` register.
     ///

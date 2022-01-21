@@ -171,10 +171,78 @@ impl<'a> CodeBlockAssembler<'a> {
 
                     next_instruction = Some(Instruction::Phi(lookup));
                 }
-                ast::Instruction::Br { target, inputs } => {
+                ast::Instruction::Switch {
+                    comparison,
+                    comparison_type,
+                    default_target,
+                    targets,
+                } => {
+                    let comparison_register = lookup_register(errors, register_lookup, comparison);
+                    let default_target_block = lookup_block(errors, block_lookup, default_target);
+                    let mut target_lookup =
+                        instruction_set::SwitchLookupTable::with_capacity(targets.len());
+
+                    for (value, target_block) in targets {
+                        let target_block_index = lookup_block(errors, block_lookup, target_block);
+
+                        macro_rules! constant_target_value {
+                            ($integer_type: ty, $constant_case: ident) => {{
+                                let result = <$integer_type>::try_from(value.0).ok();
+                                if result.is_none() {
+                                    errors.push_with_location(
+                                        ErrorKind::ConstantIntegerOutOfRange(
+                                            comparison_type.0,
+                                            value.0,
+                                        ),
+                                        value.1.clone(),
+                                    );
+                                }
+                                result.map(instruction_set::IntegerConstant::$constant_case)
+                            }};
+                        }
+
+                        try_some!({
+                            use instruction_set::PrimitiveType;
+
+                            let target_value = match comparison_type.0 {
+                                PrimitiveType::S8 => constant_target_value!(i8, S8),
+                                PrimitiveType::U8 => constant_target_value!(u8, U8),
+                                PrimitiveType::S16 => constant_target_value!(i16, S16),
+                                PrimitiveType::U16 => constant_target_value!(u16, U16),
+                                PrimitiveType::S32 => constant_target_value!(i32, S32),
+                                PrimitiveType::U32 => constant_target_value!(u32, U32),
+                                PrimitiveType::S64 => constant_target_value!(i64, S64),
+                                PrimitiveType::U64 => constant_target_value!(u64, U64),
+                                invalid_type => {
+                                    errors.push_with_location(
+                                        ErrorKind::InvalidConstantIntegerType(invalid_type),
+                                        comparison_type.1.clone(),
+                                    );
+                                    None
+                                }
+                            };
+
+                            if !target_lookup.insert(target_value?, target_block_index?) {
+                                errors.push_with_location(
+                                    ErrorKind::DuplicateSwitchBranch(value.0),
+                                    value.1.clone(),
+                                );
+                            }
+                        });
+                    }
+
                     expected_return_count = 0;
+                    next_instruction = try_some!(Instruction::Switch {
+                        comparison: comparison_register?,
+                        comparison_type: comparison_type.0,
+                        default_target: default_target_block?,
+                        target_lookup
+                    });
+                }
+                ast::Instruction::Br { target, inputs } => {
                     let target_block = lookup_block(errors, block_lookup, target);
                     let input_registers = lookup_many_registers(errors, register_lookup, inputs);
+                    expected_return_count = 0;
                     next_instruction = try_some!(Instruction::Br {
                         target: target_block?,
                         input_registers: input_registers?,

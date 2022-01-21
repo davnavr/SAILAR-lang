@@ -107,6 +107,13 @@ pub enum Instruction {
     Nop,
     Ret(Vec<RegisterSymbol>),
     Phi(Vec<(Positioned<Vec<RegisterSymbol>>, LocalSymbol)>),
+    //Select
+    Switch {
+        comparison: RegisterSymbol,
+        comparison_type: Positioned<PrimitiveType>,
+        default_target: LocalSymbol,
+        targets: Vec<(Positioned<i128>, LocalSymbol)>,
+    },
     Br {
         target: LocalSymbol,
         inputs: Vec<RegisterSymbol>,

@@ -276,6 +276,27 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                             .at_least(1),
                         )
                         .map(ast::Instruction::Phi),
+                    keyword("switch")
+                        .ignore_then(with_position(primitive_type))
+                        .then(register_symbol)
+                        .then_ignore(keyword("default"))
+                        .then(local_symbol)
+                        .then(
+                            with_position(integer_literal)
+                                .then(local_symbol)
+                                .separated_by(keyword("or"))
+                                .allow_leading(),
+                        )
+                        .map(
+                            |(((comparison_type, comparison), default_target), targets)| {
+                                ast::Instruction::Switch {
+                                    comparison,
+                                    comparison_type,
+                                    default_target,
+                                    targets,
+                                }
+                            },
+                        ),
                     keyword("br")
                         .ignore_then(local_symbol)
                         .then(branch_inputs())
