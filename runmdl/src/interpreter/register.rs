@@ -313,6 +313,32 @@ impl From<IntegerConstant> for Register {
     }
 }
 
+impl TryFrom<&Register> for IntegerConstant {
+    type Error = ();
+
+    fn try_from(register: &Register) -> Result<Self, Self::Error> {
+        macro_rules! extract_value {
+            ($constant_case: ident, $register_field: ident) => {
+                Ok(Self::$constant_case(unsafe {
+                    register.value.$register_field
+                }))
+            };
+        }
+
+        match register.value_type {
+            RegisterType::Primitive(PrimitiveType::S8) => extract_value!(S8, s_byte),
+            RegisterType::Primitive(PrimitiveType::U8) => extract_value!(U8, u_byte),
+            RegisterType::Primitive(PrimitiveType::S16) => extract_value!(S16, s_short),
+            RegisterType::Primitive(PrimitiveType::U16) => extract_value!(U16, u_short),
+            RegisterType::Primitive(PrimitiveType::S32) => extract_value!(S32, s_int),
+            RegisterType::Primitive(PrimitiveType::U32) => extract_value!(U32, u_int),
+            RegisterType::Primitive(PrimitiveType::S64) => extract_value!(S64, s_long),
+            RegisterType::Primitive(PrimitiveType::U64) => extract_value!(U64, u_long),
+            _ => Err(()),
+        }
+    }
+}
+
 /// The error type returned when a conversion from a register value fails.
 #[derive(Debug, Clone)]
 pub struct TryFromRegisterValueError {

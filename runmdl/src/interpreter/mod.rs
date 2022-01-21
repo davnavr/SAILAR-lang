@@ -184,6 +184,33 @@ impl<'l> Interpreter<'l> {
                 let mut registers = collect_registers_from(current_frame, register_indices)?;
                 current_frame.registers.append_temporaries(&mut registers);
             }
+            Instruction::Switch {
+                comparison,
+                comparison_type,
+                default_target,
+                target_lookup,
+            } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let comparison_register = current_frame.registers.get(*comparison)?;
+
+                if comparison_register.value_type != RegisterType::Primitive(*comparison_type) {
+                    return Err(ErrorKind::InvalidSwitchComparisonType(
+                        comparison_register.value_type,
+                    ));
+                }
+
+                let comparison_value =
+                    instruction_set::IntegerConstant::try_from(comparison_register)
+                        .expect("TODO: handle error when comparison register type is invalid");
+
+                // TODO: Allow inputs to target branch.
+                self.call_stack.current_jump_to(
+                    target_lookup
+                        .get(&comparison_value)
+                        .unwrap_or(*default_target),
+                    &[],
+                )?;
+            }
             Instruction::Br {
                 target,
                 input_registers: input_register_indices,

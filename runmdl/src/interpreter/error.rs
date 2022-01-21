@@ -28,6 +28,8 @@ pub enum ErrorKind {
     },
     #[error("phi instructions are prohibited in the entry block of a function")]
     PhiInstructionInEntryBlock,
+    #[error("invalid comparison type for switch instruction {0}")]
+    InvalidSwitchComparisonType(RegisterType),
     #[error("missing entry for block {missing} in phi instruction")]
     MissingPhiInstructionEntry { missing: BlockIndex },
 }
