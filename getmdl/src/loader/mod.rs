@@ -1,5 +1,8 @@
 use registir::format;
-use std::{cell::RefCell, collections::hash_map};
+use std::{
+    cell::{Cell, RefCell},
+    collections::hash_map,
+};
 use typed_arena::Arena as TypedArena;
 
 mod cache;
@@ -7,12 +10,14 @@ mod error;
 mod function;
 mod module;
 mod symbol;
+mod type_signature;
 
 pub use error::Error;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
 pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
+pub use type_signature::Type as TypeSignature;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

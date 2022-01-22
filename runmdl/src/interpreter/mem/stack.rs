@@ -1,6 +1,8 @@
 use std::ptr::NonNull;
 
-pub static DEFAULT_CAPACITY: usize = 0xFFFFF;
+pub use std::num::NonZeroUsize as Capacity;
+
+pub static DEFAULT_CAPACITY: Capacity = unsafe { Capacity::new_unchecked(0xFFFFF) };
 
 pub struct Stack {
     memory: Box<[u8]>,
@@ -9,7 +11,7 @@ pub struct Stack {
 }
 
 impl Stack {
-    pub fn new(capacity: std::num::NonZeroUsize) -> Self {
+    pub fn new(capacity: Capacity) -> Self {
         Self {
             memory: vec![0u8; capacity.get()].into_boxed_slice(),
             allocations: Vec::new(),
@@ -26,14 +28,15 @@ impl Stack {
     }
 
     /// Allocates an object of the specified `size` on the stack.
-    /// 
+    ///
     /// # Safety
     /// The caller must ensure that the stack outlives the pointer returned by this function.
     pub unsafe fn allocate(&mut self, size: usize) -> Option<NonNull<u8>> {
         let actual_size = size + (self.allocated % size);
         if actual_size <= self.remaining() {
             // Memory safety handled by caller, and memory pointer is guaranteed to not be null.
-            let address = NonNull::new_unchecked((self.memory.as_mut_ptr() as *mut u8).add(self.allocated));
+            let address =
+                NonNull::new_unchecked((self.memory.as_mut_ptr() as *mut u8).add(self.allocated));
             self.allocated += actual_size;
             Some(address)
         } else {
@@ -46,7 +49,7 @@ impl Stack {
     }
 
     /// Frees the previously allocated objects.
-    /// 
+    ///
     /// # Panics
     /// Panics if no allocations have been saved.
     pub fn free(&mut self) {
@@ -56,14 +59,13 @@ impl Stack {
 
 impl std::fmt::Debug for Stack {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut address = self.memory.as_ptr() as usize;
+        let address = self.memory.as_ptr() as usize;
         for (index, chunk) in self.memory.chunks(16).enumerate() {
-            write!(f, "{:#08X}", address)?;
+            write!(f, "{:#08X}", address + (index * 16))?;
             for &value in chunk {
-                write!(f, " {:#02X}", value)?;
+                write!(f, " {:#02}", value)?;
             }
             writeln!(f)?;
-            address += index * 16;
         }
         Ok(())
     }

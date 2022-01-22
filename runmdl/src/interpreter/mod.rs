@@ -24,7 +24,7 @@ pub use call_stack::{
 
 pub use error::{Error, ErrorKind, LoaderError};
 
-pub use mem::{stack::Stack as ValueStack};
+pub use mem::stack::Stack as ValueStack;
 
 pub use register::{NumericType, Register, RegisterType};
 
@@ -62,6 +62,7 @@ pub struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
     call_stack: CallStack<'l>,
+    value_stack: ValueStack,
     debugger: Option<&'l mut dyn debugger::Debugger>,
 }
 
@@ -69,11 +70,13 @@ impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
         call_stack_capacity: CallStackCapacity,
+        value_stack_capacity: mem::stack::Capacity,
         debugger: Option<&'l mut dyn debugger::Debugger>,
     ) -> Self {
         Self {
             loader,
             call_stack: CallStack::new(call_stack_capacity),
+            value_stack: ValueStack::new(value_stack_capacity),
             debugger,
         }
     }
@@ -285,9 +288,23 @@ impl<'l> Interpreter<'l> {
                 .current_mut()?
                 .registers
                 .define_temporary(Register::from(*value)),
-            Instruction::Alloca { element_type, amount } => {
+            Instruction::Alloca {
+                element_type,
+                amount,
+            } => {
+                let current_frame = self.call_stack.current()?;
+                let element_size: usize = current_frame.function().declaring_module().load_type_signature(*element_type)?.size();
 
-                todo!("allocate on stack")
+                let address = usize::try_from(current_frame.registers.get(*amount)?)
+                    .ok()
+                    .and_then(|element_count| unsafe {
+                        self.value_stack
+                            .allocate(element_size * element_count)
+                            .map(std::ptr::NonNull::as_ptr)
+                    })
+                    .unwrap_or_else(std::ptr::null_mut);
+
+                todo!("add temporary for address")
             }
             Instruction::Break => {
                 self.debugger_loop();
@@ -333,9 +350,11 @@ pub fn run<'l>(
     arguments: &[Register], //FnOnce(the heap) -> Vec<Register>
     entry_point: LoadedFunction<'l>,
     call_stack_capacity: CallStackCapacity,
+    value_stack_capacity: mem::stack::Capacity,
     debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
 ) -> std::result::Result<Vec<Register>, Error> {
-    let mut interpreter = Interpreter::initialize(loader, call_stack_capacity, debugger);
+    let mut interpreter =
+        Interpreter::initialize(loader, call_stack_capacity, value_stack_capacity, debugger);
     interpreter
         .execute_entry_point(arguments, entry_point)
         .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))

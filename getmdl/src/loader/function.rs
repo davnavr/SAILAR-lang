@@ -7,7 +7,7 @@ pub struct Function<'a> {
 
 #[derive(PartialEq)]
 pub struct Signature<'a> {
-    return_types: Vec<&'a format::TypeSignature>,
+    return_types: Vec<&'a format::TypeSignature>, // TODO: Use loaded type signatures for function signature.
     parameter_types: Vec<&'a format::TypeSignature>,
 }
 
@@ -45,7 +45,10 @@ impl<'a> Function<'a> {
     }
 
     pub fn full_symbol(&'a self) -> Result<FunctionSymbol<'a>> {
-        Ok(FunctionSymbol::new(self.module.full_symbol(), Symbol::Borrowed(self.symbol()?)))
+        Ok(FunctionSymbol::new(
+            self.module.full_symbol(),
+            Symbol::Borrowed(self.symbol()?),
+        ))
     }
 
     pub fn declaring_module(&'a self) -> &'a Module<'a> {

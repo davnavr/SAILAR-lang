@@ -4,6 +4,7 @@ pub struct Module<'a> {
     source: format::Module,
     function_signature_cache:
         cache::IndexLookup<'a, format::indices::FunctionSignature, FunctionSignature<'a>>,
+    type_signature_cache: cache::IndexLookup<'a, format::indices::TypeSignature, TypeSignature<'a>>,
     //loaded_structs
     //loaded_globals
     loaded_functions: cache::IndexLookup<'a, format::indices::FunctionDefinition, Function<'a>>,
@@ -34,6 +35,7 @@ impl<'a> Module<'a> {
         Self {
             source,
             function_signature_cache: cache::IndexLookup::new(),
+            type_signature_cache: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
             function_lookup_cache: RefCell::new(hash_map::HashMap::new()),
@@ -61,6 +63,18 @@ impl<'a> Module<'a> {
         index: format::indices::TypeSignature,
     ) -> Result<&'a format::TypeSignature> {
         read_index_from(index, &self.source.type_signatures, Ok)
+    }
+
+    pub fn load_type_signature(
+        &'a self,
+        index: format::indices::TypeSignature,
+    ) -> Result<&'a TypeSignature<'a>> {
+        load_raw_cached(
+            &self.type_signature_cache,
+            index,
+            |_| self.load_type_signature_raw(index).map(Some),
+            |source| Ok(TypeSignature::new(self, source)),
+        )
     }
 
     fn collect_type_signatures_raw(
@@ -117,10 +131,17 @@ impl<'a> Module<'a> {
         )
     }
 
-    pub fn load_function_raw(&'a self, index: format::indices::Function) -> Result<&'a Function<'a>> {
+    pub fn load_function_raw(
+        &'a self,
+        index: format::indices::Function,
+    ) -> Result<&'a Function<'a>> {
         match index {
-            format::indices::Function::Defined(defined_index) => self.load_function_definition_raw(defined_index),
-            format::indices::Function::Imported(_) => todo!("resolution of function imports is not yet supported"),
+            format::indices::Function::Defined(defined_index) => {
+                self.load_function_definition_raw(defined_index)
+            }
+            format::indices::Function::Imported(_) => {
+                todo!("resolution of function imports is not yet supported")
+            }
         }
     }
 
