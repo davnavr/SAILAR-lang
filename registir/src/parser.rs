@@ -205,13 +205,11 @@ fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveTyp
 
 fn type_signature<R: Read>(src: &mut R) -> Result<type_system::AnyType> {
     let tag: type_system::TypeTag = unsafe { std::mem::transmute(byte(src)?) }; // TODO: Define a conversion function going from u8 to TypeTag.
-    primitive_type(tag)
-        .map(|p| {
-            Ok(type_system::AnyType::Heap(type_system::HeapType::Val(
-                type_system::SimpleType::Primitive(p),
-            )))
-        })
-        .unwrap_or_else(|| Err(Error::InvalidTypeSignatureTag(tag as u8)))
+    if let Some(primitive) = primitive_type(tag) {
+        Ok(type_system::AnyType::Primitive(primitive))
+    } else {
+        Err(Error::InvalidTypeSignatureTag(tag as u8))
+    }
 }
 
 fn function_signature<R: Read>(

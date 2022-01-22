@@ -160,47 +160,19 @@ fn module_header<W: Write>(
 }
 
 fn primitive_type<W: Write>(out: &mut W, t: type_system::PrimitiveType) -> Result {
-    write(out, type_system::TypeTagged::tag(&t) as u8)
-}
-
-fn simple_type<W: Write>(
-    out: &mut W,
-    t: &type_system::SimpleType,
-    size: numeric::IntegerSize,
-) -> Result {
-    write(out, type_system::TypeTagged::tag(t) as u8)?;
-    match t {
-        type_system::SimpleType::Primitive(_) => Ok(()),
-        type_system::SimpleType::Defined(index) => unsigned_index(out, *index, size),
-        type_system::SimpleType::NativePointer(pointee) => simple_type(out, pointee.as_ref(), size),
-    }
-}
-
-fn heap_type<W: Write>(
-    out: &mut W,
-    t: &type_system::HeapType,
-    size: numeric::IntegerSize,
-) -> Result {
-    write(out, type_system::TypeTagged::tag(t) as u8)?;
-    match t {
-        type_system::HeapType::ObjRef(type_system::SimpleType::Defined(index)) => {
-            unsigned_index(out, *index, size)
-        }
-        type_system::HeapType::ArrayRef(element_type)
-        | type_system::HeapType::HeapPointer(element_type) => {
-            heap_type(out, element_type.as_ref(), size)
-        }
-        type_system::HeapType::ObjRef(element_type) => simple_type(out, element_type, size),
-        type_system::HeapType::Val(_) | type_system::HeapType::AnyRef => Ok(()),
-    }
+    write(out, t.tag() as u8)
 }
 
 fn any_type<W: Write>(out: &mut W, t: &type_system::AnyType, size: numeric::IntegerSize) -> Result {
     match t {
-        type_system::AnyType::Heap(t) => heap_type(out, t, size),
-        type_system::AnyType::GargbageCollectedPointer(element_type) => {
-            write(out, type_system::TypeTag::GarbageCollectedPointer as u8)?;
-            any_type(out, element_type.as_ref(), size)
+        type_system::AnyType::Primitive(primitive) => primitive_type(out, *primitive),
+        type_system::AnyType::Struct(index) => {
+            write(out, type_system::TypeTag::Struct as u8)?;
+            unsigned_index(out, *index, size)
+        }
+        type_system::AnyType::NativePointer(pointee) => {
+            write(out, type_system::TypeTag::NativePointer as u8)?;
+            any_type(out, pointee, size)
         }
     }
 }

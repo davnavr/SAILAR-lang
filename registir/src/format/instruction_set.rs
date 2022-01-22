@@ -19,14 +19,15 @@ pub type JumpTarget = indices::CodeBlock;
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RegisterType {
     Primitive(PrimitiveType),
-    //Pointer(u32),
-    //Object
+    /// Indicates the register contains a pointer to an object of the specified size.
+    Pointer(u32),
 }
 
 impl std::fmt::Display for RegisterType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Primitive(primitive_type) => primitive_type.fmt(f),
+            Self::Pointer(size) => write!(f, "*{}", size),
         }
     }
 }
