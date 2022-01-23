@@ -293,7 +293,11 @@ impl<'l> Interpreter<'l> {
                 amount,
             } => {
                 let current_frame = self.call_stack.current()?;
-                let element_size: usize = current_frame.function().declaring_module().load_type_signature(*element_type)?.size();
+                let element_size: usize = current_frame
+                    .function()
+                    .declaring_module()
+                    .load_type_signature(*element_type)?
+                    .size();
 
                 let address = usize::try_from(current_frame.registers.get(*amount)?)
                     .ok()

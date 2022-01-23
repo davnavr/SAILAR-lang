@@ -7,12 +7,14 @@ const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::CallStackCapacity =
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
+    value_stack_capacity: interpreter::mem::stack::Capacity,
     call_stack_capacity: interpreter::CallStackCapacity,
 }
 
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
+    value_stack_capacity: interpreter::mem::stack::Capacity,
     call_stack_capacity: interpreter::CallStackCapacity,
 }
 
@@ -21,6 +23,7 @@ impl<'l> Default for Initializer<'l> {
         Self {
             runtime: None,
             loader: None,
+            value_stack_capacity: interpreter::mem::stack::DEFAULT_CAPACITY,
             call_stack_capacity: DEFAULT_CALL_STACK_MAX_DEPTH,
         }
     }
@@ -33,6 +36,10 @@ impl<'l> Initializer<'l> {
 
     pub fn set_call_stack_capacity(&mut self, capacity: interpreter::CallStackCapacity) {
         self.call_stack_capacity = capacity;
+    }
+
+    pub fn set_value_stack_capacity(&mut self, capacity: interpreter::mem::stack::Capacity) {
+        self.value_stack_capacity = capacity;
     }
 }
 
@@ -68,6 +75,7 @@ impl<'l> Runtime<'l> {
         initializer.runtime.insert(Self {
             loader,
             program,
+            value_stack_capacity: initializer.value_stack_capacity,
             call_stack_capacity: initializer.call_stack_capacity,
         })
     }
@@ -92,6 +100,7 @@ impl<'l> Runtime<'l> {
             arguments,
             function,
             self.call_stack_capacity,
+            self.value_stack_capacity,
             debugger,
         )?;
 
