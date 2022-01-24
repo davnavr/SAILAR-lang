@@ -24,26 +24,31 @@ impl<'a> Type<'a> {
         self.source
     }
 
-    fn calculate_size(&self) -> usize {
-        use format::type_system::PrimitiveType;
-
-        match self.source {
-            format::TypeSignature::Primitive(primitive) => match primitive {
-                PrimitiveType::U8 | PrimitiveType::S8 => 1,
-                PrimitiveType::U16 | PrimitiveType::S16 => 2,
-                PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32 => 4,
-                PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64 => 8,
-                PrimitiveType::UNative | PrimitiveType::SNative => std::mem::size_of::<isize>(),
-            },
-            _ => todo!("size calculation not implemented"),
-        }
-    }
-
     pub fn size(&self) -> usize {
+        fn calculate<'a>(signature: &'a format::TypeSignature) -> usize {
+            use format::type_system::{FixedInt, Int, Primitive, Real};
+
+            match signature {
+                format::TypeSignature::Primitive(primitive) => match primitive {
+                    Primitive::Int(Int::Fixed(FixedInt::U8 | FixedInt::S8)) => 1,
+                    Primitive::Int(Int::Fixed(FixedInt::U16 | FixedInt::S16)) => 2,
+                    Primitive::Int(Int::Fixed(FixedInt::U32 | FixedInt::S32))
+                    | Primitive::Real(Real::F32) => 4,
+                    Primitive::Int(Int::Fixed(FixedInt::U64 | FixedInt::S64))
+                    | Primitive::Real(Real::F64) => 8,
+                    Primitive::Int(Int::UNative | Int::SNative) => std::mem::size_of::<isize>(),
+                },
+                format::TypeSignature::NativePointer(_) => std::mem::size_of::<*mut u8>(),
+                format::TypeSignature::Struct(_) => {
+                    todo!("size calculation not implemented for structs")
+                }
+            }
+        }
+
         match self.size.get() {
             Some(size) => size,
             None => {
-                let size = self.calculate_size();
+                let size = calculate(self.source);
                 self.size.set(Some(size));
                 size
             }
