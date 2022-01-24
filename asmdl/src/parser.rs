@@ -222,7 +222,16 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         ),
     ));
 
-    let primitive_type = choice((keyword("s32").to(ast::PrimitiveType::S32),));
+    let primitive_type = choice((
+        keyword("s8").to(ast::PrimitiveType::s8()),
+        keyword("u8").to(ast::PrimitiveType::u8()),
+        keyword("s16").to(ast::PrimitiveType::s16()),
+        keyword("u16").to(ast::PrimitiveType::u16()),
+        keyword("s32").to(ast::PrimitiveType::s32()),
+        keyword("u32").to(ast::PrimitiveType::u32()),
+        keyword("s64").to(ast::PrimitiveType::s64()),
+        keyword("u64").to(ast::PrimitiveType::u64()),
+    ));
 
     let many_registers = || register_symbol.separated_by(just(Token::Comma));
 
@@ -268,14 +277,6 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                     keyword("ret")
                         .ignore_then(many_registers())
                         .map(ast::Instruction::Ret),
-                    keyword("phi")
-                        .ignore_then(
-                            (with_position(many_registers().at_least(1))
-                                .then(keyword("when").ignore_then(local_symbol)))
-                            .separated_by(keyword("or"))
-                            .at_least(1),
-                        )
-                        .map(ast::Instruction::Phi),
                     keyword("switch")
                         .ignore_then(with_position(primitive_type))
                         .then(register_symbol)

@@ -1,4 +1,4 @@
-.format { .major 0; .minor 7; };
+.format { .major 0; .minor 8; };
 .module { .name "ControlTransferTests"; .version 1; };
 
 .code @code_helper {

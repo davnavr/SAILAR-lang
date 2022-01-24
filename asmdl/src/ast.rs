@@ -1,7 +1,5 @@
 pub use registir::format::{
-    instruction_set::{NumericType, OverflowBehavior},
-    type_system::PrimitiveType,
-    Identifier,
+    instruction_set::OverflowBehavior, type_system::Primitive as PrimitiveType, Identifier,
 };
 
 pub type Position = std::ops::Range<usize>;
@@ -94,19 +92,11 @@ impl BasicArithmeticOperation {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BitwiseOperation {
-    pub result_type: Positioned<NumericType>,
-    pub x: RegisterSymbol,
-    pub y: RegisterSymbol,
-}
-
 /// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,
     Ret(Vec<RegisterSymbol>),
-    Phi(Vec<(Positioned<Vec<RegisterSymbol>>, LocalSymbol)>),
     //Select
     Switch {
         comparison: RegisterSymbol,

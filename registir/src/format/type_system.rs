@@ -2,6 +2,9 @@ use crate::format::indices;
 use std::fmt::{Display, Formatter};
 
 /// Integer types with a fixed size.
+/// 
+/// These are the only valid types for constant integers since `unative` and `snative` may change depending on where the code is
+/// being executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum FixedInt {
@@ -87,6 +90,24 @@ impl Display for Real {
 pub enum Primitive {
     Int(Int),
     Real(Real),
+}
+macro_rules! primitive_fixed_integer_type {
+    ($helper_name: ident, $case_name: ident) => {
+        pub fn $helper_name() -> Self {
+            Self::Int(Int::Fixed(FixedInt::$case_name))
+        }
+    };
+}
+
+impl Primitive {
+    primitive_fixed_integer_type!(s8, S8);
+    primitive_fixed_integer_type!(u8, U8);
+    primitive_fixed_integer_type!(s16, S16);
+    primitive_fixed_integer_type!(u16, U16);
+    primitive_fixed_integer_type!(s32, S32);
+    primitive_fixed_integer_type!(u32, U32);
+    primitive_fixed_integer_type!(s64, S64);
+    primitive_fixed_integer_type!(u64, U64);
 }
 
 impl Display for Primitive {

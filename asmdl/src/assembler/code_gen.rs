@@ -1,7 +1,7 @@
 use crate::assembler::{self, *};
 
 pub type CodeBlockLookup<'a> =
-    lookup::IndexedMap<u32, &'a ast::Identifier, (&'a ast::Identifier, CodeBlockAssembler<'a>)>;
+    lookup::IndexedMap<format::indices::CodeBlock, &'a ast::Identifier, CodeBlockAssembler<'a>>;
 
 pub type FunctionCodeLookup<'a> =
     lookup::IndexedMap<format::indices::Code, &'a ast::Identifier, FunctionBodyAssembler<'a>>;
@@ -19,16 +19,19 @@ impl<'a> CodeBlockAssembler<'a> {
         errors: &mut error::Builder,
         // TODO: Have struct to handle lookup in definition or imports.
         function_lookup: &definitions::FunctionLookup<'a>,
-        block_lookup: &mut CodeBlockLookup<'a>,
+        block_lookup: &CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
-        use format::instruction_set::{self, FunctionIndex, Instruction, JumpTarget};
+        use format::{
+            instruction_set::{self, BlockIndex, FunctionIndex, Instruction},
+            type_system,
+        };
 
         fn lookup_block<'a>(
             errors: &mut error::Builder,
-            block_lookup: &mut CodeBlockLookup<'a>,
+            block_lookup: &CodeBlockLookup<'a>,
             block: &'a ast::LocalSymbol,
-        ) -> Option<JumpTarget> {
+        ) -> Option<BlockIndex> {
             let target = block_lookup.get(block.identifier());
             if target.is_none() {
                 errors.push_with_location(
@@ -36,8 +39,7 @@ impl<'a> CodeBlockAssembler<'a> {
                     block.location().clone(),
                 )
             }
-            // NOTE: Lookup no longer contains entry block, though restrictions could be loosened to allow branching to the entry block.
-            target.map(|(index, _)| JumpTarget::from(index))
+            target.map(|(index, _)| BlockIndex::from(index))
         }
 
         fn lookup_register<'a>(
@@ -94,6 +96,24 @@ impl<'a> CodeBlockAssembler<'a> {
             })
         }
 
+        fn fixed_integer_type<'a>(
+            errors: &mut error::Builder,
+            primitive_type: &'a ast::Positioned<ast::PrimitiveType>,
+        ) -> Option<type_system::FixedInt> {
+            match primitive_type.0 {
+                type_system::Primitive::Int(type_system::Int::Fixed(fixed_type)) => {
+                    Some(fixed_type)
+                }
+                invalid_type => {
+                    errors.push_with_location(
+                        ErrorKind::InvalidConstantIntegerType(invalid_type),
+                        primitive_type.1.clone(),
+                    );
+                    None
+                }
+            }
+        }
+
         register_lookup.clear();
 
         for register in self.input_registers {
@@ -129,48 +149,6 @@ impl<'a> CodeBlockAssembler<'a> {
                     next_instruction = lookup_many_registers(errors, register_lookup, registers)
                         .map(Instruction::Ret);
                 }
-                ast::Instruction::Phi(entries) => {
-                    expected_return_count = entries
-                        .first()
-                        .expect("parser should ensure phi entries are not empty")
-                        .0
-                         .0
-                        .len();
-
-                    let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(
-                        u8::try_from(expected_return_count).unwrap(),
-                        entries.len(),
-                    );
-
-                    for (registers, target) in entries {
-                        if registers.0.len() != expected_return_count {
-                            errors.push_with_location(
-                                ErrorKind::InvalidReturnRegisterCount {
-                                    expected: expected_return_count,
-                                    actual: registers.0.len(),
-                                },
-                                registers.1.clone(),
-                            );
-                            continue;
-                        }
-
-                        let target_block = lookup_block(errors, block_lookup, target);
-
-                        let value_registers =
-                            lookup_many_registers(errors, register_lookup, &registers.0);
-
-                        try_some!({
-                            if !lookup.insert(target_block?, value_registers.map(|r| r.0)?) {
-                                errors.push_with_location(
-                                    ErrorKind::DuplicatePhiTargetBlock(target.identifier().clone()),
-                                    target.location().clone(),
-                                );
-                            }
-                        });
-                    }
-
-                    next_instruction = Some(Instruction::Phi(lookup));
-                }
                 ast::Instruction::Switch {
                     comparison,
                     comparison_type,
@@ -181,6 +159,8 @@ impl<'a> CodeBlockAssembler<'a> {
                     let default_target_block = lookup_block(errors, block_lookup, default_target);
                     let mut target_lookup =
                         instruction_set::SwitchLookupTable::with_capacity(targets.len());
+
+                    let fixed_comparison_type = fixed_integer_type(errors, comparison_type);
 
                     for (value, target_block) in targets {
                         let target_block_index = lookup_block(errors, block_lookup, target_block);
@@ -202,24 +182,15 @@ impl<'a> CodeBlockAssembler<'a> {
                         }
 
                         try_some!({
-                            use instruction_set::PrimitiveType;
-
-                            let target_value = match comparison_type.0 {
-                                PrimitiveType::S8 => constant_target_value!(i8, S8),
-                                PrimitiveType::U8 => constant_target_value!(u8, U8),
-                                PrimitiveType::S16 => constant_target_value!(i16, S16),
-                                PrimitiveType::U16 => constant_target_value!(u16, U16),
-                                PrimitiveType::S32 => constant_target_value!(i32, S32),
-                                PrimitiveType::U32 => constant_target_value!(u32, U32),
-                                PrimitiveType::S64 => constant_target_value!(i64, S64),
-                                PrimitiveType::U64 => constant_target_value!(u64, U64),
-                                invalid_type => {
-                                    errors.push_with_location(
-                                        ErrorKind::InvalidConstantIntegerType(invalid_type),
-                                        comparison_type.1.clone(),
-                                    );
-                                    None
-                                }
+                            let target_value = match fixed_comparison_type? {
+                                type_system::FixedInt::S8 => constant_target_value!(i8, S8),
+                                type_system::FixedInt::U8 => constant_target_value!(u8, U8),
+                                type_system::FixedInt::S16 => constant_target_value!(i16, S16),
+                                type_system::FixedInt::U16 => constant_target_value!(u16, U16),
+                                type_system::FixedInt::S32 => constant_target_value!(i32, S32),
+                                type_system::FixedInt::U32 => constant_target_value!(u32, U32),
+                                type_system::FixedInt::S64 => constant_target_value!(i64, S64),
+                                type_system::FixedInt::U64 => constant_target_value!(u64, U64),
                             };
 
                             if !target_lookup.insert(target_value?, target_block_index?) {
@@ -234,7 +205,7 @@ impl<'a> CodeBlockAssembler<'a> {
                     expected_return_count = 0;
                     next_instruction = try_some!(Instruction::Switch {
                         comparison: comparison_register?,
-                        comparison_type: comparison_type.0,
+                        comparison_type: fixed_comparison_type?,
                         default_target: default_target_block?,
                         target_lookup
                     });
@@ -311,47 +282,38 @@ impl<'a> CodeBlockAssembler<'a> {
                             .map(Instruction::Mul);
                 }
                 ast::Instruction::ConstI(constant_type, value) => {
-                    use format::instruction_set::{IntegerConstant, PrimitiveType};
+                    use type_system::FixedInt;
+
+                    let fixed_constant_type = fixed_integer_type(errors, constant_type);
 
                     macro_rules! convert_constant {
-                        ($destination_type: ty, $constant: expr) => {
-                            <$destination_type>::try_from(value.0)
-                                .map($constant)
-                                .map_err(|_| {
-                                    Error::new(
-                                        ErrorKind::ConstantIntegerOutOfRange(
-                                            constant_type.0,
-                                            value.0,
-                                        ),
-                                        Some(value.1.clone()),
-                                    )
-                                })
-                        };
+                        ($destination_type: ty, $constant: ident) => {{
+                            let result = <$destination_type>::try_from(value.0)
+                                .map(instruction_set::IntegerConstant::$constant)
+                                .ok();
+                            if result.is_none() {
+                                errors.push_with_location(
+                                    ErrorKind::ConstantIntegerOutOfRange(constant_type.0, value.0),
+                                    value.1.clone(),
+                                )
+                            }
+                            result
+                        }};
                     }
 
-                    let constant = match constant_type.0 {
-                        PrimitiveType::S8 => convert_constant!(i8, IntegerConstant::S8),
-                        PrimitiveType::U8 => convert_constant!(u8, IntegerConstant::U8),
-                        PrimitiveType::S16 => convert_constant!(i16, IntegerConstant::S16),
-                        PrimitiveType::U16 => convert_constant!(u16, IntegerConstant::U16),
-                        PrimitiveType::S32 => convert_constant!(i32, IntegerConstant::S32),
-                        PrimitiveType::U32 => convert_constant!(u32, IntegerConstant::U32),
-                        PrimitiveType::S64 => convert_constant!(i64, IntegerConstant::S64),
-                        PrimitiveType::U64 => convert_constant!(u64, IntegerConstant::U64),
-                        invalid_type => Err(Error::new(
-                            ErrorKind::InvalidConstantIntegerType(invalid_type),
-                            Some(constant_type.1.clone()),
-                        )),
-                    };
-
-                    next_instruction = match constant {
-                        Ok(literal) => Some(Instruction::ConstI(literal)),
-                        Err(error) => {
-                            errors.push(error);
-                            None
-                        }
-                    };
                     expected_return_count = 1;
+                    next_instruction = try_some!({
+                        Instruction::ConstI(match fixed_constant_type? {
+                            FixedInt::S8 => convert_constant!(i8, S8),
+                            FixedInt::U8 => convert_constant!(u8, U8),
+                            FixedInt::S16 => convert_constant!(i16, S16),
+                            FixedInt::U16 => convert_constant!(u16, U16),
+                            FixedInt::S32 => convert_constant!(i32, S32),
+                            FixedInt::U32 => convert_constant!(u32, U32),
+                            FixedInt::S64 => convert_constant!(i64, S64),
+                            FixedInt::U64 => convert_constant!(u64, U64),
+                        }?)
+                    });
                 }
             }
 
@@ -431,19 +393,16 @@ impl<'a> FunctionBodyAssembler<'a> {
                     let block_name = name.identifier();
                     if let Err(existing) = block_lookup.insert(
                         block_name,
-                        (
-                            block_name,
-                            CodeBlockAssembler {
-                                input_registers,
-                                instructions,
-                                location: &declaration.1,
-                            },
-                        ),
+                        CodeBlockAssembler {
+                            input_registers,
+                            instructions,
+                            location: &declaration.1,
+                        },
                     ) {
                         errors.push_with_location(
                             ErrorKind::DuplicateBlock {
                                 name: block_name.clone(),
-                                original: existing.1.location.clone(),
+                                original: existing.location.clone(),
                             },
                             declaration.1.clone(),
                         )
@@ -455,16 +414,16 @@ impl<'a> FunctionBodyAssembler<'a> {
         if let Some(entry_block_name) = entry_block_symbol {
             Some(format::Code {
                 entry_block: block_lookup
-                    .swap_remove(entry_block_name.identifier())
+                    .get(entry_block_name.identifier())
                     .expect("entry block should exist in lookup")
+                    .1
                     .assemble(errors, function_lookup, block_lookup, register_lookup),
-                blocks: {
-                    // Block lookup is cloned, otherwise it would need to be borrowed twice.
-                    let definitions: Vec<_> = block_lookup.values().clone();
-                    format::LenVec(assembler::assemble_items(&definitions, |(_, block)| {
+                blocks: format::LenVec(assembler::assemble_items(
+                    &block_lookup.values(),
+                    |block| {
                         Some(block.assemble(errors, function_lookup, block_lookup, register_lookup))
-                    }))
-                },
+                    },
+                )),
             })
         } else {
             errors.push_with_location(

@@ -350,7 +350,7 @@ mod tests {
     use registir::format::{
         self,
         indices::{Register, TemporaryRegister},
-        instruction_set::{Instruction, IntegerConstant, JumpTarget},
+        instruction_set::{BlockIndex, Instruction, IntegerConstant},
     };
 
     macro_rules! assert_success {
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn module_header_test() {
         assert_success!(
-            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 6; };",
+            ".module { .name \"Test\"; .version 1 2 3; };\n.format { .major 0; .minor 8; };",
             |module: format::Module| {
                 let header = module.header.0;
                 assert_eq!(
@@ -393,7 +393,7 @@ mod tests {
                         )]))
                     ]
                 );
-                assert!(code.blocks.is_empty());
+                assert_eq!(1, code.blocks.len());
             }
         )
     }
@@ -404,10 +404,10 @@ mod tests {
             include_str!(r"../../../asmdl_cli/samples/control.txtmdl"),
             |module: format::Module| {
                 let code = &module.function_bodies[0];
-                assert_eq!(1, code.blocks.len());
+                assert_eq!(2, code.blocks.len());
                 assert_eq!(
                     &Instruction::Br {
-                        target: JumpTarget::from(0),
+                        target: BlockIndex::from(1),
                         input_registers: format::LenVec(vec![Register::Temporary(
                             TemporaryRegister::from(1)
                         )])
