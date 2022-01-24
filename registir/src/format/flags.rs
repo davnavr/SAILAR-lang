@@ -83,13 +83,13 @@ pub enum StructLayout {
 numeric_enum_conversion!(StructLayout, u8, Unspecified, ExplicitSize);
 
 pub trait ExportFlag {
-    fn is_export(self) -> bool;
+    fn is_export(&self) -> bool;
 }
 
 macro_rules! export_flag {
     ($flag_type: ty) => {
         impl ExportFlag for $flag_type {
-            fn is_export(self) -> bool {
+            fn is_export(&self) -> bool {
                 self.contains(Self::IS_EXPORT)
             }
         }

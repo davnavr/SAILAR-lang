@@ -1,5 +1,4 @@
 use crate::interpreter;
-use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
 pub use interpreter::{
     instruction_set::{NumericType, RegisterType},
@@ -76,22 +75,9 @@ impl Register {
     }
 
     pub(super) fn from_pointer(pointer: *mut u8, pointee_size: u32) -> Self {
-        Self::new(RegisterType::Pointer(pointee_size))
-    }
-
-    pub(super) fn copy_raw(source: &Self, destination: &mut Self) {
-        destination.value = source.value;
-    }
-
-    /// Copies the register values from a `source` to a `destination`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the `source` and `destination` lengths are not equal.
-    pub(super) fn copy_many_raw(source: &[&Self], destination: &mut [Self]) {
-        assert_eq!(source.len(), destination.len());
-        for (index, register) in source.iter().enumerate() {
-            Self::copy_raw(register, &mut destination[index]);
+        Self {
+            value: RegisterValue { pointer },
+            value_type: RegisterType::Pointer(pointee_size),
         }
     }
 

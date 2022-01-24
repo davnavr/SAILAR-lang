@@ -1,19 +1,10 @@
 use registir::format;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("index {0} is out of bounds")]
     IndexOutOfBounds(format::numeric::UInteger),
-    Other(Box<dyn std::error::Error>),
+    #[error(transparent)]
+    Other(#[from] Box<dyn std::error::Error>),
 }
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::IndexOutOfBounds(index) => write!(f, "index {} is out of bounds", index),
-            Self::Other(error) => std::fmt::Display::fmt(error, f),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

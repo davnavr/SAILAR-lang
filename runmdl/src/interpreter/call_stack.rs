@@ -73,18 +73,6 @@ impl Registers {
             }
         }
     }
-
-    pub fn get_many(&self, indices: &[RegisterIndex]) -> Result<Vec<&Register>> {
-        let mut registers = Vec::with_capacity(indices.len());
-        for index in indices {
-            registers.push(self.get(*index)?);
-        }
-        Ok(registers)
-    }
-
-    pub fn temporaries(&self) -> &[Register] {
-        &self.temporaries
-    }
 }
 
 // pub enum Code<'l> {
@@ -102,7 +90,7 @@ pub(super) struct InstructionPointer<'l> {
     breakpoints: VecDeque<usize>,
 }
 
-static BREAK: &'static Instruction = &Instruction::Break;
+static BREAK: &Instruction = &Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
     fn new(code: &'l format::Code) -> Self {
@@ -333,7 +321,7 @@ impl BreakpointLookup {
 
             if let Some(indices) = self
                 .lookup
-                .get(&function)
+                .get(function)
                 .and_then(|block_lookup| block_lookup.get(&block))
             {
                 if destination.capacity() < indices.len() {
@@ -350,13 +338,14 @@ impl BreakpointLookup {
     }
 
     fn update_in<'l>(&mut self, frame: &mut Frame<'l>) -> Result<()> {
-        Ok(self.copy_breakpoints_to(
+        self.copy_breakpoints_to(
             &frame.function.full_symbol()?.to_owned(),
             frame.instructions.block_index,
             frame.instructions.code_index(),
             frame.instructions.last_breakpoint_hit,
             &mut frame.instructions.breakpoints,
-        ))
+        );
+        Ok(())
     }
 
     pub fn insert(&mut self, breakpoint: Breakpoint) {
@@ -470,7 +459,7 @@ impl<'l> Stack<'l> {
 
         let signature = function.signature()?;
         let mut argument_registers =
-            Register::many_with_type(signature.parameter_types().into_iter().copied());
+            Register::many_with_type(signature.parameter_types().iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
@@ -480,7 +469,7 @@ impl<'l> Stack<'l> {
         }
 
         for (i, register) in argument_registers.iter_mut().enumerate() {
-            register.value = arguments[i].value.clone();
+            register.value = arguments[i].value;
         }
 
         match function.raw_body() {

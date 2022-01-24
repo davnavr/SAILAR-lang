@@ -81,12 +81,12 @@ impl<'l> Runtime<'l> {
     }
 
     pub fn loader(&'l self) -> &'l loader::Loader<'l> {
-        &self.loader
+        self.loader
     }
 
     /// Returns the module containing the entry point to execute.
     pub fn program(&'l self) -> &'l loader::Module<'l> {
-        &self.program
+        self.program
     }
 
     pub fn invoke(
@@ -96,7 +96,7 @@ impl<'l> Runtime<'l> {
         debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
     ) -> Result<Vec<interpreter::Register>, Error> {
         let results = interpreter::run(
-            &self.loader,
+            self.loader,
             arguments,
             function,
             self.call_stack_capacity,

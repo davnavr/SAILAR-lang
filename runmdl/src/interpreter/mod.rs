@@ -116,8 +116,8 @@ impl<'l> Interpreter<'l> {
             Ok(registers)
         }
 
-        fn handle_value_overflow<'l>(
-            frame: &mut StackFrame<'l>,
+        fn handle_value_overflow(
+            frame: &mut StackFrame,
             behavior: OverflowBehavior,
             overflowed: bool,
         ) -> Result<()> {
@@ -130,10 +130,13 @@ impl<'l> Interpreter<'l> {
             Ok(())
         }
 
+        type BasicArithmeticOperation =
+            fn(&Register, &Register) -> std::result::Result<(Register, bool), RegisterType>;
+
         fn basic_arithmetic_operation<'l>(
             frame: &mut StackFrame<'l>,
             operation: &'l instruction_set::BasicArithmeticOperation,
-            o: fn(&Register, &Register) -> std::result::Result<(Register, bool), RegisterType>,
+            o: BasicArithmeticOperation,
         ) -> Result<()> {
             let x = frame.registers.get(operation.x)?;
             let y = frame.registers.get(operation.y)?;
@@ -284,7 +287,9 @@ impl<'l> Interpreter<'l> {
                 element_type,
                 amount,
             } => {
-                let current_frame = self.call_stack.current()?;
+                let current_frame = self.call_stack.current_mut()?;
+
+                // TODO: Have error case for type size too large.
                 let element_size: usize = current_frame
                     .function()
                     .declaring_module()
@@ -300,7 +305,12 @@ impl<'l> Interpreter<'l> {
                     })
                     .unwrap_or_else(std::ptr::null_mut);
 
-                todo!("add temporary for address")
+                current_frame
+                    .registers
+                    .define_temporary(Register::from_pointer(
+                        address,
+                        element_size.try_into().unwrap(),
+                    ));
             }
             Instruction::Break => {
                 self.debugger_loop();

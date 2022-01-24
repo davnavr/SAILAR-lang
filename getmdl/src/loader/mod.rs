@@ -48,7 +48,7 @@ fn read_index_from<
 ) -> Result<U> {
     read_index::<I, U, _>(index, |actual_index| {
         s.get(actual_index)
-            .ok_or(Error::IndexOutOfBounds(index.into()))
+            .ok_or_else(|| Error::IndexOutOfBounds(index.into()))
             .and_then(reader)
     })
 }
@@ -87,11 +87,8 @@ impl<'a> Loader<'a> {
     }
 
     // TODO: How to force loading of a module if it is an import of one of the already loaded modules?
-    pub fn lookup_module(
-        &'a self,
-        name: &ModuleIdentifier,
-    ) -> std::result::Result<&'a Module<'a>, ()> {
-        self.loaded_modules.borrow().get(name).copied().ok_or(())
+    pub fn lookup_module(&'a self, name: &ModuleIdentifier) -> Option<&'a Module<'a>> {
+        self.loaded_modules.borrow().get(name).copied()
     }
 
     pub fn lookup_function(&'a self, name: Symbol<'a>) -> Vec<&'a Function<'a>> {

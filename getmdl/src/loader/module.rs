@@ -25,7 +25,7 @@ where
 {
     lookup.insert_or_get(index, |index| {
         read_index(index, |raw_index| {
-            constructor(loader(raw_index)?.ok_or(Error::IndexOutOfBounds(index.into()))?)
+            constructor(loader(raw_index)?.ok_or_else(|| Error::IndexOutOfBounds(index.into()))?)
         })
     })
 }
@@ -157,25 +157,22 @@ impl<'a> Module<'a> {
     pub fn lookup_function(&'a self, symbol: Symbol<'a>) -> Option<&'a Function<'a>> {
         match self.function_lookup_cache.borrow_mut().entry(symbol) {
             hash_map::Entry::Vacant(vacant) => {
-                let mut index = 0u32;
-                for definition in self.source.definitions.0.defined_functions.iter() {
-                    if let Some(actual_symbol) = self
-                        .load_identifier_raw(definition.symbol)
-                        .ok()
-                        .filter(|s| *s == vacant.key().as_ref())
-                    {
-                        let loaded = self
-                            .loaded_functions
-                            .insert_or_get::<(), _>(
-                                format::indices::FunctionDefinition::from(index),
-                                |_| Ok(Function::new(self, &definition)),
-                            )
-                            .unwrap();
+                let function_definitions: &[_] = &*self.source.definitions.0.defined_functions.0;
+                for (definition, index) in function_definitions.iter().zip(0u32..) {
+                    match self.load_identifier_raw(definition.symbol) {
+                        Ok(actual_symbol) if actual_symbol == vacant.key().as_ref() => {
+                            let loaded = self
+                                .loaded_functions
+                                .insert_or_get::<(), _>(
+                                    format::indices::FunctionDefinition::from(index),
+                                    |_| Ok(Function::new(self, definition)),
+                                )
+                                .unwrap();
 
-                        return Some(*vacant.insert(loaded) as &'a _);
+                            return Some(*vacant.insert(loaded) as &'a _);
+                        }
+                        _ => continue,
                     }
-
-                    index += 1;
                 }
                 None
             }
