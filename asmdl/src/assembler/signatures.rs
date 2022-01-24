@@ -22,7 +22,7 @@ impl<'a> TypeLookup<'a> {
     ) -> format::indices::TypeSignature {
         self.lookup.insert_or_get_with(&ty.0, || match &ty.0 {
             ast::Type::Primitive(primitive_type) => {
-                format::TypeSignature::primitive(*primitive_type)
+                format::TypeSignature::Primitive(*primitive_type)
             }
         })
     }

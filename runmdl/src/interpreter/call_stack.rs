@@ -470,7 +470,7 @@ impl<'l> Stack<'l> {
 
         let signature = function.signature()?;
         let mut argument_registers =
-            Register::initialize_many(signature.parameter_types().into_iter().copied());
+            Register::many_with_type(signature.parameter_types().into_iter().copied());
 
         if argument_registers.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {

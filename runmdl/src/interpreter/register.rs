@@ -6,6 +6,19 @@ pub use interpreter::{
     IntegerConstant, PrimitiveType,
 };
 
+/*
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub union RegisterValue {
+    S8(i8),
+    U8(u8),
+
+    S32(i32),
+
+    Pointer(*mut u8),
+    Struct(*mut u8),
+}
+*/
+
 #[derive(Clone, Copy)]
 pub union RegisterValue {
     // NOTE: Currently, some code assumes that groups of fields (e.g. s_int, u_int, and f_single) start at the same offset.
@@ -21,6 +34,7 @@ pub union RegisterValue {
     f_double: f64,
     s_native: isize,
     u_native: usize,
+    pointer: *mut u8,
 }
 
 impl Default for RegisterValue {
@@ -36,37 +50,36 @@ pub struct Register {
 }
 
 impl Register {
-    pub(crate) fn uninitialized() -> Self {
+    pub(super) fn new(value_type: RegisterType) -> Self {
         Self {
             value: RegisterValue::default(),
-            value_type: RegisterType::Primitive(PrimitiveType::U8),
+            value_type,
         }
     }
 
-    pub(crate) fn initialize(value_type: &interpreter::type_system::AnyType) -> Self {
-        use interpreter::type_system::{AnyType, HeapType, SimpleType};
+    pub(super) fn with_type(value_type: &interpreter::type_system::AnyType) -> Self {
+        use interpreter::type_system::AnyType;
 
-        Self {
-            value: RegisterValue::default(),
-            value_type: match value_type {
-                AnyType::Heap(HeapType::Val(SimpleType::Primitive(primitive_type))) => {
-                    RegisterType::Primitive(*primitive_type)
-                }
-                _ => todo!("Unsupported register type"),
-            },
-        }
+        Self::new(match value_type {
+            AnyType::Primitive(primitive_type) => RegisterType::Primitive(*primitive_type),
+            _ => todo!("Unsupported register type"),
+        })
     }
 
-    pub(crate) fn initialize_many<
+    pub(super) fn many_with_type<
         'l,
         T: std::iter::IntoIterator<Item = &'l interpreter::type_system::AnyType>,
     >(
         types: T,
     ) -> Vec<Register> {
-        types.into_iter().map(Self::initialize).collect()
+        types.into_iter().map(Self::with_type).collect()
     }
 
-    pub(crate) fn copy_raw(source: &Self, destination: &mut Self) {
+    pub(super) fn from_pointer(pointer: *mut u8, pointee_size: u32) -> Self {
+        Self::new(RegisterType::Pointer(pointee_size))
+    }
+
+    pub(super) fn copy_raw(source: &Self, destination: &mut Self) {
         destination.value = source.value;
     }
 
@@ -75,13 +88,14 @@ impl Register {
     /// # Panics
     ///
     /// Panics if the `source` and `destination` lengths are not equal.
-    pub(crate) fn copy_many_raw(source: &[&Self], destination: &mut [Self]) {
+    pub(super) fn copy_many_raw(source: &[&Self], destination: &mut [Self]) {
         assert_eq!(source.len(), destination.len());
         for (index, register) in source.iter().enumerate() {
             Self::copy_raw(register, &mut destination[index]);
         }
     }
 
+    /// Returns a value indicating whether the integer value contained in the register is not zero.
     pub fn is_truthy(&self) -> bool {
         match self.value_type {
             RegisterType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => unsafe {
@@ -96,9 +110,8 @@ impl Register {
             RegisterType::Primitive(
                 PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64,
             ) => unsafe { self.value.u_long != 0 },
-            RegisterType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => unsafe {
-                self.value.u_native != 0usize
-            },
+            RegisterType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative)
+            | RegisterType::Pointer(_) => unsafe { self.value.u_native != 0usize },
         }
     }
 }
@@ -122,6 +135,7 @@ impl std::fmt::Display for Register {
             },
             RegisterType::Primitive(PrimitiveType::F32) => unsafe { self.value.f_single.fmt(f) },
             RegisterType::Primitive(PrimitiveType::F64) => unsafe { self.value.f_double.fmt(f) },
+            RegisterType::Pointer(_) => std::fmt::UpperHex::fmt(unsafe { &self.value.u_native }, f),
         }
     }
 }
@@ -137,6 +151,8 @@ impl std::fmt::Debug for Register {
 
 impl std::fmt::UpperHex for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::UpperHex;
+
         match self.value_type {
             RegisterType::Primitive(PrimitiveType::U8) => unsafe { self.value.u_byte.fmt(f) },
             RegisterType::Primitive(PrimitiveType::S8) => unsafe { self.value.s_byte.fmt(f) },
@@ -150,12 +166,8 @@ impl std::fmt::UpperHex for Register {
                 self.value.u_long.fmt(f)
             },
             RegisterType::Primitive(PrimitiveType::S64) => unsafe { self.value.s_long.fmt(f) },
-            RegisterType::Primitive(PrimitiveType::UNative) => unsafe {
-                self.value.u_native.fmt(f)
-            },
-            RegisterType::Primitive(PrimitiveType::SNative) => unsafe {
-                self.value.s_native.fmt(f)
-            },
+            RegisterType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative)
+            | RegisterType::Pointer(_) => UpperHex::fmt(unsafe { &self.value.u_native }, f),
         }
     }
 }
@@ -169,6 +181,7 @@ impl std::cmp::PartialEq for Register {
         }
 
         match self.value_type {
+            // TODO: Should registers that point to a type of different size be considered unequal?
             self_type if self_type != other.value_type => false,
             RegisterType::Primitive(PrimitiveType::U8) => value_equals!(u_byte),
             RegisterType::Primitive(PrimitiveType::S8) => value_equals!(s_byte),
@@ -182,79 +195,12 @@ impl std::cmp::PartialEq for Register {
             RegisterType::Primitive(PrimitiveType::SNative) => value_equals!(s_native),
             RegisterType::Primitive(PrimitiveType::F32) => value_equals!(f_single),
             RegisterType::Primitive(PrimitiveType::F64) => value_equals!(f_double),
+            RegisterType::Pointer(_) => value_equals!(pointer),
         }
     }
 }
 
 impl std::cmp::Eq for Register {}
-
-trait InterpretRegister {
-    /// Interprets the value of the register, performing any necessary conversions.
-    #[deprecated(
-        note = "interpreting registers is not good, check the register type and extract the value safely instead."
-    )]
-    fn interpret_register(register: &Register) -> Self;
-}
-
-macro_rules! register_interpretation_to {
-    ($destination_type: ty) => {
-        impl InterpretRegister for $destination_type {
-            fn interpret_register(register: &Register) -> Self {
-                match register.value_type {
-                    RegisterType::Primitive(PrimitiveType::U8) => unsafe {
-                        register.value.u_byte as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::S8) => unsafe {
-                        register.value.s_byte as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::U16) => unsafe {
-                        register.value.u_short as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::S16) => unsafe {
-                        register.value.s_short as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::U32) => unsafe {
-                        register.value.u_int as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::S32) => unsafe {
-                        register.value.s_int as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::U64) => unsafe {
-                        register.value.u_long as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::S64) => unsafe {
-                        register.value.s_long as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::UNative) => unsafe {
-                        register.value.u_native as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::SNative) => unsafe {
-                        register.value.s_native as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::F32) => unsafe {
-                        register.value.f_single as $destination_type
-                    },
-                    RegisterType::Primitive(PrimitiveType::F64) => unsafe {
-                        register.value.f_double as $destination_type
-                    },
-                }
-            }
-        }
-    };
-}
-
-register_interpretation_to!(u8);
-register_interpretation_to!(i8);
-register_interpretation_to!(u16);
-register_interpretation_to!(i16);
-register_interpretation_to!(u32);
-register_interpretation_to!(i32);
-register_interpretation_to!(u64);
-register_interpretation_to!(i64);
-register_interpretation_to!(usize);
-register_interpretation_to!(isize);
-register_interpretation_to!(f32);
-register_interpretation_to!(f64);
 
 macro_rules! register_conversion_from {
     ($source_type: ty, $value_field: ident, $register_type: expr) => {
@@ -404,7 +350,7 @@ macro_rules! register_conversion_to_integer {
                         <$destination_type>::try_from(unsafe { source.value.s_long })
                             .map_err(|_| error())
                     }
-                    RegisterType::Primitive(PrimitiveType::UNative) => {
+                    RegisterType::Primitive(PrimitiveType::UNative) | RegisterType::Pointer(_) => {
                         <$destination_type>::try_from(unsafe { source.value.u_native })
                             .map_err(|_| error())
                     }
@@ -482,43 +428,79 @@ register_conversion_to_integer!(
 
 //register_conversion_to_float
 
-macro_rules! typed_integer_operation {
-    ($operation_name: ident, $integer_type: ty, $x: ident, $y: ident) => {{
-        let (value, overflowed) = <$integer_type>::$operation_name(
-            <$integer_type>::interpret_register($x),
-            <$integer_type>::interpret_register($y),
-        );
-        (Register::from(value), overflowed)
-    }};
-}
-
 macro_rules! basic_arithmetic_operation {
     ($operation_name: ident) => {
         impl Register {
             pub fn $operation_name(
-                result_type: RegisterType,
-                lhs: &Register,
-                rhs: &Register,
-            ) -> (Register, bool) {
+                self: &Self,
+                other: &Self,
+            ) -> Result<(Self, bool), RegisterType> {
                 macro_rules! integer_operation {
-                    ($integer_type: ty) => {
-                        typed_integer_operation!($operation_name, $integer_type, lhs, rhs)
-                        // TODO: Set overflowed flag to true if lhs or rhs converted to the integer_type would result in overflow
-                    };
+                    ($value_field: ident) => {{
+                        let (value, overflowed) = (unsafe { self.value.$value_field })
+                            .$operation_name(unsafe { other.value.$value_field });
+                        Ok((Register::from(value), overflowed))
+                    }};
                 }
 
-                match result_type { // TODO: If one of the arguments is a NaN or Infinity, what should be done?
-                    RegisterType::Primitive(PrimitiveType::S8) => integer_operation!(i8),
-                    RegisterType::Primitive(PrimitiveType::U8) => integer_operation!(u8),
-                    RegisterType::Primitive(PrimitiveType::S16) => integer_operation!(i16),
-                    RegisterType::Primitive(PrimitiveType::U16) => integer_operation!(u16),
-                    RegisterType::Primitive(PrimitiveType::S32) => integer_operation!(i32),
-                    RegisterType::Primitive(PrimitiveType::U32) => integer_operation!(u32),
-                    RegisterType::Primitive(PrimitiveType::S64) => integer_operation!(i64),
-                    RegisterType::Primitive(PrimitiveType::U64) => integer_operation!(u64),
-                    RegisterType::Primitive(PrimitiveType::SNative) => integer_operation!(isize),
-                    RegisterType::Primitive(PrimitiveType::UNative) => integer_operation!(usize),
-                    RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("Basic arithmetic operations are not yet supported for floating-point numbers"),
+                match (self.value_type, other.value_type) {
+                    (
+                        RegisterType::Primitive(PrimitiveType::S8),
+                        RegisterType::Primitive(PrimitiveType::S8),
+                    ) => integer_operation!(s_byte),
+                    (
+                        RegisterType::Primitive(PrimitiveType::U8),
+                        RegisterType::Primitive(PrimitiveType::U8),
+                    ) => integer_operation!(u_byte),
+                    (
+                        RegisterType::Primitive(PrimitiveType::S16),
+                        RegisterType::Primitive(PrimitiveType::S16),
+                    ) => integer_operation!(s_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::U16),
+                        RegisterType::Primitive(PrimitiveType::U16),
+                    ) => integer_operation!(u_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::S32),
+                        RegisterType::Primitive(PrimitiveType::S32),
+                    ) => integer_operation!(s_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::U32),
+                        RegisterType::Primitive(PrimitiveType::U32),
+                    ) => integer_operation!(u_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::S64),
+                        RegisterType::Primitive(PrimitiveType::S64),
+                    ) => integer_operation!(s_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::U64),
+                        RegisterType::Primitive(PrimitiveType::U64),
+                    ) => integer_operation!(u_long),
+                    (
+                        RegisterType::Primitive(PrimitiveType::SNative),
+                        RegisterType::Primitive(PrimitiveType::SNative),
+                    ) => integer_operation!(s_native),
+                    (
+                        RegisterType::Primitive(PrimitiveType::UNative),
+                        RegisterType::Primitive(PrimitiveType::UNative),
+                    ) => integer_operation!(u_native),
+                    (
+                        RegisterType::Primitive(PrimitiveType::F32),
+                        RegisterType::Primitive(PrimitiveType::F32),
+                    ) => Ok((
+                        Register::from(unsafe { self.value.f_single + other.value.f_single }),
+                        false,
+                    )),
+                    (
+                        RegisterType::Primitive(PrimitiveType::F64),
+                        RegisterType::Primitive(PrimitiveType::F64),
+                    ) => Ok((
+                        Register::from(unsafe { self.value.f_double + other.value.f_double }),
+                        false,
+                    )),
+                    // TODO: Add case for pointer arithmetic
+                    //(RegisterType::Pointer(pointee_size), _)
+                    (_, _) => Err(other.value_type), // TODO: Always allow adding a 32-bit integer to a native integer?
                 }
             }
         }
@@ -528,213 +510,6 @@ macro_rules! basic_arithmetic_operation {
 basic_arithmetic_operation!(overflowing_add);
 basic_arithmetic_operation!(overflowing_sub);
 basic_arithmetic_operation!(overflowing_mul);
-
-macro_rules! basic_division_operation {
-    ($operation_name: ident) => {
-        impl Register {
-            pub fn $operation_name(
-                result_type: RegisterType,
-                numerator: &Register,
-                denominator: &Register,
-            ) -> Option<(Register, bool)> {
-                macro_rules! division_operation {
-                    ($integer_type: ty) => {
-                        {
-                            let actual_numerator = <$integer_type>::interpret_register(numerator);
-                            let actual_denominator = <$integer_type>::interpret_register(denominator);
-                            if actual_denominator == 0 {
-                                None
-                            }
-                            else {
-                                let (value, overflowed) = <$integer_type>::$operation_name(actual_numerator, actual_denominator);
-                                Some((Register::from(value), overflowed))
-                            }
-                        }
-                    };
-                }
-
-                match result_type {
-                    RegisterType::Primitive(PrimitiveType::S8) => division_operation!(i8),
-                    RegisterType::Primitive(PrimitiveType::U8) => division_operation!(u8),
-                    RegisterType::Primitive(PrimitiveType::S16) => division_operation!(i16),
-                    RegisterType::Primitive(PrimitiveType::U16) => division_operation!(u16),
-                    RegisterType::Primitive(PrimitiveType::S32) => division_operation!(i32),
-                    RegisterType::Primitive(PrimitiveType::U32) => division_operation!(u32),
-                    RegisterType::Primitive(PrimitiveType::S64) => division_operation!(i64),
-                    RegisterType::Primitive(PrimitiveType::U64) => division_operation!(u64),
-                    RegisterType::Primitive(PrimitiveType::SNative) => division_operation!(isize),
-                    RegisterType::Primitive(PrimitiveType::UNative) => division_operation!(usize),
-                    RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("Basic division operations are not yet supported for floating-point numbers"),
-                }
-            }
-        }
-    };
-}
-
-basic_division_operation!(overflowing_div);
-
-macro_rules! basic_bitwise_operation {
-    ($function_name: ident, $operation_name: ident) => {
-        impl Register {
-            pub fn $function_name(
-                result_type: NumericType,
-                x: &Register,
-                y: &Register,
-            ) -> Register {
-                macro_rules! bitwise_operation {
-                    ($integer_type: ty) => {
-                        Register::from(<$integer_type>::$operation_name(
-                            <$integer_type>::interpret_register(x),
-                            <$integer_type>::interpret_register(y),
-                        ))
-                    };
-                }
-
-                match result_type {
-                    NumericType::Primitive(PrimitiveType::S8 | PrimitiveType::U8) => {
-                        bitwise_operation!(u8)
-                    }
-                    NumericType::Primitive(PrimitiveType::S16 | PrimitiveType::U16) => {
-                        bitwise_operation!(u16)
-                    }
-                    NumericType::Primitive(
-                        PrimitiveType::S32 | PrimitiveType::U32 | PrimitiveType::F32,
-                    ) => bitwise_operation!(u32),
-                    NumericType::Primitive(
-                        PrimitiveType::S64 | PrimitiveType::U64 | PrimitiveType::F64,
-                    ) => bitwise_operation!(u64),
-                    NumericType::Primitive(PrimitiveType::SNative | PrimitiveType::UNative) => {
-                        bitwise_operation!(usize)
-                    }
-                }
-            }
-        }
-    };
-}
-
-basic_bitwise_operation!(bitwise_add, bitand);
-basic_bitwise_operation!(bitwise_or, bitor);
-basic_bitwise_operation!(bitwise_xor, bitxor);
-
-impl Register {
-    pub fn bitwise_not(result_type: NumericType, value: &Register) -> Register {
-        macro_rules! bitwise_not_operation {
-            ($integer_type: ty) => {
-                Register::from(<$integer_type as std::ops::Not>::not(
-                    <$integer_type>::interpret_register(value),
-                ))
-            };
-        }
-
-        match result_type {
-            NumericType::Primitive(PrimitiveType::S8 | PrimitiveType::U8) => {
-                bitwise_not_operation!(u8)
-            }
-            NumericType::Primitive(PrimitiveType::S16 | PrimitiveType::U16) => {
-                bitwise_not_operation!(u16)
-            }
-            NumericType::Primitive(
-                PrimitiveType::S32 | PrimitiveType::U32 | PrimitiveType::F32,
-            ) => bitwise_not_operation!(u32),
-            NumericType::Primitive(
-                PrimitiveType::S64 | PrimitiveType::U64 | PrimitiveType::F64,
-            ) => bitwise_not_operation!(u64),
-            NumericType::Primitive(PrimitiveType::SNative | PrimitiveType::UNative) => {
-                bitwise_not_operation!(usize)
-            }
-        }
-    }
-}
-
-macro_rules! bitwise_shift_operation {
-    ($operation_name: ident) => {
-        impl Register {
-            pub fn $operation_name(
-                result_type: NumericType,
-                value: &Register,
-                amount: &Register,
-            ) -> Register {
-                macro_rules! shift {
-                    ($value_type: ty) => {{
-                        macro_rules! perform_shift {
-                            ($amount_type: ty) => {
-                                Register::from(<$value_type>::$operation_name(<$value_type>::interpret_register(value), <$amount_type>::interpret_register(amount)))
-                            };
-                        }
-
-                        match amount.value_type {
-                            RegisterType::Primitive(PrimitiveType::S8) => perform_shift!(i8),
-                            RegisterType::Primitive(PrimitiveType::U8) => perform_shift!(u8),
-                            RegisterType::Primitive(PrimitiveType::S16) => perform_shift!(i16),
-                            RegisterType::Primitive(PrimitiveType::U16) => perform_shift!(u16),
-                            RegisterType::Primitive(PrimitiveType::S32) => perform_shift!(i32),
-                            RegisterType::Primitive(PrimitiveType::U32) => perform_shift!(u32),
-                            RegisterType::Primitive(PrimitiveType::S64) => perform_shift!(i64),
-                            RegisterType::Primitive(PrimitiveType::U64) => perform_shift!(u64),
-                            RegisterType::Primitive(PrimitiveType::SNative) => perform_shift!(isize),
-                            RegisterType::Primitive(PrimitiveType::UNative) => perform_shift!(usize),
-                            RegisterType::Primitive(PrimitiveType::F32 | PrimitiveType::F64) => todo!("semantics regarding floating point amounts in bitwise operations have not yet been decided"),
-                        }
-                    }};
-                }
-
-                match result_type {
-                    NumericType::Primitive(PrimitiveType::S8) => shift!(i8),
-                    NumericType::Primitive(PrimitiveType::U8) => shift!(u8),
-                    NumericType::Primitive(PrimitiveType::S16) => shift!(i16),
-                    NumericType::Primitive(PrimitiveType::U16) => shift!(u16),
-                    NumericType::Primitive(PrimitiveType::S32) => shift!(i32),
-                    NumericType::Primitive(PrimitiveType::U32 | PrimitiveType::F32) => shift!(u32),
-                    NumericType::Primitive(PrimitiveType::S64) => shift!(i64),
-                    NumericType::Primitive(PrimitiveType::U64 | PrimitiveType::F64) => shift!(u64),
-                    NumericType::Primitive(PrimitiveType::SNative) => shift!(isize),
-                    NumericType::Primitive(PrimitiveType::UNative) => shift!(usize),
-                }
-            }
-        }
-    };
-}
-
-bitwise_shift_operation!(shl);
-bitwise_shift_operation!(shr);
-
-macro_rules! bitwise_rotate_operation {
-    ($operation_name: ident) => {
-        impl Register {
-            pub fn $operation_name(
-                result_type: NumericType,
-                value: &Register,
-                amount: &Register,
-            ) -> Register {
-                macro_rules! rotate {
-                    ($integer_type: ty) => {
-                        Register::from(<$integer_type>::$operation_name(
-                            <$integer_type>::interpret_register(value),
-                            u32::interpret_register(amount),
-                        ))
-                    };
-                }
-
-                match result_type {
-                    NumericType::Primitive(PrimitiveType::U8 | PrimitiveType::S8) => rotate!(u8),
-                    NumericType::Primitive(PrimitiveType::U16 | PrimitiveType::S16) => rotate!(i16),
-                    NumericType::Primitive(
-                        PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32,
-                    ) => rotate!(u32),
-                    NumericType::Primitive(
-                        PrimitiveType::U64 | PrimitiveType::S64 | PrimitiveType::F64,
-                    ) => rotate!(u64),
-                    NumericType::Primitive(PrimitiveType::UNative | PrimitiveType::SNative) => {
-                        rotate!(usize)
-                    }
-                }
-            }
-        }
-    };
-}
-
-bitwise_rotate_operation!(rotate_left);
-bitwise_rotate_operation!(rotate_right);
 
 #[cfg(test)]
 mod tests {

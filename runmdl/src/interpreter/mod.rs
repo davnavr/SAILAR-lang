@@ -116,17 +116,6 @@ impl<'l> Interpreter<'l> {
             Ok(registers)
         }
 
-        fn require_equal_register_types(x: &Register, y: &Register) -> Result<RegisterType> {
-            if x.value_type == y.value_type {
-                Ok(x.value_type)
-            } else {
-                Err(ErrorKind::RegisterTypeMismatch {
-                    expected: x.value_type,
-                    actual: y.value_type,
-                })
-            }
-        }
-
         fn handle_value_overflow<'l>(
             frame: &mut StackFrame<'l>,
             behavior: OverflowBehavior,
@@ -144,11 +133,14 @@ impl<'l> Interpreter<'l> {
         fn basic_arithmetic_operation<'l>(
             frame: &mut StackFrame<'l>,
             operation: &'l instruction_set::BasicArithmeticOperation,
-            o: fn(RegisterType, &Register, &Register) -> (Register, bool),
+            o: fn(&Register, &Register) -> std::result::Result<(Register, bool), RegisterType>,
         ) -> Result<()> {
             let x = frame.registers.get(operation.x)?;
             let y = frame.registers.get(operation.y)?;
-            let (result, overflowed) = o(require_equal_register_types(x, y)?, x, y); // TODO: Move check for equal register types into actual operation
+            let (result, overflowed) = o(x, y).map_err(|_| ErrorKind::RegisterTypeMismatch {
+                expected: x.value_type,
+                actual: y.value_type,
+            })?; // TODO: Move check for equal register types into actual operation
             frame.registers.define_temporary(result);
             handle_value_overflow(frame, operation.overflow, overflowed)
         }

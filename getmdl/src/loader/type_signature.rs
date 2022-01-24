@@ -28,9 +28,7 @@ impl<'a> Type<'a> {
         use format::type_system::PrimitiveType;
 
         match self.source {
-            format::TypeSignature::Heap(format::type_system::HeapType::Val(
-                format::type_system::SimpleType::Primitive(primitive),
-            )) => match primitive {
+            format::TypeSignature::Primitive(primitive) => match primitive {
                 PrimitiveType::U8 | PrimitiveType::S8 => 1,
                 PrimitiveType::U16 | PrimitiveType::S16 => 2,
                 PrimitiveType::U32 | PrimitiveType::S32 | PrimitiveType::F32 => 4,
