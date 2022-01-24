@@ -1,5 +1,5 @@
 use getmdl::loader;
-use registir::format;
+use registir::format::{indices, instruction_set, type_system};
 
 pub mod call_stack;
 pub mod debugger;
@@ -7,26 +7,11 @@ pub mod error;
 pub mod mem;
 pub mod register;
 
-pub use format::{
-    instruction_set,
-    instruction_set::{
-        DivideByZeroBehavior, Instruction, IntegerConstant, JumpTarget, OverflowBehavior,
-        RegisterIndex,
-    },
-    type_system,
-    type_system::PrimitiveType,
-};
-
-pub use call_stack::{
-    Frame as StackFrame, Stack as CallStack, StackCapacity as CallStackCapacity,
-    Trace as StackTrace, TraceFrame as StackTraceFrame,
-};
-
 pub use error::{Error, ErrorKind, LoaderError};
 
 pub use mem::stack::Stack as ValueStack;
 
-pub use register::{NumericType, Register, RegisterType};
+pub use register::Register;
 
 pub type LoadedFunction<'l> = &'l loader::Function<'l>;
 
@@ -40,15 +25,21 @@ impl BlockIndex {
     pub const fn entry() -> Self {
         Self(None)
     }
+}
 
-    pub fn to_raw(self) -> usize {
-        self.0.map(|index| index + 1).unwrap_or(0)
+impl From<indices::CodeBlock> for BlockIndex {
+    fn from(index: indices::CodeBlock) -> Self {
+        if index == indices::CodeBlock::from(0u32) {
+            Self::entry()
+        } else {
+            Self(Some(index.0.try_into().unwrap()))
+        }
     }
 }
 
 impl std::fmt::Display for BlockIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.to_raw(), f)
+        std::fmt::Display::fmt(&self.0.map(|index| index + 1).unwrap_or(0), f)
     }
 }
 
@@ -61,7 +52,7 @@ pub struct InstructionLocation {
 pub struct Interpreter<'l> {
     /// Contains the modules with the code that is being interpreted, used when the debugger looks up methods by name.
     loader: &'l loader::Loader<'l>,
-    call_stack: CallStack<'l>,
+    call_stack: call_stack::Stack<'l>,
     value_stack: ValueStack,
     debugger: Option<&'l mut dyn debugger::Debugger>,
 }
@@ -69,19 +60,19 @@ pub struct Interpreter<'l> {
 impl<'l> Interpreter<'l> {
     fn initialize(
         loader: &'l loader::Loader<'l>,
-        call_stack_capacity: CallStackCapacity,
+        call_stack_capacity: call_stack::Capacity,
         value_stack_capacity: mem::stack::Capacity,
         debugger: Option<&'l mut dyn debugger::Debugger>,
     ) -> Self {
         Self {
             loader,
-            call_stack: CallStack::new(call_stack_capacity),
+            call_stack: call_stack::Stack::new(call_stack_capacity),
             value_stack: ValueStack::new(value_stack_capacity),
             debugger,
         }
     }
 
-    pub fn call_stack(&mut self) -> &mut CallStack<'l> {
+    pub fn call_stack(&mut self) -> &mut call_stack::Stack<'l> {
         &mut self.call_stack
     }
 
@@ -89,7 +80,7 @@ impl<'l> Interpreter<'l> {
         self.loader
     }
 
-    fn next_instruction(&mut self) -> Result<Option<&'l Instruction>> {
+    fn next_instruction(&mut self) -> Result<Option<&'l instruction_set::Instruction>> {
         match self.call_stack.peek_mut() {
             Some(current_frame) => current_frame
                 .instructions
@@ -102,12 +93,14 @@ impl<'l> Interpreter<'l> {
 
     fn execute_instruction(
         &mut self,
-        instruction: &'l Instruction,
+        instruction: &'l instruction_set::Instruction,
         entry_point_results: &mut Vec<Register>,
     ) -> Result<()> {
+        use instruction_set::{Instruction, OverflowBehavior};
+
         fn collect_registers_from<'l>(
-            frame: &mut StackFrame<'l>,
-            indices: &'l [RegisterIndex],
+            frame: &mut call_stack::Frame<'l>,
+            indices: &'l [indices::Register],
         ) -> Result<Vec<Register>> {
             let mut registers = Vec::with_capacity(indices.len());
             for index in indices.iter() {
@@ -117,7 +110,7 @@ impl<'l> Interpreter<'l> {
         }
 
         fn handle_value_overflow(
-            frame: &mut StackFrame,
+            frame: &mut call_stack::Frame,
             behavior: OverflowBehavior,
             overflowed: bool,
         ) -> Result<()> {
@@ -131,18 +124,18 @@ impl<'l> Interpreter<'l> {
         }
 
         type BasicArithmeticOperation =
-            fn(&Register, &Register) -> std::result::Result<(Register, bool), RegisterType>;
+            fn(&Register, &Register) -> std::result::Result<(Register, bool), register::Type>;
 
         fn basic_arithmetic_operation<'l>(
-            frame: &mut StackFrame<'l>,
+            frame: &mut call_stack::Frame<'l>,
             operation: &'l instruction_set::BasicArithmeticOperation,
             o: BasicArithmeticOperation,
         ) -> Result<()> {
             let x = frame.registers.get(operation.x)?;
             let y = frame.registers.get(operation.y)?;
             let (result, overflowed) = o(x, y).map_err(|_| ErrorKind::RegisterTypeMismatch {
-                expected: x.value_type,
-                actual: y.value_type,
+                expected: x.value_type(),
+                actual: y.value_type(),
             })?; // TODO: Move check for equal register types into actual operation
             frame.registers.define_temporary(result);
             handle_value_overflow(frame, operation.overflow, overflowed)
@@ -168,23 +161,6 @@ impl<'l> Interpreter<'l> {
                     None => *entry_point_results = results,
                 }
             }
-            Instruction::Phi(lookup) => {
-                let current_frame = self.call_stack.current_mut()?;
-
-                let previous_block = current_frame
-                    .instructions
-                    .previous_block()
-                    .ok_or(ErrorKind::PhiInstructionInEntryBlock)?;
-
-                let register_indices = lookup
-                    .get(JumpTarget::try_from(previous_block.to_raw() - 1).unwrap())
-                    .ok_or(ErrorKind::MissingPhiInstructionEntry {
-                        missing: previous_block,
-                    })?;
-
-                let mut registers = collect_registers_from(current_frame, register_indices)?;
-                current_frame.registers.append_temporaries(&mut registers);
-            }
             Instruction::Switch {
                 comparison,
                 comparison_type,
@@ -194,10 +170,16 @@ impl<'l> Interpreter<'l> {
                 let current_frame = self.call_stack.current_mut()?;
                 let comparison_register = current_frame.registers.get(*comparison)?;
 
-                if comparison_register.value_type != RegisterType::Primitive(*comparison_type) {
-                    return Err(ErrorKind::InvalidSwitchComparisonType(
-                        comparison_register.value_type,
-                    ));
+                match comparison_register.value_type() {
+                    register::Type::Primitive(type_system::Primitive::Int(
+                        type_system::Int::Fixed(comparison_register_type),
+                    )) if &comparison_register_type == comparison_type => (),
+                    comparison_register_type => {
+                        return Err(ErrorKind::RegisterTypeMismatch {
+                            actual: comparison_register_type,
+                            expected: register::Type::from(*comparison_type),
+                        })
+                    }
                 }
 
                 let comparison_value =
@@ -208,7 +190,8 @@ impl<'l> Interpreter<'l> {
                 self.call_stack.current_jump_to(
                     target_lookup
                         .get(&comparison_value)
-                        .unwrap_or(*default_target),
+                        .unwrap_or(*default_target)
+                        .into(),
                     &[],
                 )?;
             }
@@ -219,7 +202,8 @@ impl<'l> Interpreter<'l> {
                 let inputs =
                     collect_registers_from(self.call_stack.current_mut()?, input_register_indices)?;
 
-                self.call_stack.current_jump_to(*target, &inputs)?
+                self.call_stack
+                    .current_jump_to(BlockIndex::from(*target), &inputs)?
             }
             Instruction::BrIf {
                 condition,
@@ -236,7 +220,8 @@ impl<'l> Interpreter<'l> {
                     *false_target
                 };
 
-                self.call_stack.current_jump_to(target, &inputs)?
+                self.call_stack
+                    .current_jump_to(BlockIndex::from(target), &inputs)?
             }
             Instruction::Call(call) => {
                 let current_frame = self.call_stack.current()?;
@@ -305,12 +290,9 @@ impl<'l> Interpreter<'l> {
                     })
                     .unwrap_or_else(std::ptr::null_mut);
 
-                current_frame
-                    .registers
-                    .define_temporary(Register::from_pointer(
-                        address,
-                        element_size.try_into().unwrap(),
-                    ));
+                current_frame.registers.define_temporary(Register::Pointer(
+                    register::PointerVal::new(address, element_size.try_into().unwrap()),
+                ));
             }
             Instruction::Break => {
                 self.debugger_loop();
@@ -355,7 +337,7 @@ pub fn run<'l>(
     loader: &'l loader::Loader<'l>,
     arguments: &[Register], //FnOnce(the heap) -> Vec<Register>
     entry_point: LoadedFunction<'l>,
-    call_stack_capacity: CallStackCapacity,
+    call_stack_capacity: call_stack::Capacity,
     value_stack_capacity: mem::stack::Capacity,
     debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
 ) -> std::result::Result<Vec<Register>, Error> {

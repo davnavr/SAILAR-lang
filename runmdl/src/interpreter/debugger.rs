@@ -1,7 +1,8 @@
 use crate::interpreter;
 
 pub use interpreter::{
-    call_stack::Breakpoint, BlockIndex, InstructionLocation, LoadedFunction, Register, StackTrace,
+    call_stack::{Breakpoint, Trace as StackTrace},
+    BlockIndex, InstructionLocation, LoadedFunction, Register,
 };
 
 pub use getmdl::loader::{FunctionSymbol, ModuleIdentifier, ModuleSymbol, Symbol};

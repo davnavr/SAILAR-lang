@@ -1,21 +1,21 @@
 use crate::interpreter::{self, debugger};
 use getmdl::loader;
 
-const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::CallStackCapacity =
-    unsafe { interpreter::CallStackCapacity::new_unchecked(0xFF) };
+const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::call_stack::Capacity =
+    unsafe { interpreter::call_stack::Capacity::new_unchecked(0xFF) };
 
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
     value_stack_capacity: interpreter::mem::stack::Capacity,
-    call_stack_capacity: interpreter::CallStackCapacity,
+    call_stack_capacity: interpreter::call_stack::Capacity,
 }
 
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
     value_stack_capacity: interpreter::mem::stack::Capacity,
-    call_stack_capacity: interpreter::CallStackCapacity,
+    call_stack_capacity: interpreter::call_stack::Capacity,
 }
 
 impl<'l> Default for Initializer<'l> {
@@ -34,7 +34,7 @@ impl<'l> Initializer<'l> {
         Self::default()
     }
 
-    pub fn set_call_stack_capacity(&mut self, capacity: interpreter::CallStackCapacity) {
+    pub fn set_call_stack_capacity(&mut self, capacity: interpreter::call_stack::Capacity) {
         self.call_stack_capacity = capacity;
     }
 

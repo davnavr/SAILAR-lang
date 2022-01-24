@@ -1,8 +1,8 @@
-use super::*;
-use std::{
-    borrow::{Borrow as _, BorrowMut as _},
-    collections::{hash_map, BTreeSet, VecDeque},
-};
+use crate::interpreter::{self, debugger, ErrorKind, Result};
+use interpreter::{BlockIndex, InstructionLocation, Register};
+use registir::format::{self, indices, instruction_set};
+use std::borrow::{Borrow as _, BorrowMut as _};
+use std::collections::{hash_map, BTreeSet, VecDeque};
 
 /// Describes a stack frame in the call stack.
 #[derive(Clone, Debug)]
@@ -53,7 +53,7 @@ impl Registers {
     }
 
     /// Retrieves the register associated with the specified index.
-    pub fn get(&self, index: RegisterIndex) -> Result<&Register> {
+    pub fn get(&self, index: indices::Register) -> Result<&Register> {
         macro_rules! lookup_register {
             ($register_index: expr, $register_lookup: expr) => {{
                 let raw_index = usize::try_from($register_index)
@@ -65,12 +65,10 @@ impl Registers {
         }
 
         match index {
-            RegisterIndex::Temporary(temporary_index) => {
+            indices::Register::Temporary(temporary_index) => {
                 lookup_register!(temporary_index, self.temporaries)
             }
-            RegisterIndex::Input(input_index) => {
-                lookup_register!(input_index, self.inputs)
-            }
+            indices::Register::Input(input_index) => lookup_register!(input_index, self.inputs),
         }
     }
 }
@@ -84,13 +82,13 @@ pub(super) struct InstructionPointer<'l> {
     code: &'l format::Code,
     block_index: BlockIndex,
     previous_block: Option<BlockIndex>,
-    instructions: &'l [Instruction],
+    instructions: &'l [instruction_set::Instruction],
     last_breakpoint_hit: Option<usize>,
     /// Instruction offsets marking where breakpoints are placed, in increasing order.
     breakpoints: VecDeque<usize>,
 }
 
-static BREAK: &Instruction = &Instruction::Break;
+static BREAK: &instruction_set::Instruction = &instruction_set::Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
     fn new(code: &'l format::Code) -> Self {
@@ -130,13 +128,15 @@ impl<'l> InstructionPointer<'l> {
         }
     }
 
-    // TODO: Allow jumping to entry block?
-    fn jump(&mut self, target: JumpTarget) -> Result<()> {
-        let index = usize::try_from(target).map_err(|_| ErrorKind::UndefinedBlock(target))?;
-        match self.code.blocks.get(index) {
+    fn jump(&mut self, target: BlockIndex) -> Result<()> {
+        match target
+            .0
+            .map(|index| self.code.blocks.get(index))
+            .unwrap_or(Some(&self.code.entry_block))
+        {
             Some(block) => {
                 self.previous_block = Some(self.block_index);
-                self.block_index = BlockIndex(Some(index));
+                self.block_index = target;
                 self.instructions = &block.instructions;
                 Ok(())
             }
@@ -157,7 +157,7 @@ impl<'l> InstructionPointer<'l> {
         }
     }
 
-    pub fn next_instruction(&mut self) -> Option<&'l Instruction> {
+    pub fn next_instruction(&mut self) -> Option<&'l instruction_set::Instruction> {
         if self.check_breakpoint_hit()
         /* || self.move_next */
         {
@@ -175,14 +175,14 @@ impl<'l> InstructionPointer<'l> {
 pub struct Frame<'l> {
     depth: usize,
     previous: Option<Box<Frame<'l>>>,
-    function: LoadedFunction<'l>,
+    function: interpreter::LoadedFunction<'l>,
     pub(super) result_count: usize,
     pub(super) registers: Registers,
     pub(super) instructions: InstructionPointer<'l>,
 }
 
 impl<'l> Frame<'l> {
-    pub fn function(&self) -> LoadedFunction<'l> {
+    pub fn function(&self) -> interpreter::LoadedFunction<'l> {
         self.function
     }
 
@@ -199,7 +199,7 @@ impl<'l> Frame<'l> {
     /// Updates the instruction pointer to point at the specified target.
     ///
     /// The breakpoint list must be updated afterward.
-    fn jump(&mut self, target: JumpTarget, inputs: &[Register]) -> Result<()> {
+    fn jump(&mut self, target: BlockIndex, inputs: &[Register]) -> Result<()> {
         self.registers.temporaries.clear();
 
         // Replace input registers with new inputs.
@@ -383,16 +383,16 @@ impl BreakpointLookup {
     }
 }
 
-pub use std::num::NonZeroUsize as StackCapacity;
+pub use std::num::NonZeroUsize as Capacity;
 
 pub struct Stack<'l> {
     current: Option<Box<Frame<'l>>>,
-    capacity: StackCapacity,
+    capacity: Capacity,
     breakpoints: BreakpointLookup,
 }
 
 impl<'l> Stack<'l> {
-    pub(super) fn new(capacity: StackCapacity) -> Self {
+    pub(super) fn new(capacity: Capacity) -> Self {
         Self {
             current: None,
             capacity,
@@ -449,7 +449,7 @@ impl<'l> Stack<'l> {
 
     pub(super) fn push(
         &mut self,
-        function: LoadedFunction<'l>,
+        function: interpreter::LoadedFunction<'l>,
         arguments: &[Register],
     ) -> Result<()> {
         let depth = self.depth() + 1;
@@ -458,18 +458,12 @@ impl<'l> Stack<'l> {
         }
 
         let signature = function.signature()?;
-        let mut argument_registers =
-            Register::many_with_type(signature.parameter_types().iter().copied());
 
-        if argument_registers.len() != arguments.len() {
+        if signature.parameter_types().len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
-                expected: argument_registers.len(),
+                expected: signature.parameter_types().len(),
                 actual: arguments.len(),
             });
-        }
-
-        for (i, register) in argument_registers.iter_mut().enumerate() {
-            register.value = arguments[i].value;
         }
 
         match function.raw_body() {
@@ -483,7 +477,7 @@ impl<'l> Stack<'l> {
                     previous,
                     result_count: signature.return_types().len(),
                     registers: Registers {
-                        inputs: argument_registers,
+                        inputs: arguments.to_vec(),
                         temporaries: Vec::new(),
                     },
                     instructions: InstructionPointer::new(code),
@@ -508,7 +502,7 @@ impl<'l> Stack<'l> {
 
     pub(super) fn current_jump_to(
         &mut self,
-        target: JumpTarget,
+        target: BlockIndex,
         inputs: &[Register],
     ) -> Result<()> {
         // Duplicate code with update_current_breakpoints

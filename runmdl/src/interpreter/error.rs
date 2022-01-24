@@ -1,4 +1,4 @@
-use super::{call_stack, BlockIndex, JumpTarget, RegisterIndex, RegisterType};
+use super::{call_stack, register, BlockIndex};
 
 pub type LoaderError = getmdl::loader::Error;
 
@@ -10,28 +10,22 @@ pub enum ErrorKind {
     #[error("call stack underflow occured")]
     CallStackUnderflow,
     #[error("exceeded maximum call stack depth ({0})")]
-    CallStackOverflow(call_stack::StackCapacity),
+    CallStackOverflow(call_stack::Capacity),
     #[error("end of block unexpectedly reached")]
     UnexpectedEndOfBlock,
     #[error("undefined register {0}")]
-    UndefinedRegister(RegisterIndex),
+    UndefinedRegister(registir::format::indices::Register),
     #[error("undefined block {0}")]
-    UndefinedBlock(JumpTarget),
+    UndefinedBlock(BlockIndex),
     #[error("expected {expected} input values but got {actual}")]
     InputCountMismatch { expected: usize, actual: usize },
     #[error("expected {expected} result values but got {actual}")]
     ResultCountMismatch { expected: usize, actual: usize },
-    #[error("expected register to contain a value of type {expected} but got {actual}")]
+    #[error("expected register to contain a value of type {expected:?} but got {actual:?}")]
     RegisterTypeMismatch {
-        expected: RegisterType,
-        actual: RegisterType,
+        expected: register::Type,
+        actual: register::Type,
     },
-    #[error("phi instructions are prohibited in the entry block of a function")]
-    PhiInstructionInEntryBlock,
-    #[error("invalid comparison type for switch instruction {0}")]
-    InvalidSwitchComparisonType(RegisterType),
-    #[error("missing entry for block {missing} in phi instruction")]
-    MissingPhiInstructionEntry { missing: BlockIndex },
 }
 
 #[derive(Debug)]
