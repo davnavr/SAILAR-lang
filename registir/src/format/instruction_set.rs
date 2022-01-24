@@ -109,6 +109,8 @@ pub enum Opcode {
     CmpGt,
     CmpLe,
     CmpGe,
+    ConvI,
+    ConvF,
     Alloca = 253,
     Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
@@ -127,16 +129,29 @@ bitflags! {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum OverflowBehavior {
-    Ignore,
+    Ignore = 0,
     /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
-    Flag,
+    Flag = 1,
 }
 
-impl OverflowBehavior {
-    pub fn flags(self) -> ArithmeticFlags {
-        match self {
-            Self::Ignore => ArithmeticFlags::NONE,
-            Self::Flag => ArithmeticFlags::FLAG_ON_OVERFLOW,
+// Could remove, only needed for ConvI
+impl TryFrom<u8> for OverflowBehavior {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Ignore),
+            1 => Ok(Self::Flag),
+            _ => Err(value),
+        }
+    }
+}
+
+impl From<OverflowBehavior> for ArithmeticFlags {
+    fn from(behavior: OverflowBehavior) -> Self {
+        match behavior {
+            OverflowBehavior::Ignore => Self::NONE,
+            OverflowBehavior::Flag => Self::FLAG_ON_OVERFLOW,
         }
     }
 }
@@ -176,7 +191,7 @@ pub struct BasicArithmeticOperation {
 
 impl BasicArithmeticOperation {
     pub fn flags(&self) -> ArithmeticFlags {
-        self.overflow.flags()
+        ArithmeticFlags::from(self.overflow)
     }
 }
 
@@ -269,13 +284,13 @@ pub enum Instruction {
     //    false_registers: Vec<RegisterIndex>,
     //},
     /// ```txt
-    /// switch <comparison type> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
+    /// switch <cmpty> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
     /// ```
     /// Transfers control to one of several blocks depending on the value in the `comparison` register.
     ///
     /// # Requirements
     /// - Should be the last instruction in a block.
-    /// - The type of the value stored in the `comparison` register (the comparison type), __must__ be a fixed-size integer
+    /// - The type of the value stored in the `comparison` register (the `cmpty`), __must__ be a fixed-size integer
     /// type.
     Switch {
         comparison: RegisterIndex,
@@ -398,7 +413,7 @@ pub enum Instruction {
     // /// `amount` register.
     // RotR(BitwiseShiftOperation),
     /// ```txt
-    /// <result> = const.i <integer type> <value>;
+    /// <result> = const.i <ity> <value>;
     /// ```
     /// Returns an integer of the specified type.
     ///
@@ -407,6 +422,29 @@ pub enum Instruction {
     /// - [`IntegerConstant::value_type()`]
     /// - [`IntegerConstant::value()`]
     ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
+    /// ```txt
+    /// <result> = conv.i <operand> to <ity>;
+    /// <result>, <overflowed> = conv.i <operand> to <ity> ovf.flag;
+    /// ```
+    /// Converts the value stored in the `operand` register to an integer of the specified type.
+    /// - For conversion from a signed integer to a larger signed integer, performs sign extension.
+    /// - For conversion from an unsigned integer to a larger unsigned integer, performs zero extension.
+    /// - Truncates when converting from one integer type to a smaller integer type.
+    ConvI {
+        target_type: type_system::Int,
+        overflow: OverflowBehavior,
+        operand: RegisterIndex,
+    },
+    ///// ```txt
+    ///// <result> = conv.f <operand> to <fty>;
+    ///// ```
+    ///// Converts the value stored in the `operand` register to a floating-point number of the specified type.
+    ///// - Extends or truncates as necessary when converting from one floating-point type to another.
+    ///// - For integer to floating-point type conversions, rounds (to what?)
+    //ConvF {
+    //    target_type: type_system: Real,
+    //    operand: RegisterIndex
+    //},
     /// ```txt
     /// <result> = alloca <amount> of <type>;
     /// <result> = alloca <amount> of <type>;
@@ -449,6 +487,7 @@ impl Instruction {
             // Instruction::RotL(_) => Opcode::RotL,
             // Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
+            Instruction::ConvI { .. } => Opcode::ConvI,
             Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
         }
@@ -471,6 +510,7 @@ impl Instruction {
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
             | Instruction::Mul(BasicArithmeticOperation { overflow, .. })
             //| Instruction::Div(DivisionOperation { overflow, .. })
+            | Instruction::ConvI { overflow, .. }
             => match overflow {
                 OverflowBehavior::Ignore => 1,
                 OverflowBehavior::Flag => 2,
@@ -502,7 +542,7 @@ impl TryFrom<u32> for Opcode {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         #[allow(deprecated)]
         if value != Self::Phi as u32
-            && (value <= Self::CmpGe as u32
+            && (value <= Self::ConvI as u32
                 || value == Self::Alloca as u32
                 || value == Self::Break as u32)
         {

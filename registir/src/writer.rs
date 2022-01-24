@@ -306,6 +306,15 @@ fn block_instruction<W: Write>(
                 IntegerConstant::U64(value) => write_bytes(out, &value.to_le_bytes()),
             }
         }
+        Instruction::ConvI {
+            target_type,
+            overflow,
+            operand,
+        } => {
+            write(out, target_type.tag() as u8)?;
+            write(out, *overflow as u8)?;
+            unsigned_index(out, *operand, size)
+        }
         Instruction::Alloca {
             amount,
             element_type,

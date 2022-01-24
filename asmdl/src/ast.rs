@@ -122,6 +122,11 @@ pub enum Instruction {
     Sub(BasicArithmeticOperation),
     Mul(BasicArithmeticOperation),
     ConstI(Positioned<PrimitiveType>, Positioned<i128>),
+    ConvI {
+        operand: RegisterSymbol,
+        target_type: Positioned<PrimitiveType>,
+        flag_overflow: bool,
+    },
 }
 
 #[derive(Debug, Eq, PartialEq)]

@@ -248,17 +248,21 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         let code_statement = {
             //any_keyword
 
+            let overflow_flag = keyword("ovf.flag")
+                .or_not()
+                .map(|overflow| overflow.is_some());
+
             macro_rules! basic_arithmetic_operation {
                 ($name: expr, $separator: expr, $instruction: expr) => {
                     keyword($name)
                         .ignore_then(register_symbol.then_ignore(keyword($separator)))
                         .then(register_symbol)
-                        .then(keyword("ovf.flag").or_not())
-                        .map(|((x, y), overflow)| {
+                        .then(overflow_flag)
+                        .map(|((x, y), flag_overflow)| {
                             $instruction(ast::BasicArithmeticOperation {
                                 x,
                                 y,
-                                flag_overflow: overflow.is_some(),
+                                flag_overflow,
                             })
                         })
                 };
@@ -329,6 +333,19 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 choice((keyword("const.i")
                     .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
                     .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),)),
+                choice((keyword("conv.i")
+                    .ignore_then(register_symbol)
+                    .then(
+                        keyword("to")
+                            .ignore_then(with_position(primitive_type).then(overflow_flag)),
+                    )
+                    .map(
+                        |(operand, (target_type, flag_overflow))| ast::Instruction::ConvI {
+                            operand,
+                            target_type,
+                            flag_overflow,
+                        },
+                    ),)),
             )));
 
             let result_registers = many_registers()

@@ -46,6 +46,8 @@ pub enum Error {
     InvalidArithmeticFlags(u8),
     #[error("{0:#02X} is not a valid numeric type")]
     InvalidNumericType(u8),
+    #[error("{0:#02X} is not a valid overflow behavior")]
+    InvalidOverflowBehavior(u8),
     #[error("{0:#02X} is not a valid struct flags combination")]
     InvalidStructFlags(u8),
     #[error("{0:#02X} is not a valid function flags combination")]
@@ -348,6 +350,12 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
         // Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
         // Opcode::RotR => Ok(Instruction::RotR(bitwise_shift_operation(src, size)?)),
         Opcode::ConstI => Ok(Instruction::ConstI(constant_integer(src)?)),
+        Opcode::ConvI => Ok(Instruction::ConvI {
+            target_type: type_system::Int::try_from(type_tag(src)?)?,
+            overflow: instruction_set::OverflowBehavior::try_from(byte(src)?)
+                .map_err(Error::InvalidOverflowBehavior)?,
+            operand: unsigned_index(src, size)?,
+        }),
         Opcode::Alloca => Ok(Instruction::Alloca {
             amount: unsigned_index(src, size)?,
             element_type: unsigned_index(src, size)?,

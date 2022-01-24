@@ -126,6 +126,22 @@ impl<'a> CodeBlockAssembler<'a> {
             })
         }
 
+        fn integer_type(
+            errors: &mut error::Builder,
+            primitive_type: &ast::Positioned<ast::PrimitiveType>,
+        ) -> Option<type_system::Int> {
+            match primitive_type.0 {
+                type_system::Primitive::Int(integer_type) => Some(integer_type),
+                invalid_type => {
+                    errors.push_with_location(
+                        error::Kind::InvalidIntegerType(invalid_type),
+                        primitive_type.1.clone(),
+                    );
+                    None
+                }
+            }
+        }
+
         fn fixed_integer_type(
             errors: &mut error::Builder,
             primitive_type: &ast::Positioned<ast::PrimitiveType>,
@@ -335,17 +351,33 @@ impl<'a> CodeBlockAssembler<'a> {
                     }
 
                     expected_return_count = 1;
-                    next_instruction = try_some!({
-                        Instruction::ConstI(match fixed_constant_type? {
-                            FixedInt::S8 => convert_constant!(i8, S8),
-                            FixedInt::U8 => convert_constant!(u8, U8),
-                            FixedInt::S16 => convert_constant!(i16, S16),
-                            FixedInt::U16 => convert_constant!(u16, U16),
-                            FixedInt::S32 => convert_constant!(i32, S32),
-                            FixedInt::U32 => convert_constant!(u32, U32),
-                            FixedInt::S64 => convert_constant!(i64, S64),
-                            FixedInt::U64 => convert_constant!(u64, U64),
-                        }?)
+                    next_instruction = try_some!(Instruction::ConstI(match fixed_constant_type? {
+                        FixedInt::S8 => convert_constant!(i8, S8),
+                        FixedInt::U8 => convert_constant!(u8, U8),
+                        FixedInt::S16 => convert_constant!(i16, S16),
+                        FixedInt::U16 => convert_constant!(u16, U16),
+                        FixedInt::S32 => convert_constant!(i32, S32),
+                        FixedInt::U32 => convert_constant!(u32, U32),
+                        FixedInt::S64 => convert_constant!(i64, S64),
+                        FixedInt::U64 => convert_constant!(u64, U64),
+                    }?));
+                }
+                ast::Instruction::ConvI {
+                    target_type,
+                    flag_overflow,
+                    operand,
+                } => {
+                    let actual_target_type = integer_type(errors, target_type);
+                    let operand_register = lookup_register(errors, register_lookup, operand);
+                    expected_return_count = if *flag_overflow { 2 } else { 1 };
+                    next_instruction = try_some!(Instruction::ConvI {
+                        target_type: actual_target_type?,
+                        operand: operand_register?,
+                        overflow: if *flag_overflow {
+                            instruction_set::OverflowBehavior::Flag
+                        } else {
+                            instruction_set::OverflowBehavior::Ignore
+                        },
                     });
                 }
             }

@@ -11,7 +11,9 @@ pub enum Kind {
     InvalidFormatVersion,
     #[error("a register with the symbol %{0} was not defined")]
     UndefinedRegister(ast::Identifier),
-    #[error("{0} is not a valid constant integer type")]
+    #[error("expected integer type, but got {0}")]
+    InvalidIntegerType(ast::PrimitiveType),
+    #[error("{0} is not a valid constant integer type, pointer-sized integers are not allowed")]
     InvalidConstantIntegerType(ast::PrimitiveType),
     #[error("{1} is not a valid value for constant integers of type {0}")]
     ConstantIntegerOutOfRange(ast::PrimitiveType, i128),

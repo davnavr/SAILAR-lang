@@ -2,7 +2,7 @@ use crate::format::indices;
 use std::fmt::{Display, Formatter};
 
 /// Integer types with a fixed size.
-/// 
+///
 /// These are the only valid types for constant integers since `unative` and `snative` may change depending on where the code is
 /// being executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
