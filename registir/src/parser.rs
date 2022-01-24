@@ -30,16 +30,16 @@ pub enum Error {
     EmptyIdentifier,
     #[error("{0:#02X} is not a valid namespace flags combination")]
     InvalidNamespaceFlags(u8),
-    #[error("{0:#02X} is not a valid type signature tag")]
-    InvalidTypeSignatureTag(u8),
-    #[error("{0:#02X} is not a valid primitive type")]
-    InvalidPrimitiveType(u8),
-    #[error("{0} is not a constant integer type")]
-    InvalidIntegerConstantType(type_system::PrimitiveType),
+    #[error(transparent)]
+    InvalidTypeSignature(#[from] type_system::InvalidTagError),
+    #[error("invalid primitive type, {0}")]
+    InvalidPrimitiveType(#[from] type_system::TryFromTagError),
+    #[error(transparent)]
+    InvalidFixedIntegerType(#[from] type_system::InvalidFixedIntegerTypeError),
     #[error("{0:#02X} is not a valid combination of code block flags")]
     InvalidCodeBlockFlags(u8),
-    #[error("{0:#02X} is not a valid opcode")]
-    InvalidOpcode(u32),
+    #[error(transparent)]
+    InvalidOpcode(#[from] instruction_set::InvalidOpcodeError),
     #[error("duplicate switch branch for value {0:?}")]
     DuplicateSwitchBranch(instruction_set::IntegerConstant),
     #[error("{0:#02X} is not a valid arithmetic flags combination")]
@@ -177,38 +177,25 @@ fn module_header<R: Read>(
     Ok(format::ModuleHeader { identifier: id })
 }
 
-fn primitive_type(tag: type_system::TypeTag) -> Option<type_system::PrimitiveType> {
-    match tag {
-        type_system::TypeTag::S8 => Some(type_system::PrimitiveType::S8),
-        type_system::TypeTag::U8 => Some(type_system::PrimitiveType::U8),
-        type_system::TypeTag::S16 => Some(type_system::PrimitiveType::S16),
-        type_system::TypeTag::U16 => Some(type_system::PrimitiveType::U16),
-        type_system::TypeTag::S32 => Some(type_system::PrimitiveType::S32),
-        type_system::TypeTag::U32 => Some(type_system::PrimitiveType::U32),
-        type_system::TypeTag::S64 => Some(type_system::PrimitiveType::S64),
-        type_system::TypeTag::U64 => Some(type_system::PrimitiveType::U64),
-        type_system::TypeTag::SNative => Some(type_system::PrimitiveType::SNative),
-        type_system::TypeTag::UNative => Some(type_system::PrimitiveType::UNative),
-        type_system::TypeTag::F32 => Some(type_system::PrimitiveType::F32),
-        type_system::TypeTag::F64 => Some(type_system::PrimitiveType::F64),
-        _ => None,
-    }
+fn type_tag<R: Read>(src: &mut R) -> Result<type_system::Tag> {
+    Ok(type_system::Tag::try_from(byte(src)?)?)
 }
 
-// fn heap_type(tag: type_system::TypeTag) -> ParseResult<Option<type_system::HeapType>> {
-//     simple_type(tag)
-//         .map(|t| Ok(Some(type_system::HeapType::Val(t))))
-//         .unwrap_or_else(|| {
-//             todo!()
-//         })
-// }
+fn fixed_integer_type<R: Read>(src: &mut R) -> Result<type_system::FixedInt> {
+    Ok(type_system::FixedInt::try_from(
+        type_system::Int::try_from(type_tag(src)?)?,
+    )?)
+}
 
-fn type_signature<R: Read>(src: &mut R) -> Result<type_system::AnyType> {
-    let tag: type_system::TypeTag = unsafe { std::mem::transmute(byte(src)?) }; // TODO: Define a conversion function going from u8 to TypeTag.
-    if let Some(primitive) = primitive_type(tag) {
-        Ok(type_system::AnyType::Primitive(primitive))
-    } else {
-        Err(Error::InvalidTypeSignatureTag(tag as u8))
+fn type_signature<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<type_system::Any> {
+    #[allow(deprecated)]
+    match type_tag(src)? {
+        type_system::Tag::Unit => unreachable!(),
+        type_system::Tag::Struct => Ok(type_system::Any::Struct(unsigned_index(src, size)?)),
+        type_system::Tag::NativePointer => todo!("parse native pointer types"),
+        tag => Ok(type_system::Any::Primitive(
+            type_system::Primitive::try_from(tag)?,
+        )),
     }
 }
 
@@ -228,41 +215,25 @@ fn opcode<R: Read>(src: &mut R) -> Result<Opcode> {
         let value = byte(src)?;
         opcode += u32::from(value);
         if value != Opcode::Continuation as u8 {
-            return Opcode::try_from(opcode).map_err(|()| Error::InvalidOpcode(opcode));
+            return Ok(Opcode::try_from(opcode)?);
         }
     }
 }
 
 fn constant_integer<R: Read>(src: &mut R) -> Result<instruction_set::IntegerConstant> {
     use instruction_set::IntegerConstant;
-    use type_system::PrimitiveType;
+    use type_system::FixedInt;
 
-    let tag = byte(src)?;
-    let integer_type = primitive_type(unsafe { std::mem::transmute(tag) })
-        .ok_or(Error::InvalidPrimitiveType(tag))?;
-
-    match integer_type {
-        PrimitiveType::U8 => Ok(IntegerConstant::U8(byte(src)?)),
-        PrimitiveType::S8 => Ok(IntegerConstant::S8(byte(src)? as i8)),
-        PrimitiveType::S16 => Ok(IntegerConstant::S16(i16::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::U16 => Ok(IntegerConstant::U16(u16::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::S32 => Ok(IntegerConstant::S32(i32::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::U32 => Ok(IntegerConstant::U32(u32::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::S64 => Ok(IntegerConstant::S64(i64::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::U64 => Ok(IntegerConstant::U64(u64::from_le_bytes(fixed_bytes(src)?))),
-        PrimitiveType::UNative
-        | PrimitiveType::SNative
-        | PrimitiveType::F32
-        | PrimitiveType::F64 => Err(Error::InvalidIntegerConstantType(integer_type)),
-    }
-}
-
-fn numeric_type<R: Read>(src: &mut R) -> Result<instruction_set::NumericType> {
-    let tag_byte = byte(src)?;
-    let tag: type_system::TypeTag = unsafe { std::mem::transmute(tag_byte) };
-    primitive_type(tag)
-        .ok_or(Error::InvalidNumericType(tag_byte))
-        .map(instruction_set::NumericType::Primitive)
+    Ok(match fixed_integer_type(src)? {
+        FixedInt::U8 => IntegerConstant::U8(byte(src)?),
+        FixedInt::S8 => IntegerConstant::S8(byte(src)? as i8),
+        FixedInt::S16 => IntegerConstant::S16(i16::from_le_bytes(fixed_bytes(src)?)),
+        FixedInt::U16 => IntegerConstant::U16(u16::from_le_bytes(fixed_bytes(src)?)),
+        FixedInt::S32 => IntegerConstant::S32(i32::from_le_bytes(fixed_bytes(src)?)),
+        FixedInt::U32 => IntegerConstant::U32(u32::from_le_bytes(fixed_bytes(src)?)),
+        FixedInt::S64 => IntegerConstant::S64(i64::from_le_bytes(fixed_bytes(src)?)),
+        FixedInt::U64 => IntegerConstant::U64(u64::from_le_bytes(fixed_bytes(src)?)),
+    })
 }
 
 fn arithmetic_flags<R: Read>(src: &mut R) -> Result<instruction_set::ArithmeticFlags> {
@@ -287,80 +258,18 @@ fn basic_arithmetic_operation<R: Read>(
     })
 }
 
-fn division_operation<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> Result<instruction_set::DivisionOperation> {
-    let flags = arithmetic_flags(src)?;
-    Ok(instruction_set::DivisionOperation {
-        divide_by_zero: if flags
-            .contains(instruction_set::ArithmeticFlags::RETURN_VALUE_ON_DIVIDE_BY_ZERO)
-        {
-            instruction_set::DivideByZeroBehavior::Return(unsigned_index(src, size)?)
-        } else {
-            instruction_set::DivideByZeroBehavior::Halt
-        },
-        overflow: instruction_set::OverflowBehavior::from(flags),
-        return_type: numeric_type(src)?,
-        numerator: unsigned_index(src, size)?,
-        denominator: unsigned_index(src, size)?,
-    })
-}
-
-fn bitwise_operation<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> Result<instruction_set::BitwiseOperation> {
-    Ok(instruction_set::BitwiseOperation {
-        result_type: numeric_type(src)?,
-        x: unsigned_index(src, size)?,
-        y: unsigned_index(src, size)?,
-    })
-}
-
-fn bitwise_shift_operation<R: Read>(
-    src: &mut R,
-    size: numeric::IntegerSize,
-) -> Result<instruction_set::BitwiseShiftOperation> {
-    bitwise_operation(src, size).map(instruction_set::BitwiseShiftOperation)
-}
-
 fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instruction> {
+    #[allow(deprecated)]
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
         Opcode::Ret => Ok(Instruction::Ret(length_encoded_indices(src, size)?)),
-        Opcode::Phi => {
-            let value_count = u8::try_from(unsigned_integer(src, size)?.0).unwrap();
-            let mut lookup = instruction_set::PhiSelectionLookup::with_capacity(
-                value_count,
-                unsigned_length(src, size)?,
-            );
-
-            // TODO: Error if value_count or entry_count is zero.
-            assert!(value_count > 0);
-            assert!(lookup.entry_count() > 0);
-
-            for _ in 0..lookup.entry_count() {
-                let target = unsigned_index(src, size)?;
-                let mut registers = Vec::with_capacity(usize::from(value_count));
-
-                for _ in 0..value_count {
-                    registers.push(unsigned_index(src, size)?);
-                }
-
-                if !lookup.insert(target, registers) {
-                    panic!("add error for duplicate key in phi lookup")
-                }
-            }
-
-            Ok(Instruction::Phi(lookup))
-        }
+        Opcode::Phi => unreachable!(),
         Opcode::Switch => {
+            use instruction_set::IntegerConstant;
+            use type_system::FixedInt;
+
             let comparison = unsigned_index(src, size)?;
-            let comparison_type = {
-                let tag = unsafe { std::mem::transmute(byte(src)?) };
-                primitive_type(tag).ok_or(Error::InvalidPrimitiveType(tag as u8))?
-            };
+            let comparison_type = fixed_integer_type(src)?;
 
             let default_target = unsigned_index(src, size)?;
 
@@ -368,30 +277,27 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
                 instruction_set::SwitchLookupTable::with_capacity(unsigned_length(src, size)?);
 
             let next_value: fn(&mut R) -> Result<instruction_set::IntegerConstant> = {
-                use instruction_set::{IntegerConstant, PrimitiveType};
-
                 match comparison_type {
-                    PrimitiveType::S8 => |src| Ok(IntegerConstant::S8(byte(src)? as i8)),
-                    PrimitiveType::U8 => |src| Ok(IntegerConstant::U8(byte(src)?)),
-                    PrimitiveType::S16 => {
+                    FixedInt::S8 => |src| Ok(IntegerConstant::S8(byte(src)? as i8)),
+                    FixedInt::U8 => |src| Ok(IntegerConstant::U8(byte(src)?)),
+                    FixedInt::S16 => {
                         |src| Ok(IntegerConstant::S16(i16::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    PrimitiveType::U16 => {
+                    FixedInt::U16 => {
                         |src| Ok(IntegerConstant::U16(u16::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    PrimitiveType::S32 => {
+                    FixedInt::S32 => {
                         |src| Ok(IntegerConstant::S32(i32::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    PrimitiveType::U32 => {
+                    FixedInt::U32 => {
                         |src| Ok(IntegerConstant::U32(u32::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    PrimitiveType::S64 => {
+                    FixedInt::S64 => {
                         |src| Ok(IntegerConstant::S64(i64::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    PrimitiveType::U64 => {
+                    FixedInt::U64 => {
                         |src| Ok(IntegerConstant::U64(u64::from_le_bytes(fixed_bytes(src)?)))
                     }
-                    _ => return Err(Error::InvalidIntegerConstantType(comparison_type)),
                 }
             };
 
@@ -498,10 +404,6 @@ fn function_body<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<for
 fn data_array<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::DataArray> {
     let length = unsigned_length(src, size)?;
     many_bytes(src, length).map(|data| format::DataArray(format::LenVec(data)))
-}
-
-fn byte_enum<B: TryFrom<u8>, E: FnOnce(u8) -> Error, R: Read>(src: &mut R, error: E) -> Result<B> {
-    byte_flags(src, |bits| B::try_from(bits).ok(), error)
 }
 
 fn namespace_definition<R: Read>(
@@ -701,7 +603,7 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
             &data_vectors,
             3,
             || format::LenVec(Vec::new()),
-            |mut data| length_encoded_vector(&mut data, size, |src| type_signature(src)),
+            |mut data| length_encoded_vector(&mut data, size, |src| type_signature(src, size)),
         )?,
         function_signatures: module_data_or_default(&data_vectors, 4, |mut data| {
             length_encoded_vector(&mut data, size, |src| function_signature(src, size))

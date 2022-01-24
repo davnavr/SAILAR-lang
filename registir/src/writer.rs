@@ -1,7 +1,5 @@
-use crate::{
-    buffers,
-    format::{self, instruction_set, numeric, type_system},
-};
+use crate::{buffers, format};
+use format::{instruction_set, numeric, type_system};
 use std::io::Write;
 
 #[derive(thiserror::Error, Debug)]
@@ -9,8 +7,6 @@ use std::io::Write;
 pub enum Error {
     #[error("{0} is not a valid size for a vector")]
     VectorTooLarge(usize),
-    #[error("{0} is not a valid fixed-length integer type")]
-    InvalidFixedLengthIntegerType(type_system::PrimitiveType),
     #[error(transparent)]
     InputOutputError(#[from] std::io::Error),
 }
@@ -159,20 +155,21 @@ fn module_header<W: Write>(
     module_identifier(out, &header.identifier, size)
 }
 
-fn primitive_type<W: Write>(out: &mut W, t: type_system::PrimitiveType) -> Result {
-    write(out, t.tag() as u8)
-}
-
-fn any_type<W: Write>(out: &mut W, t: &type_system::AnyType, size: numeric::IntegerSize) -> Result {
+fn type_signature<W: Write>(
+    out: &mut W,
+    t: &type_system::Any,
+    size: numeric::IntegerSize,
+) -> Result {
+    use type_system::Any;
     match t {
-        type_system::AnyType::Primitive(primitive) => primitive_type(out, *primitive),
-        type_system::AnyType::Struct(index) => {
-            write(out, type_system::TypeTag::Struct as u8)?;
+        Any::Primitive(primitive) => write(out, primitive.tag() as u8),
+        Any::Struct(index) => {
+            write(out, type_system::Tag::Struct as u8)?;
             unsigned_index(out, *index, size)
         }
-        type_system::AnyType::NativePointer(pointee) => {
-            write(out, type_system::TypeTag::NativePointer as u8)?;
-            any_type(out, pointee, size)
+        Any::NativePointer(pointee) => {
+            write(out, type_system::Tag::NativePointer as u8)?;
+            type_signature(out, pointee, size)
         }
     }
 }
@@ -201,12 +198,6 @@ fn instruction_opcode<W: Write>(out: &mut W, opcode: instruction_set::Opcode) ->
     }
 }
 
-fn numeric_type<W: Write>(out: &mut W, t: instruction_set::NumericType) -> Result {
-    match t {
-        instruction_set::NumericType::Primitive(pt) => primitive_type(out, pt),
-    }
-}
-
 fn basic_arithmetic_operation<W: Write>(
     out: &mut W,
     operation: &instruction_set::BasicArithmeticOperation,
@@ -217,53 +208,19 @@ fn basic_arithmetic_operation<W: Write>(
     unsigned_index(out, operation.y, size)
 }
 
-fn division_operation<W: Write>(
-    out: &mut W,
-    operation: &instruction_set::DivisionOperation,
-    size: numeric::IntegerSize,
-) -> Result {
-    write(out, operation.flags().bits())?;
-    if let instruction_set::DivideByZeroBehavior::Return(value_index) = operation.divide_by_zero {
-        unsigned_index(out, value_index, size)?;
-    }
-    numeric_type(out, operation.return_type)?;
-    unsigned_index(out, operation.numerator, size)?;
-    unsigned_index(out, operation.denominator, size)
-}
-
-fn bitwise_operation<W: Write>(
-    out: &mut W,
-    operation: &instruction_set::BitwiseOperation,
-    size: numeric::IntegerSize,
-) -> Result {
-    numeric_type(out, operation.result_type)?;
-    unsigned_index(out, operation.x, size)?;
-    unsigned_index(out, operation.y, size)
-}
-
 fn block_instruction<W: Write>(
     out: &mut W,
     instruction: &instruction_set::Instruction,
     size: numeric::IntegerSize,
 ) -> Result {
-    use instruction_set::{Instruction, IntegerConstant, PrimitiveType};
+    use instruction_set::{Instruction, IntegerConstant};
+    use type_system::FixedInt;
 
     instruction_opcode(out, instruction.opcode())?;
 
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        Instruction::Phi(lookup) => {
-            unsigned_integer(out, numeric::UInteger::from(lookup.value_count()), size)?;
-            unsigned_length(out, lookup.entry_count(), size)?;
-            for (target, registers) in lookup.iter() {
-                unsigned_index(out, target, size)?;
-                for index in registers {
-                    unsigned_index(out, *index, size)?;
-                }
-            }
-            Ok(())
-        }
         Instruction::Switch {
             comparison,
             comparison_type,
@@ -271,23 +228,22 @@ fn block_instruction<W: Write>(
             target_lookup,
         } => {
             unsigned_index(out, *comparison, size)?;
-            primitive_type(out, *comparison_type)?;
+            write(out, comparison_type.tag() as u8)?;
             unsigned_index(out, *default_target, size)?;
             unsigned_length(out, target_lookup.len(), size)?;
 
             let write_value: fn(&mut W, value: i128) -> Result = {
                 match *comparison_type {
-                    PrimitiveType::S8 | PrimitiveType::U8 => |out, value| write(out, value as u8),
-                    PrimitiveType::S16 | PrimitiveType::U16 => {
+                    FixedInt::S8 | FixedInt::U8 => |out, value| write(out, value as u8),
+                    FixedInt::S16 | FixedInt::U16 => {
                         |out, value| write_bytes(out, &(value as u16).to_le_bytes())
                     }
-                    PrimitiveType::S32 | PrimitiveType::U32 => {
+                    FixedInt::S32 | FixedInt::U32 => {
                         |out, value| write_bytes(out, &(value as u32).to_le_bytes())
                     }
-                    PrimitiveType::S64 | PrimitiveType::U64 => {
+                    FixedInt::S64 | FixedInt::U64 => {
                         |out, value| write_bytes(out, &(value as u64).to_le_bytes())
                     }
-                    _ => return Err(Error::InvalidFixedLengthIntegerType(*comparison_type)),
                 }
             };
 
@@ -337,40 +293,19 @@ fn block_instruction<W: Write>(
         //     numeric_type(out, *result_type)?;
         //     unsigned_index(out, *value, size)
         // }
-        Instruction::ConstI(constant) => match constant {
-            IntegerConstant::S8(value) => {
-                primitive_type(out, PrimitiveType::S8)?;
-                write(out, *value as u8)
+        Instruction::ConstI(constant) => {
+            write(out, constant.value_type().tag() as u8)?;
+            match constant {
+                IntegerConstant::S8(value) => write(out, *value as u8),
+                IntegerConstant::U8(value) => write(out, *value),
+                IntegerConstant::S16(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U16(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::S32(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U32(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::S64(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U64(value) => write_bytes(out, &value.to_le_bytes()),
             }
-            IntegerConstant::U8(value) => {
-                primitive_type(out, PrimitiveType::U8)?;
-                write(out, *value)
-            }
-            IntegerConstant::S16(value) => {
-                primitive_type(out, PrimitiveType::S16)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U16(value) => {
-                primitive_type(out, PrimitiveType::U16)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::S32(value) => {
-                primitive_type(out, PrimitiveType::S32)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U32(value) => {
-                primitive_type(out, PrimitiveType::U32)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::S64(value) => {
-                primitive_type(out, PrimitiveType::S64)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U64(value) => {
-                primitive_type(out, PrimitiveType::U64)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-        },
+        }
         Instruction::Alloca {
             amount,
             element_type,
@@ -696,7 +631,7 @@ pub fn write_module<W: Write>(module: &format::Module, out: &mut W) -> Result {
         module.type_signatures.as_ref(),
         module.integer_size,
         &buffers,
-        |out, signature| any_type(out, signature, module.integer_size),
+        |out, signature| type_signature(out, signature, module.integer_size),
     )?;
 
     double_length_encoded_vector(

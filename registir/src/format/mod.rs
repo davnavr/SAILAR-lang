@@ -16,7 +16,7 @@ pub mod versioning;
 
 pub use identifier::Identifier;
 pub use structures::{ByteLengthEncoded as LenBytes, LengthEncodedVector as LenVec};
-pub use type_system::AnyType as TypeSignature;
+pub use type_system::Any as TypeSignature;
 pub use versioning::{Format as FormatVersion, Numbers as VersionNumbers};
 
 pub type LenVecBytes<T> = LenBytes<LenVec<T>>;
@@ -64,8 +64,8 @@ pub struct FunctionSignature {
 
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
-    /// Indicates the block that control will transfer to when an exception is thrown, relative to the current block.
-    pub catch_block: instruction_set::JumpTarget,
+    /// Indicates the block that control will transfer to when an exception is thrown.
+    pub catch_block: indices::CodeBlock,
     /// Specifies the input register of the [`catch_block`] that the exception object is stored into when an exception is thrown.
     /// If omitted, the exception object is ignored.
     pub exception_register: Option<indices::InputRegister>,
@@ -398,7 +398,7 @@ pub struct Module {
     pub identifiers: LenVecBytes<Identifier>,
     /// An array of the namespaces containing the imported and defined structs, fields, and functions.
     pub namespaces: LenVecBytes<Namespace>,
-    pub type_signatures: LenVecBytes<type_system::AnyType>,
+    pub type_signatures: LenVecBytes<TypeSignature>,
     pub function_signatures: LenVecBytes<FunctionSignature>,
     /// An array containing the function bodies of the module.
     pub function_bodies: LenVecBytes<Code>,

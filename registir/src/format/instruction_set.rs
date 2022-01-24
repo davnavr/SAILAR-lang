@@ -1,57 +1,14 @@
-use crate::{
-    format::{indices, type_system, LenVec},
-    hashing::IntegerHashBuilder,
-};
+use super::{indices, type_system, LenVec};
+use crate::hashing::IntegerHashBuilder;
 use bitflags::bitflags;
 use std::collections::hash_map;
 
 pub use indices::{
-    Function as FunctionIndex, Register as RegisterIndex, TypeSignature as TypeIndex,
+    CodeBlock as BlockIndex, Function as FunctionIndex, Register as RegisterIndex,
+    TypeSignature as TypeIndex,
 };
-pub use type_system::PrimitiveType;
-
-/// Specifies the target of a branch instruction, pointing to the block containing the instructions that will be executed next
-/// if the target branch is taken.
-///
-/// Note that branch instructions and exception handlers cannot transfer control to an entry block.
-pub type JumpTarget = indices::CodeBlock;
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RegisterType {
-    Primitive(PrimitiveType),
-    /// Indicates the register contains a pointer to an object of the specified size.
-    Pointer(u32),
-}
-
-impl std::fmt::Display for RegisterType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Primitive(primitive_type) => primitive_type.fmt(f),
-            Self::Pointer(size) => write!(f, "*{}", size),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum NumericType {
-    Primitive(PrimitiveType),
-    //Pointer(u32)
-}
-
-impl From<NumericType> for RegisterType {
-    fn from(t: NumericType) -> Self {
-        match t {
-            NumericType::Primitive(primitive_type) => Self::Primitive(primitive_type),
-        }
-    }
-}
 
 /// Represents an integer constant, whose value is stored in little-endian order.
-///
-/// # Structure
-/// - [`Opcode`]
-/// - [`IntegerConstant::integer_type()`]
-/// - [`IntegerConstant::value()`]
 #[derive(Clone, Copy, Debug, Eq)]
 pub enum IntegerConstant {
     U8(u8),
@@ -65,16 +22,17 @@ pub enum IntegerConstant {
 }
 
 impl IntegerConstant {
-    pub fn integer_type(self) -> PrimitiveType {
+    pub fn value_type(self) -> type_system::FixedInt {
+        use type_system::FixedInt;
         match self {
-            Self::U8(_) => PrimitiveType::U8,
-            Self::S8(_) => PrimitiveType::S8,
-            Self::U16(_) => PrimitiveType::U16,
-            Self::S16(_) => PrimitiveType::S16,
-            Self::U32(_) => PrimitiveType::U32,
-            Self::S32(_) => PrimitiveType::S32,
-            Self::U64(_) => PrimitiveType::U64,
-            Self::S64(_) => PrimitiveType::S64,
+            Self::U8(_) => FixedInt::U8,
+            Self::S8(_) => FixedInt::S8,
+            Self::U16(_) => FixedInt::U16,
+            Self::S16(_) => FixedInt::S16,
+            Self::U32(_) => FixedInt::U32,
+            Self::S32(_) => FixedInt::S32,
+            Self::U64(_) => FixedInt::U64,
+            Self::S64(_) => FixedInt::S64,
         }
     }
 
@@ -107,19 +65,28 @@ impl std::hash::Hash for IntegerConstant {
     }
 }
 
-// See https://github.com/davnavr/ubyte/blob/c-like-language/src/UByte.Format/Model.fsi#L180
+/*
+pub enum Value {
+    Register(RegisterIndex),
+    Integer(IntegerConstant)
+}
+*/
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u32)]
 pub enum Opcode {
     Nop = 0,
     Ret,
+    #[deprecated = "Reserved, phi instructions are not expected to be used in the future since branching with block inputs is used instead."]
     Phi,
     Select,
     Switch,
     Br,
     BrIf,
     Call,
-    Add = 16,
+    CallIndr,
+    CallRet,
+    Add,
     Sub,
     Mul,
     Div,
@@ -129,8 +96,7 @@ pub enum Opcode {
     Xor,
     Rem,
     Mod,
-    StoresBothDivisionResultAndRemainder,
-    StoresBothModuloAndRemainder,
+    DivRem,
     ShL,
     ShR,
     RotL,
@@ -215,136 +181,12 @@ impl BasicArithmeticOperation {
 }
 
 /// # Structure
-/// - [`DivisionOperation::flags()`]
-/// - nan index
-/// - [`return_type`]
-/// - [`numerator`]
-/// - [`denominator`]
-#[derive(Debug, PartialEq)]
-pub struct DivisionOperation {
-    pub overflow: OverflowBehavior,
-    pub divide_by_zero: DivideByZeroBehavior,
-    pub return_type: NumericType,
-    pub numerator: RegisterIndex,
-    pub denominator: RegisterIndex,
-}
-
-impl DivisionOperation {
-    pub fn flags(&self) -> ArithmeticFlags {
-        self.overflow.flags().union(self.divide_by_zero.flags())
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct BitwiseOperation {
-    pub result_type: NumericType,
-    pub x: RegisterIndex,
-    pub y: RegisterIndex,
-}
-
-/// Describes a bitwise operation that results in the shifting of a value.
-/// # Structure
-/// - [`BitwiseShiftOperation::result_type()`]
-/// - [`BitwiseShiftOperation::value()`]
-/// - [`BitwiseShiftOperation::amount()`]
-#[derive(Debug, PartialEq)]
-#[repr(transparent)]
-pub struct BitwiseShiftOperation(pub BitwiseOperation);
-
-impl BitwiseShiftOperation {
-    pub fn new(result_type: NumericType, value: RegisterIndex, amount: RegisterIndex) -> Self {
-        Self(BitwiseOperation {
-            result_type,
-            x: value,
-            y: amount,
-        })
-    }
-
-    pub fn result_type(&self) -> &NumericType {
-        &self.0.result_type
-    }
-
-    pub fn value(&self) -> &RegisterIndex {
-        &self.0.x
-    }
-
-    pub fn amount(&self) -> &RegisterIndex {
-        &self.0.y
-    }
-}
-
-/// # Structure
 /// - [`function`]
 /// - [`arguments`]
 #[derive(Debug, PartialEq)]
 pub struct CallInstruction {
     pub function: FunctionIndex,
     pub arguments: LenVec<RegisterIndex>,
-}
-
-/// Maps jump targets to the values returned by a `phi` instruction.Instruction
-///
-/// # Structure
-/// - [`value_count()`] (uinteger)
-/// - [`entry_count()`]
-/// - block0
-/// - value0
-/// - value1
-/// - ...
-/// - block1
-/// - value2
-/// - value3
-/// - ...
-#[derive(Debug, PartialEq)]
-pub struct PhiSelectionLookup {
-    lookup: hash_map::HashMap<JumpTarget, Vec<RegisterIndex>, IntegerHashBuilder>,
-    value_count: u8,
-}
-
-impl PhiSelectionLookup {
-    pub fn with_capacity(value_count: u8, capacity: usize) -> Self {
-        Self {
-            lookup: hash_map::HashMap::with_capacity_and_hasher(
-                capacity,
-                IntegerHashBuilder::default(),
-            ),
-            value_count,
-        }
-    }
-
-    /// Inserts an entry into the map.
-    ///
-    /// # Panics
-    /// Panics if the number of registers is not equal to the `value_count`.
-    #[must_use]
-    pub fn insert(&mut self, target: JumpTarget, registers: Vec<RegisterIndex>) -> bool {
-        if usize::from(self.value_count) != registers.len() {
-            panic!(
-                "expected {} values but got {}",
-                self.value_count,
-                registers.len()
-            );
-        }
-        self.lookup.insert(target, registers).is_none()
-    }
-
-    pub fn iter(&self) -> impl std::iter::Iterator<Item = (JumpTarget, &'_ [RegisterIndex])> + '_ {
-        self.lookup
-            .iter()
-            .map(|(target, registers)| (*target, registers.as_slice()))
-    }
-
-    pub fn get(&self, target: JumpTarget) -> Option<&[RegisterIndex]> {
-        self.lookup.get(&target).map(Vec::as_slice)
-    }
-
-    pub fn entry_count(&self) -> usize {
-        self.lookup.len()
-    }
-
-    pub fn value_count(&self) -> u8 {
-        self.value_count
-    }
 }
 
 /// Specifies the targets of a `switch` instruction.
@@ -358,7 +200,7 @@ impl PhiSelectionLookup {
 /// - ...
 #[derive(Debug, PartialEq)]
 pub struct SwitchLookupTable {
-    lookup: hash_map::HashMap<IntegerConstant, JumpTarget, IntegerHashBuilder>,
+    lookup: hash_map::HashMap<IntegerConstant, BlockIndex, IntegerHashBuilder>,
 }
 
 impl SwitchLookupTable {
@@ -372,7 +214,7 @@ impl SwitchLookupTable {
     }
 
     #[must_use]
-    pub fn insert(&mut self, value: IntegerConstant, target: JumpTarget) -> bool {
+    pub fn insert(&mut self, value: IntegerConstant, target: BlockIndex) -> bool {
         match self.lookup.entry(value) {
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(target);
@@ -382,7 +224,7 @@ impl SwitchLookupTable {
         }
     }
 
-    pub fn get(&self, value: &IntegerConstant) -> Option<JumpTarget> {
+    pub fn get(&self, value: &IntegerConstant) -> Option<BlockIndex> {
         self.lookup.get(value).copied()
     }
 
@@ -394,7 +236,7 @@ impl SwitchLookupTable {
         self.lookup.is_empty()
     }
 
-    pub fn iter(&self) -> impl std::iter::Iterator<Item = (&'_ IntegerConstant, JumpTarget)> + '_ {
+    pub fn iter(&self) -> impl std::iter::Iterator<Item = (&'_ IntegerConstant, BlockIndex)> + '_ {
         self.lookup.iter().map(|(value, target)| (value, *target))
     }
 }
@@ -402,6 +244,7 @@ impl SwitchLookupTable {
 /// Represents an instruction consisting of an opcode and one or more operands.
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
+    // TODO: Should case fields be Boxed?
     /// ```txt
     /// nop;
     /// ```
@@ -415,15 +258,6 @@ pub enum Instruction {
     /// # Requirements
     /// - Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
-    /// ```txt
-    /// <result0>, <result1>, ... = phi <value0>, <value1>, ... when <block0> or <value2>, <value3>, ... when <block1> or ...;
-    /// ```
-    /// Selects values based on the previous block.
-    ///
-    /// # Requirements
-    /// - Cannot appear in the entry block.
-    /// - An entry in the table must exist for all blocks that can transfer control to the block containing the instruction.
-    Phi(PhiSelectionLookup),
     ///// ```txt
     ///// <result0>, <result1>, ... = select <condition> then <value0>, <value1>, ... else <value2>, <value3>, ...;
     ///// ```
@@ -435,18 +269,18 @@ pub enum Instruction {
     //    false_registers: Vec<RegisterIndex>,
     //},
     /// ```txt
-    /// switch <cmptype> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
+    /// switch <comparison type> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
     /// ```
     /// Transfers control to one of several blocks depending on the value in the `comparison` register.
     ///
     /// # Requirements
     /// - Should be the last instruction in a block.
-    /// - The type of the value in the `comparison` register must be a non-native integer type, and must be the same as `cmptype`.
+    /// - The type of the value stored in the `comparison` register (the comparison type), __must__ be a fixed-size integer
+    /// type.
     Switch {
         comparison: RegisterIndex,
-        // TODO: Use enum for integer type.
-        comparison_type: PrimitiveType,
-        default_target: JumpTarget,
+        comparison_type: type_system::FixedInt,
+        default_target: BlockIndex,
         target_lookup: SwitchLookupTable,
     },
     /// ```txt
@@ -458,7 +292,7 @@ pub enum Instruction {
     /// # Requirements
     /// - Should be the last instruction in a block.
     Br {
-        target: JumpTarget,
+        target: BlockIndex,
         input_registers: LenVec<RegisterIndex>,
     },
     /// ```txt
@@ -472,8 +306,8 @@ pub enum Instruction {
     /// - Should be the last instruction in a block.
     BrIf {
         condition: RegisterIndex,
-        true_branch: JumpTarget,
-        false_branch: JumpTarget,
+        true_branch: BlockIndex,
+        false_branch: BlockIndex,
         input_registers: LenVec<RegisterIndex>,
     },
     /// ```txt
@@ -483,8 +317,8 @@ pub enum Instruction {
     /// of temporary registers introduced is equal to the number of return values in the function's signature.
     ///
     /// # Requirements
-    /// - The number of registers used as arguments must exactly match the number of arguments specified by the signature of the
-    /// function.
+    /// - The number of registers used as arguments __must__ exactly match the number of arguments specified by the signature of
+    /// the function.
     Call(CallInstruction),
     //CallIndr
     //CallRet
@@ -567,6 +401,11 @@ pub enum Instruction {
     /// <result> = const.i <integer type> <value>;
     /// ```
     /// Returns an integer of the specified type.
+    ///
+    /// # Structure
+    /// - [`Opcode`]
+    /// - [`IntegerConstant::value_type()`]
+    /// - [`IntegerConstant::value()`]
     ConstI(IntegerConstant), // TODO: Allow indicating if integer constant is of a pointer type?
     /// ```txt
     /// <result> = alloca <amount> of <type>;
@@ -593,7 +432,6 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
-            Instruction::Phi(_) => Opcode::Phi,
             Instruction::Switch { .. } => Opcode::Switch,
             Instruction::Br { .. } => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
@@ -617,7 +455,10 @@ impl Instruction {
     }
 
     /// Calculates the number of temporary registers introduced after execution of the instruction.
-    pub fn return_count<R: FnOnce(FunctionIndex) -> u8>(&self, function_return_count: R) -> u8 {
+    pub fn return_count<R: FnOnce(FunctionIndex) -> usize>(
+        &self,
+        function_return_count: R,
+    ) -> usize {
         match self {
             Instruction::Nop
             | Instruction::Ret(_)
@@ -625,7 +466,6 @@ impl Instruction {
             | Instruction::Br { .. }
             | Instruction::BrIf { .. }
             | Instruction::Break => 0,
-            Instruction::Phi(lookup) => lookup.value_count,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
@@ -649,14 +489,26 @@ impl Instruction {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("{value:#04X} is not a valid opcode")]
+pub struct InvalidOpcodeError {
+    pub value: u32,
+}
+
 impl TryFrom<u32> for Opcode {
-    type Error = ();
+    type Error = InvalidOpcodeError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value < Self::Continuation as u32 {
+        #[allow(deprecated)]
+        if value != Self::Phi as u32
+            && (value <= Self::CmpGe as u32
+                || value == Self::Alloca as u32
+                || value == Self::Break as u32)
+        {
             Ok(unsafe { std::mem::transmute(value) })
         } else {
-            Err(())
+            Err(InvalidOpcodeError { value })
         }
     }
 }

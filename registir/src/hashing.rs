@@ -5,12 +5,6 @@ pub struct IntegerHasher {
 
 pub type IntegerHashBuilder = std::hash::BuildHasherDefault<IntegerHasher>;
 
-impl IntegerHasher {
-    fn builder() -> IntegerHashBuilder {
-        IntegerHashBuilder::default()
-    }
-}
-
 impl std::hash::Hasher for IntegerHasher {
     fn finish(&self) -> u64 {
         self.value

@@ -1,8 +1,11 @@
 use crate::format::indices;
+use std::fmt::{Display, Formatter};
 
+/// Integer types with a fixed size.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum PrimitiveType {
-    U8 = 0,
+#[repr(u8)]
+pub enum FixedInt {
+    U8,
     S8,
     U16,
     S16,
@@ -10,14 +13,10 @@ pub enum PrimitiveType {
     S32,
     U64,
     S64,
-    UNative,
-    SNative,
-    F32,
-    F64,
 }
 
-impl std::fmt::Display for PrimitiveType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for FixedInt {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.write_str(match self {
             Self::U8 => "u8",
             Self::S8 => "s8",
@@ -27,27 +26,92 @@ impl std::fmt::Display for PrimitiveType {
             Self::S32 => "s32",
             Self::U64 => "u64",
             Self::S64 => "s64",
-            Self::UNative => "unative",
-            Self::SNative => "snative",
-            Self::F32 => "F32",
-            Self::F64 => "F64",
         })
+    }
+}
+
+/// Integer types, including pointer-sized integers.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub enum Int {
+    Fixed(FixedInt),
+    UNative,
+    SNative,
+}
+
+impl Display for Int {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Fixed(fixed_type) => Display::fmt(fixed_type, f),
+            Self::UNative => f.write_str("unative"),
+            Self::SNative => f.write_str("snative"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("{integer_type} is not a valid fixed-length integer type")]
+pub struct InvalidFixedIntegerTypeError {
+    pub integer_type: Int,
+}
+
+impl TryFrom<Int> for FixedInt {
+    type Error = InvalidFixedIntegerTypeError;
+
+    fn try_from(integer_type: Int) -> Result<Self, Self::Error> {
+        match integer_type {
+            Int::Fixed(fixed_type) => Ok(fixed_type),
+            _ => Err(InvalidFixedIntegerTypeError { integer_type }),
+        }
+    }
+}
+
+/// Floating-point numeric types.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum Real {
+    F32,
+    F64,
+}
+
+impl Display for Real {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::F32 => f.write_str("f32"),
+            Self::F64 => f.write_str("f64"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub enum Primitive {
+    Int(Int),
+    Real(Real),
+}
+
+impl Display for Primitive {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Int(integer_type) => Display::fmt(integer_type, f),
+            Self::Real(float_type) => Display::fmt(float_type, f),
+        }
     }
 }
 
 /// Represents the type of a parameter or a method return type.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum AnyType {
-    Primitive(PrimitiveType),
+pub enum Any {
+    Primitive(Primitive),
     Struct(indices::Struct),
-    NativePointer(Box<AnyType>),
+    NativePointer(Box<Any>),
     //FixedArray { element_type: Box<AnyType>, length: IntegerConstant },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u8)]
-pub enum TypeTag {
-    /// The type of things that have no value, currently unused.
+pub enum Tag {
+    /// Reserved, the type of things that have no value.
+    #[deprecated = "Reserved, no use case for the unit type currently exists"]
     Unit = 0,
     U8 = 1,
     U16 = 2,
@@ -68,21 +132,133 @@ pub enum TypeTag {
     //FixedArray = 0xFA,
 }
 
-impl PrimitiveType {
-    pub fn tag(self) -> TypeTag {
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("invalid type signature {tag:#02X}")]
+pub struct InvalidTagError {
+    pub tag: u8,
+}
+
+impl TryFrom<u8> for Tag {
+    type Error = InvalidTagError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(
+                #[allow(deprecated)]
+                Self::Unit,
+            ),
+            1 => Ok(Self::U8),
+            2 => Ok(Self::U16),
+            4 => Ok(Self::U32),
+            8 => Ok(Self::U64),
+            0xA => Ok(Self::UNative),
+            0x11 => Ok(Self::S8),
+            0x12 => Ok(Self::S16),
+            0x14 => Ok(Self::S32),
+            0x18 => Ok(Self::S64),
+            0x1A => Ok(Self::SNative),
+            0xCC => Ok(Self::NativePointer),
+            0xDE => Ok(Self::Struct),
+            0xF4 => Ok(Self::F32),
+            0xF8 => Ok(Self::F64),
+            tag => Err(InvalidTagError { tag }),
+        }
+    }
+}
+
+impl FixedInt {
+    pub fn tag(self) -> Tag {
         match self {
-            PrimitiveType::U8 => TypeTag::U8,
-            PrimitiveType::S8 => TypeTag::S8,
-            PrimitiveType::U16 => TypeTag::U16,
-            PrimitiveType::S16 => TypeTag::S16,
-            PrimitiveType::U32 => TypeTag::U32,
-            PrimitiveType::S32 => TypeTag::S32,
-            PrimitiveType::U64 => TypeTag::U64,
-            PrimitiveType::S64 => TypeTag::S64,
-            PrimitiveType::UNative => TypeTag::UNative,
-            PrimitiveType::SNative => TypeTag::SNative,
-            PrimitiveType::F32 => TypeTag::F32,
-            PrimitiveType::F64 => TypeTag::F64,
+            Self::U8 => Tag::U8,
+            Self::S8 => Tag::S8,
+            Self::U16 => Tag::U16,
+            Self::S16 => Tag::S16,
+            Self::U32 => Tag::U32,
+            Self::S32 => Tag::S32,
+            Self::U64 => Tag::U64,
+            Self::S64 => Tag::S64,
+        }
+    }
+}
+
+impl Int {
+    pub fn tag(self) -> Tag {
+        match self {
+            Self::Fixed(fixed_type) => fixed_type.tag(),
+            Self::UNative => Tag::UNative,
+            Self::SNative => Tag::SNative,
+        }
+    }
+}
+
+impl Real {
+    pub fn tag(self) -> Tag {
+        match self {
+            Self::F32 => Tag::F32,
+            Self::F64 => Tag::F64,
+        }
+    }
+}
+
+impl Primitive {
+    pub fn tag(self) -> Tag {
+        match self {
+            Self::Int(integer_type) => integer_type.tag(),
+            Self::Real(float_type) => float_type.tag(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("attempt to convert from invalid tag {tag:?}")]
+pub struct TryFromTagError {
+    pub tag: Tag,
+}
+
+impl TryFrom<Tag> for Int {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        match tag {
+            Tag::S8 => Ok(Self::Fixed(FixedInt::S8)),
+            Tag::U8 => Ok(Self::Fixed(FixedInt::U8)),
+            Tag::S16 => Ok(Self::Fixed(FixedInt::S16)),
+            Tag::U16 => Ok(Self::Fixed(FixedInt::U16)),
+            Tag::S32 => Ok(Self::Fixed(FixedInt::S32)),
+            Tag::U32 => Ok(Self::Fixed(FixedInt::U32)),
+            Tag::S64 => Ok(Self::Fixed(FixedInt::S64)),
+            Tag::U64 => Ok(Self::Fixed(FixedInt::U64)),
+            Tag::UNative => Ok(Self::UNative),
+            Tag::SNative => Ok(Self::SNative),
+            _ => Err(TryFromTagError { tag }),
+        }
+    }
+}
+
+impl TryFrom<Tag> for Real {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        match tag {
+            Tag::F32 => Ok(Self::F32),
+            Tag::F64 => Ok(Self::F64),
+            _ => Err(TryFromTagError { tag }),
+        }
+    }
+}
+
+impl TryFrom<Tag> for Primitive {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        if let Ok(integer_type) = Int::try_from(tag) {
+            Ok(Self::Int(integer_type))
+        } else if let Ok(real_type) = Real::try_from(tag) {
+            Ok(Self::Real(real_type))
+        } else {
+            Err(TryFromTagError { tag })
         }
     }
 }
