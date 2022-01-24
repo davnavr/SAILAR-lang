@@ -227,61 +227,6 @@ fn conditional_branching_is_correct() {
 }
 
 #[test]
-fn phi_is_correct() {
-    setup::initialize_from_str(
-        basic_module_str!(
-            PhiTest,
-            r#"
-.code @code {
-    .entry $BLOCK;
-    .block $BLOCK (%i_input) {
-        br.if %i_input then $BRANCH_GOOD else $BRANCH_BAD;
-    };
-    .block $BRANCH_GOOD () {
-        br $RET;
-    };
-    .block $BRANCH_BAD () {
-        br $RET;
-    };
-    .block $RET () {
-        %t_zero = const.i s32 0;
-        %t_three = const.i s32 3;
-        %t_result = phi %t_zero when $BRANCH_GOOD or %t_three when $BRANCH_BAD;
-        ret %t_result;
-    };
-};
-
-.function @test (s32) returns (s32) export {
-    .name "test";
-    .body defined @code;
-};
-"#
-        ),
-        |_, _| (),
-        |_, runtime| {
-            let test_function = runtime
-                .program()
-                .lookup_function(Symbol::Owned(Identifier::try_from("test").unwrap()))
-                .unwrap();
-
-            let mut arguments = [interpreter::Register::from(1i32)];
-
-            assert_eq!(
-                vec![interpreter::Register::from(0i32)],
-                runtime.invoke(test_function, &arguments, None).unwrap()
-            );
-
-            arguments[0] = interpreter::Register::from(0i32);
-
-            assert_eq!(
-                vec![interpreter::Register::from(3i32)],
-                runtime.invoke(test_function, &arguments, None).unwrap()
-            );
-        },
-    );
-}
-
-#[test]
 fn switch_is_correct() {
     setup::initialize_from_str(
         basic_module_str!(
