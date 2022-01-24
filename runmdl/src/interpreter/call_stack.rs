@@ -202,7 +202,6 @@ impl<'l> Frame<'l> {
         self.registers.inputs.clear();
         self.registers.inputs.extend_from_slice(inputs);
 
-        // Index into the method body's other blocks, NONE of the indices refer to the entry block.
         self.instructions.jump(target)?;
 
         let expected_input_count = self
