@@ -89,7 +89,7 @@ index_type!(
 
 index_type!(
     CodeBlock,
-    "An index into a method body's other blocks. Note that the entry block cannot be referred to."
+    "An index into a method body's other blocks, with `0` refering to the entry block."
 );
 
 index_type!(

@@ -80,6 +80,49 @@ where
     }
 }
 
+pub trait KeyedValue<K> {
+    fn key(&self) -> K;
+}
+
+impl<K: Copy, V> KeyedValue<K> for (K, V) {
+    fn key(&self) -> K {
+        self.0
+    }
+}
+
+impl<I, K, V> IndexedMap<I, K, V>
+where
+    K: Copy + Eq + std::hash::Hash,
+    V: KeyedValue<K>,
+{
+    /// Removes the element associated with the specified identifier, and replaces it with the last value.
+    pub fn swap_remove(&mut self, key: K) -> Option<V> {
+        match self.lookup.entry(key) {
+            hash_map::Entry::Occupied(mut target) => {
+                let target_index = *target.get();
+                let last_index = self.values.len() - 1;
+                if target_index != last_index {
+                    let last_name = self.values[last_index].key();
+                    self.values.swap(target_index, last_index);
+
+                    // Target item is moved to last index, so lookup has to be adjusted.
+                    let previous_target_index = target.insert(last_index);
+                    target.remove();
+                    *self
+                        .lookup
+                        .get_mut(&last_name)
+                        .expect("valid key for last entry") = previous_target_index;
+                } else {
+                    target.remove();
+                }
+
+                Some(self.values.swap_remove(last_index))
+            }
+            hash_map::Entry::Vacant(_) => None,
+        }
+    }
+}
+
 impl<I, K, V> Debug for IndexedMap<I, K, V>
 where
     K: Debug,
@@ -223,6 +266,34 @@ mod tests {
                 String::from("a"),
                 String::from("test")
             ]
+        );
+    }
+
+    #[test]
+    fn indexed_map_swap_remove_is_correct() {
+        let mut map =
+            lookup::IndexedMap::<u32, &'_ ast::Identifier, (&'_ ast::Identifier, u32)>::new();
+        let key_1 = ast::Identifier::try_from("foo").unwrap();
+        map.insert(&key_1, (&key_1, 42)).unwrap();
+        let key_2 = ast::Identifier::try_from("entry").unwrap();
+        map.insert(&key_2, (&key_2, 2)).unwrap();
+        let key_3 = ast::Identifier::try_from("bar").unwrap();
+        map.insert(&key_3, (&key_3, 255)).unwrap();
+        let key_4 = ast::Identifier::try_from("baz").unwrap();
+        map.insert(&key_4, (&key_4, 0xFFFF)).unwrap();
+
+        assert_eq!(Some(2), map.swap_remove(&key_2).map(|(_, value)| value));
+        let ignored_value = (&key_1, 9999);
+        let mut get_value = |key| map.insert(key, ignored_value).map_err(|(_, value)| *value);
+        assert_eq!(Err(42), get_value(&key_1));
+        assert_eq!(Err(255), get_value(&key_3));
+        assert_eq!(Err(0xFFFF), get_value(&key_4));
+        assert_eq!(
+            map.drain_to_vec()
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<u32>>(),
+            vec![42, 0xFFFF, 255]
         );
     }
 

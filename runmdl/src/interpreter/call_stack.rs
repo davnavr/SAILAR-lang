@@ -109,10 +109,6 @@ impl<'l> InstructionPointer<'l> {
         }
     }
 
-    pub fn previous_block(&self) -> Option<BlockIndex> {
-        self.previous_block
-    }
-
     pub fn code_index(&self) -> usize {
         unsafe {
             self.instructions

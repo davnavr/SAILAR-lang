@@ -32,7 +32,7 @@ impl From<indices::CodeBlock> for BlockIndex {
         if index == indices::CodeBlock::from(0u32) {
             Self::entry()
         } else {
-            Self(Some(index.0.try_into().unwrap()))
+            Self(Some(usize::try_from(index.0).unwrap() - 1))
         }
     }
 }

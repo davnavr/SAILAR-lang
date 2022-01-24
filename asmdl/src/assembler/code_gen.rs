@@ -1,56 +1,86 @@
-use crate::assembler::{self, *};
+use crate::assembler::{self, error, lookup};
+use crate::ast;
+use registir::format::{self, indices};
 
-pub type CodeBlockLookup<'a> =
-    lookup::IndexedMap<format::indices::CodeBlock, &'a ast::Identifier, CodeBlockAssembler<'a>>;
+pub type CodeBlockLookup<'a> = lookup::IndexedMap<u32, &'a ast::Identifier, CodeBlockAssembler<'a>>;
 
 pub type FunctionCodeLookup<'a> =
-    lookup::IndexedMap<format::indices::Code, &'a ast::Identifier, FunctionBodyAssembler<'a>>;
+    lookup::IndexedMap<indices::Code, &'a ast::Identifier, FunctionBodyAssembler<'a>>;
+
+#[derive(Copy, Clone)]
+struct BlockIndexLookup<'a, 'b> {
+    entry_block: &'b CodeBlockAssembler<'a>,
+    lookup: &'b CodeBlockLookup<'a>,
+}
+
+impl<'a, 'b> BlockIndexLookup<'a, 'b> {
+    fn get(
+        &self,
+        name: &'a ast::LocalSymbol,
+    ) -> Option<(indices::CodeBlock, &'b CodeBlockAssembler<'a>)> {
+        let id = name.identifier();
+        if id == self.entry_block.symbol {
+            Some((indices::CodeBlock::from(0), self.entry_block))
+        } else {
+            self.lookup
+                .get(name.identifier())
+                .map(|(index, assembler)| (indices::CodeBlock::from(index + 1), assembler))
+        }
+    }
+
+    fn get_index(
+        &self,
+        name: &'a ast::LocalSymbol,
+        errors: &mut error::Builder,
+    ) -> Option<indices::CodeBlock> {
+        let result = self.get(name);
+        if result.is_none() {
+            errors.push_with_location(
+                error::Kind::UndefinedBlock(name.identifier().clone()),
+                name.location().clone(),
+            )
+        }
+        result.map(|(index, _)| index)
+    }
+}
 
 #[derive(Clone)]
 pub struct CodeBlockAssembler<'a> {
     location: &'a ast::Position,
+    symbol: &'a ast::Identifier,
     input_registers: &'a [ast::RegisterSymbol],
     instructions: &'a [ast::Statement],
 }
 
+impl<'a> lookup::KeyedValue<&'a ast::Identifier> for CodeBlockAssembler<'a> {
+    fn key(&self) -> &'a ast::Identifier {
+        self.symbol
+    }
+}
+
 impl<'a> CodeBlockAssembler<'a> {
-    pub(crate) fn assemble(
+    fn assemble(
         &self,
         errors: &mut error::Builder,
         // TODO: Have struct to handle lookup in definition or imports.
-        function_lookup: &definitions::FunctionLookup<'a>,
-        block_lookup: &CodeBlockLookup<'a>,
+        function_lookup: &assembler::definitions::FunctionLookup<'a>,
+        block_index_lookup: BlockIndexLookup<'a, '_>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> format::CodeBlock {
         use format::{
-            instruction_set::{self, BlockIndex, FunctionIndex, Instruction},
+            instruction_set::{self, Instruction},
             type_system,
         };
-
-        fn lookup_block<'a>(
-            errors: &mut error::Builder,
-            block_lookup: &CodeBlockLookup<'a>,
-            block: &'a ast::LocalSymbol,
-        ) -> Option<BlockIndex> {
-            let target = block_lookup.get(block.identifier());
-            if target.is_none() {
-                errors.push_with_location(
-                    ErrorKind::UndefinedBlock(block.identifier().clone()),
-                    block.location().clone(),
-                )
-            }
-            target.map(|(index, _)| BlockIndex::from(index))
-        }
 
         fn lookup_register<'a>(
             errors: &mut error::Builder,
             register_lookup: &mut lookup::RegisterMap<'a>,
             register: &'a ast::RegisterSymbol,
-        ) -> Option<format::indices::Register> {
+        ) -> Option<indices::Register> {
             let index = register_lookup.get(register);
             if index.is_none() {
                 errors.push_with_location(
-                    ErrorKind::UndefinedRegister(register.identifier().clone()),
+                    error::Kind::UndefinedRegister(register.identifier().clone()),
                     register.location().clone(),
                 );
             }
@@ -96,9 +126,9 @@ impl<'a> CodeBlockAssembler<'a> {
             })
         }
 
-        fn fixed_integer_type<'a>(
+        fn fixed_integer_type(
             errors: &mut error::Builder,
-            primitive_type: &'a ast::Positioned<ast::PrimitiveType>,
+            primitive_type: &ast::Positioned<ast::PrimitiveType>,
         ) -> Option<type_system::FixedInt> {
             match primitive_type.0 {
                 type_system::Primitive::Int(type_system::Int::Fixed(fixed_type)) => {
@@ -106,7 +136,7 @@ impl<'a> CodeBlockAssembler<'a> {
                 }
                 invalid_type => {
                     errors.push_with_location(
-                        ErrorKind::InvalidConstantIntegerType(invalid_type),
+                        error::Kind::InvalidConstantIntegerType(invalid_type),
                         primitive_type.1.clone(),
                     );
                     None
@@ -119,7 +149,7 @@ impl<'a> CodeBlockAssembler<'a> {
         for register in self.input_registers {
             if let Err(original) = register_lookup.insert_input(register) {
                 errors.push_with_location(
-                    ErrorKind::DuplicateRegister {
+                    error::Kind::DuplicateRegister {
                         name: register.identifier().clone(),
                         original,
                     },
@@ -156,21 +186,21 @@ impl<'a> CodeBlockAssembler<'a> {
                     targets,
                 } => {
                     let comparison_register = lookup_register(errors, register_lookup, comparison);
-                    let default_target_block = lookup_block(errors, block_lookup, default_target);
+                    let default_target_block = block_index_lookup.get_index(default_target, errors);
                     let mut target_lookup =
                         instruction_set::SwitchLookupTable::with_capacity(targets.len());
 
                     let fixed_comparison_type = fixed_integer_type(errors, comparison_type);
 
                     for (value, target_block) in targets {
-                        let target_block_index = lookup_block(errors, block_lookup, target_block);
+                        let target_block_index = block_index_lookup.get_index(target_block, errors);
 
                         macro_rules! constant_target_value {
                             ($integer_type: ty, $constant_case: ident) => {{
                                 let result = <$integer_type>::try_from(value.0).ok();
                                 if result.is_none() {
                                     errors.push_with_location(
-                                        ErrorKind::ConstantIntegerOutOfRange(
+                                        error::Kind::ConstantIntegerOutOfRange(
                                             comparison_type.0,
                                             value.0,
                                         ),
@@ -195,7 +225,7 @@ impl<'a> CodeBlockAssembler<'a> {
 
                             if !target_lookup.insert(target_value?, target_block_index?) {
                                 errors.push_with_location(
-                                    ErrorKind::DuplicateSwitchBranch(value.0),
+                                    error::Kind::DuplicateSwitchBranch(value.0),
                                     value.1.clone(),
                                 );
                             }
@@ -211,7 +241,7 @@ impl<'a> CodeBlockAssembler<'a> {
                     });
                 }
                 ast::Instruction::Br { target, inputs } => {
-                    let target_block = lookup_block(errors, block_lookup, target);
+                    let target_block = block_index_lookup.get_index(target, errors);
                     let input_registers = lookup_many_registers(errors, register_lookup, inputs);
                     expected_return_count = 0;
                     next_instruction = try_some!(Instruction::Br {
@@ -227,8 +257,8 @@ impl<'a> CodeBlockAssembler<'a> {
                 } => {
                     expected_return_count = 0;
                     let condition_register = lookup_register(errors, register_lookup, condition);
-                    let true_target = lookup_block(errors, block_lookup, true_branch);
-                    let false_target = lookup_block(errors, block_lookup, false_branch);
+                    let true_target = block_index_lookup.get_index(true_branch, errors);
+                    let false_target = block_index_lookup.get_index(false_branch, errors);
                     let input_registers = lookup_many_registers(errors, register_lookup, inputs);
                     next_instruction = try_some!(Instruction::BrIf {
                         condition: condition_register?,
@@ -249,14 +279,14 @@ impl<'a> CodeBlockAssembler<'a> {
                             lookup_many_registers(errors, register_lookup, arguments).map(
                                 move |arguments| {
                                     Instruction::Call(instruction_set::CallInstruction {
-                                        function: FunctionIndex::Defined(function_index),
+                                        function: indices::Function::Defined(function_index),
                                         arguments,
                                     })
                                 },
                             );
                     } else {
                         errors.push_with_location(
-                            ErrorKind::UndefinedGlobal(function.identifier().clone()),
+                            error::Kind::UndefinedGlobal(function.identifier().clone()),
                             statement.instruction.1.clone(),
                         );
                         next_instruction = None;
@@ -266,19 +296,19 @@ impl<'a> CodeBlockAssembler<'a> {
                 ast::Instruction::Add(operation) => {
                     expected_return_count = operation.return_count();
                     next_instruction =
-                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                        basic_arithmetic_operation(errors, register_lookup, operation)
                             .map(Instruction::Add);
                 }
                 ast::Instruction::Sub(operation) => {
                     expected_return_count = operation.return_count();
                     next_instruction =
-                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                        basic_arithmetic_operation(errors, register_lookup, operation)
                             .map(Instruction::Sub);
                 }
                 ast::Instruction::Mul(operation) => {
                     expected_return_count = operation.return_count();
                     next_instruction =
-                        basic_arithmetic_operation(errors, register_lookup, &operation)
+                        basic_arithmetic_operation(errors, register_lookup, operation)
                             .map(Instruction::Mul);
                 }
                 ast::Instruction::ConstI(constant_type, value) => {
@@ -293,7 +323,10 @@ impl<'a> CodeBlockAssembler<'a> {
                                 .ok();
                             if result.is_none() {
                                 errors.push_with_location(
-                                    ErrorKind::ConstantIntegerOutOfRange(constant_type.0, value.0),
+                                    error::Kind::ConstantIntegerOutOfRange(
+                                        constant_type.0,
+                                        value.0,
+                                    ),
                                     value.1.clone(),
                                 )
                             }
@@ -326,7 +359,7 @@ impl<'a> CodeBlockAssembler<'a> {
                 }
             } else {
                 errors.push_with_location(
-                    ErrorKind::InvalidReturnRegisterCount {
+                    error::Kind::InvalidReturnRegisterCount {
                         expected: expected_return_count,
                         actual: actual_return_count,
                     },
@@ -337,7 +370,7 @@ impl<'a> CodeBlockAssembler<'a> {
             for name in &statement.results.0 {
                 if let Err(error) = register_lookup.insert_temporary(name) {
                     errors.push_with_location(
-                        ErrorKind::DuplicateRegister {
+                        error::Kind::DuplicateRegister {
                             name: name.identifier().clone(),
                             original: error,
                         },
@@ -366,7 +399,7 @@ impl<'a> FunctionBodyAssembler<'a> {
     pub(crate) fn assemble(
         &self,
         errors: &mut error::Builder,
-        function_lookup: &mut definitions::FunctionLookup<'a>,
+        function_lookup: &mut assembler::definitions::FunctionLookup<'a>,
         block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
     ) -> Option<format::Code> {
@@ -380,7 +413,7 @@ impl<'a> FunctionBodyAssembler<'a> {
                         entry_block_symbol = Some(symbol)
                     } else {
                         errors.push_with_location(
-                            ErrorKind::DuplicateDirective,
+                            error::Kind::DuplicateDirective,
                             declaration.1.clone(),
                         )
                     }
@@ -395,12 +428,13 @@ impl<'a> FunctionBodyAssembler<'a> {
                         block_name,
                         CodeBlockAssembler {
                             input_registers,
+                            symbol: block_name,
                             instructions,
                             location: &declaration.1,
                         },
                     ) {
                         errors.push_with_location(
-                            ErrorKind::DuplicateBlock {
+                            error::Kind::DuplicateBlock {
                                 name: block_name.clone(),
                                 original: existing.location.clone(),
                             },
@@ -412,22 +446,42 @@ impl<'a> FunctionBodyAssembler<'a> {
         }
 
         if let Some(entry_block_name) = entry_block_symbol {
+            let entry_block_symbol = entry_block_name.identifier();
+
+            let entry_block = block_lookup
+                .swap_remove(entry_block_symbol)
+                .expect("entry block should exist in lookup");
+
+            let block_index_lookup = BlockIndexLookup {
+                entry_block: &entry_block,
+                lookup: block_lookup,
+            };
+
             Some(format::Code {
-                entry_block: block_lookup
-                    .get(entry_block_name.identifier())
-                    .expect("entry block should exist in lookup")
-                    .1
-                    .assemble(errors, function_lookup, block_lookup, register_lookup),
-                blocks: format::LenVec(assembler::assemble_items(
-                    &block_lookup.values(),
-                    |block| {
-                        Some(block.assemble(errors, function_lookup, block_lookup, register_lookup))
-                    },
-                )),
+                entry_block: entry_block.assemble(
+                    errors,
+                    function_lookup,
+                    block_index_lookup,
+                    register_lookup,
+                ),
+                blocks: format::LenVec({
+                    block_lookup
+                        .values()
+                        .iter()
+                        .map(|block| {
+                            block.assemble(
+                                errors,
+                                function_lookup,
+                                block_index_lookup,
+                                register_lookup,
+                            )
+                        })
+                        .collect()
+                }),
             })
         } else {
             errors.push_with_location(
-                ErrorKind::MissingDirective("missing entry block"),
+                error::Kind::MissingDirective("missing entry block"),
                 self.location.clone(),
             );
             None

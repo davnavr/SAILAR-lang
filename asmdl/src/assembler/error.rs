@@ -2,7 +2,7 @@ use crate::ast;
 
 #[derive(thiserror::Error, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum ErrorKind {
+pub enum Kind {
     #[error("missing directive {0}")]
     MissingDirective(&'static str),
     #[error("duplicate directive")]
@@ -45,20 +45,20 @@ pub enum ErrorKind {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Error {
-    kind: ErrorKind,
+    kind: Kind,
     location: Option<ast::Position>,
 }
 
 impl Error {
-    pub(crate) fn new(kind: ErrorKind, location: Option<ast::Position>) -> Self {
+    pub(crate) fn new(kind: Kind, location: Option<ast::Position>) -> Self {
         Self { kind, location }
     }
 
-    pub(crate) fn with_location(kind: ErrorKind, location: ast::Position) -> Self {
+    pub(crate) fn with_location(kind: Kind, location: ast::Position) -> Self {
         Self::new(kind, Some(location))
     }
 
-    pub fn kind(&self) -> &ErrorKind {
+    pub fn kind(&self) -> &Kind {
         &self.kind
     }
 
@@ -67,8 +67,8 @@ impl Error {
     }
 }
 
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Self {
+impl From<Kind> for Error {
+    fn from(kind: Kind) -> Self {
         Self::new(kind, None)
     }
 }
@@ -90,7 +90,7 @@ impl Builder {
         self.errors.push(error)
     }
 
-    pub(crate) fn push_with_location(&mut self, kind: ErrorKind, location: ast::Position) {
+    pub(crate) fn push_with_location(&mut self, kind: Kind, location: ast::Position) {
         self.push(Error::with_location(kind, location))
     }
 

@@ -4,7 +4,7 @@ use registir::format;
 mod error;
 mod lookup;
 
-pub use error::{Error, ErrorKind};
+pub use error::{Error, Kind as ErrorKind};
 
 fn assemble_module_header(
     errors: &mut error::Builder,
@@ -393,7 +393,7 @@ mod tests {
                         )]))
                     ]
                 );
-                assert_eq!(1, code.blocks.len());
+                assert!(code.blocks.is_empty());
             }
         )
     }
@@ -404,7 +404,7 @@ mod tests {
             include_str!(r"../../../asmdl_cli/samples/control.txtmdl"),
             |module: format::Module| {
                 let code = &module.function_bodies[0];
-                assert_eq!(2, code.blocks.len());
+                assert_eq!(1, code.blocks.len());
                 assert_eq!(
                     &Instruction::Br {
                         target: BlockIndex::from(1),
