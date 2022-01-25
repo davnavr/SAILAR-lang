@@ -4,20 +4,26 @@ use std::collections::hash_map;
 
 #[derive(Default)]
 struct Layout<'a> {
-    fields: hash_map::HashMap<format::indices::FieldDefinition, &'a loader::Field<'a>>,
+    fields: hash_map::HashMap<format::indices::FieldDefinition, loader::Field<'a>>,
     total_size: usize,
 }
 
 pub struct Struct<'a> {
     source: &'a format::Struct,
+    index: format::indices::StructDefinition,
     module: &'a loader::Module<'a>,
     layout: std::cell::UnsafeCell<Option<Layout<'a>>>,
 }
 
 impl<'a> Struct<'a> {
-    pub(super) fn new(module: &'a loader::Module<'a>, source: &'a format::Struct) -> Self {
+    pub(super) fn new(
+        module: &'a loader::Module<'a>,
+        index: format::indices::StructDefinition,
+        source: &'a format::Struct,
+    ) -> Self {
         Self {
             source,
+            index,
             module,
             layout: std::cell::UnsafeCell::new(None),
         }
@@ -29,22 +35,43 @@ impl<'a> Struct<'a> {
         if let Some(struct_layout) = layout {
             Ok(struct_layout)
         } else {
-            Ok(layout.insert({
-                let source_fields = &self.source.fields;
-                let mut fields = hash_map::HashMap::with_capacity(source_fields.len());
-                let mut total_size = 0;
+            let source_fields = &self.source.fields;
+            let mut fields = hash_map::HashMap::with_capacity(source_fields.len());
+            let mut total_size = 0;
 
-                for field_index in source_fields.iter().copied() {
-                    let field = self.module.load_field_definition_raw(field_index)?;
-                    total_size += field.size()?;
-                    fields.insert(field_index, field);
+            for field_index in source_fields.iter().copied() {
+                let field_source = self.module.load_field_definition_source(field_index)?;
+
+                if field_source.owner != self.index {
+                    return Err(loader::Error::FieldOwnerMismatch {
+                        field: field_index,
+                        expected: self.index,
+                        actual: field_source.owner,
+                    });
                 }
 
-                Layout {
-                    total_size,
-                    fields,
+                let field_signature = self.module.load_type_signature(field_source.signature)?;
+
+                match fields.entry(field_index) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(loader::Field::new(
+                            self,
+                            field_source,
+                            field_signature,
+                            total_size,
+                        ));
+                        total_size += field_signature.size()?;
+                    }
+                    hash_map::Entry::Occupied(_) => {
+                        return Err(loader::Error::DuplicateField {
+                            owner: self.index,
+                            field: field_index,
+                        })
+                    }
                 }
-            }))
+            }
+
+            Ok(layout.insert(Layout { total_size, fields }))
         }
     }
 
@@ -52,8 +79,20 @@ impl<'a> Struct<'a> {
         Ok(self.layout()?.total_size)
     }
 
-    pub fn fields(&'a self) -> Result<impl std::iter::Iterator<Item = &'a loader::Field<'a>> + 'a> {
-        Ok(self.layout()?.fields.values().copied())
+    pub fn iter_fields(
+        &'a self,
+    ) -> Result<impl std::iter::Iterator<Item = &'a loader::Field<'a>> + 'a> {
+        Ok(self.layout()?.fields.values())
+    }
+
+    pub fn field(
+        &'a self,
+        index: format::indices::FieldDefinition,
+    ) -> Result<&'a loader::Field<'a>> {
+        self.layout()?
+            .fields
+            .get(&index)
+            .ok_or(loader::Error::IndexOutOfBounds(index.0))
     }
 
     pub fn is_export(&'a self) -> bool {

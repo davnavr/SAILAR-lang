@@ -4,13 +4,22 @@ use registir::format;
 pub struct Field<'a> {
     source: &'a format::Field,
     declaring_struct: &'a loader::Struct<'a>,
+    offset: usize,
+    signature: &'a loader::TypeSignature<'a>,
 }
 
 impl<'a> Field<'a> {
-    pub(super) fn new(declaring_struct: &'a loader::Struct<'a>, source: &'a format::Field) -> Self {
+    pub(super) fn new(
+        declaring_struct: &'a loader::Struct<'a>,
+        source: &'a format::Field,
+        signature: &'a loader::TypeSignature<'a>,
+        offset: usize,
+    ) -> Self {
         Self {
             source,
             declaring_struct,
+            offset,
+            signature,
         }
     }
 
@@ -31,13 +40,16 @@ impl<'a> Field<'a> {
             .load_identifier_raw(self.source.symbol)
     }
 
-    pub fn signature(&'a self) -> Result<&'a loader::TypeSignature<'a>> {
-        self.declaring_module()
-            .load_type_signature(self.source.signature)
+    pub fn offset(&'a self) -> usize {
+        self.offset
+    }
+
+    pub fn signature(&'a self) -> &'a loader::TypeSignature<'a> {
+        self.signature
     }
 
     pub fn size(&'a self) -> Result<usize> {
-        self.signature()?.size()
+        self.signature().size()
     }
 }
 

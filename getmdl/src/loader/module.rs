@@ -10,7 +10,6 @@ pub struct Module<'a> {
         cache::IndexLookup<'a, format::indices::TypeSignature, loader::TypeSignature<'a>>,
     loaded_structs: cache::IndexLookup<'a, format::indices::StructDefinition, loader::Struct<'a>>,
     //loaded_globals
-    loaded_fields: cache::IndexLookup<'a, format::indices::FieldDefinition, loader::Field<'a>>,
     loaded_functions:
         cache::IndexLookup<'a, format::indices::FunctionDefinition, loader::Function<'a>>,
     function_lookup_cache:
@@ -43,7 +42,6 @@ impl<'a> Module<'a> {
             function_signature_cache: cache::IndexLookup::new(),
             type_signature_cache: cache::IndexLookup::new(),
             loaded_structs: cache::IndexLookup::new(),
-            loaded_fields: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
             function_lookup_cache: std::cell::RefCell::new(hash_map::HashMap::new()),
@@ -135,7 +133,7 @@ impl<'a> Module<'a> {
                 let structs: &[_] = &self.source.definitions.defined_structs;
                 Ok(structs.get(raw_index))
             },
-            |source| Ok(loader::Struct::new(self, source)),
+            |source| Ok(loader::Struct::new(self, index, source)),
         )
     }
 
@@ -168,24 +166,29 @@ impl<'a> Module<'a> {
         }
     }
 
-    pub fn load_field_definition_raw(
+    pub(super) fn load_field_definition_source(
         &'a self,
         index: format::indices::FieldDefinition,
+    ) -> Result<&'a format::Field> {
+        loader::read_index_from(index, &self.source.definitions.defined_fields, Ok)
+    }
+
+    pub fn load_field_raw(
+        &'a self,
+        index: format::indices::Field,
     ) -> Result<&'a loader::Field<'a>> {
-        load_raw_cached(
-            &self.loaded_fields,
-            index,
-            |raw_index| {
-                let fields: &[_] = &self.source.definitions.defined_fields;
-                Ok(fields.get(raw_index))
-            },
-            |source| {
-                Ok(loader::Field::new(
-                    self.load_struct_definition_raw(source.owner)?,
-                    source,
-                ))
-            },
-        )
+        match index {
+            format::indices::Field::Defined(defined_index) => {
+                let owning_struct = self.load_struct_definition_raw(
+                    self.load_field_definition_source(defined_index)?.owner,
+                )?;
+                // TODO: Consider storing a lookup for field references.
+                owning_struct.field(defined_index)
+            }
+            format::indices::Field::Imported(_) => {
+                todo!("resolution of field imports is not yet supported")
+            }
+        }
     }
 
     /// Retrieves the entry point for the application, if it exists.

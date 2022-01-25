@@ -282,7 +282,16 @@ impl<'l> Interpreter<'l> {
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }
             Instruction::Field { field, object } => {
-                todo!("field")
+                let current_frame = self.call_stack.current_mut()?;
+                let target_field = current_frame.function().declaring_module().load_field_raw(*field)?;
+                let object_register = current_frame.registers.get(*object)?;
+
+                if let register::Register::Pointer(pointer) = object_register {
+                    todo!("field")
+                }
+                else {
+                    todo!("bad object field")
+                }
             }
             Instruction::Alloca {
                 element_type,
@@ -295,7 +304,7 @@ impl<'l> Interpreter<'l> {
                     .function()
                     .declaring_module()
                     .load_type_signature(*element_type)?
-                    .size();
+                    .size()?;
 
                 let address = usize::try_from(current_frame.registers.get(*amount)?)
                     .ok()

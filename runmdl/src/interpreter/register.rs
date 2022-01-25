@@ -110,12 +110,12 @@ impl PointerVal {
         self.pointee_size
     }
 
-    pub fn address(&self) -> *const u8 {
+    pub fn address(&self) -> *mut u8 {
         self.address
     }
 
-    pub fn address_mut(&self) -> *mut u8 {
-        self.address
+    pub fn address_mut(&mut self) -> &mut *mut u8 {
+        &mut self.address
     }
 }
 
