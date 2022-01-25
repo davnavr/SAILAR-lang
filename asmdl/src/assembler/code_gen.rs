@@ -89,13 +89,21 @@ impl<'a> CodeBlockAssembler<'a> {
             index
         }
 
-        // fn lookup_field<'a>(errors: &mut error::Builder, lookup: &mut assembler::definitions::FieldLookup<'a>, field: &'a ast::GlobalSymbol) -> Option<indices::Field> {
-        //     let index = lookup.get_index(field.identifier());
-        //     if index.is_none() {
-
-        //     }
-        //     index
-        // }
+        fn lookup_field<'a>(
+            errors: &mut error::Builder,
+            lookup: &assembler::definitions::FieldLookup<'a>,
+            declaring_struct: &'a ast::GlobalSymbol,
+            field: &'a ast::GlobalSymbol,
+        ) -> Option<indices::Field> {
+            let index = lookup.get_index((declaring_struct.identifier(), field.identifier()));
+            if index.is_none() {
+                errors.push_with_location(
+                    error::Kind::UndefinedGlobal(field.identifier().clone()),
+                    field.location().clone(),
+                );
+            }
+            index.map(indices::Field::Defined)
+        }
 
         fn lookup_many_registers<'a>(
             errors: &mut error::Builder,
@@ -390,10 +398,18 @@ impl<'a> CodeBlockAssembler<'a> {
                         },
                     });
                 }
-                ast::Instruction::Field { field, object } => {
-                    let field_index = field_lookup.get_index(field.identifier());
+                ast::Instruction::Field {
+                    field,
+                    declaring_struct,
+                    object,
+                } => {
+                    let field_index = lookup_field(errors, field_lookup, declaring_struct, field);
+                    let object_register = lookup_register(errors, register_lookup, object);
                     expected_return_count = 1;
-                    todo!()
+                    next_instruction = try_some!(Instruction::Field {
+                        field: field_index?,
+                        object: object_register?,
+                    });
                 }
                 ast::Instruction::Alloca {
                     amount,

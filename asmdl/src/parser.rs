@@ -356,8 +356,15 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                 choice((
                     keyword("field")
                         .ignore_then(global_symbol)
-                        .then(keyword("of").ignore_then(register_symbol))
-                        .map(|(field, object)| ast::Instruction::Field { field, object }),
+                        .then(keyword("of").ignore_then(global_symbol))
+                        .then(keyword("in").ignore_then(register_symbol))
+                        .map(
+                            |((field, declaring_struct), object)| ast::Instruction::Field {
+                                field,
+                                declaring_struct,
+                                object,
+                            },
+                        ),
                     keyword("alloca")
                         .ignore_then(register_symbol)
                         .then(keyword("of").ignore_then(with_position(any_type)))

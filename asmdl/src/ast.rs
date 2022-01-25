@@ -145,6 +145,7 @@ pub enum Instruction {
     },
     Field {
         field: GlobalSymbol,
+        declaring_struct: GlobalSymbol,
         object: RegisterSymbol,
     },
     Alloca {

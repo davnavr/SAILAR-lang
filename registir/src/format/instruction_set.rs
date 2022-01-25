@@ -395,12 +395,12 @@ pub enum Instruction {
     //    operand: RegisterIndex
     //},
     /// ```txt
-    /// <address> = field <field> of <object>;
+    /// <address> = field <field> of <ty> in <object>;
     /// ```
     /// Returns a pointer to the `field` in the specified `object`.
     ///
     /// # Requirements
-    /// - The value in the `object` register must be of a pointer type.
+    /// - The value in the `object` register must be of a pointer type to the struct type `ty`.
     Field {
         field: FieldIndex,
         object: RegisterIndex,

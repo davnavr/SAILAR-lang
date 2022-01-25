@@ -260,24 +260,6 @@ pub fn assemble_declarations(
 
     let module;
     if let (Some(header), Some(format)) = (module_header, module_format) {
-        let assembled_function_bodies = {
-            // These collections are reused as function bodies are assembled.
-            let mut block_lookup = code_gen::CodeBlockLookup::new();
-            let mut register_map = lookup::RegisterMap::new();
-
-            assemble_items(function_bodies.values(), |body| {
-                body.assemble(
-                    &mut errors,
-                    &mut type_signatures,
-                    &struct_definitions,
-                    &field_definitions,
-                    &mut function_definitions,
-                    &mut block_lookup,
-                    &mut register_map,
-                )
-            })
-        };
-
         // NOTE: Should ALL symbols in a module be unique, or will a type with the same symbol as a function with the same symbol as a global be allowed?
         // Currently, all symbols are unique.
         let mut symbol_lookup = SymbolLookup::new();
@@ -316,6 +298,25 @@ pub fn assemble_declarations(
                     &mut function_signatures,
                 )
             });
+
+        // Must come after definitions are assembled, to allow their use in function bodies.
+        let assembled_function_bodies = {
+            // These collections are reused as function bodies are assembled.
+            let mut block_lookup = code_gen::CodeBlockLookup::new();
+            let mut register_map = lookup::RegisterMap::new();
+
+            assemble_items(function_bodies.values(), |body| {
+                body.assemble(
+                    &mut errors,
+                    &mut type_signatures,
+                    &struct_definitions,
+                    &field_definitions,
+                    &mut function_definitions,
+                    &mut block_lookup,
+                    &mut register_map,
+                )
+            })
+        };
 
         let entry_point_index = entry_point_name.and_then(|name| {
             let result = function_definitions.get_index(name.identifier());
