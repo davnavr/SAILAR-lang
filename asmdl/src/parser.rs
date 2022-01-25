@@ -233,6 +233,8 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         keyword("u64").to(ast::PrimitiveType::u64()),
     ));
 
+    let any_type = choice((primitive_type.map(ast::Type::Primitive),));
+
     let many_registers = || register_symbol.separated_by(just(Token::Comma));
 
     let code_declaration = {
@@ -381,18 +383,21 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         ))
     };
 
+    let export_attribute = keyword("export")
+        .or_not()
+        .map(|exported| exported.is_some());
+
     let function_attributes = {
         let function_types = || {
             between_parenthesis_or_else(
-                with_position(primitive_type.map(ast::Type::Primitive))
-                    .separated_by(just(Token::Comma)),
+                with_position(any_type).separated_by(just(Token::Comma)),
                 Vec::new,
             )
         };
         function_types().then(
             keyword("returns")
                 .ignore_then(function_types())
-                .then(keyword("export").or_not()),
+                .then(export_attribute),
         )
     };
 
@@ -407,6 +412,26 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         choice((
             name_directive!(ast::FunctionDeclaration::Name),
             directive("body", body_declaration.map(ast::FunctionDeclaration::Body)),
+        ))
+    };
+
+    let struct_declaration = {
+        let field_declaration = { choice((name_directive!(ast::FieldDeclaration::Name),)) };
+
+        choice((
+            name_directive!(ast::StructDeclaration::Name),
+            symbolic_declaration(
+                "field",
+                global_symbol,
+                with_position(any_type).then(export_attribute),
+                with_position_optional(field_declaration),
+                |symbol, (value_type, is_export), declarations| ast::StructDeclaration::Field {
+                    symbol,
+                    value_type,
+                    is_export,
+                    declarations,
+                },
+            ),
         ))
     };
 
@@ -439,12 +464,23 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
             with_position_optional(function_declaration),
             |symbol, (parameter_types, (return_types, is_export)), declarations| {
                 ast::TopLevelDeclaration::Function {
-                    is_export: is_export.is_some(),
+                    is_export,
                     symbol,
                     parameter_types,
                     return_types,
                     declarations,
                 }
+            },
+        ),
+        symbolic_declaration(
+            "struct",
+            global_symbol,
+            export_attribute,
+            with_position_optional(struct_declaration),
+            |symbol, is_export, declarations| ast::TopLevelDeclaration::Struct {
+                symbol,
+                is_export,
+                declarations,
             },
         ),
     ));

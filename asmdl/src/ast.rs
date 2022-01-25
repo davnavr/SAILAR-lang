@@ -162,6 +162,28 @@ pub enum FunctionDeclaration {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum FieldDeclaration {
+    Name(Positioned<Identifier>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum StructLayoutDeclaration {
+    Unspecified,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum StructDeclaration {
+    Name(Positioned<Identifier>),
+    Field {
+        symbol: GlobalSymbol,
+        value_type: Positioned<Type>,
+        is_export: bool,
+        declarations: Vec<Positioned<FieldDeclaration>>,
+    },
+    Layout(StructLayoutDeclaration),
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub enum FormatDeclaration {
     Major(u32),
     Minor(u32),
@@ -188,5 +210,10 @@ pub enum TopLevelDeclaration {
         parameter_types: Vec<Positioned<Type>>,
         return_types: Vec<Positioned<Type>>,
         declarations: Vec<Positioned<FunctionDeclaration>>,
+    },
+    Struct {
+        symbol: GlobalSymbol,
+        is_export: bool,
+        declarations: Vec<Positioned<StructDeclaration>>,
     },
 }

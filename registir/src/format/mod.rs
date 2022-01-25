@@ -178,7 +178,9 @@ pub struct Struct {
     pub name: indices::Identifier,
     pub is_export: bool,
     pub symbol: indices::Identifier,
-    pub layout: indices::TypeLayout, // TODO: Could merge field vector and layout struct, to ensure that for explicit layouts, the index of a field is right next to its offset.
+    // TODO: Could merge field vector and layout struct, to ensure that for explicit layouts, the index of a field is right next to its offset.
+    // TODO: If not doing above, could always just store layout inline here, since a layout is unlikely to be reused for multiple structs.
+    pub layout: indices::StructLayout,
     /// The list of fields that make up this struct, the [`Field::owner`] must point to the current struct.
     pub fields: LenVec<indices::FieldDefinition>,
     //pub annotations: LengthEncodedVector<>,
@@ -301,7 +303,7 @@ pub struct ModuleDefinitions {
     pub defined_functions: LenVecBytes<Function>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct FieldOffset {
     pub field: indices::Field,
     pub offset: numeric::UInteger,
@@ -313,7 +315,7 @@ pub struct FieldOffset {
 /// - [`StructLayout::flags()`]
 /// - Size (optional)
 /// - Field Offsets (optional)
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub enum StructLayout {
     Unspecified,
     Sequential(Option<numeric::UInteger>),

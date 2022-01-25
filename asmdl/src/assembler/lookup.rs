@@ -39,6 +39,7 @@ impl<I, K, V> IndexedMap<I, K, V> {
 impl<I, K, V> IndexedMap<I, K, V>
 where
     K: Eq + std::hash::Hash,
+    I: Copy,
     usize: TryInto<I>,
     <usize as TryInto<I>>::Error: std::fmt::Debug,
 {
@@ -52,13 +53,14 @@ where
         self.get(key).map(|(index, _)| index)
     }
 
-    fn try_insert_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
+    pub fn try_insert_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
         match self.lookup.entry(key) {
             hash_map::Entry::Vacant(vacant) => {
                 let index = self.values.len();
                 vacant.insert(index);
-                self.values.push(value());
-                Ok(index.try_into().unwrap())
+                let converted_index = index.try_into().unwrap();
+                self.values.push(value(converted_index));
+                Ok(converted_index)
             }
             hash_map::Entry::Occupied(occupied) => {
                 let index = *occupied.get();
@@ -67,12 +69,16 @@ where
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) -> Result<I, &V> {
-        self.try_insert_with(key, || value)
+    pub fn insert_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> Result<I, &V> {
+        self.try_insert_with(key, value)
             .map_err(|(_, existing)| existing)
     }
 
-    pub fn insert_or_get_with<F: FnOnce() -> V>(&mut self, key: K, value: F) -> I {
+    pub fn insert(&mut self, key: K, value: V) -> Result<I, &V> {
+        self.insert_with(key, |_| value)
+    }
+
+    pub fn insert_or_get_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> I {
         match self.try_insert_with(key, value) {
             Ok(index) => index,
             Err((index, _)) => index,
@@ -307,6 +313,6 @@ mod tests {
         let key_2 = ast::Identifier::try_from("bard").unwrap();
         map.insert(&key_2, 55).unwrap();
 
-        assert_eq!(1, map.insert_or_get_with(&key_2, || unreachable!()));
+        assert_eq!(1, map.insert_or_get_with(&key_2, |_| unreachable!()));
     }
 }

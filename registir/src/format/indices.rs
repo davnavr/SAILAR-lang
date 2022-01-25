@@ -134,7 +134,7 @@ index_type!(
 index_type!(GlobalImport, "An index into the module's imported globals.");
 
 index_type!(
-    TypeLayout,
+    StructLayout,
     "An index into the module's type layouts, which specify how the fields of a type's instances are arranged."
 );
 

@@ -147,6 +147,9 @@ pub fn assemble_declarations(
     let mut function_bodies = code_gen::FunctionCodeLookup::new();
 
     let mut function_definitions = definitions::FunctionLookup::new();
+    let mut field_definitions = definitions::FieldLookup::new();
+    let mut struct_definitions = definitions::StructLookup::new();
+    let mut struct_layouts = definitions::StructLayoutLookup::new();
 
     let mut entry_point_name = None;
 
@@ -200,8 +203,33 @@ pub fn assemble_declarations(
                 ) {
                     errors.push_with_location(
                         ErrorKind::DuplicateDeclaration {
-                            name: symbol.identifier().clone(),
+                            name: symbol_name.clone(),
                             kind: "function definition",
+                            original: error.location.clone(),
+                        },
+                        node.1.clone(),
+                    );
+                }
+            }
+            ast::TopLevelDeclaration::Struct {
+                symbol,
+                is_export,
+                declarations,
+            } => {
+                let symbol_name = symbol.identifier();
+                if let Err(error) = struct_definitions.insert_with(symbol_name, |index| {
+                    definitions::StructAssembler {
+                        index,
+                        declarations,
+                        is_export: *is_export,
+                        location: &node.1,
+                        symbol: symbol_name,
+                    }
+                }) {
+                    errors.push_with_location(
+                        ErrorKind::DuplicateDeclaration {
+                            name: symbol_name.clone(),
+                            kind: "struct definition",
                             original: error.location.clone(),
                         },
                         node.1.clone(),
@@ -251,6 +279,27 @@ pub fn assemble_declarations(
         // Currently, all symbols are unique.
         let mut symbol_lookup = SymbolLookup::new();
 
+        let assembled_struct_definitions =
+            assemble_items(struct_definitions.values(), |definition| {
+                definition.assemble(
+                    &mut errors,
+                    &mut symbol_lookup,
+                    &mut identifiers,
+                    &mut struct_layouts,
+                    &mut field_definitions,
+                )
+            });
+
+        let assembled_field_definitions =
+            assemble_items(field_definitions.values(), |definition| {
+                definition.assemble(
+                    &mut errors,
+                    &mut symbol_lookup,
+                    &mut identifiers,
+                    &mut type_signatures,
+                )
+            });
+
         let assembled_function_definitions =
             assemble_items(function_definitions.values(), |definition| {
                 definition.assemble(
@@ -292,12 +341,12 @@ pub fn assemble_declarations(
                 imported_functions: format::LenVecBytes::from(Vec::new()),
             }),
             definitions: format::LenBytes(format::ModuleDefinitions {
-                defined_structs: format::LenVecBytes::from(Vec::new()),
+                defined_structs: format::LenVecBytes::from(assembled_struct_definitions),
                 defined_globals: format::LenVecBytes::from(Vec::new()),
-                defined_fields: format::LenVecBytes::from(Vec::new()),
+                defined_fields: format::LenVecBytes::from(assembled_field_definitions),
                 defined_functions: format::LenVecBytes::from(assembled_function_definitions),
             }),
-            struct_layouts: format::LenVecBytes::from(Vec::new()),
+            struct_layouts: format::LenVecBytes::from(struct_layouts.drain_to_vec()),
             entry_point: format::LenBytes(entry_point_index),
         });
     } else {

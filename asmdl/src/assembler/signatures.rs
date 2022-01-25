@@ -20,7 +20,7 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         ty: &'a ast::Positioned<ast::Type>,
     ) -> format::indices::TypeSignature {
-        self.lookup.insert_or_get_with(&ty.0, || match &ty.0 {
+        self.lookup.insert_or_get_with(&ty.0, |_| match &ty.0 {
             ast::Type::Primitive(primitive_type) => {
                 format::TypeSignature::Primitive(*primitive_type)
             }
@@ -56,7 +56,7 @@ impl<'a> FunctionLookup<'a> {
         return_types: ParameterSet<'a>,
     ) -> format::indices::FunctionSignature {
         self.lookup
-            .insert_or_get_with((parameter_types, return_types), || {
+            .insert_or_get_with((parameter_types, return_types), |_| {
                 let mut lookup_types = |types: ParameterSet<'a>| {
                     let mut indices = Vec::with_capacity(types.len());
                     indices.extend(types.iter().map(|ty| type_lookup.get(ty)));
