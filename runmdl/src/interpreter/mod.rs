@@ -268,9 +268,16 @@ impl<'l> Interpreter<'l> {
                 .current_mut()?
                 .registers
                 .define_temporary(Register::from(*value)),
-            Instruction::ConvI { target_type, operand, overflow } => {
+            Instruction::ConvI {
+                target_type,
+                operand,
+                overflow,
+            } => {
                 let current_frame = self.call_stack.current_mut()?;
-                let (converted, overflowed) = current_frame.registers.get(*operand)?.convert_to_integer(*target_type);
+                let (converted, overflowed) = current_frame
+                    .registers
+                    .get(*operand)?
+                    .convert_to_integer(*target_type);
                 current_frame.registers.define_temporary(converted);
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }

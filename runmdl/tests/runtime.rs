@@ -287,3 +287,54 @@ fn switch_is_correct() {
         },
     );
 }
+
+#[test]
+fn integer_conversions_are_correct() {
+    setup::initialize_from_str(
+        basic_module_str!(
+            IntegerConversions,
+            r#"
+.code @code {
+    .entry $BLOCK;
+    .block $BLOCK (%i_input) {
+        %s8 = conv.i %i_input to s8;
+        %u8 = conv.i %i_input to u8;
+        %s16 = conv.i %i_input to s16;
+        %u16 = conv.i %i_input to u16;
+        %u32 = conv.i %i_input to u32;
+        %s64 = conv.i %i_input to s64;
+        %u64 = conv.i %i_input to u64;
+        ret %s8, %u8, %s16, %u16, %u32, %s64, %u64;
+    };
+};
+
+.function @convert_int (s32) returns (s8, u8, s16, u16, u32, s64, u64) export {
+    .name "convert_int";
+    .body defined @code;
+};
+"#
+        ),
+        |_, _| (),
+        |_, runtime| {
+            let test_function = runtime
+                .program()
+                .lookup_function(Symbol::Owned(Identifier::try_from("convert_int").unwrap()))
+                .unwrap();
+
+            assert_eq!(
+                vec![
+                    interpreter::Register::from(-1i8),
+                    interpreter::Register::from(u8::MAX),
+                    interpreter::Register::from(-1i16),
+                    interpreter::Register::from(u16::MAX),
+                    interpreter::Register::from(u32::MAX),
+                    interpreter::Register::from(-1i64),
+                    interpreter::Register::from(u64::MAX),
+                ],
+                runtime
+                    .invoke(test_function, &[interpreter::Register::from(-1i32)], None)
+                    .unwrap()
+            );
+        },
+    );
+}

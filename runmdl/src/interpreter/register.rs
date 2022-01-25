@@ -174,7 +174,7 @@ impl Register {
     }
 
     pub fn convert_to_integer(&self, target_type: type_system::Int) -> (Register, bool) {
-        use type_system::{Int, FixedInt};
+        use type_system::{FixedInt, Int};
 
         macro_rules! register_to_type {
             ($target_type: ty) => {
