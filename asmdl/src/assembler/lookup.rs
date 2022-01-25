@@ -96,13 +96,6 @@ where
         self.insert_with(key, |_| value)
     }
 
-    pub fn insert_or_get_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> I {
-        match self.try_insert_with(key, value) {
-            Ok(index) => index,
-            Err((index, _)) => index,
-        }
-    }
-
     pub fn insert_or_get_fallible<E, F: FnOnce(I) -> Result<V, E>>(
         &mut self,
         key: K,
@@ -331,18 +324,5 @@ mod tests {
                 .collect::<Vec<u32>>(),
             vec![42, 0xFFFF, 255]
         );
-    }
-
-    #[test]
-    fn indexed_map_insert_or_get() {
-        let mut map = lookup::IndexedMap::<u32, &'_ ast::Identifier, u32>::new();
-
-        let key_1 = ast::Identifier::try_from("food").unwrap();
-        map.insert(&key_1, 5).unwrap();
-
-        let key_2 = ast::Identifier::try_from("bard").unwrap();
-        map.insert(&key_2, 55).unwrap();
-
-        assert_eq!(1, map.insert_or_get_with(&key_2, |_| unreachable!()));
     }
 }

@@ -143,6 +143,14 @@ pub enum Instruction {
         target_type: Positioned<PrimitiveType>,
         flag_overflow: bool,
     },
+    Field {
+        field: GlobalSymbol,
+        object: RegisterSymbol,
+    },
+    Alloca {
+        amount: RegisterSymbol,
+        element_type: Positioned<Type>,
+    },
 }
 
 #[derive(Debug, Eq, PartialEq)]

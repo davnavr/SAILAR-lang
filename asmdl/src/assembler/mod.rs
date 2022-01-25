@@ -268,6 +268,9 @@ pub fn assemble_declarations(
             assemble_items(function_bodies.values(), |body| {
                 body.assemble(
                     &mut errors,
+                    &mut type_signatures,
+                    &struct_definitions,
+                    &field_definitions,
                     &mut function_definitions,
                     &mut block_lookup,
                     &mut register_map,

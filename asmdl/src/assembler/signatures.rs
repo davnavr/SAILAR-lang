@@ -29,7 +29,12 @@ impl<'a> TypeLookup<'a> {
                 let struct_identifier = struct_name.identifier();
                 struct_lookup
                     .get_index(struct_identifier)
-                    .ok_or_else(|| Error::with_location(ErrorKind::UndefinedGlobal(struct_identifier.clone()), ty.1.clone()))
+                    .ok_or_else(|| {
+                        Error::with_location(
+                            ErrorKind::UndefinedGlobal(struct_identifier.clone()),
+                            ty.1.clone(),
+                        )
+                    })
                     .map(|index| {
                         format::TypeSignature::Struct(format::indices::Struct::Defined(index))
                     })
@@ -80,15 +85,13 @@ impl<'a> FunctionLookup<'a> {
                             Err(error) => {
                                 commit = false;
                                 errors.push(error);
-                            },
+                            }
                         }
                     }
 
                     if commit {
-                        Ok(
-                            format::LenVec(indices))
-                    }
-                    else {
+                        Ok(format::LenVec(indices))
+                    } else {
                         Err(())
                     }
                 };
@@ -97,6 +100,6 @@ impl<'a> FunctionLookup<'a> {
                     return_types: lookup_types(return_types)?,
                 })
             })
-        .ok()
+            .ok()
     }
 }

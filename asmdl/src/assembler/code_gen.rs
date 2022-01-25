@@ -62,7 +62,9 @@ impl<'a> CodeBlockAssembler<'a> {
     fn assemble(
         &self,
         errors: &mut error::Builder,
-        // TODO: Have struct to handle lookup in definition or imports.
+        type_lookup: &mut assembler::signatures::TypeLookup<'a>,
+        struct_lookup: &assembler::definitions::StructLookup<'a>,
+        field_lookup: &assembler::definitions::FieldLookup<'a>,
         function_lookup: &assembler::definitions::FunctionLookup<'a>,
         block_index_lookup: BlockIndexLookup<'a, '_>,
         register_lookup: &mut lookup::RegisterMap<'a>,
@@ -86,6 +88,14 @@ impl<'a> CodeBlockAssembler<'a> {
             }
             index
         }
+
+        // fn lookup_field<'a>(errors: &mut error::Builder, lookup: &mut assembler::definitions::FieldLookup<'a>, field: &'a ast::GlobalSymbol) -> Option<indices::Field> {
+        //     let index = lookup.get_index(field.identifier());
+        //     if index.is_none() {
+
+        //     }
+        //     index
+        // }
 
         fn lookup_many_registers<'a>(
             errors: &mut error::Builder,
@@ -380,6 +390,24 @@ impl<'a> CodeBlockAssembler<'a> {
                         },
                     });
                 }
+                ast::Instruction::Field { field, object } => {
+                    let field_index = field_lookup.get_index(field.identifier());
+                    expected_return_count = 1;
+                    todo!()
+                }
+                ast::Instruction::Alloca {
+                    amount,
+                    element_type,
+                } => {
+                    let amount_register = lookup_register(errors, register_lookup, amount);
+                    let element_type_index =
+                        errors.add_result(type_lookup.get(element_type, struct_lookup));
+                    expected_return_count = 1;
+                    next_instruction = try_some!(Instruction::Alloca {
+                        amount: amount_register?,
+                        element_type: element_type_index?
+                    });
+                }
             }
 
             let return_registers = &statement.results.0;
@@ -431,6 +459,9 @@ impl<'a> FunctionBodyAssembler<'a> {
     pub(crate) fn assemble(
         &self,
         errors: &mut error::Builder,
+        type_lookup: &mut assembler::signatures::TypeLookup<'a>,
+        struct_lookup: &assembler::definitions::StructLookup<'a>,
+        field_lookup: &assembler::definitions::FieldLookup<'a>,
         function_lookup: &mut assembler::definitions::FunctionLookup<'a>,
         block_lookup: &mut CodeBlockLookup<'a>,
         register_lookup: &mut lookup::RegisterMap<'a>,
@@ -492,6 +523,9 @@ impl<'a> FunctionBodyAssembler<'a> {
             Some(format::Code {
                 entry_block: entry_block.assemble(
                     errors,
+                    type_lookup,
+                    struct_lookup,
+                    field_lookup,
                     function_lookup,
                     block_index_lookup,
                     register_lookup,
@@ -503,6 +537,9 @@ impl<'a> FunctionBodyAssembler<'a> {
                         .map(|block| {
                             block.assemble(
                                 errors,
+                                type_lookup,
+                                struct_lookup,
+                                field_lookup,
                                 function_lookup,
                                 block_index_lookup,
                                 register_lookup,

@@ -405,6 +405,7 @@ pub enum Instruction {
         field: FieldIndex,
         object: RegisterIndex,
     },
+    // TODO: Have flag to avoid zero-ing memory.
     /// ```txt
     /// <result> = alloca <amount> of <type>;
     /// ```

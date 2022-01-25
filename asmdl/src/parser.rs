@@ -353,6 +353,19 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                             flag_overflow,
                         },
                     ),)),
+                choice((
+                    keyword("field")
+                        .ignore_then(global_symbol)
+                        .then(keyword("of").ignore_then(register_symbol))
+                        .map(|(field, object)| ast::Instruction::Field { field, object }),
+                    keyword("alloca")
+                        .ignore_then(register_symbol)
+                        .then(keyword("of").ignore_then(with_position(any_type)))
+                        .map(|(amount, element_type)| ast::Instruction::Alloca {
+                            amount,
+                            element_type,
+                        }),
+                )),
             )));
 
             let result_registers = many_registers()
