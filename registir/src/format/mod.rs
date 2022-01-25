@@ -199,15 +199,11 @@ macro_rules! field_flags {
     ($field_record_type: ty) => {
         impl $field_record_type {
             pub fn flags(&self) -> flags::Field {
-                let mut flags = if self.is_export {
+                if self.is_export {
                     flags::Field::IS_EXPORT
                 } else {
                     flags::Field::NONE
-                };
-                if self.is_mutable {
-                    flags |= flags::Field::MUTABLE;
                 }
-                flags
             }
         }
     };
@@ -224,7 +220,6 @@ macro_rules! field_flags {
 pub struct Global {
     pub name: indices::Identifier,
     pub is_export: bool,
-    pub is_mutable: bool,
     pub symbol: indices::Identifier,
     pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,
@@ -238,14 +233,13 @@ field_flags!(Global);
 /// - [`owner`]
 /// - [`name`]
 /// - [`Field::flags()`]
-/// - [`symbol`] (if [`flags::Field::IS_EXPORT`] is set)
+/// - [`symbol`]
 /// - [`signature`]
 #[derive(Debug)]
 pub struct Field {
     pub owner: indices::StructDefinition,
     pub name: indices::Identifier,
     pub is_export: bool,
-    pub is_mutable: bool,
     pub symbol: indices::Identifier,
     pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,

@@ -35,7 +35,6 @@ bitflags! {
     pub struct Field: u8 {
         const NONE = 0;
         const IS_EXPORT = 0b0000_0001;
-        const MUTABLE = 0b0000_0010;
     }
 }
 
@@ -82,14 +81,10 @@ pub enum StructLayout {
 
 numeric_enum_conversion!(StructLayout, u8, Unspecified, ExplicitSize);
 
-pub trait ExportFlag {
-    fn is_export(&self) -> bool;
-}
-
 macro_rules! export_flag {
     ($flag_type: ty) => {
-        impl ExportFlag for $flag_type {
-            fn is_export(&self) -> bool {
+        impl $flag_type {
+            pub const fn is_export(self) -> bool {
                 self.contains(Self::IS_EXPORT)
             }
         }
@@ -97,4 +92,5 @@ macro_rules! export_flag {
 }
 
 export_flag!(Struct);
+export_flag!(Field);
 export_flag!(Function);

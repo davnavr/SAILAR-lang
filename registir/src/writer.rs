@@ -1,5 +1,5 @@
-use crate::{buffers, format};
-use format::{instruction_set, numeric, type_system};
+use crate::buffers;
+use crate::format::{self, instruction_set, numeric, type_system};
 use std::io::Write;
 
 #[derive(thiserror::Error, Debug)]
@@ -314,6 +314,10 @@ fn block_instruction<W: Write>(
             write(out, target_type.tag() as u8)?;
             write(out, *overflow as u8)?;
             unsigned_index(out, *operand, size)
+        }
+        Instruction::Field { field, object } => {
+            unsigned_index(out, *field, size)?;
+            unsigned_index(out, *object, size)
         }
         Instruction::Alloca {
             amount,

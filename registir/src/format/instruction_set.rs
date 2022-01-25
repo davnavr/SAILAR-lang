@@ -4,8 +4,8 @@ use bitflags::bitflags;
 use std::collections::hash_map;
 
 pub use indices::{
-    CodeBlock as BlockIndex, Function as FunctionIndex, Register as RegisterIndex,
-    TypeSignature as TypeIndex,
+    CodeBlock as BlockIndex, Field as FieldIndex, Function as FunctionIndex,
+    Register as RegisterIndex, TypeSignature as TypeIndex,
 };
 
 /// Represents an integer constant, whose value is stored in little-endian order.
@@ -111,6 +111,11 @@ pub enum Opcode {
     CmpGe,
     ConvI,
     ConvF,
+    Field,
+    Global,
+    MemSt,
+    MemLd,
+    MemCpy,
     Alloca = 253,
     Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
@@ -356,62 +361,6 @@ pub enum Instruction {
     /// ```
     /// Returns the product of the values in the `x` and `y` registers.
     Mul(BasicArithmeticOperation),
-    // /// ```txt
-    // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan>;
-    // /// <quotient> = div <numeric type> <numerator> over <denominator> or <nan> ovf.halt;
-    // /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> or <nan> ovf.flag;
-    // /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt;
-    // /// <quotient> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.halt;
-    // /// <quotient>, <overflowed> = div <numeric type> <numerator> over <denominator> zeroed.halt ovf.flag;
-    // /// ```
-    // /// Returns the result of dividing the values in the `numerator` and `denominator` registers converted to the specified type.
-    // Div(DivisionOperation),
-    // /// ```txt
-    // /// <result> = and <numeric type> <x> <y>;
-    // /// ```
-    // /// Returns the bitwise `AND` of the values in the `x` and `y` registers converted to the specified numeric type.
-    // And(BitwiseOperation),
-    // /// ```txt
-    // /// <result> = or <numeric type> <x> <y>;
-    // /// ```
-    // /// Returns the bitwise `OR` of the values in the `x` and `y` registers converted to the specified numeric type.
-    // Or(BitwiseOperation),
-    // /// ```txt
-    // /// <result> = not <numeric type> <value>;
-    // /// ```
-    // /// Returns the bitwise `NOT` of the value in the specified register converted to the specified numeric type.
-    // Not(NumericType, RegisterIndex),
-    // /// ```txt
-    // /// <result> = xor <numeric type> <x> <y>;
-    // /// ```
-    // /// Returns the bitwise `XOR` of the values in the `x` and `y` registers converted to the specified numeric type.
-    // Xor(BitwiseOperation),
-
-    // /// ```txt
-    // /// <result> = sh.l <numeric type> <value> by <amount>;
-    // /// ```
-    // /// Shifts the value in the `value` register converted to the specified integer type to the left by the amount in the
-    // /// `amount` register.
-    // ShL(BitwiseShiftOperation),
-    // /// ```txt
-    // /// <result> = sh.r <numeric type> <value> by <amount>;
-    // /// ```
-    // /// Shifts the value in the `value` register converted to the specified integer type to the right by the amount in the
-    // /// `amount` register, inserting a `0` bit if the numeric type is an unsigned integer type, or copying the sign bit if the
-    // /// type is a signed integer type.
-    // ShR(BitwiseShiftOperation),
-    // /// ```txt
-    // /// <result> = rot.l <numeric type> <value> by <amount>;
-    // /// ```
-    // /// Rotates the value in the specified `value` register converted to the specified numeric type left by the amount in the
-    // /// `amount` register.
-    // RotL(BitwiseShiftOperation),
-    // /// ```txt
-    // /// <result> = rot.r <numeric type> <value> by <amount>;
-    // /// ```
-    // /// Rotates the value in the specified `value` register converted to the specified numeric type right by the amount in the
-    // /// `amount` register.
-    // RotR(BitwiseShiftOperation),
     /// ```txt
     /// <result> = const.i <ity> <value>;
     /// ```
@@ -445,6 +394,17 @@ pub enum Instruction {
     //    target_type: type_system: Real,
     //    operand: RegisterIndex
     //},
+    /// ```txt
+    /// <address> = field <field> of <object>;
+    /// ```
+    /// Returns a pointer to the `field` in the specified `object`.
+    ///
+    /// # Requirements
+    /// - The value in the `object` register must be of a pointer type.
+    Field {
+        field: FieldIndex,
+        object: RegisterIndex,
+    },
     /// ```txt
     /// <result> = alloca <amount> of <type>;
     /// <result> = alloca <amount> of <type>;
@@ -488,6 +448,7 @@ impl Instruction {
             // Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
             Instruction::ConvI { .. } => Opcode::ConvI,
+            Instruction::Field { .. } => Opcode::Field,
             Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
         }
@@ -524,6 +485,7 @@ impl Instruction {
             // | Instruction::RotL(_)
             // | Instruction::RotR(_)
             | Instruction::ConstI(_)
+            | Instruction::Field { .. }
             | Instruction::Alloca { .. } => 1,
         }
     }

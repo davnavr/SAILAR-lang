@@ -1,12 +1,5 @@
-use crate::{
-    buffers,
-    format::{
-        self,
-        flags::{self, ExportFlag as _},
-        instruction_set::{self, Instruction, Opcode},
-        numeric, type_system,
-    },
-};
+use crate::buffers;
+use crate::format::{self, flags, instruction_set, numeric, type_system};
 use std::io::Read;
 
 #[derive(thiserror::Error, Debug)]
@@ -50,6 +43,8 @@ pub enum Error {
     InvalidOverflowBehavior(u8),
     #[error("{0:#02X} is not a valid struct flags combination")]
     InvalidStructFlags(u8),
+    #[error("{0:#02X} is not a valid field flags combination")]
+    InvalidFieldFlags(u8),
     #[error("{0:#02X} is not a valid function flags combination")]
     InvalidFunctionFlags(u8),
     #[error("{0:#02X} is not a valid struct layout")]
@@ -211,13 +206,13 @@ fn function_signature<R: Read>(
     })
 }
 
-fn opcode<R: Read>(src: &mut R) -> Result<Opcode> {
+fn opcode<R: Read>(src: &mut R) -> Result<instruction_set::Opcode> {
     let mut opcode = 0u32;
     loop {
         let value = byte(src)?;
         opcode += u32::from(value);
-        if value != Opcode::Continuation as u8 {
-            return Ok(Opcode::try_from(opcode)?);
+        if value != instruction_set::Opcode::Continuation as u8 {
+            return Ok(instruction_set::Opcode::try_from(opcode)?);
         }
     }
 }
@@ -260,7 +255,12 @@ fn basic_arithmetic_operation<R: Read>(
     })
 }
 
-fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instruction> {
+fn instruction<R: Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> Result<instruction_set::Instruction> {
+    use instruction_set::{Instruction, Opcode};
+
     #[allow(deprecated)]
     match opcode(src)? {
         Opcode::Nop => Ok(Instruction::Nop),
@@ -355,6 +355,10 @@ fn instruction<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<Instr
             overflow: instruction_set::OverflowBehavior::try_from(byte(src)?)
                 .map_err(Error::InvalidOverflowBehavior)?,
             operand: unsigned_index(src, size)?,
+        }),
+        Opcode::Field => Ok(Instruction::Field {
+            field: unsigned_index(src, size)?,
+            object: unsigned_index(src, size)?,
         }),
         Opcode::Alloca => Ok(Instruction::Alloca {
             amount: unsigned_index(src, size)?,
@@ -453,7 +457,19 @@ fn struct_definition<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result
 
 //global_definition
 
-//field_definition
+fn field_definition<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::Field> {
+    let owner = unsigned_index(src, size)?;
+    let name = unsigned_index(src, size)?;
+    let flags = byte_flags(src, flags::Field::from_bits, Error::InvalidFieldFlags)?;
+
+    Ok(format::Field {
+        owner,
+        name,
+        is_export: flags.is_export(),
+        symbol: unsigned_index(src, size)?,
+        signature: unsigned_index(src, size)?,
+    })
+}
 
 fn function_definition<R: Read>(
     src: &mut R,
@@ -687,12 +703,9 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
                         &buffers,
                         |src| todo!(),
                     )?,
-                    defined_fields: double_length_encoded(
-                        &mut data,
-                        size,
-                        &buffers,
-                        |src| todo!(),
-                    )?,
+                    defined_fields: double_length_encoded(&mut data, size, &buffers, |src| {
+                        field_definition(src, size)
+                    })?,
                     defined_functions: double_length_encoded(&mut data, size, &buffers, |src| {
                         function_definition(src, size)
                     })?,
