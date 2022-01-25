@@ -173,13 +173,44 @@ impl Register {
         }
     }
 
-    pub(super) fn from_type<'a>(source_type: &'a getmdl::loader::TypeSignature<'a>) -> Self {
-        use type_system::{Any, FixedInt, Int, Primitive};
-        match source_type.as_raw() {
-            Any::Primitive(Primitive::Int(integer_type)) => {
-                Self::Int(IntVal::from_integer_type(*integer_type))
-            }
-            _ => todo!(),
+    pub fn convert_to_integer(&self, target_type: type_system::Int) -> (Register, bool) {
+        use type_system::{Int, FixedInt};
+
+        macro_rules! register_to_type {
+            ($target_type: ty) => {
+                match <$target_type>::try_from(self) {
+                    Ok(value) => (Register::from(value), false),
+                    Err(_) => {
+                        let value = match self {
+                            Self::Int(IntVal::S8(value)) => *value as $target_type,
+                            Self::Int(IntVal::U8(value)) => *value as $target_type,
+                            Self::Int(IntVal::S16(value)) => *value as $target_type,
+                            Self::Int(IntVal::U16(value)) => *value as $target_type,
+                            Self::Int(IntVal::S32(value)) => *value as $target_type,
+                            Self::Int(IntVal::U32(value)) => *value as $target_type,
+                            Self::Int(IntVal::S64(value)) => *value as $target_type,
+                            Self::Int(IntVal::U64(value)) => *value as $target_type,
+                            Self::Int(IntVal::SNative(value)) => *value as $target_type,
+                            Self::Int(IntVal::UNative(value)) => *value as $target_type,
+                            Self::Pointer(pointer) => usize::from(pointer) as $target_type,
+                        };
+                        (Register::from(value), true)
+                    }
+                }
+            };
+        }
+
+        match target_type {
+            Int::Fixed(FixedInt::S8) => register_to_type!(i8),
+            Int::Fixed(FixedInt::U8) => register_to_type!(u8),
+            Int::Fixed(FixedInt::S16) => register_to_type!(i16),
+            Int::Fixed(FixedInt::U16) => register_to_type!(u16),
+            Int::Fixed(FixedInt::S32) => register_to_type!(i32),
+            Int::Fixed(FixedInt::U32) => register_to_type!(u32),
+            Int::Fixed(FixedInt::S64) => register_to_type!(i64),
+            Int::Fixed(FixedInt::U64) => register_to_type!(u64),
+            Int::SNative => register_to_type!(isize),
+            Int::UNative => register_to_type!(usize),
         }
     }
 }
@@ -319,7 +350,10 @@ register_conversion_to_integer!(i16, Type::from(type_system::FixedInt::S16));
 register_conversion_to_integer!(u16, Type::from(type_system::FixedInt::U16));
 register_conversion_to_integer!(i32, Type::from(type_system::FixedInt::S32));
 register_conversion_to_integer!(u32, Type::from(type_system::FixedInt::U32));
+register_conversion_to_integer!(i64, Type::from(type_system::FixedInt::S64));
+register_conversion_to_integer!(u64, Type::from(type_system::FixedInt::U64));
 register_conversion_to_integer!(usize, Type::from(type_system::Int::UNative));
+register_conversion_to_integer!(isize, Type::from(type_system::Int::SNative));
 
 macro_rules! basic_arithmetic_operation {
     ($operation_name: ident) => {
