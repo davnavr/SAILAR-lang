@@ -117,6 +117,12 @@ impl PointerVal {
     pub fn address_mut(&mut self) -> &mut *mut u8 {
         &mut self.address
     }
+
+    // TODO: Does an overflow even make sense? Should pointers be treated as signed/unsigned when doing math here?
+    pub fn overflowing_add(&self, count: usize) -> (Self, bool) {
+        let (address, overflowed) = (self.address as usize).overflowing_add(count);
+        (Self::new(address as *mut u8, self.pointee_size), overflowed)
+    }
 }
 
 impl Display for PointerVal {

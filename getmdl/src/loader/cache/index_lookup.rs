@@ -1,15 +1,16 @@
 use std::cell::RefCell;
 use std::collections::hash_map;
+use registir::hashing::IntegerHashBuilder;
 
 pub struct IndexLookup<'a, I, T> {
-    lookup: RefCell<hash_map::HashMap<I, &'a T>>,
+    lookup: RefCell<hash_map::HashMap<I, &'a T, IntegerHashBuilder>>,
     items: typed_arena::Arena<T>,
 }
 
 impl<'a, I, T> IndexLookup<'a, I, T> {
     pub fn new() -> Self {
         Self {
-            lookup: RefCell::new(hash_map::HashMap::new()),
+            lookup: RefCell::new(hash_map::HashMap::with_hasher(IntegerHashBuilder::default())),
             items: typed_arena::Arena::new(),
         }
     }

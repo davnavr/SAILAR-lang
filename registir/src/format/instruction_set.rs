@@ -504,7 +504,7 @@ impl TryFrom<u32> for Opcode {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         #[allow(deprecated)]
         if value != Self::Phi as u32
-            && (value <= Self::ConvI as u32
+            && (value <= Self::Field as u32
                 || value == Self::Alloca as u32
                 || value == Self::Break as u32)
         {

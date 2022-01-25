@@ -283,14 +283,27 @@ impl<'l> Interpreter<'l> {
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;
-                let target_field = current_frame.function().declaring_module().load_field_raw(*field)?;
+                let target_field = current_frame
+                    .function()
+                    .declaring_module()
+                    .load_field_raw(*field)?;
                 let object_register = current_frame.registers.get(*object)?;
 
                 if let register::Register::Pointer(pointer) = object_register {
-                    todo!("field")
-                }
-                else {
-                    todo!("bad object field")
+                    let (address, overflowed) = pointer.overflowing_add(target_field.offset());
+                    if overflowed {
+                        todo!("how to deal with overflow when returning field address?");
+                    }
+                    current_frame
+                        .registers
+                        .define_temporary(Register::Pointer(address))
+                } else {
+                    return Err(ErrorKind::RegisterTypeMismatch {
+                        expected: register::Type::Pointer(
+                            target_field.declaring_struct().total_size()?,
+                        ),
+                        actual: object_register.value_type(),
+                    });
                 }
             }
             Instruction::Alloca {
@@ -316,7 +329,7 @@ impl<'l> Interpreter<'l> {
                     .unwrap_or_else(std::ptr::null_mut);
 
                 current_frame.registers.define_temporary(Register::Pointer(
-                    register::PointerVal::new(address, element_size.try_into().unwrap()),
+                    register::PointerVal::new(address, element_size),
                 ));
             }
             Instruction::Break => {
