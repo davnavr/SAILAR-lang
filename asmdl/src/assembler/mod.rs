@@ -297,6 +297,7 @@ pub fn assemble_declarations(
                     &mut symbol_lookup,
                     &mut identifiers,
                     &mut type_signatures,
+                    &struct_definitions,
                 )
             });
 
@@ -308,6 +309,7 @@ pub fn assemble_declarations(
                     &mut identifiers,
                     &mut function_bodies,
                     &mut type_signatures,
+                    &struct_definitions,
                     &mut function_signatures,
                 )
             });

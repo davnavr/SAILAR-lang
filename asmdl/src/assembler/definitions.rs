@@ -24,6 +24,7 @@ impl<'a> FunctionAssembler<'a> {
         identifiers: &mut IdentifierLookup,
         code_lookup: &mut code_gen::FunctionCodeLookup<'a>,
         type_signatures: &mut signatures::TypeLookup<'a>,
+        struct_lookup: &StructLookup<'a>,
         function_signatures: &mut signatures::FunctionLookup<'a>,
     ) -> Option<format::Function> {
         let mut function_name = None;
@@ -81,10 +82,12 @@ impl<'a> FunctionAssembler<'a> {
                 is_export: self.is_export,
                 symbol: identifiers.insert_or_get(self.symbol.clone()),
                 signature: function_signatures.get(
+                    errors,
                     type_signatures,
+                    struct_lookup,
                     self.parameter_types,
                     self.return_types,
-                ),
+                )?,
                 body,
             })
         } else {
@@ -116,6 +119,7 @@ impl<'a> FieldAssembler<'a> {
         _symbols: &mut SymbolLookup<'a>,
         identifiers: &mut IdentifierLookup,
         type_signatures: &mut signatures::TypeLookup<'a>,
+        struct_lookup: &StructLookup<'a>,
     ) -> Option<format::Field> {
         let mut field_name = None;
 
@@ -146,7 +150,7 @@ impl<'a> FieldAssembler<'a> {
             name: field_name?,
             is_export: self.is_export,
             symbol: identifiers.insert_or_get(self.symbol.clone()),
-            signature: type_signatures.get(self.value_type),
+            signature: errors.add_result(type_signatures.get(self.value_type, struct_lookup))?,
         })
     }
 }

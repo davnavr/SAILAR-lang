@@ -53,20 +53,38 @@ where
         self.get(key).map(|(index, _)| index)
     }
 
-    pub fn try_insert_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
+    pub fn try_insert_fallible<
+        'a,
+        E,
+        F: FnOnce(I) -> Result<V, E>,
+        H: FnOnce(I, &'a V) -> Result<I, E>,
+    >(
+        &'a mut self,
+        key: K,
+        value: F,
+        handler: H,
+    ) -> Result<I, E> {
         match self.lookup.entry(key) {
             hash_map::Entry::Vacant(vacant) => {
                 let index = self.values.len();
                 vacant.insert(index);
                 let converted_index = index.try_into().unwrap();
-                self.values.push(value(converted_index));
+                self.values.push(value(converted_index)?);
                 Ok(converted_index)
             }
             hash_map::Entry::Occupied(occupied) => {
                 let index = *occupied.get();
-                Err((index.try_into().unwrap(), &self.values[index]))
+                handler(index.try_into().unwrap(), &self.values[index])
             }
         }
+    }
+
+    pub fn try_insert_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> Result<I, (I, &V)> {
+        self.try_insert_fallible(
+            key,
+            |index| Ok(value(index)),
+            |existing_index, existing_value| Err((existing_index, existing_value)),
+        )
     }
 
     pub fn insert_with<F: FnOnce(I) -> V>(&mut self, key: K, value: F) -> Result<I, &V> {
@@ -83,6 +101,18 @@ where
             Ok(index) => index,
             Err((index, _)) => index,
         }
+    }
+
+    pub fn insert_or_get_fallible<E, F: FnOnce(I) -> Result<V, E>>(
+        &mut self,
+        key: K,
+        value: F,
+    ) -> Result<I, E> {
+        self.try_insert_fallible(
+            key,
+            |index| value(index),
+            |existing_index, _| Ok(existing_index),
+        )
     }
 }
 

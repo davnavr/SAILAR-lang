@@ -70,9 +70,25 @@ impl From<LiteralString> for String {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
     Primitive(PrimitiveType),
+    Struct(GlobalSymbol),
+}
+
+impl std::hash::Hash for Type {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Primitive(primitive_type) => {
+                state.write_u8(0);
+                primitive_type.hash(state)
+            }
+            Self::Struct(name) => {
+                state.write_u8(0xDE);
+                name.identifier().hash(state)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -233,7 +233,12 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
         keyword("u64").to(ast::PrimitiveType::u64()),
     ));
 
-    let any_type = choice((primitive_type.map(ast::Type::Primitive),));
+    let any_type = choice((
+        primitive_type.map(ast::Type::Primitive),
+        keyword("struct")
+            .ignore_then(global_symbol)
+            .map(ast::Type::Struct),
+    ));
 
     let many_registers = || register_symbol.separated_by(just(Token::Comma));
 

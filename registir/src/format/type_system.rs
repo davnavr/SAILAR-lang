@@ -124,6 +124,7 @@ impl Display for Primitive {
 pub enum Any {
     Primitive(Primitive),
     Struct(indices::Struct),
+    /// A native pointer to an instance of the specified type.
     NativePointer(Box<Any>),
     //FixedArray { element_type: Box<AnyType>, length: IntegerConstant },
 }
@@ -144,12 +145,13 @@ pub enum Tag {
     S32 = 0x14,
     S64 = 0x18,
     SNative = 0x1A,
-    /// A native pointer type pointing to instances of the following type.
+    /// A native pointer type pointing to an instance of the following type.
     NativePointer = 0xCC,
-    /// A type specified by a type definition index passed by value.
+    /// A struct specified by a struct definition index passed by value.
     Struct = 0xDE,
     F32 = 0xF4,
     F64 = 0xF8,
+    ///// Indicates an array type. Followed by an unsigned integer length, and element type.
     //FixedArray = 0xFA,
 }
 

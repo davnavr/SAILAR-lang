@@ -80,23 +80,33 @@ pub(crate) struct Builder {
 }
 
 impl Builder {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { errors: Vec::new() }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }
 
-    pub(crate) fn push(&mut self, error: Error) {
+    pub fn push(&mut self, error: Error) {
         self.errors.push(error)
     }
 
-    pub(crate) fn push_with_location(&mut self, kind: Kind, location: ast::Position) {
+    pub fn push_with_location(&mut self, kind: Kind, location: ast::Position) {
         self.push(Error::with_location(kind, location))
     }
 
-    pub(crate) fn drain_to_vec(&mut self) -> Vec<Error> {
+    pub fn drain_to_vec(&mut self) -> Vec<Error> {
         std::mem::take(&mut self.errors)
+    }
+
+    pub fn add_result<T>(&mut self, value: std::result::Result<T, Error>) -> Option<T> {
+        match value {
+            Ok(value) => Some(value),
+            Err(error) => {
+                self.push(error);
+                None
+            }
+        }
     }
 }

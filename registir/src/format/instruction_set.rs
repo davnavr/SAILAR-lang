@@ -407,7 +407,6 @@ pub enum Instruction {
     },
     /// ```txt
     /// <result> = alloca <amount> of <type>;
-    /// <result> = alloca <amount> of <type>;
     /// ```
     /// Returns a suitably aligned pointer to newly allocated memory on the stack to contain `amount` elements of the specified
     /// `type`. If the allocation fails, a `null` pointer is returned. The memory allocated is automatically freed when the
