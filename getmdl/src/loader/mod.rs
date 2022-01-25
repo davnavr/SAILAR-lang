@@ -1,21 +1,21 @@
 use registir::format;
-use std::{
-    cell::{Cell, RefCell},
-    collections::hash_map,
-};
-use typed_arena::Arena as TypedArena;
+use std::collections::hash_map;
 
 mod cache;
 mod error;
+mod field;
 mod function;
 mod module;
+mod structure;
 mod symbol;
 mod type_signature;
 
 pub use error::Error;
+pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
+pub use structure::Struct;
 pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
 pub use type_signature::Type as TypeSignature;
 
@@ -54,15 +54,15 @@ fn read_index_from<
 }
 
 pub struct Loader<'a> {
-    module_arena: TypedArena<Module<'a>>,
-    loaded_modules: RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
+    module_arena: typed_arena::Arena<Module<'a>>,
+    loaded_modules: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
 }
 
 impl<'a> Loader<'a> {
     fn new_empty() -> Self {
         Self {
-            module_arena: TypedArena::new(),
-            loaded_modules: RefCell::new(hash_map::HashMap::new()),
+            module_arena: typed_arena::Arena::new(),
+            loaded_modules: std::cell::RefCell::new(hash_map::HashMap::new()),
         }
     }
 

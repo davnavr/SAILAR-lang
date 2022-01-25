@@ -281,6 +281,9 @@ impl<'l> Interpreter<'l> {
                 current_frame.registers.define_temporary(converted);
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }
+            Instruction::Field { field, object } => {
+                todo!("field")
+            }
             Instruction::Alloca {
                 element_type,
                 amount,

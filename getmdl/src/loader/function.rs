@@ -1,8 +1,9 @@
-use super::*;
+use crate::loader::{self, Result};
+use registir::format;
 
 pub struct Function<'a> {
     source: &'a format::Function,
-    module: &'a Module<'a>,
+    module: &'a loader::Module<'a>,
 }
 
 #[derive(PartialEq)]
@@ -32,7 +33,7 @@ impl<'a> Signature<'a> {
 }
 
 impl<'a> Function<'a> {
-    pub(crate) fn new(module: &'a Module<'a>, source: &'a format::Function) -> Self {
+    pub(super) fn new(module: &'a loader::Module<'a>, source: &'a format::Function) -> Self {
         Self { source, module }
     }
 
@@ -40,18 +41,18 @@ impl<'a> Function<'a> {
         self.source.is_export
     }
 
-    pub fn symbol(&'a self) -> Result<&'a Identifier> {
+    pub fn symbol(&'a self) -> Result<&'a loader::Identifier> {
         self.module.load_identifier_raw(self.source.symbol)
     }
 
-    pub fn full_symbol(&'a self) -> Result<FunctionSymbol<'a>> {
-        Ok(FunctionSymbol::new(
+    pub fn full_symbol(&'a self) -> Result<loader::FunctionSymbol<'a>> {
+        Ok(loader::FunctionSymbol::new(
             self.module.full_symbol(),
-            Symbol::Borrowed(self.symbol()?),
+            loader::Symbol::Borrowed(self.symbol()?),
         ))
     }
 
-    pub fn declaring_module(&'a self) -> &'a Module<'a> {
+    pub fn declaring_module(&'a self) -> &'a loader::Module<'a> {
         self.module
     }
 

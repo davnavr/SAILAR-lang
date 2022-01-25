@@ -1,21 +1,24 @@
-use super::{hash_map, RefCell, TypedArena};
+use std::cell::RefCell;
+use std::collections::hash_map;
 
 pub(crate) struct IndexLookup<'a, I, T> {
     lookup: RefCell<hash_map::HashMap<I, &'a T>>,
-    items: TypedArena<T>,
+    items: typed_arena::Arena<T>,
+}
+
+impl<'a, I, T> IndexLookup<'a, I, T> {
+    pub(crate) fn new() -> Self {
+        Self {
+            lookup: RefCell::new(hash_map::HashMap::new()),
+            items: typed_arena::Arena::new(),
+        }
+    }
 }
 
 impl<'a, I, T> IndexLookup<'a, I, T>
 where
     I: Copy + Eq + std::hash::Hash,
 {
-    pub(crate) fn new() -> Self {
-        Self {
-            lookup: RefCell::new(hash_map::HashMap::new()),
-            items: TypedArena::new(),
-        }
-    }
-
     pub(crate) fn insert_or_get<E, F: FnOnce(I) -> Result<T, E>>(
         &'a self,
         index: I,
