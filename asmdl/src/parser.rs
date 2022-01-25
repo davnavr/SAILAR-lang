@@ -432,6 +432,12 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                     declarations,
                 },
             ),
+            directive(
+                "layout",
+                keyword("unspecified").map(|_| {
+                    ast::StructDeclaration::Layout(ast::StructLayoutDeclaration::Unspecified)
+                }),
+            ),
         ))
     };
 

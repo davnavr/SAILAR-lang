@@ -1,0 +1,23 @@
+.format { .major 0; .minor 8; };
+.module { .name "Structs"; .version 1 0 0; };
+
+.struct @thing {
+    .name "Thing";
+    .field @my_field s32 { .name "Main"; };
+    .layout unspecified;
+};
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %l_exit = const.i s32 0;
+        ret %l_exit;
+    };
+};
+
+.function @main () returns (s32) {
+    .name "Main";
+    .body defined @code_main;
+};
+
+.entry @main;
