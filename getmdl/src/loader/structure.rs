@@ -12,7 +12,7 @@ pub struct Struct<'a> {
     source: &'a format::Struct,
     index: format::indices::StructDefinition,
     module: &'a loader::Module<'a>,
-    layout: std::cell::UnsafeCell<Option<Layout<'a>>>,
+    layout: loader::cache::Once<Layout<'a>>,
 }
 
 impl<'a> Struct<'a> {
@@ -25,16 +25,12 @@ impl<'a> Struct<'a> {
             source,
             index,
             module,
-            layout: std::cell::UnsafeCell::new(None),
+            layout: loader::cache::Once::default(),
         }
     }
 
     fn layout(&'a self) -> Result<&'a Layout<'a>> {
-        // Layout is never null.
-        let layout: &'a mut Option<_> = unsafe { &mut *self.layout.get() };
-        if let Some(struct_layout) = layout {
-            Ok(struct_layout)
-        } else {
+        self.layout.get_or_insert_fallible(|| {
             let source_fields = &self.source.fields;
             let mut fields = hash_map::HashMap::with_capacity(source_fields.len());
             let mut total_size = 0;
@@ -71,8 +67,8 @@ impl<'a> Struct<'a> {
                 }
             }
 
-            Ok(layout.insert(Layout { total_size, fields }))
-        }
+            Ok(Layout { total_size, fields })
+        })
     }
 
     pub fn total_size(&'a self) -> Result<usize> {
@@ -81,7 +77,7 @@ impl<'a> Struct<'a> {
 
     pub fn iter_fields(
         &'a self,
-    ) -> Result<impl std::iter::Iterator<Item = &'a loader::Field<'a>> + 'a> {
+    ) -> Result<impl std::iter::ExactSizeIterator<Item = &'a loader::Field<'a>> + 'a> {
         Ok(self.layout()?.fields.values())
     }
 
@@ -113,6 +109,7 @@ impl<'a> std::fmt::Debug for &'a Struct<'a> {
         f.debug_struct("Struct")
             .field("is_export", &self.is_export())
             .field("symbol", &self.symbol().ok())
+            .field("total_size", &self.total_size().ok())
             .finish()
     }
 }

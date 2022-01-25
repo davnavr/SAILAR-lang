@@ -235,7 +235,7 @@ impl<'a> std::fmt::Debug for &'a Module<'a> {
         f.debug_struct("Module")
             .field("identifier", self.identifier())
             .field("format_version", &self.source.format_version)
-            .field("loaded_functions", &&self.loaded_structs)
+            .field("loaded_structs", &&self.loaded_structs)
             .field("loaded_functions", &&self.loaded_functions)
             .finish()
     }
