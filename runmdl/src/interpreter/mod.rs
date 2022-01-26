@@ -281,6 +281,35 @@ impl<'l> Interpreter<'l> {
                 current_frame.registers.define_temporary(converted);
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }
+            Instruction::Cmp { x, kind, y } => {
+                use instruction_set::ComparisonKind;
+                use std::cmp::Ordering;
+
+                let current_frame = self.call_stack.current_mut()?;
+                let x_register = current_frame.registers.get(*x)?;
+                let y_register = current_frame.registers.get(*y)?;
+                let result = x_register.compare_to(y_register).map_err(|actual| {
+                    ErrorKind::RegisterTypeMismatch {
+                        expected: x_register.value_type(),
+                        actual,
+                    }
+                })?;
+
+                current_frame
+                    .registers
+                    .define_temporary(Register::from(match kind {
+                        ComparisonKind::Equal => result == Ordering::Equal,
+                        ComparisonKind::NotEqual => result != Ordering::Equal,
+                        ComparisonKind::LessThan => result == Ordering::Less,
+                        ComparisonKind::GreaterThan => result == Ordering::Greater,
+                        ComparisonKind::LessThanOrEqual => {
+                            result == Ordering::Less || result == Ordering::Equal
+                        }
+                        ComparisonKind::GreaterThanOrEqual => {
+                            result == Ordering::Greater || result == Ordering::Equal
+                        }
+                    }));
+            }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;
                 let target_field = current_frame

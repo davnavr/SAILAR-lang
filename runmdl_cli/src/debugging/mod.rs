@@ -1,7 +1,10 @@
 use clap::Parser as _;
 use registir::format::Identifier;
 use runmdl::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
-use std::{fmt::{Display, Formatter, Write as _}, io::Write as _};
+use std::{
+    fmt::{Display, Formatter, Write as _},
+    io::Write as _,
+};
 
 mod commands;
 mod input;
@@ -45,7 +48,12 @@ pub struct FunctionSymbol<'a>(pub &'a debugger::FunctionSymbol<'static>);
 
 impl Display for FunctionSymbol<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "\"{}\" from {}", self.0.symbol(), ModuleSymbol(self.0.module()))
+        write!(
+            f,
+            "\"{}\" from {}",
+            self.0.symbol(),
+            ModuleSymbol(self.0.module())
+        )
     }
 }
 
@@ -163,29 +171,37 @@ impl CommandLineDebugger {
             Ok(None)
         });
 
-        command!("where", "prints a stack trace", |_, command, interpreter| {
-            #[derive(clap::Parser, Debug)]
-            #[clap(
-                name = "where",
-                about,
-                global_setting(clap::AppSettings::DisableHelpFlag)
-            )]
-            struct Arguments {
-                #[clap(long)]
-                show_registers: bool,
-            }
-
-            let arguments = Arguments::try_parse_from(command)?;
-
-            for frame in interpreter.call_stack().stack_trace() {
-                println!("- {} {}", FunctionSymbol(frame.function()), Location(frame.location()));
-                if arguments.show_registers {
-                    print_registers('i', frame.input_registers());
-                    print_registers('t', frame.temporary_registers());
+        command!(
+            "where",
+            "prints a stack trace",
+            |_, command, interpreter| {
+                #[derive(clap::Parser, Debug)]
+                #[clap(
+                    name = "where",
+                    about,
+                    global_setting(clap::AppSettings::DisableHelpFlag)
+                )]
+                struct Arguments {
+                    #[clap(long)]
+                    show_registers: bool,
                 }
+
+                let arguments = Arguments::try_parse_from(command)?;
+
+                for frame in interpreter.call_stack().stack_trace() {
+                    println!(
+                        "- {} {}",
+                        FunctionSymbol(frame.function()),
+                        Location(frame.location())
+                    );
+                    if arguments.show_registers {
+                        print_registers('i', frame.input_registers());
+                        print_registers('t', frame.temporary_registers());
+                    }
+                }
+                Ok(None)
             }
-            Ok(None)
-        });
+        );
 
         command!("cont", "continues execution of the program", |_, _, _| {
             Ok(Some(debugger::Reply::Continue))

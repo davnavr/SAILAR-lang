@@ -338,3 +338,61 @@ fn integer_conversions_are_correct() {
         },
     );
 }
+
+#[test]
+fn integer_comparisons_are_correct() {
+    setup::initialize_from_str(
+        basic_module_str!(
+            IntegerComparisons,
+            r#"
+.code @code {
+    .entry $BLOCK;
+    .block $BLOCK (%i_input) {
+        %t_y = const.i s32 8;
+        %t_eq = cmp %i_input eq %t_y;
+        %t_ne = cmp %i_input ne %t_y;
+        %t_lt = cmp %i_input lt %t_y;
+        %t_gt = cmp %i_input gt %t_y;
+        %t_le = cmp %i_input le %t_y;
+        %t_ge = cmp %i_input ge %t_y;
+        ret %t_eq, %t_ne, %t_lt, %t_gt, %t_le, %t_ge;
+    };
+};
+
+.function @test (s32) returns (u8, u8, u8, u8, u8, u8) export {
+    .name "test";
+    .body defined @code;
+};
+"#
+        ),
+        |_, _| (),
+        |_, runtime| {
+            let test_function = runtime
+                .program()
+                .lookup_function(Symbol::Owned(Identifier::try_from("test").unwrap()))
+                .unwrap();
+
+            macro_rules! assert_call_results {
+                ($input: expr, $outputs: expr) => {
+                    assert_eq!(
+                        {
+                            let values: &[u8] = &$outputs;
+                            values
+                                .iter()
+                                .copied()
+                                .map(interpreter::Register::from)
+                                .collect::<Vec<_>>()
+                        },
+                        runtime
+                            .invoke(test_function, &[i32::into($input)], None)
+                            .unwrap()
+                    );
+                };
+            }
+
+            assert_call_results!(-1, [0, 1, 1, 0, 1, 0,]);
+            assert_call_results!(8, [1, 0, 0, 0, 1, 1,]);
+            assert_call_results!(0x80, [0, 1, 0, 1, 0, 1,]);
+        },
+    );
+}

@@ -416,3 +416,22 @@ macro_rules! basic_arithmetic_operation {
 basic_arithmetic_operation!(overflowing_add);
 basic_arithmetic_operation!(overflowing_sub);
 basic_arithmetic_operation!(overflowing_mul);
+
+impl Register {
+    pub fn compare_to(&self, other: &Self) -> Result<std::cmp::Ordering, Type> {
+        match (self, other) {
+            (Self::Int(IntVal::S8(x)), Self::Int(IntVal::S8(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::U8(x)), Self::Int(IntVal::U8(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::S16(x)), Self::Int(IntVal::S16(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::U16(x)), Self::Int(IntVal::U16(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::S32(x)), Self::Int(IntVal::S32(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::U32(x)), Self::Int(IntVal::U32(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::S64(x)), Self::Int(IntVal::S64(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::U64(x)), Self::Int(IntVal::U64(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::SNative(x)), Self::Int(IntVal::SNative(y))) => Ok(x.cmp(y)),
+            (Self::Int(IntVal::UNative(x)), Self::Int(IntVal::UNative(y))) => Ok(x.cmp(y)),
+            (Self::Pointer(x), Self::Pointer(y)) => Ok(x.address.cmp(&y.address)),
+            (_, _) => Err(other.value_type()),
+        }
+    }
+}
