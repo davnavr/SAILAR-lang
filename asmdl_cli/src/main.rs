@@ -10,7 +10,7 @@ struct Arguments {
     output: Option<std::path::PathBuf>,
 }
 
-fn main() -> Result<(), registir::writer::Error> {
+fn main() -> Result<(), sailar::writer::Error> {
     let arguments = Arguments::from_args();
     let input = std::fs::read_to_string(&arguments.input)?;
     let (syntax_tree, lexer_errors, parser_errors) = asmdl::parser::tree_from_str(&input);
@@ -75,7 +75,7 @@ fn main() -> Result<(), registir::writer::Error> {
             report = match error.kind() {
                 AssemblerError::InvalidFormatVersion => {
                     let minimum_version =
-                        registir::format::FormatVersion::minimum_supported_version();
+                        sailar::format::FormatVersion::minimum_supported_version();
                     report.with_note(format!(
                         "minimum supported version is {}.{}",
                         minimum_version.major, minimum_version.minor
@@ -97,5 +97,5 @@ fn main() -> Result<(), registir::writer::Error> {
             .unwrap_or(&arguments.input.with_extension("binmdl")),
     )?;
 
-    registir::writer::write_module(module.as_ref().unwrap(), &mut output)
+    sailar::writer::write_module(module.as_ref().unwrap(), &mut output)
 }

@@ -1,6 +1,6 @@
 use crate::interpreter::{self, debugger, ErrorKind, Result};
 use interpreter::{BlockIndex, InstructionLocation, Register};
-use registir::format::{self, indices, instruction_set};
+use sailar::format::{self, indices, instruction_set};
 use std::borrow::{Borrow as _, BorrowMut as _};
 use std::collections::{hash_map, BTreeSet, VecDeque};
 
@@ -267,7 +267,7 @@ impl Breakpoint {
         block: BlockIndex,
         instruction: usize,
         module: debugger::ModuleIdentifier,
-        symbol: registir::format::Identifier,
+        symbol: sailar::format::Identifier,
     ) -> Self {
         Self::new(
             block,

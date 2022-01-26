@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "3.0.7", features = ["derive"] }
 runmdl = { path = "../runmdl" }
-registir = { path = "../registir" }
+sailar = { path = "../sailar" }
 thiserror = "1.0.30"
 
 [[bin]]

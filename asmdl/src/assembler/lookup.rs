@@ -1,5 +1,5 @@
 use crate::ast;
-use registir::format::indices;
+use sailar::format::indices;
 use std::{
     collections::hash_map,
     fmt::{Debug, Formatter},

@@ -1,4 +1,4 @@
-use registir::format;
+use sailar::format;
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]

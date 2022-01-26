@@ -1,4 +1,4 @@
-use registir::format;
+use sailar::format;
 use std::io::{Result, Write};
 
 #[derive(Debug, Clone, Copy)]

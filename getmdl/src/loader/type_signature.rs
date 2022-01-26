@@ -1,5 +1,5 @@
 use crate::loader::{self, Result};
-use registir::format;
+use sailar::format;
 
 /// Represents a type signature.
 pub struct Type<'a> {

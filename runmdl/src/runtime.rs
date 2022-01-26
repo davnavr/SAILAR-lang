@@ -69,7 +69,7 @@ impl From<interpreter::Error> for Error {
 impl<'l> Runtime<'l> {
     pub fn initialize(
         initializer: &'l mut Initializer<'l>,
-        application: registir::format::Module,
+        application: sailar::format::Module,
     ) -> &'l Self {
         let (loader, program) = loader::Loader::initialize(&mut initializer.loader, application);
         initializer.runtime.insert(Self {

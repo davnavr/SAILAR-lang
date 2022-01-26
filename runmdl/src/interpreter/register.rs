@@ -1,4 +1,4 @@
-use registir::format::{instruction_set::IntegerConstant, type_system};
+use sailar::format::{instruction_set::IntegerConstant, type_system};
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Copy, Debug, PartialEq)]

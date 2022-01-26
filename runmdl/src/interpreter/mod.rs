@@ -1,5 +1,5 @@
 use getmdl::loader;
-use registir::format::{indices, instruction_set, type_system};
+use sailar::format::{indices, instruction_set, type_system};
 
 pub mod call_stack;
 pub mod debugger;

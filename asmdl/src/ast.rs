@@ -1,4 +1,4 @@
-pub use registir::format::{
+pub use sailar::format::{
     instruction_set::{ComparisonKind, OverflowBehavior},
     type_system::Primitive as PrimitiveType,
     Identifier,
@@ -110,7 +110,7 @@ impl BasicArithmeticOperation {
     }
 }
 
-/// Based on the registir instruction set, see `[registir::format::instruction_set::Instruction]` for more information.
+/// Based on the SAILAR instruction set, see `[sailar::format::instruction_set::Instruction]` for more information.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     Nop,

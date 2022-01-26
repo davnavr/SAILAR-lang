@@ -1,5 +1,5 @@
 use crate::loader::{self, Result};
-use registir::format;
+use sailar::format;
 
 pub struct Function<'a> {
     source: &'a format::Function,

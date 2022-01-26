@@ -2,7 +2,7 @@ use runmdl::runtime::{self, Runtime};
 
 pub fn initialize_from_str<
     D,
-    S: FnOnce(&registir::format::Module, &mut runtime::Initializer) -> D,
+    S: FnOnce(&sailar::format::Module, &mut runtime::Initializer) -> D,
     F: for<'a> FnOnce(&'a mut D, &'a Runtime<'a>) -> (),
 >(
     module: &str,

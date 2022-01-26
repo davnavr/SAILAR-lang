@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 dasmdl = { path = "../dasmdl" }
-registir = { path = "../registir" }
+sailar = { path = "../sailar" }
 structopt = "0.3.25"
 
 [[bin]]

@@ -14,7 +14,7 @@ pub enum ErrorKind {
     #[error("end of block unexpectedly reached")]
     UnexpectedEndOfBlock,
     #[error("undefined register {0}")]
-    UndefinedRegister(registir::format::indices::Register),
+    UndefinedRegister(sailar::format::indices::Register),
     #[error("undefined block {0}")]
     UndefinedBlock(BlockIndex),
     #[error("expected {expected} input values but got {actual}")]

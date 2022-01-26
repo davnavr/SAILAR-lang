@@ -1,5 +1,5 @@
 use crate::ast;
-use registir::format;
+use sailar::format;
 
 mod error;
 mod lookup;
@@ -402,7 +402,7 @@ pub fn assemble_from_str(
 #[cfg(test)]
 mod tests {
     use crate::assembler;
-    use registir::format::{
+    use sailar::format::{
         self,
         indices::{Register, TemporaryRegister},
         instruction_set::{BlockIndex, Instruction, IntegerConstant},

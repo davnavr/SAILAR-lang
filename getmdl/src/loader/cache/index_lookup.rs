@@ -1,4 +1,4 @@
-use registir::hashing::IntegerHashBuilder;
+use sailar::hashing::IntegerHashBuilder;
 use std::cell::RefCell;
 use std::collections::hash_map;
 

@@ -35,9 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .unwrap_or(Vec::default());
 
-        let application = registir::parser::parse_module(&mut std::fs::File::open(
-            interpreter_arguments.program,
-        )?)?;
+        let application =
+            sailar::parser::parse_module(&mut std::fs::File::open(interpreter_arguments.program)?)?;
 
         let mut initializer = runtime::Initializer::new();
 

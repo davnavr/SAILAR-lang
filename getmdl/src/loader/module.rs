@@ -1,5 +1,5 @@
 use crate::loader::{self, cache, Error, Result};
-use registir::format;
+use sailar::format;
 use std::collections::hash_map;
 
 pub struct Module<'a> {

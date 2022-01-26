@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 getmdl = { path = "../getmdl" }
-registir = { path = "../registir" }
+sailar = { path = "../sailar" }
 thiserror = "1.0.30"
 
 [dev-dependencies]

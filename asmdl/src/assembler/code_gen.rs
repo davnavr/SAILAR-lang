@@ -1,6 +1,6 @@
 use crate::assembler::{self, error, lookup};
 use crate::ast;
-use registir::format::{self, indices};
+use sailar::format::{self, indices};
 
 pub type CodeBlockLookup<'a> = lookup::IndexedMap<u32, &'a ast::Identifier, CodeBlockAssembler<'a>>;
 

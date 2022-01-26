@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| args.input.with_extension("txtmdl"));
     let module = {
         let mut input = std::io::BufReader::new(std::fs::File::open(args.input)?);
-        registir::parser::parse_module(&mut input)?
+        sailar::parser::parse_module(&mut input)?
     };
 
     let mut output = std::io::BufWriter::new(std::fs::File::create(output_path)?);

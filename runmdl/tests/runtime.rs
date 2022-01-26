@@ -5,7 +5,7 @@ mod setup;
 
 macro_rules! basic_module_str {
     ($name: ident, $contents: expr) => {{
-        use registir::format::FormatVersion;
+        use sailar::format::FormatVersion;
         &format!(
             ".module {{ .name \"{}\"; }};\n.format {{ .major {}; .minor {}; }};\n{}",
             stringify!($name),
@@ -137,7 +137,7 @@ fn breakpoints_are_set_during_pause() {
                                 debugger::BlockIndex::entry(),
                                 1,
                                 program_name.clone(),
-                                registir::format::Identifier::try_from("test").unwrap(),
+                                sailar::format::Identifier::try_from("test").unwrap(),
                             ));
 
                         debugger::Reply::Continue

@@ -3,7 +3,7 @@ members = [
     "asmdl",
     "asmdl_cli",
     "getmdl",
-    "registir",
+    "sailar",
     "runmdl",
     "runmdl_cli"
 ]
