@@ -12,6 +12,9 @@ struct Arguments {
     /// If set, launches the debugger.
     #[clap(long)]
     interactive: bool,
+    /// Sets the maximum number of memory that can be allocated on the stack, in bytes.
+    #[clap(long)]
+    stack_memory_capacity: Option<std::num::NonZeroUsize>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,6 +40,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?)?;
 
         let mut initializer = runtime::Initializer::new();
+
+        if let Some(capacity) = interpreter_arguments.stack_memory_capacity {
+            initializer.set_value_stack_capacity(capacity);
+        }
+
         let runtime = runtime::Runtime::initialize(&mut initializer, application);
 
         let mut debugger;
