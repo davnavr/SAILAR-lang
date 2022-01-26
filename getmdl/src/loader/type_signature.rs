@@ -28,8 +28,8 @@ impl<'a> Type<'a> {
     fn calculate_size(&'a self) -> Result<usize> {
         use format::type_system::{FixedInt, Int, Primitive, Real};
 
-        match self.source {
-            format::TypeSignature::Primitive(primitive) => Ok(match primitive {
+        Ok(match self.source {
+            format::TypeSignature::Primitive(primitive) => match primitive {
                 Primitive::Int(Int::Fixed(FixedInt::U8 | FixedInt::S8)) => 1,
                 Primitive::Int(Int::Fixed(FixedInt::U16 | FixedInt::S16)) => 2,
                 Primitive::Int(Int::Fixed(FixedInt::U32 | FixedInt::S32))
@@ -37,12 +37,12 @@ impl<'a> Type<'a> {
                 Primitive::Int(Int::Fixed(FixedInt::U64 | FixedInt::S64))
                 | Primitive::Real(Real::F64) => 8,
                 Primitive::Int(Int::UNative | Int::SNative) => std::mem::size_of::<isize>(),
-            }),
-            format::TypeSignature::NativePointer(_) => Ok(std::mem::size_of::<*mut u8>()),
-            format::TypeSignature::Struct(_) => {
-                todo!("size calculation not implemented for structs")
+            },
+            format::TypeSignature::NativePointer(_) => std::mem::size_of::<*mut u8>(),
+            format::TypeSignature::Struct(struct_index) => {
+                self.module.load_struct_raw(*struct_index)?.total_size()?
             }
-        }
+        })
     }
 
     pub fn size(&'a self) -> Result<usize> {

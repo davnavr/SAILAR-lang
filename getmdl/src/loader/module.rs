@@ -137,6 +137,20 @@ impl<'a> Module<'a> {
         )
     }
 
+    pub fn load_struct_raw(
+        &'a self,
+        index: format::indices::Struct,
+    ) -> Result<&'a loader::Struct<'a>> {
+        match index {
+            format::indices::Struct::Defined(defined_index) => {
+                self.load_struct_definition_raw(defined_index)
+            }
+            format::indices::Struct::Imported(_) => {
+                todo!("resolution of struct imports is not yet supported")
+            }
+        }
+    }
+
     pub fn load_function_definition_raw(
         &'a self,
         index: format::indices::FunctionDefinition,

@@ -1,6 +1,6 @@
+use registir::hashing::IntegerHashBuilder;
 use std::cell::RefCell;
 use std::collections::hash_map;
-use registir::hashing::IntegerHashBuilder;
 
 pub struct IndexLookup<'a, I, T> {
     lookup: RefCell<hash_map::HashMap<I, &'a T, IntegerHashBuilder>>,
