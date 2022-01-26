@@ -1,0 +1,26 @@
+.format { .major 0; .minor 8; };
+.module { .name "Structs"; .version 1 0 0; };
+
+.struct @thing {
+    .name "Thing";
+    .field @my_field s32 { .name "Main"; };
+    .layout unspecified;
+};
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t_one = const.i s32 1;
+        %t_struct = alloca %t_one of struct @thing;
+        %t_addr = field @my_field of @thing in %t_struct;
+        %t_exit = conv.i %t_addr to s32;
+        ret %t_exit;
+    };
+};
+
+.function @main () returns (s32) {
+    .name "Main";
+    .body defined @code_main;
+};
+
+.entry @main;

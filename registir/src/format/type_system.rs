@@ -1,8 +1,14 @@
 use crate::format::indices;
+use std::fmt::{Display, Formatter};
 
+/// Integer types with a fixed size.
+///
+/// These are the only valid types for constant integers since `unative` and `snative` may change depending on where the code is
+/// being executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum PrimitiveType {
-    U8 = 0,
+#[repr(u8)]
+pub enum FixedInt {
+    U8,
     S8,
     U16,
     S16,
@@ -10,14 +16,10 @@ pub enum PrimitiveType {
     S32,
     U64,
     S64,
-    UNative,
-    SNative,
-    F32,
-    F64,
 }
 
-impl std::fmt::Display for PrimitiveType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for FixedInt {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.write_str(match self {
             Self::U8 => "u8",
             Self::S8 => "s8",
@@ -27,128 +29,259 @@ impl std::fmt::Display for PrimitiveType {
             Self::S32 => "s32",
             Self::U64 => "u64",
             Self::S64 => "s64",
-            Self::UNative => "unative",
-            Self::SNative => "snative",
-            Self::F32 => "F32",
-            Self::F64 => "F64",
         })
     }
 }
 
-/// A value type or native pointer type.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum SimpleType {
-    Primitive(PrimitiveType),
-    Defined(indices::Type),
-    NativePointer(Box<SimpleType>),
+/// Integer types, including pointer-sized integers.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub enum Int {
+    Fixed(FixedInt),
+    UNative,
+    SNative,
 }
 
-/// Union of all types in the type system that do not represent pointers to the stack that are tracked by the garbage collector.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum HeapType {
-    /// An untyped object reference, similar to `System.Object` or `java.lang.Object`.
-    AnyRef,
-    Val(SimpleType),
-    /// An object reference to an instance of a class or a boxed primitive type.
-    ObjRef(SimpleType),
-    /// An object reference to an array whose elements are of the specified type.
-    ArrayRef(Box<HeapType>),
-    /// A pointer to a field or array element that is tracked by the garbage collector.
-    HeapPointer(Box<HeapType>),
+impl Display for Int {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Fixed(fixed_type) => Display::fmt(fixed_type, f),
+            Self::UNative => f.write_str("unative"),
+            Self::SNative => f.write_str("snative"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("{integer_type} is not a valid fixed-length integer type")]
+pub struct InvalidFixedIntegerTypeError {
+    pub integer_type: Int,
+}
+
+impl TryFrom<Int> for FixedInt {
+    type Error = InvalidFixedIntegerTypeError;
+
+    fn try_from(integer_type: Int) -> Result<Self, Self::Error> {
+        match integer_type {
+            Int::Fixed(fixed_type) => Ok(fixed_type),
+            _ => Err(InvalidFixedIntegerTypeError { integer_type }),
+        }
+    }
+}
+
+/// Floating-point numeric types.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum Real {
+    F32,
+    F64,
+}
+
+impl Display for Real {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::F32 => f.write_str("f32"),
+            Self::F64 => f.write_str("f64"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub enum Primitive {
+    Int(Int),
+    Real(Real),
+}
+macro_rules! primitive_fixed_integer_type {
+    ($helper_name: ident, $case_name: ident) => {
+        pub fn $helper_name() -> Self {
+            Self::Int(Int::Fixed(FixedInt::$case_name))
+        }
+    };
+}
+
+impl Primitive {
+    primitive_fixed_integer_type!(s8, S8);
+    primitive_fixed_integer_type!(u8, U8);
+    primitive_fixed_integer_type!(s16, S16);
+    primitive_fixed_integer_type!(u16, U16);
+    primitive_fixed_integer_type!(s32, S32);
+    primitive_fixed_integer_type!(u32, U32);
+    primitive_fixed_integer_type!(s64, S64);
+    primitive_fixed_integer_type!(u64, U64);
+}
+
+impl Display for Primitive {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Int(integer_type) => Display::fmt(integer_type, f),
+            Self::Real(float_type) => Display::fmt(float_type, f),
+        }
+    }
 }
 
 /// Represents the type of a parameter or a method return type.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub enum AnyType {
-    /// A pointer to a field, array element, or the stack that is tracked by the garbage collector.
-    GargbageCollectedPointer(Box<AnyType>),
-    /// An value type, native pointer type, object reference, or a pointer to a field or array element that is tracked by the
-    /// garbage collector.
-    Heap(HeapType),
-}
-
-impl AnyType {
-    pub fn primitive(primitive_type: PrimitiveType) -> Self {
-        Self::Heap(HeapType::Val(SimpleType::Primitive(primitive_type)))
-    }
+pub enum Any {
+    Primitive(Primitive),
+    Struct(indices::Struct),
+    /// A native pointer to an instance of the specified type.
+    NativePointer(Box<Any>),
+    //FixedArray { element_type: Box<AnyType>, length: IntegerConstant },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 #[repr(u8)]
-pub enum TypeTag {
-    /// The type of things that have no value, currently unused.
+pub enum Tag {
+    /// Reserved, the type of things that have no value.
+    #[deprecated = "Reserved, no use case for the unit type currently exists"]
     Unit = 0,
     U8 = 1,
-    S8 = 2,
-    U16 = 3,
-    S16 = 4,
-    U32 = 5,
-    S32 = 6,
-    U64 = 7,
-    S64 = 8,
-    UNative = 9,
-    SNative = 0x0A,
-    RefAny = 0xB0,
-    /// An object reference to an array containing elements of the following type.
-    RefArray = 0xBA,
-    /// An object reference to a boxed instance of the following primitive or native pointer type.
-    RefBoxed = 0xBB,
-    /// An object reference to a type specified by a type definition index
-    RefDefined = 0xBE,
-    /// A native pointer type containing instances of the following type.
+    U16 = 2,
+    U32 = 4,
+    U64 = 8,
+    UNative = 0xA,
+    S8 = 0x11,
+    S16 = 0x12,
+    S32 = 0x14,
+    S64 = 0x18,
+    SNative = 0x1A,
+    /// A native pointer type pointing to an instance of the following type.
     NativePointer = 0xCC,
-    /// A pointer type containing instances of the following type on the heap.
-    HeapPointer = 0xCB,
-    /// A pointer type containing instances of the following type on the heap or stack.
-    GarbageCollectedPointer = 0xCE,
-    /// A type specified by a type definition index passed by value.
+    /// A struct specified by a struct definition index passed by value.
     Struct = 0xDE,
     F32 = 0xF4,
     F64 = 0xF8,
+    ///// Indicates an array type. Followed by an unsigned integer length, and element type.
+    //FixedArray = 0xFA,
 }
 
-pub(crate) trait TypeTagged {
-    fn tag(&self) -> TypeTag;
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("invalid type signature {tag:#02X}")]
+pub struct InvalidTagError {
+    pub tag: u8,
 }
 
-impl TypeTagged for PrimitiveType {
-    fn tag(&self) -> TypeTag {
-        match self {
-            PrimitiveType::U8 => TypeTag::U8,
-            PrimitiveType::S8 => TypeTag::S8,
-            PrimitiveType::U16 => TypeTag::U16,
-            PrimitiveType::S16 => TypeTag::S16,
-            PrimitiveType::U32 => TypeTag::U32,
-            PrimitiveType::S32 => TypeTag::S32,
-            PrimitiveType::U64 => TypeTag::U64,
-            PrimitiveType::S64 => TypeTag::S64,
-            PrimitiveType::UNative => TypeTag::UNative,
-            PrimitiveType::SNative => TypeTag::SNative,
-            PrimitiveType::F32 => TypeTag::F32,
-            PrimitiveType::F64 => TypeTag::F64,
+impl TryFrom<u8> for Tag {
+    type Error = InvalidTagError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(
+                #[allow(deprecated)]
+                Self::Unit,
+            ),
+            1 => Ok(Self::U8),
+            2 => Ok(Self::U16),
+            4 => Ok(Self::U32),
+            8 => Ok(Self::U64),
+            0xA => Ok(Self::UNative),
+            0x11 => Ok(Self::S8),
+            0x12 => Ok(Self::S16),
+            0x14 => Ok(Self::S32),
+            0x18 => Ok(Self::S64),
+            0x1A => Ok(Self::SNative),
+            0xCC => Ok(Self::NativePointer),
+            0xDE => Ok(Self::Struct),
+            0xF4 => Ok(Self::F32),
+            0xF8 => Ok(Self::F64),
+            tag => Err(InvalidTagError { tag }),
         }
     }
 }
 
-impl TypeTagged for SimpleType {
-    fn tag(&self) -> TypeTag {
+impl FixedInt {
+    pub fn tag(self) -> Tag {
         match self {
-            SimpleType::Primitive(primitive_type) => primitive_type.tag(),
-            SimpleType::Defined(_) => TypeTag::Struct,
-            SimpleType::NativePointer(_) => TypeTag::NativePointer,
+            Self::U8 => Tag::U8,
+            Self::S8 => Tag::S8,
+            Self::U16 => Tag::U16,
+            Self::S16 => Tag::S16,
+            Self::U32 => Tag::U32,
+            Self::S32 => Tag::S32,
+            Self::U64 => Tag::U64,
+            Self::S64 => Tag::S64,
         }
     }
 }
 
-impl TypeTagged for HeapType {
-    fn tag(&self) -> TypeTag {
+impl Int {
+    pub fn tag(self) -> Tag {
         match self {
-            HeapType::Val(value_type) => value_type.tag(),
-            HeapType::ObjRef(SimpleType::Defined(_)) => TypeTag::RefDefined,
-            HeapType::ArrayRef(_) => TypeTag::RefArray,
-            HeapType::ObjRef(_) => TypeTag::RefBoxed,
-            HeapType::AnyRef => TypeTag::RefAny,
-            HeapType::HeapPointer(_) => TypeTag::HeapPointer,
+            Self::Fixed(fixed_type) => fixed_type.tag(),
+            Self::UNative => Tag::UNative,
+            Self::SNative => Tag::SNative,
+        }
+    }
+}
+
+impl Real {
+    pub fn tag(self) -> Tag {
+        match self {
+            Self::F32 => Tag::F32,
+            Self::F64 => Tag::F64,
+        }
+    }
+}
+
+impl Primitive {
+    pub fn tag(self) -> Tag {
+        match self {
+            Self::Int(integer_type) => integer_type.tag(),
+            Self::Real(float_type) => float_type.tag(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+#[error("attempt to convert from invalid tag {tag:?}")]
+pub struct TryFromTagError {
+    pub tag: Tag,
+}
+
+impl TryFrom<Tag> for Int {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        match tag {
+            Tag::S8 => Ok(Self::Fixed(FixedInt::S8)),
+            Tag::U8 => Ok(Self::Fixed(FixedInt::U8)),
+            Tag::S16 => Ok(Self::Fixed(FixedInt::S16)),
+            Tag::U16 => Ok(Self::Fixed(FixedInt::U16)),
+            Tag::S32 => Ok(Self::Fixed(FixedInt::S32)),
+            Tag::U32 => Ok(Self::Fixed(FixedInt::U32)),
+            Tag::S64 => Ok(Self::Fixed(FixedInt::S64)),
+            Tag::U64 => Ok(Self::Fixed(FixedInt::U64)),
+            Tag::UNative => Ok(Self::UNative),
+            Tag::SNative => Ok(Self::SNative),
+            _ => Err(TryFromTagError { tag }),
+        }
+    }
+}
+
+impl TryFrom<Tag> for Real {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        match tag {
+            Tag::F32 => Ok(Self::F32),
+            Tag::F64 => Ok(Self::F64),
+            _ => Err(TryFromTagError { tag }),
+        }
+    }
+}
+
+impl TryFrom<Tag> for Primitive {
+    type Error = TryFromTagError;
+
+    fn try_from(tag: Tag) -> Result<Self, Self::Error> {
+        if let Ok(integer_type) = Int::try_from(tag) {
+            Ok(Self::Int(integer_type))
+        } else if let Ok(real_type) = Real::try_from(tag) {
+            Ok(Self::Real(real_type))
+        } else {
+            Err(TryFromTagError { tag })
         }
     }
 }

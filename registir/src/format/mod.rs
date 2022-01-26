@@ -1,8 +1,10 @@
-use bitflags::bitflags;
-
+/// Contains types that describe the properties of certain structures within the module file.
+pub mod flags;
+mod identifier;
 /// Contains types representing indices to various structures within the module file.
 pub mod indices;
-/// Contains type representing the integer types used within the module file.
+pub mod instruction_set;
+/// Contains types representing the integer types used within the module file.
 ///
 /// Unless specified otherwise, all unsigned and signed integers are in little-endian order.
 pub mod numeric;
@@ -10,46 +12,63 @@ pub mod numeric;
 pub mod structures;
 /// Contains types representing the type system.
 pub mod type_system;
+pub mod versioning;
+
+pub use identifier::Identifier;
+pub use structures::{ByteLengthEncoded as LenBytes, LengthEncodedVector as LenVec};
+pub use type_system::Any as TypeSignature;
+pub use versioning::{Format as FormatVersion, Numbers as VersionNumbers};
+
+pub type LenVecBytes<T> = LenBytes<LenVec<T>>;
 
 /// The magic number for `binmdl` files.
 pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
 
-/// A length-encoded array of variable-length unsigned integers used to indicate a version.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
-pub struct VersionNumbers(pub structures::LengthEncodedVector<numeric::UInteger>);
-
-/// Represents a length-encoded UTF-8 string that cannot be empty.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
-pub struct Identifier(String);
-
-pub use type_system::AnyType as TypeSignature;
-
-/// Describes the return types and parameter types of a method.
-#[derive(Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
-pub struct MethodSignature {
-    /// The types of the values returned by the method.
-    pub return_types: structures::LengthEncodedVector<indices::TypeSignature>,
-    pub parameter_types: structures::LengthEncodedVector<indices::TypeSignature>,
+/// Used to organize the structs, functions, and globals of a module.
+///
+/// # Structure
+/// - [`name`]
+/// - [`Namespace::flags()`]
+/// - [`parent`] (if flags indicate that a parent is present)
+/// - [`structs`]
+/// - [`globals`]
+/// - [`functions`]
+#[derive(Debug, Eq, PartialEq)]
+pub struct Namespace {
+    pub name: indices::Identifier,
+    /// The parent namespace that contains the current namespace.
+    pub parent: Option<indices::Namespace>,
+    pub structs: LenVec<indices::StructDefinition>,
+    pub globals: LenVec<indices::GlobalDefinition>,
+    pub functions: LenVec<indices::FunctionDefinition>,
+    //pub annotations: LengthEncodedVector<>,
 }
 
-pub mod instruction_set;
+impl Namespace {
+    pub fn flags(&self) -> flags::Namespace {
+        if self.parent.is_some() {
+            flags::Namespace::HAS_PARENT
+        } else {
+            flags::Namespace::NONE
+        }
+    }
+}
+
+/// Describes the return types and parameter types of a function.
+#[derive(Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+pub struct FunctionSignature {
+    /// The types of the values returned by the function.
+    pub return_types: LenVec<indices::TypeSignature>,
+    pub parameter_types: LenVec<indices::TypeSignature>,
+}
 
 #[derive(Debug)]
 pub struct CodeExceptionHandler {
-    /// Indicates the block that control will transfer to when an exception is thrown, relative to the current block.
-    pub catch_block: instruction_set::JumpTarget,
-    /// Specifies the input register of the `[catch_block]` that the exception object is stored into when an exception is thrown.
+    /// Indicates the block that control will transfer to when an exception is thrown.
+    pub catch_block: indices::CodeBlock,
+    /// Specifies the input register of the [`catch_block`] that the exception object is stored into when an exception is thrown.
     /// If omitted, the exception object is ignored.
     pub exception_register: Option<indices::InputRegister>,
-}
-
-bitflags! {
-    #[repr(transparent)]
-    pub struct CodeBlockFlags: u8 {
-        const NO_EXCEPTION_HANDLING = 0;
-        const EXCEPTION_HANDLER_IGNORES_EXCEPTION = 0b0000_0001;
-        const EXCEPTION_HANDLER_STORES_EXCEPTION = 0b0000_0010;
-    }
 }
 
 /// # Structure
@@ -61,307 +80,230 @@ bitflags! {
 pub struct CodeBlock {
     /// A variable-length integer placed after the flags indicating the number of input registers for this block.
     ///
-    /// For the entry block's count, this should match the number of arguments of the method.
+    /// For the entry block's count, this should match the number of arguments of the function.
     pub input_register_count: numeric::UInteger,
     /// Specifies the block that control should be transferred to if an exception is thrown inside this block.
     pub exception_handler: Option<CodeExceptionHandler>,
     /// The instructions of the block.
     ///
     /// Both the byte length and the actual number of instructions are included to simplify parsing.
-    pub instructions: structures::DoubleLengthEncodedVector<instruction_set::Instruction>,
+    pub instructions: LenVecBytes<instruction_set::Instruction>,
 }
 
 impl CodeBlock {
     /// Byte at the beginning of the block describing how it handles exceptions.
-    pub fn flags(&self) -> CodeBlockFlags {
+    pub fn flags(&self) -> flags::CodeBlock {
         match self.exception_handler {
-            None => CodeBlockFlags::NO_EXCEPTION_HANDLING,
+            None => flags::CodeBlock::NO_EXCEPTION_HANDLING,
             Some(CodeExceptionHandler {
                 exception_register: Some(_),
                 ..
-            }) => CodeBlockFlags::EXCEPTION_HANDLER_IGNORES_EXCEPTION,
+            }) => flags::CodeBlock::EXCEPTION_HANDLER_IGNORES_EXCEPTION,
             Some(CodeExceptionHandler {
                 exception_register: None,
                 ..
-            }) => CodeBlockFlags::EXCEPTION_HANDLER_STORES_EXCEPTION,
+            }) => flags::CodeBlock::EXCEPTION_HANDLER_STORES_EXCEPTION,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Code {
-    /// The block that will be executed when the method is called, corresponds to block index `0`.
+    /// The block that will be executed when the function is called, corresponds to block index `0`.
     pub entry_block: CodeBlock,
-    pub blocks: structures::LengthEncodedVector<CodeBlock>,
+    pub blocks: LenVec<CodeBlock>,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct DataArray(pub structures::LengthEncodedVector<u8>);
+#[repr(transparent)]
+pub struct DataArray(pub LenVec<u8>);
 
-/// Indicates whether or not a type, field, or method can be imported by another module.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum Visibility {
-    /// Compiler decides whether or not it can be used.
-    Unspecified = 0,
-    /// Can be used as an import by another module.
-    Public = 1,
-    /// Can only be used within the current module.
-    Private = 2,
-}
+impl std::ops::Deref for DataArray {
+    type Target = [u8];
 
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Unspecified
+    fn deref(&self) -> &[u8] {
+        &self.0
     }
 }
 
-impl TryFrom<u8> for Visibility {
-    type Error = ();
+#[derive(Debug)]
+pub struct StructImport {
+    pub module: indices::Module,
+    pub symbol: indices::Identifier,
+    //pub type_parameters: (),
+}
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value < Visibility::Private as u8 {
-            Ok(unsafe { std::mem::transmute(value) })
+#[derive(Debug)]
+pub struct GlobalImport {
+    pub module: indices::Module,
+    pub symbol: indices::Identifier,
+    pub signature: indices::TypeSignature,
+}
+
+#[derive(Debug)]
+pub struct FieldImport {
+    pub owner: indices::Struct,
+    pub symbol: indices::Identifier,
+    pub signature: indices::TypeSignature,
+}
+
+#[derive(Debug)]
+pub struct FunctionImport {
+    pub module: indices::Module,
+    pub symbol: indices::Identifier,
+    pub signature: indices::FunctionSignature,
+    //pub type_parameters: (),
+}
+
+/// Contains the structs, fields, and functions imported by a module.
+#[derive(Debug)]
+pub struct ModuleImports {
+    pub imported_modules: LenVecBytes<ModuleIdentifier>,
+    pub imported_structs: LenVecBytes<StructImport>,
+    pub imported_globals: LenVecBytes<GlobalImport>,
+    pub imported_fields: LenVecBytes<FieldImport>,
+    pub imported_functions: LenVecBytes<FunctionImport>,
+}
+
+/// Represents a collection of fields which form a type.
+///
+/// # Structure
+/// - [`name`]
+/// - [`Struct::flags()`]
+/// - [`symbol`]
+/// - [`layout`]
+/// - [`fields`]
+#[derive(Debug)]
+pub struct Struct {
+    pub name: indices::Identifier,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
+    // TODO: Could merge field vector and layout struct, to ensure that for explicit layouts, the index of a field is right next to its offset.
+    // TODO: If not doing above, could always just store layout inline here, since a layout is unlikely to be reused for multiple structs.
+    pub layout: indices::StructLayout,
+    /// The list of fields that make up this struct, the [`Field::owner`] must point to the current struct.
+    pub fields: LenVec<indices::FieldDefinition>,
+    //pub annotations: LengthEncodedVector<>,
+    //pub type_parameters: (),
+}
+
+impl Struct {
+    pub fn flags(&self) -> flags::Struct {
+        if self.is_export {
+            flags::Struct::IS_EXPORT
         } else {
-            Err(())
+            flags::Struct::NONE
         }
     }
 }
 
-bitflags! {
-    #[repr(transparent)]
-    pub struct FieldFlags: u8 {
-        const READ_ONLY = 0;
-        const MUTABLE = 0b0000_0001;
-        const STATIC = 0b0000_0010;
-        const VALID_MASK = 0b0000_0011;
-    }
-}
-
-bitflags! {
-    #[derive(Default)]
-    #[repr(transparent)]
-    pub struct MethodFlags: u8 {
-        const FINAL = 0;
-        const INSTANCE = 0b0000_0001;
-        const CONSTRUCTOR_OR_INITIALIZER = 0b0000_0010;
-        const CONSTRUCTOR = Self::CONSTRUCTOR_OR_INITIALIZER.bits | Self::INSTANCE.bits;
-        const INITIALIZER = Self::CONSTRUCTOR_OR_INITIALIZER.bits;
-        const VIRTUAL = 0b0000_0100;
-    }
-}
-
-bitflags! {
-    #[derive(Default)]
-    #[repr(transparent)]
-    pub struct TypeFlags: u8 {
-        const FINAL = 0;
-        /// The type can be inherited from.
-        const NOT_FINAL = 0b0000_0001;
-        /// Instances of this type cannot be created.
-        const ABSTRACT = 0b0000_0010;
-    }
-}
-
-macro_rules! flags_helpers {
-    ($name: ident) => {
-        impl $name {
-            pub fn is_valid(self) -> bool {
-                $name::all().contains(self)
+macro_rules! field_flags {
+    ($field_record_type: ty) => {
+        impl $field_record_type {
+            pub fn flags(&self) -> flags::Field {
+                if self.is_export {
+                    flags::Field::IS_EXPORT
+                } else {
+                    flags::Field::NONE
+                }
             }
         }
     };
 }
 
-flags_helpers!(FieldFlags);
-flags_helpers!(MethodFlags);
-flags_helpers!(TypeFlags);
-
-#[derive(Debug)]
-pub struct TypeImport {
-    /// Indicates the module that the type was imported from.
-    pub module: indices::Module,
-    pub name: indices::Identifier,
-    pub namespace: indices::Namespace,
-    //pub type_parameters: (),
-}
-
-#[derive(Debug)]
-pub struct FieldImport {
-    pub owner: indices::Type,
-    pub name: indices::Identifier,
-    //pub flags: FieldFlags,
-    pub signature: indices::TypeSignature,
-}
-
-#[derive(Debug)]
-pub struct MethodImport {
-    pub owner: indices::Type,
-    pub name: indices::Identifier, // TODO: How to handle importing constructors, use flags?
-    //pub flags: MethodFlags,
-    pub signature: indices::MethodSignature,
-    //pub type_parameters: (),
-}
-
-/// Contains the types, fields, and methods imported by a module.
+/// Represents a global variable.
 ///
-/// Note that both field and method imports allow their owner to be a defined type instead of an imported type, to allow usage
-/// of generics in the future.
+/// # Structure
+/// - [`name`]
+/// - [`Global::flags()`]
+/// - [`symbol`]
+/// - [`signature`]
 #[derive(Debug)]
-pub struct ModuleImports {
-    pub imported_modules: structures::DoubleLengthEncodedVector<ModuleIdentifier>,
-    pub imported_types: structures::DoubleLengthEncodedVector<TypeImport>,
-    pub imported_fields: structures::DoubleLengthEncodedVector<FieldImport>,
-    pub imported_methods: structures::DoubleLengthEncodedVector<MethodImport>,
-}
-
-#[derive(Debug)] // TODO: Custom equality comparison to prevent overriding of method twice?
-pub struct MethodOverride {
-    /// Specifies the method to override.
-    pub declaration: indices::Method,
-    /// Specifies the new implementation of the method, the method must be defined in the current type.
-    pub implementation: indices::MethodDefinition,
-}
-
-#[derive(Debug)]
-pub struct Type {
+pub struct Global {
     pub name: indices::Identifier,
-    pub namespace: indices::Namespace,
-    pub visibility: Visibility,
-    pub flags: TypeFlags,
-    pub layout: indices::TypeLayout,
-    pub inherited_types: structures::LengthEncodedVector<indices::Type>,
-    pub fields: structures::LengthEncodedVector<indices::FieldDefinition>,
-    pub methods: structures::LengthEncodedVector<indices::MethodDefinition>,
-    pub vtable: structures::LengthEncodedVector<MethodOverride>,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
+    pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,
-    //pub type_parameters: (),
 }
 
+field_flags!(Global);
+
+/// Represents a field in a [`Struct`].
+///
+/// # Structure
+/// - [`owner`]
+/// - [`name`]
+/// - [`Field::flags()`]
+/// - [`symbol`]
+/// - [`signature`]
 #[derive(Debug)]
 pub struct Field {
-    pub owner: indices::TypeDefinition,
+    pub owner: indices::StructDefinition,
     pub name: indices::Identifier,
-    pub visibility: Visibility,
-    pub flags: FieldFlags,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
     pub signature: indices::TypeSignature,
     //pub annotations: LengthEncodedVector<>,
 }
 
+field_flags!(Field);
+
 #[derive(Debug)]
-pub enum MethodBody {
-    /// Defined in the current module with the specified method body.
+pub enum FunctionBody {
+    /// Defined in the current module with the specified function body.
     Defined(indices::Code),
-    /// Not defined in the current type, but in a derived type.
-    Abstract,
-    /// Defined elsewhere, used by the foreign function interface or to call methods defined in the runtime.
+    //Abstract,
+    /// Defined elsewhere, used by the foreign function interface or to call function defined in the runtime.
     External {
         library: indices::Identifier,
         entry_point_name: indices::Identifier,
     },
 }
 
-impl Default for MethodBody {
-    fn default() -> Self {
-        Self::Abstract
-    }
-}
-
-bitflags! {
-    #[repr(transparent)]
-    pub struct MethodImplementationFlags: u8 {
-        const DEFINED = 0;
-        /// The method body is not defined.
-        const NONE = 0b0000_0001;
-        const EXTERNAL = 0b0000_0010;
-    }
-}
-
-flags_helpers!(MethodImplementationFlags);
-
-impl MethodBody {
-    pub fn flags(&self) -> MethodImplementationFlags {
-        match self {
-            Self::Defined(_) => MethodImplementationFlags::DEFINED,
-            Self::Abstract => MethodImplementationFlags::NONE,
-            Self::External { .. } => MethodImplementationFlags::EXTERNAL,
-        }
-    }
-}
-
-/// Represents a method, constructor, or initializer.
-///
-/// Valid constructors must have the [`MethodFlags::CONSTRUCTOR`] flags set, must have no type parameters, and must
-/// not have any return values.
-///
-/// Valid initializers must have the [`MethodFlags::INITIALIZER`] flag set, and must also have no parameters in addition to the
-/// restrictions regarding valid constructors.
+/// A function definition.
 ///
 /// # Structure
-/// - [`Method::owner`]
-/// - [`Method::name`]
-/// - [`Method::visibility`]
-/// - [`Method::flags`]
-/// - [`Method::implementation_flags()`]
-/// - [`Method::signature`]
-/// - [`Method::body`]
+/// - [`name`]
+/// - [`signature`]
+/// - [`flags()`]
+/// - [`symbol`]
+/// - [`body`]
 #[derive(Debug)]
-pub struct Method {
-    pub owner: indices::TypeDefinition,
+pub struct Function {
     pub name: indices::Identifier,
-    pub visibility: Visibility,
-    pub flags: MethodFlags,
-    pub signature: indices::MethodSignature,
-    /// The method body, in the binary format, this is where the structure for external methods would go.
-    pub body: MethodBody,
+    pub signature: indices::FunctionSignature,
+    pub is_export: bool,
+    pub symbol: indices::Identifier,
+    pub body: FunctionBody,
     //pub annotations: LengthEncodedVector<>,
     //pub type_parameters: (),
 }
 
-impl Method {
-    /// Flags that describe how the method is implemented, placed after the [`Method::flags`] field.
-    pub fn implementation_flags(&self) -> MethodImplementationFlags {
-        self.body.flags()
+impl Function {
+    pub fn flags(&self) -> flags::Function {
+        let mut flags = if self.is_export {
+            flags::Function::IS_EXPORT
+        } else {
+            flags::Function::NONE
+        };
+        if let FunctionBody::External { .. } = self.body {
+            flags |= flags::Function::IS_EXTERNAL;
+        }
+        flags
     }
 }
 
-/// Contains the types, fields, and methods defined in the module.
-///
-/// Each type contains a list indices refering to the fields and methods that it defines, and each field or method contains the
-/// index of the type that defines it. These indices must exactly match in order for the module to be valid.
+/// Contains the structs, globals, fields, and functions defined in the module.
 #[derive(Debug)]
 pub struct ModuleDefinitions {
-    pub defined_types: structures::DoubleLengthEncodedVector<Type>,
-    pub defined_fields: structures::DoubleLengthEncodedVector<Field>,
-    pub defined_methods: structures::DoubleLengthEncodedVector<Method>,
+    pub defined_structs: LenVecBytes<Struct>,
+    pub defined_globals: LenVecBytes<Global>,
+    pub defined_fields: LenVecBytes<Field>,
+    pub defined_functions: LenVecBytes<Function>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum TypeLayoutFlags {
-    /// The runtime or compiler is free to decide how the fields of the type are laid out.
-    Unspecified = 0,
-    /// The fields of the type are laid out sequentially, and the size of the type is calculated automatically.
-    Sequential = 1,
-    /// The size and offset of fields is specified manually.
-    ExplicitOffsets = 2,
-    /// The fields of the type are laid out sequentially, but the size of the type is specified manually.
-    ExplicitSize = 3,
-}
-
-impl TryFrom<u8> for TypeLayoutFlags {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value <= Self::ExplicitSize as u8 {
-            Ok(unsafe { std::mem::transmute(value) })
-        } else {
-            Err(())
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct FieldOffset {
     pub field: indices::Field,
     pub offset: numeric::UInteger,
@@ -370,11 +312,11 @@ pub struct FieldOffset {
 /// Describes how the fields are a type are layout, starting with a flag byte indicating whether or not the type has an explicit layout.
 ///
 /// # Structure
-/// - [`TypeLayout::flags()`]
+/// - [`StructLayout::flags()`]
 /// - Size (optional)
 /// - Field Offsets (optional)
-#[derive(Debug)]
-pub enum TypeLayout {
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub enum StructLayout {
     Unspecified,
     Sequential(Option<numeric::UInteger>),
     Explicit {
@@ -383,23 +325,16 @@ pub enum TypeLayout {
     },
 }
 
-impl TypeLayout {
+impl StructLayout {
     /// Flags at the beginning of the structure indicating the kind of layout used by a type's instances.
-    pub fn flags(&self) -> TypeLayoutFlags {
+    pub fn flags(&self) -> flags::StructLayout {
         match self {
-            Self::Unspecified => TypeLayoutFlags::Unspecified,
-            Self::Sequential(None) => TypeLayoutFlags::Sequential,
-            Self::Explicit { .. } => TypeLayoutFlags::ExplicitOffsets,
-            Self::Sequential(Some(_)) => TypeLayoutFlags::ExplicitSize,
+            Self::Unspecified => flags::StructLayout::Unspecified,
+            Self::Sequential(None) => flags::StructLayout::Sequential,
+            Self::Explicit { .. } => flags::StructLayout::ExplicitOffsets,
+            Self::Sequential(Some(_)) => flags::StructLayout::ExplicitSize,
         }
     }
-}
-
-/// Specifies what version of the module format is being used, placed after the module's integer size field.
-#[derive(Debug, Default, Eq, PartialEq, PartialOrd)]
-pub struct FormatVersion {
-    pub major: numeric::UInteger,
-    pub minor: numeric::UInteger,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -429,102 +364,50 @@ impl ModuleHeader {
 pub static MIN_MODULE_DATA_COUNT: numeric::UInteger = numeric::UInteger(1);
 pub static MAX_MODULE_DATA_COUNT: numeric::UInteger = numeric::UInteger(11);
 
-pub type Namespace = structures::LengthEncodedVector<indices::Identifier>;
+// TODO: Figure out rules for Symbols, maybe disallow ANY duplicate symbols in a module (e.g. a struct cannot have the same symbol as a global).
+// Note that since fields "belong" to a struct, fields with different owners could have duplicate names or even share names with other exports (e.g. a field and a struct could both have the same name, but a two fields belonging to the same struct cannot have the same name)
 
 /// Represents the contents of a `binmdl` file following the [`MAGIC`] number.
 ///
 /// # Structure
 /// - [`Module::integer_size`]
 /// - [`Module::format_version`]
-/// - [`Module::data_count()`]
+/// - data_count ([`numeric::UInteger`])
 /// - [`Module::header`]
 /// - [`Module::identifiers`]
 /// - [`Module::namespaces`]
 /// - [`Module::type_signatures`]
-/// - [`Module::method_signatures`]
-/// - [`Module::method_bodies`]
-/// - [`Module::data_arrays`]
+/// - [`Module::function_signatures`]
+/// - [`Module::function_bodies`]
+/// - [`Module::data`]
 /// - [`Module::imports`]
 /// - [`Module::definitions`]
 /// - [`Module::entry_point`]
-/// - [`Module::type_layouts`]
+/// - [`Module::struct_layouts`]
 #[derive(Debug)]
 pub struct Module {
     pub integer_size: numeric::IntegerSize,
     pub format_version: FormatVersion,
     /// The header, which identifies and describes the module.
-    pub header: structures::ByteLengthEncoded<ModuleHeader>,
-    /// An array containing the names of the types, namespaces, fields, and methods.
-    pub identifiers: structures::DoubleLengthEncodedVector<Identifier>,
-    /// An array of the namespaces containing the imported and defined types.
-    pub namespaces: structures::DoubleLengthEncodedVector<Namespace>,
-    pub type_signatures: structures::DoubleLengthEncodedVector<type_system::AnyType>,
-    pub method_signatures: structures::DoubleLengthEncodedVector<MethodSignature>,
-    /// An array containing the method bodies of the module.
-    pub method_bodies: structures::DoubleLengthEncodedVector<Code>,
-    pub data_arrays: structures::DoubleLengthEncodedVector<DataArray>,
-    pub imports: structures::ByteLengthEncoded<ModuleImports>,
-    pub definitions: structures::ByteLengthEncoded<ModuleDefinitions>,
-    /// An optional index specifying the entry point method of the application. It is up to additional constraints made by the
-    /// compiler or runtime to determine if the signature of the entry point method is valid.
-    pub entry_point: structures::ByteLengthEncoded<Option<indices::MethodDefinition>>,
-    pub type_layouts: structures::DoubleLengthEncodedVector<TypeLayout>,
-    //pub debugging_information: ByteLengthEncoded<>
-}
-
-impl Identifier {
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl std::fmt::Display for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl TryFrom<&Vec<char>> for Identifier {
-    type Error = ();
-
-    fn try_from(chars: &Vec<char>) -> Result<Self, Self::Error> {
-        if chars.is_empty() {
-            Err(())
-        } else {
-            Ok(Self(chars.iter().collect::<String>()))
-        }
-    }
-}
-
-impl TryFrom<&str> for Identifier {
-    type Error = ();
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        if s.is_empty() {
-            Err(())
-        } else {
-            Ok(Self(String::from(s)))
-        }
-    }
-}
-
-impl<T: Into<numeric::UInteger>> std::iter::FromIterator<T> for VersionNumbers {
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut numbers = Vec::new();
-        for i in iter {
-            numbers.push(i.into())
-        }
-        Self(structures::LengthEncodedVector(numbers))
-    }
-}
-
-impl Module {
-    /// Variable-length unsigned integer following the format version indicating the number of length encoded things to follow.
-    pub fn data_count(&self) -> numeric::UInteger {
-        MAX_MODULE_DATA_COUNT
-    }
+    pub header: LenBytes<ModuleHeader>,
+    /// An array containing the names of the structs, namespaces, fields, and functions.
+    pub identifiers: LenVecBytes<Identifier>,
+    /// An array of the namespaces containing the imported and defined structs, fields, and functions.
+    pub namespaces: LenVecBytes<Namespace>,
+    pub type_signatures: LenVecBytes<TypeSignature>,
+    pub function_signatures: LenVecBytes<FunctionSignature>,
+    /// An array containing the function bodies of the module.
+    pub function_bodies: LenVecBytes<Code>,
+    pub data: LenVecBytes<DataArray>,
+    pub imports: LenBytes<ModuleImports>,
+    pub definitions: LenBytes<ModuleDefinitions>,
+    pub struct_layouts: LenVecBytes<StructLayout>,
+    /// An optional index specifying the entry point function of the application. It is up to additional constraints made by the
+    /// compiler or runtime to determine if the signature of the entry point function is valid.
+    ///
+    /// When the module does not have an entry point, the byte length is set to zero.
+    pub entry_point: LenBytes<Option<indices::FunctionDefinition>>,
+    ///// An optional index specifying a function to run once the module is loaded.
+    //pub initializer: LenBytes<Option<indices::FunctionDefinition>>,
+    //pub debugging_information: LenBytes<Option<>>
 }

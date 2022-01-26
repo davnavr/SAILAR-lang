@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+thiserror = "1.0.30"
 typed-arena = "2.0.1"
-lazy_static = "1.4.0"
-regex = "1.5.4"
 registir = { path = "../registir" }

@@ -1,0 +1,37 @@
+.format { .major 0; .minor 8; };
+.module { .name "ControlTransferTests"; .version 1; };
+
+.code @code_helper {
+    .entry $ENTRY;
+    .block $ENTRY (%i_input) {
+        %t_value = const.i s32 4;
+        %t_sum = add %t_value to %i_input;
+        br $END with %t_sum;
+    };
+    .block $END (%i_sum) {
+        %t_two = const.i s32 2;
+        %t_result = add %t_two to %i_sum;
+        ret %t_result;
+    };
+};
+
+.function @helper (s32) returns (s32) {
+    .name "Helper";
+    .body defined @code_helper;
+};
+
+.code @code_main {
+    .entry $ENTRY;
+    .block $ENTRY () {
+        %t_input = const.i s32 5;
+        %t_exit = call @helper %t_input;
+        ret %t_exit;
+    };
+};
+
+.function @f () returns (s32) {
+    .name "Main";
+    .body defined @code_main;
+};
+
+.entry @f;

@@ -10,99 +10,92 @@ struct Arguments {
     output: Option<std::path::PathBuf>,
 }
 
-trait Error {
-    type Description: std::fmt::Display;
+fn main() -> Result<(), registir::writer::Error> {
+    let arguments = Arguments::from_args();
+    let input = std::fs::read_to_string(&arguments.input)?;
+    let (syntax_tree, lexer_errors, parser_errors) = asmdl::parser::tree_from_str(&input);
 
-    fn position(&self) -> Option<asmdl::ast::Position>;
-
-    fn error(&self) -> &Self::Description;
-}
-
-struct WrappedError<E: Error>(E);
-
-impl<E: Error> std::fmt::Display for WrappedError<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("at ")?;
-        match self.0.position() {
-            Some(position) => write!(f, "line {} column {}", position.line + 1, position.column),
-            None => f.write_str("end of file"),
-        }?;
-        write!(f, ": {}", self.0.error())
-    }
-}
-
-impl<E: Error> std::fmt::Debug for WrappedError<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self, f)
-    }
-}
-
-impl<E: Error> std::error::Error for WrappedError<E> {}
-
-impl Error for asmdl::parser::PositionedParserError {
-    type Description = asmdl::parser::Error;
-
-    fn error(&self) -> &Self::Description {
-        &self.error
+    let module;
+    let assembler_errors;
+    match asmdl::assembler::assemble_declarations(&syntax_tree) {
+        Ok(assembled) => {
+            module = Some(assembled);
+            assembler_errors = Vec::new();
+        }
+        Err(errors) => {
+            module = None;
+            assembler_errors = errors;
+        }
     }
 
-    fn position(&self) -> Option<asmdl::ast::Position> {
-        self.position
-    }
-}
+    if !(lexer_errors.is_empty() && parser_errors.is_empty() && assembler_errors.is_empty()) {
+        use ariadne::{Label, Report, ReportKind, Source};
+        // NOTE: ariadne currently does not work with CRLF
 
-impl Error for asmdl::assembler::Error {
-    type Description = asmdl::assembler::Error;
+        let source_path = arguments
+            .input
+            .file_name()
+            .and_then(|file_name| file_name.to_str())
+            .unwrap_or("txtmdl");
 
-    fn error(&self) -> &Self::Description {
-        self
-    }
+        let mut source = (source_path, Source::from(&input));
 
-    fn position(&self) -> Option<asmdl::ast::Position> {
-        asmdl::assembler::Error::position(self).cloned()
-    }
-}
+        let input_errors = lexer_errors
+            .into_iter()
+            .map(|error| error.map(|msg| msg.to_string()))
+            .chain(
+                parser_errors
+                    .into_iter()
+                    .map(|error| error.map(|msg| msg.to_string())),
+            );
 
-fn assemble(args: &Arguments) -> Result<(), Vec<Box<dyn std::error::Error>>> {
-    let syntax_tree = std::fs::read_to_string(&args.input)
-        .map_err(|error| vec![Box::new(error) as Box<dyn std::error::Error>])?;
+        let create_report = |position: &asmdl::ast::Position| {
+            Report::<(&str, asmdl::ast::Position)>::build(
+                ReportKind::Error,
+                source_path,
+                position.start,
+            )
+        };
 
-    let input = asmdl::parser::parse(&syntax_tree).map_err::<Vec<Box<dyn std::error::Error>>, _>(
-        |errors| {
-            errors
-                .into_iter()
-                .map(|error| Box::new(WrappedError(error)) as Box<dyn std::error::Error>)
-                .collect()
-        },
-    )?;
-
-    let module = asmdl::assembler::assemble_declarations(&input)
-        .map_err::<Vec<Box<dyn std::error::Error>>, _>(|errors| {
-            errors
-                .into_iter()
-                .map(|error| Box::new(WrappedError(error)) as Box<dyn std::error::Error>)
-                .collect()
-        })?;
-
-    let mut output = std::fs::File::create(
-        args.output
-            .as_ref()
-            .unwrap_or(&args.input.with_extension("binmdl")),
-    )
-    .map_err(|error| vec![Box::new(error) as Box<dyn std::error::Error>])?;
-
-    registir::writer::write_module(&module, &mut output)
-        .map_err(|error| vec![Box::new(error) as Box<dyn std::error::Error>])
-}
-
-fn main() -> Result<(), ()> {
-    if let Err(errors) = assemble(&Arguments::from_args()) {
-        for message in errors {
-            eprintln!("ERR {}", message)
+        for error in input_errors {
+            let position = error.span();
+            create_report(&position)
+                .with_label(Label::new((source_path, position)).with_message(error))
+                .finish()
+                .eprint(&mut source)?;
         }
 
-        Err(())
-    } else {
-        Ok(())
+        for error in assembler_errors {
+            use asmdl::assembler::ErrorKind as AssemblerError;
+
+            let position = error.location().cloned().unwrap_or_default();
+            let mut report = create_report(&position)
+                .with_label(Label::new((source_path, position)).with_message(error.kind()));
+
+            report = match error.kind() {
+                AssemblerError::InvalidFormatVersion => {
+                    let minimum_version =
+                        registir::format::FormatVersion::minimum_supported_version();
+                    report.with_note(format!(
+                        "minimum supported version is {}.{}",
+                        minimum_version.major, minimum_version.minor
+                    ))
+                }
+                _ => report,
+            };
+
+            report.finish().eprint(&mut source)?;
+        }
+
+        std::process::exit(1)
     }
+
+    let mut output = std::fs::File::create(
+        arguments
+            .output
+            .as_ref()
+            .unwrap_or(&arguments.input.with_extension("binmdl")),
+    )?;
+
+    registir::writer::write_module(module.as_ref().unwrap(), &mut output)
 }

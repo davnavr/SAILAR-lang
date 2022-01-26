@@ -1,4 +1,5 @@
 use crate::format::numeric::UInteger;
+use std::fmt::{Display, Formatter};
 
 pub trait SimpleIndex: TryFrom<usize> {
     fn index(self) -> Result<usize, std::num::TryFromIntError>;
@@ -53,9 +54,9 @@ macro_rules! index_type {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(&self.0, f)
+        impl Display for $name {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                Display::fmt(&self.0, f)
             }
         }
     };
@@ -77,7 +78,7 @@ index_type!(
 );
 
 index_type!(
-    MethodSignature,
+    FunctionSignature,
     "An index into the module's method signatures, starting at `0`."
 );
 
@@ -88,7 +89,7 @@ index_type!(
 
 index_type!(
     CodeBlock,
-    "An index into a method body's other blocks. Note that the entry block cannot be referred to."
+    "An index into a method body's other blocks, with `0` refering to the entry block."
 );
 
 index_type!(
@@ -101,16 +102,22 @@ index_type!(
     "`0` refers to the current module, while the remaining indices refer to the module imports."
 );
 
-index_type!(TypeDefinition, "An index into the module's defined types.");
-
-index_type!(TypeImport, "An index into the module's imported types.");
-
 index_type!(
-    MethodDefinition,
-    "An index into the module's defined methods."
+    StructDefinition,
+    "An index into the module's defined structs."
 );
 
-index_type!(MethodImport, "An index into the module's imported methods.");
+index_type!(StructImport, "An index into the module's imported structs.");
+
+index_type!(
+    FunctionDefinition,
+    "An index into the module's defined functions."
+);
+
+index_type!(
+    FunctionImport,
+    "An index into the module's imported functions."
+);
 
 index_type!(
     FieldDefinition,
@@ -120,7 +127,14 @@ index_type!(
 index_type!(FieldImport, "An index into the module's imported fields.");
 
 index_type!(
-    TypeLayout,
+    GlobalDefinition,
+    "An index into the module's defined globals."
+);
+
+index_type!(GlobalImport, "An index into the module's imported globals.");
+
+index_type!(
+    StructLayout,
     "An index into the module's type layouts, which specify how the fields of a type's instances are arranged."
 );
 
@@ -134,6 +148,7 @@ index_type!(
     "An index corresponding to the temporary registers of a code block."
 );
 
+// NOTE: Usage of bit to indicate what kind of index is being used may mean excessively large modules are not valid.
 macro_rules! double_index_type {
     ($name: ident, $description: literal, $case_name_1: ident, $case_value_1: ty, $case_name_2: ident, $case_value_2: ty) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
@@ -177,6 +192,22 @@ macro_rules! double_index_type {
                 usize::try_from(UInteger::from(index))
             }
         }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                let index = match self {
+                    Self::$case_name_1(value) => {
+                        f.write_str(stringify!($case_name_1))?;
+                        UInteger::from(*value)
+                    }
+                    Self::$case_name_2(value) => {
+                        f.write_str(stringify!($case_name_2))?;
+                        UInteger::from(*value)
+                    }
+                };
+                write!(f, " {}", index)
+            }
+        }
     };
 }
 
@@ -212,10 +243,17 @@ macro_rules! imported_or_defined_index_type {
 }
 
 imported_or_defined_index_type!(
-    Type,
-    "An index into the module's imported types or defined types.",
-    TypeDefinition,
-    TypeImport
+    Struct,
+    "An index into the module's imported structs or defined structs.",
+    StructDefinition,
+    StructImport
+);
+
+imported_or_defined_index_type!(
+    Global,
+    "An index into the module's global imports or defined globals.",
+    GlobalDefinition,
+    GlobalImport
 );
 
 imported_or_defined_index_type!(
@@ -226,8 +264,8 @@ imported_or_defined_index_type!(
 );
 
 imported_or_defined_index_type!(
-    Method,
-    "An index into the module's method imports or defined methods.",
-    MethodDefinition,
-    MethodImport
+    Function,
+    "An index into the module's function imports or defined functions.",
+    FunctionDefinition,
+    FunctionImport
 );

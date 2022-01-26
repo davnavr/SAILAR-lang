@@ -1,105 +1,85 @@
-use crate::{
-    buffers, format,
-    format::{instruction_set, numeric, structures, type_system},
-};
+use crate::buffers;
+use crate::format::{self, instruction_set, numeric, type_system};
+use std::io::Write;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
-pub enum WriteError {
+pub enum Error {
+    #[error("{0} is not a valid size for a vector")]
     VectorTooLarge(usize),
-    InputOutputError(std::io::Error),
+    #[error(transparent)]
+    InputOutputError(#[from] std::io::Error),
 }
 
-impl std::fmt::Display for WriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::VectorTooLarge(size) => write!(f, "{} is not a valid size for a vector", size),
-            Self::InputOutputError(error) => error.fmt(f),
-        }
-    }
+pub type Result = std::result::Result<(), Error>;
+
+fn write_bytes<W: Write>(out: &mut W, bytes: &[u8]) -> Result {
+    out.write_all(bytes)?;
+    Ok(())
 }
 
-impl std::error::Error for WriteError {}
-
-pub type WriteResult = Result<(), WriteError>;
-
-fn write_bytes<W: std::io::Write>(out: &mut W, bytes: &[u8]) -> WriteResult {
-    match out.write_all(bytes) {
-        Ok(()) => Ok(()),
-        Err(err) => Err(WriteError::InputOutputError(err)),
-    }
-}
-
-fn write<W: std::io::Write>(out: &mut W, value: u8) -> WriteResult {
+fn write<W: Write>(out: &mut W, value: u8) -> Result {
     write_bytes(out, &[value])
 }
 
-fn unsigned_integer<W: std::io::Write>(
+fn unsigned_integer<W: Write>(
     out: &mut W,
     numeric::UInteger(value): numeric::UInteger,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     write_bytes(out, &u32::to_le_bytes(value)[..(size.size() as usize)])
 }
 
-fn unsigned_index<W: std::io::Write, I: Into<numeric::UInteger>>(
+fn unsigned_index<W: Write, I: Into<numeric::UInteger>>(
     out: &mut W,
     index: I,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_integer(out, index.into(), size)
 }
 
-fn signed_integer<W: std::io::Write>(
+fn signed_integer<W: Write>(
     out: &mut W,
     numeric::SInteger(value): numeric::SInteger,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_integer(out, numeric::UInteger(value as u32), size)
 }
 
-fn unsigned_length<W: std::io::Write>(
-    out: &mut W,
-    length: usize,
-    size: numeric::IntegerSize,
-) -> WriteResult {
+fn unsigned_length<W: Write>(out: &mut W, length: usize, size: numeric::IntegerSize) -> Result {
     match u32::try_from(length) {
         Ok(value) => unsigned_integer(out, numeric::UInteger(value), size),
-        Err(_) => Err(WriteError::VectorTooLarge(length)),
+        Err(_) => Err(Error::VectorTooLarge(length)),
     }
 }
 
-fn identifier<W: std::io::Write>(
+fn identifier<W: Write>(
     out: &mut W,
     id: &format::Identifier,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     let bytes = id.as_bytes();
     debug_assert!(!bytes.is_empty());
     unsigned_length(out, bytes.len(), size)?;
     write_bytes(out, bytes)
 }
 
-fn format_version<W: std::io::Write>(
+fn format_version<W: Write>(
     out: &mut W,
     version: &format::FormatVersion,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_integer(out, version.major, size)?;
     unsigned_integer(out, version.minor, size)
 }
 
-fn byte_length_encoded<
-    D,
-    R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> WriteResult,
-    W: std::io::Write,
->(
+fn byte_length_encoded<D, R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> Result, W: Write>(
     out: &mut W,
-    structures::ByteLengthEncoded(data): structures::ByteLengthEncoded<&D>,
+    format::LenBytes(data): format::LenBytes<&D>,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
     writer: R,
-) -> WriteResult {
+) -> Result {
     let mut buffer = buffer_pool.rent();
     let bytes: &mut Vec<u8> = &mut buffer;
     writer(bytes, data, buffer_pool)?;
@@ -109,33 +89,27 @@ fn byte_length_encoded<
 
 fn byte_length_optional<
     D,
-    R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> WriteResult,
-    W: std::io::Write,
+    R: FnOnce(&mut Vec<u8>, &D, &buffers::BufferPool) -> Result,
+    W: Write,
 >(
     out: &mut W,
-    structures::ByteLengthEncoded(ref wrapped): structures::ByteLengthEncoded<&Option<D>>,
+    format::LenBytes(ref wrapped): format::LenBytes<&Option<D>>,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
     writer: R,
-) -> WriteResult {
+) -> Result {
     match wrapped {
-        Some(data) => byte_length_encoded(
-            out,
-            structures::ByteLengthEncoded(data),
-            size,
-            buffer_pool,
-            writer,
-        ),
+        Some(data) => byte_length_encoded(out, format::LenBytes(data), size, buffer_pool, writer),
         None => unsigned_integer(out, numeric::UInteger::default(), size),
     }
 }
 
-fn length_encoded_vector<T, R: FnMut(&mut W, &T) -> WriteResult, W: std::io::Write>(
+fn length_encoded_vector<T, R: FnMut(&mut W, &T) -> Result, W: Write>(
     out: &mut W,
-    structures::LengthEncodedVector(items): &structures::LengthEncodedVector<T>,
+    format::LenVec(items): &format::LenVec<T>,
     size: numeric::IntegerSize,
     mut writer: R,
-) -> WriteResult {
+) -> Result {
     unsigned_length(out, items.len(), size)?;
     for e in items {
         writer(out, e)?;
@@ -143,107 +117,73 @@ fn length_encoded_vector<T, R: FnMut(&mut W, &T) -> WriteResult, W: std::io::Wri
     Ok(())
 }
 
-fn length_encoded_indices<I: Into<numeric::UInteger> + Copy, W: std::io::Write>(
+fn length_encoded_indices<I: Into<numeric::UInteger> + Copy, W: Write>(
     out: &mut W,
-    indices: &structures::LengthEncodedVector<I>,
+    indices: &format::LenVec<I>,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     length_encoded_vector(out, indices, size, |out, index| {
         unsigned_index(out, *index, size)
     })
 }
 
-fn version_numbers<W: std::io::Write>(
+fn version_numbers<W: Write>(
     out: &mut W,
     format::VersionNumbers(ref numbers): &format::VersionNumbers,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     length_encoded_vector(out, numbers, size, |out, number| {
         unsigned_integer(out, *number, size)
     })
 }
 
-fn module_identifier<W: std::io::Write>(
+fn module_identifier<W: Write>(
     out: &mut W,
     id: &format::ModuleIdentifier,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     identifier(out, &id.name, size)?;
     version_numbers(out, &id.version, size)
 }
 
-fn module_header<W: std::io::Write>(
+fn module_header<W: Write>(
     out: &mut W,
     header: &format::ModuleHeader,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_integer(out, header.field_count(), size)?;
     module_identifier(out, &header.identifier, size)
 }
 
-fn primitive_type<W: std::io::Write>(out: &mut W, t: type_system::PrimitiveType) -> WriteResult {
-    write(out, type_system::TypeTagged::tag(&t) as u8)
-}
-
-fn simple_type<W: std::io::Write>(
+fn type_signature<W: Write>(
     out: &mut W,
-    t: &type_system::SimpleType,
+    t: &type_system::Any,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    write(out, type_system::TypeTagged::tag(t) as u8)?;
+) -> Result {
+    use type_system::Any;
     match t {
-        type_system::SimpleType::Primitive(_) => Ok(()),
-        type_system::SimpleType::Defined(index) => unsigned_index(out, *index, size),
-        type_system::SimpleType::NativePointer(pointee) => simple_type(out, pointee.as_ref(), size),
-    }
-}
-
-fn heap_type<W: std::io::Write>(
-    out: &mut W,
-    t: &type_system::HeapType,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    write(out, type_system::TypeTagged::tag(t) as u8)?;
-    match t {
-        type_system::HeapType::ObjRef(type_system::SimpleType::Defined(index)) => {
+        Any::Primitive(primitive) => write(out, primitive.tag() as u8),
+        Any::Struct(index) => {
+            write(out, type_system::Tag::Struct as u8)?;
             unsigned_index(out, *index, size)
         }
-        type_system::HeapType::ArrayRef(element_type)
-        | type_system::HeapType::HeapPointer(element_type) => {
-            heap_type(out, element_type.as_ref(), size)
-        }
-        type_system::HeapType::ObjRef(element_type) => simple_type(out, element_type, size),
-        type_system::HeapType::Val(_) | type_system::HeapType::AnyRef => Ok(()),
-    }
-}
-
-fn any_type<W: std::io::Write>(
-    out: &mut W,
-    t: &type_system::AnyType,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    match t {
-        type_system::AnyType::Heap(t) => heap_type(out, t, size),
-        type_system::AnyType::GargbageCollectedPointer(element_type) => {
-            write(out, type_system::TypeTag::GarbageCollectedPointer as u8)?;
-            any_type(out, element_type.as_ref(), size)
+        Any::NativePointer(pointee) => {
+            write(out, type_system::Tag::NativePointer as u8)?;
+            type_signature(out, pointee, size)
         }
     }
 }
 
-fn method_signature<W: std::io::Write>(
+fn function_signature<W: Write>(
     out: &mut W,
-    signature: &format::MethodSignature,
+    signature: &format::FunctionSignature,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     length_encoded_indices(out, &signature.return_types, size)?;
     length_encoded_indices(out, &signature.parameter_types, size)
 }
 
-fn instruction_opcode<W: std::io::Write>(
-    out: &mut W,
-    opcode: instruction_set::Opcode,
-) -> WriteResult {
+fn instruction_opcode<W: Write>(out: &mut W, opcode: instruction_set::Opcode) -> Result {
     let mut value = opcode as usize;
 
     loop {
@@ -258,60 +198,66 @@ fn instruction_opcode<W: std::io::Write>(
     }
 }
 
-fn numeric_type<W: std::io::Write>(out: &mut W, t: instruction_set::NumericType) -> WriteResult {
-    match t {
-        instruction_set::NumericType::Primitive(pt) => primitive_type(out, pt),
-    }
-}
-
-fn basic_arithmetic_operation<W: std::io::Write>(
+fn basic_arithmetic_operation<W: Write>(
     out: &mut W,
     operation: &instruction_set::BasicArithmeticOperation,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     write(out, operation.flags().bits())?;
-    numeric_type(out, operation.return_type)?;
     unsigned_index(out, operation.x, size)?;
     unsigned_index(out, operation.y, size)
 }
 
-fn division_operation<W: std::io::Write>(
-    out: &mut W,
-    operation: &instruction_set::DivisionOperation,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    write(out, operation.flags().bits())?;
-    if let instruction_set::DivideByZeroBehavior::Return(value_index) = operation.divide_by_zero {
-        unsigned_index(out, value_index, size)?;
-    }
-    numeric_type(out, operation.return_type)?;
-    unsigned_index(out, operation.numerator, size)?;
-    unsigned_index(out, operation.denominator, size)
-}
-
-fn bitwise_operation<W: std::io::Write>(
-    out: &mut W,
-    operation: &instruction_set::BitwiseOperation,
-    size: numeric::IntegerSize,
-) -> WriteResult {
-    numeric_type(out, operation.result_type)?;
-    unsigned_index(out, operation.x, size)?;
-    unsigned_index(out, operation.y, size)
-}
-
-fn block_instruction<W: std::io::Write>(
+fn block_instruction<W: Write>(
     out: &mut W,
     instruction: &instruction_set::Instruction,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    use instruction_set::{Instruction, IntegerConstant, PrimitiveType};
+) -> Result {
+    use instruction_set::{Instruction, IntegerConstant};
+    use type_system::FixedInt;
 
     instruction_opcode(out, instruction.opcode())?;
 
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
-        Instruction::Br(target, input_registers) => {
+        Instruction::Switch {
+            comparison,
+            comparison_type,
+            default_target,
+            target_lookup,
+        } => {
+            unsigned_index(out, *comparison, size)?;
+            write(out, comparison_type.tag() as u8)?;
+            unsigned_index(out, *default_target, size)?;
+            unsigned_length(out, target_lookup.len(), size)?;
+
+            let write_value: fn(&mut W, value: i128) -> Result = {
+                match *comparison_type {
+                    FixedInt::S8 | FixedInt::U8 => |out, value| write(out, value as u8),
+                    FixedInt::S16 | FixedInt::U16 => {
+                        |out, value| write_bytes(out, &(value as u16).to_le_bytes())
+                    }
+                    FixedInt::S32 | FixedInt::U32 => {
+                        |out, value| write_bytes(out, &(value as u32).to_le_bytes())
+                    }
+                    FixedInt::S64 | FixedInt::U64 => {
+                        |out, value| write_bytes(out, &(value as u64).to_le_bytes())
+                    }
+                }
+            };
+
+            for (value, target) in target_lookup.iter() {
+                write_value(out, value.value())?;
+                unsigned_index(out, target, size)?;
+            }
+
+            Ok(())
+        }
+        Instruction::Br {
+            target,
+            input_registers,
+        } => {
             unsigned_index(out, *target, size)?;
             length_encoded_indices(out, input_registers, size)
         }
@@ -327,70 +273,73 @@ fn block_instruction<W: std::io::Write>(
             length_encoded_indices(out, input_registers, size)
         }
         Instruction::Call(call) => {
-            write(out, call.flags().bits())?;
-            unsigned_index(out, call.method, size)?;
+            unsigned_index(out, call.function, size)?;
             length_encoded_indices(out, &call.arguments, size)
         }
         Instruction::Add(operation) | Instruction::Sub(operation) | Instruction::Mul(operation) => {
             basic_arithmetic_operation(out, operation, size)
         }
-        Instruction::Div(operation) => division_operation(out, operation, size),
-        Instruction::And(operation)
-        | Instruction::Or(operation)
-        | Instruction::Xor(operation)
-        | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
-        | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
-            bitwise_operation(out, operation, size)
+        // Instruction::Div(operation) => division_operation(out, operation, size),
+        // Instruction::And(operation)
+        // | Instruction::Or(operation)
+        // | Instruction::Xor(operation)
+        // | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
+        // | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
+        //     bitwise_operation(out, operation, size)
+        // }
+        // Instruction::Not(result_type, value) => {
+        //     numeric_type(out, *result_type)?;
+        //     unsigned_index(out, *value, size)
+        // }
+        Instruction::ConstI(constant) => {
+            write(out, constant.value_type().tag() as u8)?;
+            match constant {
+                IntegerConstant::S8(value) => write(out, *value as u8),
+                IntegerConstant::U8(value) => write(out, *value),
+                IntegerConstant::S16(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U16(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::S32(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U32(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::S64(value) => write_bytes(out, &value.to_le_bytes()),
+                IntegerConstant::U64(value) => write_bytes(out, &value.to_le_bytes()),
+            }
         }
-        Instruction::Not(result_type, value) => {
-            numeric_type(out, *result_type)?;
-            unsigned_index(out, *value, size)
+        Instruction::ConvI {
+            target_type,
+            overflow,
+            operand,
+        } => {
+            write(out, target_type.tag() as u8)?;
+            write(out, *overflow as u8)?;
+            unsigned_index(out, *operand, size)
         }
-        Instruction::ConstI(constant) => match constant {
-            IntegerConstant::S8(value) => {
-                primitive_type(out, PrimitiveType::S8)?;
-                write(out, *value as u8)
-            }
-            IntegerConstant::U8(value) => {
-                primitive_type(out, PrimitiveType::U8)?;
-                write(out, *value)
-            }
-            IntegerConstant::S16(value) => {
-                primitive_type(out, PrimitiveType::S16)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U16(value) => {
-                primitive_type(out, PrimitiveType::U16)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::S32(value) => {
-                primitive_type(out, PrimitiveType::S32)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U32(value) => {
-                primitive_type(out, PrimitiveType::U32)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::S64(value) => {
-                primitive_type(out, PrimitiveType::S64)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-            IntegerConstant::U64(value) => {
-                primitive_type(out, PrimitiveType::U64)?;
-                write_bytes(out, &value.to_le_bytes())
-            }
-        },
+        Instruction::Cmp { x, kind, y } => {
+            unsigned_index(out, *x, size)?;
+            write(out, *kind as u8)?;
+            unsigned_index(out, *y, size)
+        }
+        Instruction::Field { field, object } => {
+            unsigned_index(out, *field, size)?;
+            unsigned_index(out, *object, size)
+        }
+        Instruction::Alloca {
+            amount,
+            element_type,
+        } => {
+            unsigned_index(out, *amount, size)?;
+            unsigned_index(out, *element_type, size)
+        }
     }
 }
 
-fn code_block<W: std::io::Write>(
+fn code_block<W: Write>(
     out: &mut W,
     block: &format::CodeBlock,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> WriteResult {
+) -> Result {
     write(out, block.flags().bits())?;
     unsigned_integer(out, block.input_register_count, size)?;
 
@@ -411,75 +360,99 @@ fn code_block<W: std::io::Write>(
     )
 }
 
-fn method_body<W: std::io::Write>(
+fn function_body<W: Write>(
     out: &mut W,
     code: &format::Code,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> WriteResult {
+) -> Result {
     code_block(out, &code.entry_block, size, buffer_pool)?;
     length_encoded_vector(out, &code.blocks, size, |out, block| {
         code_block(out, block, size, buffer_pool)
     })
 }
 
-fn data_array<W: std::io::Write>(
+fn data_array<W: Write>(
     out: &mut W,
-    format::DataArray(structures::LengthEncodedVector(bytes)): &format::DataArray,
+    format::DataArray(format::LenVec(bytes)): &format::DataArray,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_length(out, bytes.len(), size)?;
     write_bytes(out, bytes)
 }
 
-fn type_import<W: std::io::Write>(
+fn namespace_definition<W: Write>(
     out: &mut W,
-    import: &format::TypeImport,
+    namespace: &format::Namespace,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    unsigned_index(out, import.module, size)?;
-    unsigned_index(out, import.name, size)?;
-    unsigned_index(out, import.namespace, size)
+) -> Result {
+    unsigned_index(out, namespace.name, size)?;
+    write(out, namespace.flags().bits())?;
+    if let Some(parent) = namespace.parent {
+        unsigned_index(out, parent, size)?;
+    }
+    length_encoded_indices(out, &namespace.structs, size)?;
+    length_encoded_indices(out, &namespace.globals, size)?;
+    length_encoded_indices(out, &namespace.functions, size)
 }
 
-fn field_import<W: std::io::Write>(
+fn struct_import<W: Write>(
+    out: &mut W,
+    import: &format::StructImport,
+    size: numeric::IntegerSize,
+) -> Result {
+    unsigned_index(out, import.module, size)?;
+    unsigned_index(out, import.symbol, size)
+}
+
+fn global_import<W: Write>(
+    out: &mut W,
+    import: &format::GlobalImport,
+    size: numeric::IntegerSize,
+) -> Result {
+    unsigned_index(out, import.module, size)?;
+    unsigned_index(out, import.symbol, size)?;
+    unsigned_index(out, import.signature, size)
+}
+
+fn field_import<W: Write>(
     out: &mut W,
     import: &format::FieldImport,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_index(out, import.owner, size)?;
-    unsigned_index(out, import.name, size)?;
+    unsigned_index(out, import.symbol, size)?;
     unsigned_index(out, import.signature, size)
 }
 
-fn method_import<W: std::io::Write>(
+fn function_import<W: Write>(
     out: &mut W,
-    import: &format::MethodImport,
+    import: &format::FunctionImport,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    unsigned_index(out, import.owner, size)?;
-    unsigned_index(out, import.name, size)?;
+) -> Result {
+    unsigned_index(out, import.module, size)?;
+    unsigned_index(out, import.symbol, size)?;
     unsigned_index(out, import.signature, size)
 }
 
-fn double_length_encoded_vector<T, R: FnMut(&mut Vec<u8>, &T) -> WriteResult, W: std::io::Write>(
+fn double_length_encoded_vector<T, R: FnMut(&mut Vec<u8>, &T) -> Result, W: Write>(
     out: &mut W,
-    items: structures::ByteLengthEncoded<&structures::LengthEncodedVector<T>>,
+    items: format::LenBytes<&format::LenVec<T>>,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
     writer: R,
-) -> WriteResult {
+) -> Result {
     byte_length_encoded(out, items, size, buffer_pool, |out, v, _| {
         length_encoded_vector(out, v, size, writer)
     })
 }
 
-fn module_imports<W: std::io::Write>(
+fn module_imports<W: Write>(
     out: &mut W,
     imports: &format::ModuleImports,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> WriteResult {
+) -> Result {
     double_length_encoded_vector(
         out,
         imports.imported_modules.as_ref(),
@@ -489,10 +462,17 @@ fn module_imports<W: std::io::Write>(
     )?;
     double_length_encoded_vector(
         out,
-        imports.imported_types.as_ref(),
+        imports.imported_structs.as_ref(),
         size,
         buffer_pool,
-        |out, import| type_import(out, import, size),
+        |out, import| struct_import(out, import, size),
+    )?;
+    double_length_encoded_vector(
+        out,
+        imports.imported_globals.as_ref(),
+        size,
+        buffer_pool,
+        |out, import| global_import(out, import, size),
     )?;
     double_length_encoded_vector(
         out,
@@ -503,68 +483,61 @@ fn module_imports<W: std::io::Write>(
     )?;
     double_length_encoded_vector(
         out,
-        imports.imported_methods.as_ref(),
+        imports.imported_functions.as_ref(),
         size,
         buffer_pool,
-        |out, import| method_import(out, import, size),
+        |out, import| function_import(out, import, size),
     )
 }
 
-fn method_override<W: std::io::Write>(
+fn struct_definition<W: Write>(
     out: &mut W,
-    entry: &format::MethodOverride,
+    definition: &format::Struct,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    unsigned_index(out, entry.declaration, size)?;
-    unsigned_index(out, entry.implementation, size)
-}
-
-fn type_definition<W: std::io::Write>(
-    out: &mut W,
-    definition: &format::Type,
-    size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_index(out, definition.name, size)?;
-    unsigned_index(out, definition.namespace, size)?;
-    write(out, definition.visibility as u8)?;
-    write(out, definition.flags.bits())?;
+    write(out, definition.flags().bits())?;
+    unsigned_index(out, definition.symbol, size)?;
     unsigned_index(out, definition.layout, size)?;
-    length_encoded_indices(out, &definition.inherited_types, size)?;
-    length_encoded_indices(out, &definition.fields, size)?;
-    length_encoded_indices(out, &definition.methods, size)?;
-    length_encoded_vector(out, &definition.vtable, size, |out, entry| {
-        method_override(out, entry, size)
-    })
+    length_encoded_indices(out, &definition.fields, size)
 }
 
-fn field_definition<W: std::io::Write>(
+fn global_definition<W: Write>(
     out: &mut W,
-    definition: &format::Field,
+    definition: &format::Global,
     size: numeric::IntegerSize,
-) -> WriteResult {
-    unsigned_index(out, definition.owner, size)?;
+) -> Result {
     unsigned_index(out, definition.name, size)?;
-    write(out, definition.visibility as u8)?;
-    write(out, definition.flags.bits())?;
+    write(out, definition.flags().bits())?;
+    unsigned_index(out, definition.symbol, size)?;
     unsigned_index(out, definition.signature, size)
 }
 
-fn method_definition<W: std::io::Write>(
+fn field_definition<W: Write>(
     out: &mut W,
-    definition: &format::Method,
+    definition: &format::Field,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_index(out, definition.owner, size)?;
     unsigned_index(out, definition.name, size)?;
-    write(out, definition.visibility as u8)?;
-    write(out, definition.flags.bits())?;
-    write(out, definition.implementation_flags().bits())?;
+    write(out, definition.flags().bits())?;
+    unsigned_index(out, definition.symbol, size)?;
+    unsigned_index(out, definition.signature, size)
+}
+
+fn function_definition<W: Write>(
+    out: &mut W,
+    definition: &format::Function,
+    size: numeric::IntegerSize,
+) -> Result {
+    unsigned_index(out, definition.name, size)?;
     unsigned_index(out, definition.signature, size)?;
+    write(out, definition.flags().bits())?;
+    unsigned_index(out, definition.symbol, size)?;
 
     match definition.body {
-        format::MethodBody::Defined(body) => unsigned_index(out, body, size),
-        format::MethodBody::Abstract => Ok(()),
-        format::MethodBody::External {
+        format::FunctionBody::Defined(body) => unsigned_index(out, body, size),
+        format::FunctionBody::External {
             library,
             entry_point_name,
         } => {
@@ -574,18 +547,25 @@ fn method_definition<W: std::io::Write>(
     }
 }
 
-fn module_definitions<W: std::io::Write>(
+fn module_definitions<W: Write>(
     out: &mut W,
     definitions: &format::ModuleDefinitions,
     size: numeric::IntegerSize,
     buffer_pool: &buffers::BufferPool,
-) -> WriteResult {
+) -> Result {
     double_length_encoded_vector(
         out,
-        definitions.defined_types.as_ref(),
+        definitions.defined_structs.as_ref(),
         size,
         buffer_pool,
-        |out, definition| type_definition(out, definition, size),
+        |out, definition| struct_definition(out, definition, size),
+    )?;
+    double_length_encoded_vector(
+        out,
+        definitions.defined_globals.as_ref(),
+        size,
+        buffer_pool,
+        |out, definition| global_definition(out, definition, size),
     )?;
     double_length_encoded_vector(
         out,
@@ -596,47 +576,47 @@ fn module_definitions<W: std::io::Write>(
     )?;
     double_length_encoded_vector(
         out,
-        definitions.defined_methods.as_ref(),
+        definitions.defined_functions.as_ref(),
         size,
         buffer_pool,
-        |out, definition| method_definition(out, definition, size),
+        |out, definition| function_definition(out, definition, size),
     )
 }
 
-fn field_offset<W: std::io::Write>(
+fn field_offset<W: Write>(
     out: &mut W,
     offset: &format::FieldOffset,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     unsigned_index(out, offset.field, size)?;
     unsigned_index(out, offset.offset, size)
 }
 
-fn type_layout<W: std::io::Write>(
+fn struct_layout<W: Write>(
     out: &mut W,
-    layout: &format::TypeLayout,
+    layout: &format::StructLayout,
     size: numeric::IntegerSize,
-) -> WriteResult {
+) -> Result {
     write(out, layout.flags() as u8)?;
     match layout {
-        format::TypeLayout::Unspecified | format::TypeLayout::Sequential(None) => Ok(()),
-        format::TypeLayout::Sequential(Some(type_size)) => unsigned_index(out, *type_size, size),
-        format::TypeLayout::Explicit {
+        format::StructLayout::Unspecified | format::StructLayout::Sequential(None) => Ok(()),
+        format::StructLayout::Sequential(Some(type_size)) => unsigned_index(out, *type_size, size),
+        format::StructLayout::Explicit {
             size: type_size,
             field_offsets,
         } => {
             unsigned_index(out, *type_size, size)?;
-            unimplemented!("Shouldn't the vector of field offsets be length encoded?")
+            todo!("Shouldn't the vector of field offsets be length encoded?")
         }
     }
 }
 
 /// Writes a binary module.
-pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> WriteResult {
+pub fn write_module<W: Write>(module: &format::Module, out: &mut W) -> Result {
     write_bytes(out, format::MAGIC)?;
     write(out, module.integer_size as u8)?;
     format_version(out, &module.format_version, module.integer_size)?;
-    unsigned_integer(out, module.data_count(), module.integer_size)?;
+    unsigned_integer(out, format::MAX_MODULE_DATA_COUNT, module.integer_size)?;
 
     let buffers = buffers::BufferPool::new();
 
@@ -661,7 +641,7 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
         module.namespaces.as_ref(),
         module.integer_size,
         &buffers,
-        |out, indices| length_encoded_indices(out, indices, module.integer_size),
+        |out, namespace| namespace_definition(out, namespace, module.integer_size),
     )?;
 
     double_length_encoded_vector(
@@ -669,28 +649,28 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
         module.type_signatures.as_ref(),
         module.integer_size,
         &buffers,
-        |out, signature| any_type(out, signature, module.integer_size),
+        |out, signature| type_signature(out, signature, module.integer_size),
     )?;
 
     double_length_encoded_vector(
         out,
-        module.method_signatures.as_ref(),
+        module.function_signatures.as_ref(),
         module.integer_size,
         &buffers,
-        |out, signature| method_signature(out, signature, module.integer_size),
+        |out, signature| function_signature(out, signature, module.integer_size),
     )?;
 
     double_length_encoded_vector(
         out,
-        module.method_bodies.as_ref(),
+        module.function_bodies.as_ref(),
         module.integer_size,
         &buffers,
-        |out, code| method_body(out, code, module.integer_size, &buffers),
+        |out, code| function_body(out, code, module.integer_size, &buffers),
     )?;
 
     double_length_encoded_vector(
         out,
-        module.data_arrays.as_ref(),
+        module.data.as_ref(),
         module.integer_size,
         &buffers,
         |out, data| data_array(out, data, module.integer_size),
@@ -714,20 +694,20 @@ pub fn write_module<W: std::io::Write>(module: &format::Module, out: &mut W) -> 
         },
     )?;
 
+    double_length_encoded_vector(
+        out,
+        module.struct_layouts.as_ref(),
+        module.integer_size,
+        &buffers,
+        |out, layout| struct_layout(out, layout, module.integer_size),
+    )?;
+
     byte_length_optional(
         out,
         module.entry_point.as_ref(),
         module.integer_size,
         &buffers,
         |out, main_index, _| unsigned_index(out, *main_index, module.integer_size),
-    )?;
-
-    double_length_encoded_vector(
-        out,
-        module.type_layouts.as_ref(),
-        module.integer_size,
-        &buffers,
-        |out, layout| type_layout(out, layout, module.integer_size),
     )?;
 
     Ok(())

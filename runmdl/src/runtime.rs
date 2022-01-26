@@ -1,20 +1,45 @@
-use crate::interpreter;
+use crate::interpreter::{self, debugger};
 use getmdl::loader;
+
+const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::call_stack::Capacity =
+    unsafe { interpreter::call_stack::Capacity::new_unchecked(0xFF) };
 
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
+    value_stack_capacity: interpreter::mem::stack::Capacity,
+    call_stack_capacity: interpreter::call_stack::Capacity,
 }
 
-#[derive(Default)]
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
+    value_stack_capacity: interpreter::mem::stack::Capacity,
+    call_stack_capacity: interpreter::call_stack::Capacity,
+}
+
+impl<'l> Default for Initializer<'l> {
+    fn default() -> Self {
+        Self {
+            runtime: None,
+            loader: None,
+            value_stack_capacity: interpreter::mem::stack::DEFAULT_CAPACITY,
+            call_stack_capacity: DEFAULT_CALL_STACK_MAX_DEPTH,
+        }
+    }
 }
 
 impl<'l> Initializer<'l> {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_call_stack_capacity(&mut self, capacity: interpreter::call_stack::Capacity) {
+        self.call_stack_capacity = capacity;
+    }
+
+    pub fn set_value_stack_capacity(&mut self, capacity: interpreter::mem::stack::Capacity) {
+        self.value_stack_capacity = capacity;
     }
 }
 
@@ -27,8 +52,8 @@ pub enum Error {
     InvalidReturnValueType(interpreter::register::TryFromRegisterValueError),
 }
 
-impl From<loader::LoadError> for Error {
-    fn from(error: loader::LoadError) -> Self {
+impl From<loader::Error> for Error {
+    fn from(error: loader::Error) -> Self {
         Self::InterpreterError(interpreter::Error::with_no_stack_trace(
             interpreter::ErrorKind::LoadError(error),
         ))
@@ -47,26 +72,58 @@ impl<'l> Runtime<'l> {
         application: registir::format::Module,
     ) -> &'l Self {
         let (loader, program) = loader::Loader::initialize(&mut initializer.loader, application);
-        initializer.runtime.insert(Self { loader, program })
+        initializer.runtime.insert(Self {
+            loader,
+            program,
+            value_stack_capacity: initializer.value_stack_capacity,
+            call_stack_capacity: initializer.call_stack_capacity,
+        })
+    }
+
+    pub fn loader(&'l self) -> &'l loader::Loader<'l> {
+        self.loader
+    }
+
+    /// Returns the module containing the entry point to execute.
+    pub fn program(&'l self) -> &'l loader::Module<'l> {
+        self.program
+    }
+
+    pub fn invoke(
+        &'l self,
+        function: &'l loader::Function<'l>,
+        arguments: &[interpreter::Register],
+        debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
+    ) -> Result<Vec<interpreter::Register>, Error> {
+        let results = interpreter::run(
+            self.loader,
+            arguments,
+            function,
+            self.call_stack_capacity,
+            self.value_stack_capacity,
+            debugger,
+        )?;
+
+        Ok(results)
     }
 
     /// Interprets the entry point of the program, supplying the specified arguments.
     pub fn invoke_entry_point(
         &'l self,
         argv: &[&str],
-        //max_stack_capacity: usize,
-        debugger_channel: Option<interpreter::debugger::MessageReceiver>,
+        debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
     ) -> Result<i32, Error> {
         if !argv.is_empty() {
             todo!("Command line arguments are not yet supported")
         }
 
-        let entry_point = self
-            .program
-            .entry_point()?
-            .ok_or(Error::MissingEntryPoint)?;
-
-        let results = interpreter::run(&self.loader, &[], entry_point, debugger_channel)?;
+        let results = self.invoke(
+            self.program
+                .entry_point()?
+                .ok_or(Error::MissingEntryPoint)?,
+            &[],
+            debugger,
+        )?;
 
         match results.as_slice() {
             [] => Ok(0),

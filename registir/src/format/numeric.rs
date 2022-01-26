@@ -1,10 +1,10 @@
-/// Represents an unsigned integer.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+/// Represents an unsigned integer in little-endian order.
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct UInteger(pub u32);
 
-/// Represents a signed integer.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+/// Represents a signed integer in little-endian order.
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct SInteger(pub i32);
 
@@ -36,14 +36,20 @@ macro_rules! integer_traits {
             }
         }
 
+        impl std::fmt::Debug for $t {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+
         impl std::fmt::Display for $t {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 std::fmt::Display::fmt(&self.0, f)
             }
         }
 
         impl std::fmt::UpperHex for $t {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 std::fmt::UpperHex::fmt(&self.0, f)
             }
         }
