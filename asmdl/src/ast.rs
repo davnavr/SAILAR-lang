@@ -1,5 +1,7 @@
 pub use registir::format::{
-    instruction_set::OverflowBehavior, type_system::Primitive as PrimitiveType, Identifier,
+    instruction_set::{ComparisonKind, OverflowBehavior},
+    type_system::Primitive as PrimitiveType,
+    Identifier,
 };
 
 pub type Position = std::ops::Range<usize>;
@@ -142,6 +144,11 @@ pub enum Instruction {
         operand: RegisterSymbol,
         target_type: Positioned<PrimitiveType>,
         flag_overflow: bool,
+    },
+    Cmp {
+        x: RegisterSymbol,
+        kind: ComparisonKind,
+        y: RegisterSymbol,
     },
     Field {
         field: GlobalSymbol,

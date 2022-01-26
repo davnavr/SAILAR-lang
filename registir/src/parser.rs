@@ -41,6 +41,8 @@ pub enum Error {
     InvalidNumericType(u8),
     #[error("{0:#02X} is not a valid overflow behavior")]
     InvalidOverflowBehavior(u8),
+    #[error("{0:#02X} is not a valid comparison kind")]
+    InvalidComparisonKind(u8),
     #[error("{0:#02X} is not a valid struct flags combination")]
     InvalidStructFlags(u8),
     #[error("{0:#02X} is not a valid field flags combination")]
@@ -355,6 +357,12 @@ fn instruction<R: Read>(
             overflow: instruction_set::OverflowBehavior::try_from(byte(src)?)
                 .map_err(Error::InvalidOverflowBehavior)?,
             operand: unsigned_index(src, size)?,
+        }),
+        Opcode::Cmp => Ok(Instruction::Cmp {
+            x: unsigned_index(src, size)?,
+            kind: instruction_set::ComparisonKind::try_from(byte(src)?)
+                .map_err(Error::InvalidComparisonKind)?,
+            y: unsigned_index(src, size)?,
         }),
         Opcode::Field => Ok(Instruction::Field {
             field: unsigned_index(src, size)?,

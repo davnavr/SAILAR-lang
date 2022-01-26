@@ -315,6 +315,11 @@ fn block_instruction<W: Write>(
             write(out, *overflow as u8)?;
             unsigned_index(out, *operand, size)
         }
+        Instruction::Cmp { x, kind, y } => {
+            unsigned_index(out, *x, size)?;
+            write(out, *kind as u8)?;
+            unsigned_index(out, *y, size)
+        }
         Instruction::Field { field, object } => {
             unsigned_index(out, *field, size)?;
             unsigned_index(out, *object, size)

@@ -103,12 +103,12 @@ pub enum Opcode {
     RotR,
     ConstI,
     ConstF,
-    CmpEq,
-    CmpNe,
-    CmpLt,
-    CmpGt,
-    CmpLe,
-    CmpGe,
+    Cmp,
+    PopCnt,
+    Clz,
+    Ctz,
+    Reverse,
+    Function,
     ConvI,
     ConvF,
     Field,
@@ -261,6 +261,34 @@ impl SwitchLookupTable {
     }
 }
 
+/// Indicates the kind of comparison performed on the operands of a `cmp` instruction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ComparisonKind {
+    Equal = 0,
+    NotEqual,
+    /// Checks if `x` is less than `y`.
+    LessThan,
+    /// Checks if `x` is greater than `y`.
+    GreaterThan,
+    /// Checks if `x` is less than or equal to `y`.
+    LessThanOrEqual,
+    /// Checks if `x` is greater than or equal to `y`.
+    GreaterThanOrEqual,
+}
+
+impl TryFrom<u8> for ComparisonKind {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value <= Self::GreaterThanOrEqual as u8 {
+            Ok(unsafe { std::mem::transmute(value) })
+        } else {
+            Err(value)
+        }
+    }
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
@@ -395,6 +423,20 @@ pub enum Instruction {
     //    operand: RegisterIndex
     //},
     /// ```txt
+    /// <result> = cmp <x> eq <y>;
+    /// <result> = cmp <x> ne <y>;
+    /// <result> = cmp <x> lt <y>;
+    /// <result> = cmp <x> gt <y>;
+    /// <result> = cmp <x> le <y>;
+    /// <result> = cmp <x> ge <y>;
+    /// ```
+    /// Performs a comparison, returning an unsigned byte `1` if the comparison performed is true, and `0` otherwise.
+    Cmp {
+        x: RegisterIndex,
+        kind: ComparisonKind,
+        y: RegisterIndex,
+    },
+    /// ```txt
     /// <address> = field <field> of <ty> in <object>;
     /// ```
     /// Returns a pointer to the `field` in the specified `object`.
@@ -448,6 +490,7 @@ impl Instruction {
             // Instruction::RotR(_) => Opcode::RotR,
             Instruction::ConstI(_) => Opcode::ConstI,
             Instruction::ConvI { .. } => Opcode::ConvI,
+            Instruction::Cmp { .. } => Opcode::Cmp,
             Instruction::Field { .. } => Opcode::Field,
             Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
@@ -485,6 +528,7 @@ impl Instruction {
             // | Instruction::RotL(_)
             // | Instruction::RotR(_)
             | Instruction::ConstI(_)
+            | Instruction::Cmp { .. }
             | Instruction::Field { .. }
             | Instruction::Alloca { .. } => 1,
         }

@@ -336,23 +336,39 @@ fn parser() -> impl Parser<Token, Tree, Error = Error> {
                     basic_arithmetic_operation!("add", "to", ast::Instruction::Add),
                     basic_arithmetic_operation!("sub", "from", ast::Instruction::Sub),
                     basic_arithmetic_operation!("mul", "by", ast::Instruction::Mul),
+                    keyword("cmp")
+                        .ignore_then(register_symbol)
+                        .then(choice((
+                            keyword("eq").map(|_| ast::ComparisonKind::Equal),
+                            keyword("ne").map(|_| ast::ComparisonKind::NotEqual),
+                            keyword("lt").map(|_| ast::ComparisonKind::LessThan),
+                            keyword("gt").map(|_| ast::ComparisonKind::GreaterThan),
+                            keyword("le").map(|_| ast::ComparisonKind::LessThanOrEqual),
+                            keyword("ge").map(|_| ast::ComparisonKind::GreaterThanOrEqual),
+                        )))
+                        .then(register_symbol)
+                        .map(|((x, kind), y)| ast::Instruction::Cmp { x, kind, y }),
                 )),
-                choice((keyword("const.i")
-                    .ignore_then(with_position(primitive_type).then(with_position(integer_literal)))
-                    .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),)),
-                choice((keyword("conv.i")
-                    .ignore_then(register_symbol)
-                    .then(
-                        keyword("to")
-                            .ignore_then(with_position(primitive_type).then(overflow_flag)),
-                    )
-                    .map(
-                        |(operand, (target_type, flag_overflow))| ast::Instruction::ConvI {
-                            operand,
-                            target_type,
-                            flag_overflow,
-                        },
-                    ),)),
+                choice((
+                    keyword("const.i")
+                        .ignore_then(
+                            with_position(primitive_type).then(with_position(integer_literal)),
+                        )
+                        .map(|(integer_type, value)| ast::Instruction::ConstI(integer_type, value)),
+                    keyword("conv.i")
+                        .ignore_then(register_symbol)
+                        .then(
+                            keyword("to")
+                                .ignore_then(with_position(primitive_type).then(overflow_flag)),
+                        )
+                        .map(
+                            |(operand, (target_type, flag_overflow))| ast::Instruction::ConvI {
+                                operand,
+                                target_type,
+                                flag_overflow,
+                            },
+                        ),
+                )),
                 choice((
                     keyword("field")
                         .ignore_then(global_symbol)

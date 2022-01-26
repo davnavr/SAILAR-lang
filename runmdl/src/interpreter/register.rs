@@ -92,6 +92,7 @@ int_val_display_impl!(Display);
 int_val_display_impl!(UpperHex);
 int_val_display_impl!(LowerHex);
 
+// Should equality of pointers take into account pointee_size?
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointerVal {
     pointee_size: usize,

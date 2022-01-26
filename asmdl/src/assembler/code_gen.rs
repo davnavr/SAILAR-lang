@@ -398,6 +398,16 @@ impl<'a> CodeBlockAssembler<'a> {
                         },
                     });
                 }
+                ast::Instruction::Cmp { x, kind, y } => {
+                    let x_register = lookup_register(errors, register_lookup, x);
+                    let y_register = lookup_register(errors, register_lookup, y);
+                    expected_return_count = 1;
+                    next_instruction = try_some!(Instruction::Cmp {
+                        x: x_register?,
+                        kind: *kind,
+                        y: y_register?,
+                    });
+                }
                 ast::Instruction::Field {
                     field,
                     declaring_struct,
