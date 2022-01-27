@@ -1,9 +1,10 @@
-use crate::loader::{self, Result};
+use crate::loader::{self, cache, Result};
 use sailar::format;
 
 pub struct Function<'a> {
     source: &'a format::Function,
     module: &'a loader::Module<'a>,
+    code: cache::Once<Option<&'a loader::Code<'a>>>,
 }
 
 #[derive(PartialEq)]
@@ -34,7 +35,11 @@ impl<'a> Signature<'a> {
 
 impl<'a> Function<'a> {
     pub(super) fn new(module: &'a loader::Module<'a>, source: &'a format::Function) -> Self {
-        Self { source, module }
+        Self {
+            source,
+            module,
+            code: cache::Once::default(),
+        }
     }
 
     pub fn is_export(&'a self) -> bool {
@@ -67,6 +72,18 @@ impl<'a> Function<'a> {
 
     pub fn signature(&'a self) -> Result<&'a Signature<'a>> {
         self.module.load_function_signature(self.source.signature)
+    }
+
+    /// Returns the code associated with the function, if its body is defined in the declaring module.
+    pub fn code(&'a self) -> Result<Option<&'a loader::Code<'a>>> {
+        self.code
+            .get_or_insert_fallible(|| match self.raw_body() {
+                format::FunctionBody::Defined(index) => {
+                    Ok(Some(self.module.load_code_raw(*index)?))
+                }
+                format::FunctionBody::External { .. } => Ok(None),
+            })
+            .map(|result| *result)
     }
 }
 

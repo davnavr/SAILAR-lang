@@ -36,9 +36,13 @@ impl<'a> Type<'a> {
                 | Primitive::Real(Real::F32) => 4,
                 Primitive::Int(Int::Fixed(FixedInt::U64 | FixedInt::S64))
                 | Primitive::Real(Real::F64) => 8,
-                Primitive::Int(Int::UNative | Int::SNative) => u32::from(self.module.loader().pointer_size()),
+                Primitive::Int(Int::UNative | Int::SNative) => {
+                    u32::from(self.module.loader().pointer_size())
+                }
             },
-            format::TypeSignature::NativePointer(_) => u32::from(self.module.loader().pointer_size()),
+            format::TypeSignature::NativePointer(_) => {
+                u32::from(self.module.loader().pointer_size())
+            }
             format::TypeSignature::Struct(struct_index) => {
                 self.module.load_struct_raw(*struct_index)?.total_size()?
             }

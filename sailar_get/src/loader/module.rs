@@ -9,6 +9,7 @@ pub struct Module<'a> {
         cache::IndexLookup<'a, format::indices::FunctionSignature, loader::FunctionSignature<'a>>,
     type_signature_cache:
         cache::IndexLookup<'a, format::indices::TypeSignature, loader::TypeSignature<'a>>,
+    code_cache: cache::IndexLookup<'a, format::indices::Code, loader::Code<'a>>,
     loaded_structs: cache::IndexLookup<'a, format::indices::StructDefinition, loader::Struct<'a>>,
     //loaded_globals
     loaded_functions:
@@ -43,6 +44,7 @@ impl<'a> Module<'a> {
             loader,
             function_signature_cache: cache::IndexLookup::new(),
             type_signature_cache: cache::IndexLookup::new(),
+            code_cache: cache::IndexLookup::new(),
             loaded_structs: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
@@ -100,6 +102,7 @@ impl<'a> Module<'a> {
         Ok(types)
     }
 
+    // TODO: Rename to load_function_signature_source
     pub fn load_function_signature_raw(
         &'a self,
         index: format::indices::FunctionSignature,
@@ -107,6 +110,7 @@ impl<'a> Module<'a> {
         loader::read_index_from(index, &self.source.function_signatures, Ok)
     }
 
+    // TODO: Rename to load_function_signature_raw
     pub fn load_function_signature(
         &'a self,
         index: format::indices::FunctionSignature,
@@ -124,8 +128,17 @@ impl<'a> Module<'a> {
         )
     }
 
-    pub fn load_code_raw(&'a self, index: format::indices::Code) -> Result<&'a format::Code> {
+    pub fn load_code_source(&'a self, index: format::indices::Code) -> Result<&'a format::Code> {
         loader::read_index_from(index, &self.source.function_bodies, Ok)
+    }
+
+    pub fn load_code_raw(&'a self, index: format::indices::Code) -> Result<&'a loader::Code<'a>> {
+        load_raw_cached(
+            &self.code_cache,
+            index,
+            |_| self.load_code_source(index).map(Some),
+            |code| Ok(loader::Code::new(self, code)),
+        )
     }
 
     pub fn load_struct_definition_raw(

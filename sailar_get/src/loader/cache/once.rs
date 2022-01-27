@@ -1,11 +1,17 @@
 use std::cell::UnsafeCell;
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Once<T> {
     value: UnsafeCell<Option<T>>,
 }
 
 impl<T> Once<T> {
+    pub fn new() -> Self {
+        Self {
+            value: std::cell::UnsafeCell::new(None),
+        }
+    }
+
     pub fn get_or_insert_fallible<'a, E, F: FnOnce() -> Result<T, E>>(
         &'a self,
         initializer: F,
@@ -17,5 +23,11 @@ impl<T> Once<T> {
         } else {
             Ok(value.insert(initializer()?))
         }
+    }
+}
+
+impl<T> Default for Once<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }

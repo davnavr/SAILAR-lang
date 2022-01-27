@@ -2,6 +2,7 @@ use sailar::format;
 use std::collections::hash_map;
 
 mod cache;
+mod code;
 mod error;
 mod field;
 mod function;
@@ -10,6 +11,7 @@ mod structure;
 mod symbol;
 mod type_signature;
 
+pub use code::{Block as CodeBlock, Code};
 pub use error::Error;
 pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};

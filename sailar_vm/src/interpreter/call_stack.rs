@@ -463,7 +463,7 @@ impl<'l> Stack<'l> {
 
         match function.raw_body() {
             format::FunctionBody::Defined(code_index) => {
-                let code = function.declaring_module().load_code_raw(*code_index)?;
+                let code = function.declaring_module().load_code_source(*code_index)?;
                 let previous = self.current.take();
 
                 let mut frame = Box::new(Frame {
