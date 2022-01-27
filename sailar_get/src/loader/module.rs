@@ -3,6 +3,7 @@ use sailar::format;
 use std::collections::hash_map;
 
 pub struct Module<'a> {
+    loader: &'a loader::Loader<'a>,
     source: format::Module,
     function_signature_cache:
         cache::IndexLookup<'a, format::indices::FunctionSignature, loader::FunctionSignature<'a>>,
@@ -36,9 +37,10 @@ where
 }
 
 impl<'a> Module<'a> {
-    pub(crate) fn new(source: format::Module) -> Self {
+    pub(super) fn new(loader: &'a loader::Loader<'a>, source: format::Module) -> Self {
         Self {
             source,
+            loader,
             function_signature_cache: cache::IndexLookup::new(),
             type_signature_cache: cache::IndexLookup::new(),
             loaded_structs: cache::IndexLookup::new(),
@@ -46,6 +48,10 @@ impl<'a> Module<'a> {
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
             function_lookup_cache: std::cell::RefCell::new(hash_map::HashMap::new()),
         }
+    }
+
+    pub fn loader(&'a self) -> &'a loader::Loader<'a> {
+        self.loader
     }
 
     /// Retrieves the module's name and version.

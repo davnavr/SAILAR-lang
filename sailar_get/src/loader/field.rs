@@ -4,7 +4,7 @@ use sailar::format;
 pub struct Field<'a> {
     source: &'a format::Field,
     declaring_struct: &'a loader::Struct<'a>,
-    offset: usize,
+    offset: u32,
     signature: &'a loader::TypeSignature<'a>,
 }
 
@@ -13,7 +13,7 @@ impl<'a> Field<'a> {
         declaring_struct: &'a loader::Struct<'a>,
         source: &'a format::Field,
         signature: &'a loader::TypeSignature<'a>,
-        offset: usize,
+        offset: u32,
     ) -> Self {
         Self {
             source,
@@ -40,7 +40,7 @@ impl<'a> Field<'a> {
             .load_identifier_raw(self.source.symbol)
     }
 
-    pub fn offset(&'a self) -> usize {
+    pub fn offset(&'a self) -> u32 {
         self.offset
     }
 
@@ -48,7 +48,7 @@ impl<'a> Field<'a> {
         self.signature
     }
 
-    pub fn size(&'a self) -> Result<usize> {
+    pub fn size(&'a self) -> Result<u32> {
         self.signature().size()
     }
 }

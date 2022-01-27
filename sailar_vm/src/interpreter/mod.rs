@@ -319,17 +319,24 @@ impl<'l> Interpreter<'l> {
                 let object_register = current_frame.registers.get(*object)?;
 
                 if let register::Register::Pointer(pointer) = object_register {
-                    let (address, overflowed) = pointer.overflowing_add(target_field.offset());
+                    let (address, overflowed) =
+                        pointer.overflowing_add(target_field.offset().try_into().unwrap());
+
                     if overflowed {
                         todo!("how to deal with overflow when returning field address?");
                     }
+                    
                     current_frame
                         .registers
                         .define_temporary(Register::Pointer(address))
                 } else {
                     return Err(ErrorKind::RegisterTypeMismatch {
                         expected: register::Type::Pointer(
-                            target_field.declaring_struct().total_size()?,
+                            target_field
+                                .declaring_struct()
+                                .total_size()?
+                                .try_into()
+                                .unwrap(),
                         ),
                         actual: object_register.value_type(),
                     });
@@ -346,7 +353,9 @@ impl<'l> Interpreter<'l> {
                     .function()
                     .declaring_module()
                     .load_type_signature(*element_type)?
-                    .size()?;
+                    .size()?
+                    .try_into()
+                    .unwrap();
 
                 let address = usize::try_from(current_frame.registers.get(*amount)?)
                     .ok()

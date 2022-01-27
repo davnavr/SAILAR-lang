@@ -54,36 +54,43 @@ fn read_index_from<
 }
 
 pub struct Loader<'a> {
+    pointer_size: u8,
+    // TODO: Don't need arena for modules.
     module_arena: typed_arena::Arena<Module<'a>>,
     loaded_modules: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
 }
 
 impl<'a> Loader<'a> {
-    fn new_empty() -> Self {
-        Self {
+    pub fn initialize(
+        loader: &'a mut Option<Loader<'a>>,
+        pointer_size: u8,
+        application: format::Module,
+    ) -> (&'a Self, &'a Module<'a>) {
+        let loaded = loader.insert(Self {
+            pointer_size,
             module_arena: typed_arena::Arena::new(),
             loaded_modules: std::cell::RefCell::new(hash_map::HashMap::new()),
-        }
+        });
+
+        (loaded, loaded.load_module_raw(application))
     }
 
+    /// Returns the presumed pointer size, in bytes, used by all loaded modules.
+    pub fn pointer_size(&'a self) -> u8 {
+        self.pointer_size
+    }
+
+    // TODO: Return error if module with same id already loaded. Rename this to force_load_module
     fn load_module_raw(&'a self, source: format::Module) -> &'a Module<'a> {
         let identifier = source.header.0.identifier.clone();
         match self.loaded_modules.borrow_mut().entry(identifier) {
             hash_map::Entry::Vacant(vacant) => {
-                let loaded = self.module_arena.alloc(Module::new(source));
+                let loaded = self.module_arena.alloc(Module::new(self, source));
                 vacant.insert(loaded);
                 loaded
             }
             hash_map::Entry::Occupied(occupied) => occupied.get(),
         }
-    }
-
-    pub fn initialize(
-        loader: &'a mut Option<Loader<'a>>,
-        application: format::Module,
-    ) -> (&'a Self, &'a Module<'a>) {
-        let loaded = loader.insert(Loader::new_empty());
-        (loaded, loaded.load_module_raw(application))
     }
 
     // TODO: How to force loading of a module if it is an import of one of the already loaded modules?

@@ -66,12 +66,16 @@ impl From<interpreter::Error> for Error {
     }
 }
 
+const RUNTIME_POINTER_SIZE: u8 = std::mem::size_of::<usize>() as u8;
+
 impl<'l> Runtime<'l> {
     pub fn initialize(
         initializer: &'l mut Initializer<'l>,
         application: sailar::format::Module,
     ) -> &'l Self {
-        let (loader, program) = loader::Loader::initialize(&mut initializer.loader, application);
+        let (loader, program) =
+            loader::Loader::initialize(&mut initializer.loader, RUNTIME_POINTER_SIZE, application);
+
         initializer.runtime.insert(Self {
             loader,
             program,

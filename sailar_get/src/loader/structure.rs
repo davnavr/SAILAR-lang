@@ -5,7 +5,7 @@ use std::collections::hash_map;
 #[derive(Default)]
 struct Layout<'a> {
     fields: hash_map::HashMap<format::indices::FieldDefinition, loader::Field<'a>>,
-    total_size: usize,
+    total_size: u32,
 }
 
 pub struct Struct<'a> {
@@ -71,7 +71,7 @@ impl<'a> Struct<'a> {
         })
     }
 
-    pub fn total_size(&'a self) -> Result<usize> {
+    pub fn total_size(&'a self) -> Result<u32> {
         Ok(self.layout()?.total_size)
     }
 

@@ -4,7 +4,7 @@ use sailar::format;
 /// Represents a type signature.
 pub struct Type<'a> {
     source: &'a format::TypeSignature,
-    size: std::cell::Cell<Option<usize>>,
+    size: std::cell::Cell<Option<u32>>,
     module: &'a loader::Module<'a>,
 }
 
@@ -25,7 +25,7 @@ impl<'a> Type<'a> {
         self.source
     }
 
-    fn calculate_size(&'a self) -> Result<usize> {
+    fn calculate_size(&'a self) -> Result<u32> {
         use format::type_system::{FixedInt, Int, Primitive, Real};
 
         Ok(match self.source {
@@ -36,16 +36,16 @@ impl<'a> Type<'a> {
                 | Primitive::Real(Real::F32) => 4,
                 Primitive::Int(Int::Fixed(FixedInt::U64 | FixedInt::S64))
                 | Primitive::Real(Real::F64) => 8,
-                Primitive::Int(Int::UNative | Int::SNative) => std::mem::size_of::<isize>(),
+                Primitive::Int(Int::UNative | Int::SNative) => u32::from(self.module.loader().pointer_size()),
             },
-            format::TypeSignature::NativePointer(_) => std::mem::size_of::<*mut u8>(),
+            format::TypeSignature::NativePointer(_) => u32::from(self.module.loader().pointer_size()),
             format::TypeSignature::Struct(struct_index) => {
                 self.module.load_struct_raw(*struct_index)?.total_size()?
             }
         })
     }
 
-    pub fn size(&'a self) -> Result<usize> {
+    pub fn size(&'a self) -> Result<u32> {
         Ok(match self.size.get() {
             Some(size) => size,
             None => {
