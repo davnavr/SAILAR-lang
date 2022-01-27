@@ -450,6 +450,34 @@ fn namespace_definition<R: Read>(
     })
 }
 
+fn struct_import<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::StructImport> {
+    Ok(format::StructImport {
+        module: unsigned_index(src, size)?,
+        symbol: unsigned_index(src, size)?,
+    })
+}
+
+//global_import
+
+fn field_import<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::FieldImport> {
+    Ok(format::FieldImport {
+        owner: unsigned_index(src, size)?,
+        symbol: unsigned_index(src, size)?,
+        signature: unsigned_index(src, size)?,
+    })
+}
+
+fn function_import<R: Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+) -> Result<format::FunctionImport> {
+    Ok(format::FunctionImport {
+        module: unsigned_index(src, size)?,
+        symbol: unsigned_index(src, size)?,
+        signature: unsigned_index(src, size)?,
+    })
+}
+
 fn struct_definition<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::Struct> {
     let name = unsigned_index(src, size)?;
     let flags = byte_flags(src, flags::Struct::from_bits, Error::InvalidStructFlags)?;
@@ -664,30 +692,21 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
                     imported_modules: double_length_encoded(&mut data, size, &buffers, |src| {
                         module_identifier(src, size, &buffers)
                     })?,
-                    imported_structs: double_length_encoded(
-                        &mut data,
-                        size,
-                        &buffers,
-                        |src| todo!(),
-                    )?,
+                    imported_structs: double_length_encoded(&mut data, size, &buffers, |src| {
+                        struct_import(src, size)
+                    })?,
                     imported_globals: double_length_encoded(
                         &mut data,
                         size,
                         &buffers,
                         |src| todo!(),
                     )?,
-                    imported_fields: double_length_encoded(
-                        &mut data,
-                        size,
-                        &buffers,
-                        |src| todo!(),
-                    )?,
-                    imported_functions: double_length_encoded(
-                        &mut data,
-                        size,
-                        &buffers,
-                        |src| todo!(),
-                    )?,
+                    imported_fields: double_length_encoded(&mut data, size, &buffers, |src| {
+                        field_import(src, size)
+                    })?,
+                    imported_functions: double_length_encoded(&mut data, size, &buffers, |src| {
+                        function_import(src, size)
+                    })?,
                 })
             },
         )?,
