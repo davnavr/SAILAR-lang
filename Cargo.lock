@@ -30,25 +30,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "asmdl"
-version = "0.1.0"
-dependencies = [
- "chumsky",
- "sailar",
- "thiserror",
-]
-
-[[package]]
-name = "asmdl_cli"
-version = "0.1.0"
-dependencies = [
- "ariadne",
- "asmdl",
- "sailar",
- "structopt",
-]
-
-[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -158,15 +139,6 @@ name = "crunchy"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
-
-[[package]]
-name = "getmdl"
-version = "0.1.0"
-dependencies = [
- "sailar",
- "thiserror",
- "typed-arena",
-]
 
 [[package]]
 name = "getrandom"
@@ -295,30 +267,58 @@ dependencies = [
 ]
 
 [[package]]
-name = "runmdl"
-version = "0.1.0"
-dependencies = [
- "asmdl",
- "getmdl",
- "sailar",
- "thiserror",
-]
-
-[[package]]
-name = "runmdl_cli"
-version = "0.1.0"
-dependencies = [
- "clap 3.0.13",
- "runmdl",
- "sailar",
- "thiserror",
-]
-
-[[package]]
 name = "sailar"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "thiserror",
+]
+
+[[package]]
+name = "sailar_asm"
+version = "0.1.0"
+dependencies = [
+ "chumsky",
+ "sailar",
+ "thiserror",
+]
+
+[[package]]
+name = "sailar_get"
+version = "0.1.0"
+dependencies = [
+ "sailar",
+ "thiserror",
+ "typed-arena",
+]
+
+[[package]]
+name = "sailar_vm"
+version = "0.1.0"
+dependencies = [
+ "sailar",
+ "sailar_asm",
+ "sailar_get",
+ "thiserror",
+]
+
+[[package]]
+name = "sailas"
+version = "0.1.0"
+dependencies = [
+ "ariadne",
+ "sailar",
+ "sailar_asm",
+ "structopt",
+]
+
+[[package]]
+name = "saili"
+version = "0.1.0"
+dependencies = [
+ "clap 3.0.13",
+ "sailar",
+ "sailar_vm",
  "thiserror",
 ]
 

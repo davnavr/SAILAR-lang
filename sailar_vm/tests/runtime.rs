@@ -1,5 +1,5 @@
-use getmdl::loader::{Identifier, Symbol};
-use runmdl::interpreter;
+use sailar_get::loader::{Identifier, Symbol};
+use sailar_vm::interpreter;
 
 mod setup;
 
@@ -19,7 +19,7 @@ macro_rules! basic_module_str {
 #[test]
 fn returns_exit_code() {
     setup::initialize_from_str(
-        include_str!(r"../../asmdl_cli/samples/return.txtmdl"),
+        include_str!(r"../../sailas/samples/return.txtmdl"),
         |_, _| (),
         |_, runtime| assert_eq!(0, runtime.invoke_entry_point(&[], None).unwrap()),
     );
@@ -78,7 +78,7 @@ fn call_stack_overflow() {
         ),
         |_, _| (),
         |_, runtime| match runtime.invoke_entry_point(&[], None) {
-            Err(runmdl::runtime::Error::InterpreterError(error)) => match error.kind() {
+            Err(sailar_vm::runtime::Error::InterpreterError(error)) => match error.kind() {
                 interpreter::ErrorKind::CallStackOverflow(capacity) => {
                     assert_eq!(error.stack_trace().len(), capacity.get())
                 }

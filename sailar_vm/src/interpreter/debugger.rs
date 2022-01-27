@@ -5,7 +5,7 @@ pub use interpreter::{
     BlockIndex, InstructionLocation, LoadedFunction, Register,
 };
 
-pub use getmdl::loader::{FunctionSymbol, ModuleIdentifier, ModuleSymbol, Symbol};
+pub use sailar_get::loader::{FunctionSymbol, ModuleIdentifier, ModuleSymbol, Symbol};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Reply {

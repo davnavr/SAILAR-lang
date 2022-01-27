@@ -1,14 +1,14 @@
 [package]
-name = "runmdl_cli"
+name = "saili"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 clap = { version = "3.0.7", features = ["derive"] }
-runmdl = { path = "../runmdl" }
+sailar_vm = { path = "../sailar_vm" }
 sailar = { path = "../sailar" }
 thiserror = "1.0.30"
 
 [[bin]]
-name = "runmdl"
+name = "saili"
 path = "src/main.rs"

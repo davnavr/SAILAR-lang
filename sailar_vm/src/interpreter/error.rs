@@ -1,6 +1,6 @@
 use super::{call_stack, register, BlockIndex};
 
-pub type LoaderError = getmdl::loader::Error;
+pub type LoaderError = sailar_get::loader::Error;
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]

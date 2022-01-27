@@ -13,11 +13,11 @@ struct Arguments {
 fn main() -> Result<(), sailar::writer::Error> {
     let arguments = Arguments::from_args();
     let input = std::fs::read_to_string(&arguments.input)?;
-    let (syntax_tree, lexer_errors, parser_errors) = asmdl::parser::tree_from_str(&input);
+    let (syntax_tree, lexer_errors, parser_errors) = sailar_asm::parser::tree_from_str(&input);
 
     let module;
     let assembler_errors;
-    match asmdl::assembler::assemble_declarations(&syntax_tree) {
+    match sailar_asm::assembler::assemble_declarations(&syntax_tree) {
         Ok(assembled) => {
             module = Some(assembled);
             assembler_errors = Vec::new();
@@ -49,8 +49,8 @@ fn main() -> Result<(), sailar::writer::Error> {
                     .map(|error| error.map(|msg| msg.to_string())),
             );
 
-        let create_report = |position: &asmdl::ast::Position| {
-            Report::<(&str, asmdl::ast::Position)>::build(
+        let create_report = |position: &sailar_asm::ast::Position| {
+            Report::<(&str, sailar_asm::ast::Position)>::build(
                 ReportKind::Error,
                 source_path,
                 position.start,
@@ -66,7 +66,7 @@ fn main() -> Result<(), sailar::writer::Error> {
         }
 
         for error in assembler_errors {
-            use asmdl::assembler::ErrorKind as AssemblerError;
+            use sailar_asm::assembler::ErrorKind as AssemblerError;
 
             let position = error.location().cloned().unwrap_or_default();
             let mut report = create_report(&position)

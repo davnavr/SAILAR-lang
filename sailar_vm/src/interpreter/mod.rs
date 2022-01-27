@@ -1,5 +1,5 @@
-use getmdl::loader;
 use sailar::format::{indices, instruction_set, type_system};
+use sailar_get::loader;
 
 pub mod call_stack;
 pub mod debugger;

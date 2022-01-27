@@ -1,5 +1,5 @@
 use clap::{self, Parser as _};
-use runmdl::runtime;
+use sailar_vm::runtime;
 
 mod debugging;
 
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             application_arguments.as_ref(),
             if interpreter_arguments.interactive {
                 debugger = debugging::CommandLineDebugger::new();
-                Some(&mut debugger as &mut dyn runmdl::interpreter::debugger::Debugger)
+                Some(&mut debugger as &mut dyn sailar_vm::interpreter::debugger::Debugger)
             } else {
                 None
             },

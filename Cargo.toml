@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "asmdl",
-    "asmdl_cli",
-    "getmdl",
     "sailar",
-    "runmdl",
-    "runmdl_cli"
+    "sailas",
+    "sailar_asm",
+    "sailar_get",
+    "sailar_vm",
+    "saili"
 ]

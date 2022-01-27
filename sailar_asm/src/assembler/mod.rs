@@ -436,7 +436,7 @@ mod tests {
     #[test]
     fn return_sample_compiles_successfully() {
         assert_success!(
-            include_str!(r"../../../asmdl_cli/samples/return.txtmdl"),
+            include_str!(r"../../../sailas/samples/return.txtmdl"),
             |module: format::Module| {
                 let code = &module.function_bodies[0];
                 assert_eq!(
@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn control_sample_compiles_successfully() {
         assert_success!(
-            include_str!(r"../../../asmdl_cli/samples/control.txtmdl"),
+            include_str!(r"../../../sailas/samples/control.txtmdl"),
             |module: format::Module| {
                 let code = &module.function_bodies[0];
                 assert_eq!(1, code.blocks.len());

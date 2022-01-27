@@ -1,12 +1,12 @@
 [package]
-name = "runmdl"
+name = "sailar_vm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-getmdl = { path = "../getmdl" }
 sailar = { path = "../sailar" }
+sailar_get = { path = "../sailar_get" }
 thiserror = "1.0.30"
 
 [dev-dependencies]
-asmdl = { path = "../asmdl" }
+sailar_asm = { path = "../sailar_asm" }

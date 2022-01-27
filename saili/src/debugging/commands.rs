@@ -1,4 +1,4 @@
-use runmdl::interpreter::{debugger, Interpreter, LoaderError};
+use sailar_vm::interpreter::{debugger, Interpreter, LoaderError};
 use std::borrow::Cow;
 
 #[derive(thiserror::Error, Debug)]

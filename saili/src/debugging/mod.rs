@@ -1,6 +1,6 @@
 use clap::Parser as _;
-use runmdl::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
 use sailar::format::Identifier;
+use sailar_vm::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
 use std::{
     fmt::{Display, Formatter, Write as _},
     io::Write as _,

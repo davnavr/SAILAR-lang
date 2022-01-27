@@ -1,5 +1,5 @@
 use crate::interpreter::{self, debugger};
-use getmdl::loader;
+use sailar_get::loader;
 
 const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::call_stack::Capacity =
     unsafe { interpreter::call_stack::Capacity::new_unchecked(0xFF) };

@@ -1,14 +1,14 @@
 [package]
-name = "asmdl_cli"
+name = "sailas"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 ariadne = "0.1.3"
-asmdl = { path = "../asmdl" }
+sailar_asm = { path = "../sailar_asm" }
 structopt = "0.3.25"
 sailar = { path = "../sailar" }
 
 [[bin]]
-name = "asmdl"
+name = "sailas"
 path = "src/main.rs"
