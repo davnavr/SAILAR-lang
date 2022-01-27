@@ -252,14 +252,8 @@ pub fn assemble_declarations(
         )));
     }
 
-    if module_format.is_none() {
-        errors.push(Error::from(ErrorKind::MissingDirective(
-            "module format is required",
-        )));
-    }
-
     let module;
-    if let (Some(header), Some(format)) = (module_header, module_format) {
+    if let Some(header) = module_header {
         // NOTE: Should ALL symbols in a module be unique, or will a type with the same symbol as a function with the same symbol as a global be allowed?
         // Currently, all symbols are unique.
         let mut symbol_lookup = SymbolLookup::new();
@@ -331,7 +325,7 @@ pub fn assemble_declarations(
 
         module = Some(format::Module {
             integer_size: format::numeric::IntegerSize::I4,
-            format_version: format,
+            format_version: module_format.unwrap_or_else(|| format::FormatVersion::minimum_supported_version().clone()),
             header: format::LenBytes(header),
             identifiers: format::LenVecBytes::from(identifiers.drain_to_vec()),
             namespaces: format::LenVecBytes::from(Vec::new()),
