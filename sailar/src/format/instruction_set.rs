@@ -50,6 +50,25 @@ impl IntegerConstant {
     }
 }
 
+macro_rules! integer_constant_conversion_from_integer {
+    ($integer_type: ty, $case_name: ident) => {
+        impl From<$integer_type> for IntegerConstant {
+            fn from(value: $integer_type) -> Self {
+                Self::$case_name(value)
+            }
+        }
+    };
+}
+
+integer_constant_conversion_from_integer!(u8, U8);
+integer_constant_conversion_from_integer!(i8, S8);
+integer_constant_conversion_from_integer!(u16, U16);
+integer_constant_conversion_from_integer!(i16, S16);
+integer_constant_conversion_from_integer!(u32, U32);
+integer_constant_conversion_from_integer!(i32, S32);
+integer_constant_conversion_from_integer!(u64, U64);
+integer_constant_conversion_from_integer!(i64, S64);
+
 impl std::cmp::PartialEq for IntegerConstant {
     fn eq(&self, other: &Self) -> bool {
         self.value() == other.value()

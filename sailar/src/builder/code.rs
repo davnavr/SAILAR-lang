@@ -1,4 +1,7 @@
-use crate::{builder::Block, format};
+use crate::{
+    builder::{self, Block},
+    format,
+};
 
 pub struct Definitions {
     definitions: typed_arena::Arena<Code>,
@@ -17,29 +20,41 @@ impl Definitions {
         self.definitions.reserve_extend(additional)
     }
 
-    pub fn define(&mut self) -> &mut Code {
+    pub fn define(&mut self, input_count: u32, result_count: u32) -> &mut Code {
         let index = format::indices::Code::from(self.next_code_index);
         self.next_code_index += 1;
-        self.definitions.alloc(Code::new(index))
+        self.definitions
+            .alloc(Code::new(index, input_count, result_count))
     }
 }
 
-// Interior mutability needed, since blocks contain pointers to the code that owns them.
 pub struct Code {
     index: format::indices::Code,
+    input_count: u32,
+    result_count: u32,
     entry_block: Block,
     blocks: typed_arena::Arena<Block>,
-    next_block_index: u32,
+    block_index: builder::counter::Counter<format::indices::CodeBlock>,
 }
 
 impl Code {
-    fn new(index: format::indices::Code) -> Self {
+    fn new(index: format::indices::Code, input_count: u32, result_count: u32) -> Self {
         Self {
             index,
-            entry_block: Block::new(index, format::indices::CodeBlock::from(0)),
+            input_count,
+            result_count,
+            entry_block: Block::new(index, format::indices::CodeBlock::from(0), result_count),
             blocks: typed_arena::Arena::new(),
-            next_block_index: 1,
+            block_index: builder::counter::Counter::with_start_value(1),
         }
+    }
+
+    pub fn input_count(&self) -> u32 {
+        self.input_count
+    }
+
+    pub fn result_count(&self) -> u32 {
+        self.result_count
     }
 
     pub fn entry_block(&mut self) -> &mut Block {
@@ -47,8 +62,10 @@ impl Code {
     }
 
     pub fn define_block(&mut self) -> &mut Block {
-        let block_index = format::indices::CodeBlock::from(self.next_block_index);
-        self.next_block_index += 1;
-        self.blocks.alloc(Block::new(self.index, block_index))
+        self.blocks.alloc(Block::new(
+            self.index,
+            self.block_index.next(),
+            self.result_count,
+        ))
     }
 }

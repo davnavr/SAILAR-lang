@@ -2,18 +2,22 @@ use crate::format;
 
 mod block;
 mod code;
+mod counter;
 mod error;
+mod type_signatures;
 
 pub use block::Block;
 pub use code::{Code, Definitions as CodeDefinitions};
 pub use error::{Error, Result};
 pub use format::{FormatVersion, Identifier, VersionNumbers};
+pub use type_signatures::{Signatures as TypeSignatures, Type};
 
 pub struct Builder {
     module_name: Identifier,
     module_version: VersionNumbers,
     format_version: FormatVersion,
     code: CodeDefinitions,
+    type_signatures: TypeSignatures,
 }
 
 impl Builder {
@@ -23,6 +27,7 @@ impl Builder {
             module_version: VersionNumbers::default(),
             format_version: FormatVersion::minimum_supported_version().clone(),
             code: CodeDefinitions::new(),
+            type_signatures: TypeSignatures::new(),
         }
     }
 
@@ -36,6 +41,10 @@ impl Builder {
 
     pub fn code(&mut self) -> &mut CodeDefinitions {
         &mut self.code
+    }
+
+    pub fn type_signatures(&mut self) -> &mut TypeSignatures {
+        &mut self.type_signatures
     }
 
     pub fn finish(self) -> format::Module {
