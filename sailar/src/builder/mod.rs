@@ -6,7 +6,7 @@ mod counter;
 mod error;
 mod type_signatures;
 
-pub use block::Block;
+pub use block::{Block, Error as InvalidInstruction};
 pub use code::{Code, Definitions as CodeDefinitions};
 pub use error::{Error, Result};
 pub use format::{FormatVersion, Identifier, VersionNumbers};

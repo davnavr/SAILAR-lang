@@ -9,7 +9,6 @@ use crate::format::type_system;
 pub type Type = type_system::Any;
 
 pub struct Signatures {
-    // Can use Vec<Box<Type>> since Types are not mutable.
     types: typed_arena::Arena<type_system::Any>,
     //primitive_lookup: hash_map::HashMap<type_system::Primitive, type_system::Any>,
 }

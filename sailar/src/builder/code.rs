@@ -28,13 +28,14 @@ impl Definitions {
     }
 }
 
+// May also need interior mutability
 pub struct Code {
     index: format::indices::Code,
     input_count: u32,
     result_count: u32,
     entry_block: Block,
     blocks: typed_arena::Arena<Block>,
-    block_index: builder::counter::Counter<format::indices::CodeBlock>,
+    block_index: builder::counter::Cell<format::indices::CodeBlock>,
 }
 
 impl Code {
@@ -45,7 +46,7 @@ impl Code {
             result_count,
             entry_block: Block::new(index, format::indices::CodeBlock::from(0), result_count),
             blocks: typed_arena::Arena::new(),
-            block_index: builder::counter::Counter::with_start_value(1),
+            block_index: builder::counter::Cell::with_start_value(1),
         }
     }
 
@@ -57,11 +58,11 @@ impl Code {
         self.result_count
     }
 
-    pub fn entry_block(&mut self) -> &mut Block {
-        &mut self.entry_block
+    pub fn entry_block(&self) -> &Block {
+        &self.entry_block
     }
 
-    pub fn define_block(&mut self) -> &mut Block {
+    pub fn define_block(&mut self) -> &Block {
         self.blocks.alloc(Block::new(
             self.index,
             self.block_index.next(),
