@@ -325,7 +325,8 @@ pub fn assemble_declarations(
 
         module = Some(format::Module {
             integer_size: format::numeric::IntegerSize::I4,
-            format_version: module_format.unwrap_or_else(|| format::FormatVersion::minimum_supported_version().clone()),
+            format_version: module_format
+                .unwrap_or_else(|| format::FormatVersion::minimum_supported_version().clone()),
             header: format::LenBytes(header),
             identifiers: format::LenVecBytes::from(identifiers.drain_to_vec()),
             namespaces: format::LenVecBytes::from(Vec::new()),

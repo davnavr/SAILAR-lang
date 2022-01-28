@@ -26,7 +26,11 @@ impl<'a> Code<'a> {
         Self {
             module,
             source,
-            blocks: vec![cache::Once::new(); 1 + source.blocks.len()],
+            blocks: {
+                let mut blocks = Vec::new();
+                blocks.resize_with(1 + source.blocks.len(), cache::Once::new);
+                blocks
+            },
         }
     }
 
