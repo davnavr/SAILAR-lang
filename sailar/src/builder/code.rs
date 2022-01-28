@@ -58,6 +58,10 @@ impl Code {
         }
     }
 
+    pub fn index(&self) -> format::indices::Code {
+        self.index
+    }
+
     pub fn input_count(&self) -> u32 {
         self.input_count
     }

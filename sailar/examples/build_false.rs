@@ -12,14 +12,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             entry_block.ret([exit_code])?;
         }
 
-        let code2 = builder.code().define(0, 1);
-
-        {
-            let entry_block = code2.entry_block();
-            let exit_code = entry_block.const_i(1);
-            entry_block.ret([exit_code])?;
-        }
-
         builder.finish()
     };
 
