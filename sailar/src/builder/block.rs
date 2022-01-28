@@ -21,6 +21,7 @@ pub struct Register {
 pub struct Block {
     owner_index: format::indices::Code,
     index: format::indices::CodeBlock,
+    input_count: u32,
     expected_return_count: u32,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
     registers: typed_arena::Arena<Register>,
@@ -31,11 +32,13 @@ impl Block {
     pub(super) fn new(
         owner_index: format::indices::Code,
         index: format::indices::CodeBlock,
+        input_count: u32,
         expected_return_count: u32,
     ) -> Self {
         Self {
             owner_index,
             index,
+            input_count,
             expected_return_count,
             register_index: builder::counter::Cell::new(),
             registers: typed_arena::Arena::new(),
@@ -82,9 +85,15 @@ impl Block {
         &'b self,
         results: R,
     ) -> Result<()> {
-        let result_indices = results.into_iter().map(|register| register.index).collect();
-        self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
+        let result_indices = results
+            .into_iter()
+            .map(|register| register.index)
+            .collect::<Vec<_>>();
+
         let actual_count = result_indices.len().try_into().unwrap();
+
+        self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
+
         if actual_count == self.expected_return_count {
             Ok(())
         } else {
@@ -92,6 +101,14 @@ impl Block {
                 expected: self.expected_return_count,
                 actual: actual_count,
             })
+        }
+    }
+
+    pub(super) fn build(&mut self) -> format::CodeBlock {
+        format::CodeBlock {
+            input_register_count: format::numeric::UInteger(self.input_count),
+            exception_handler: None,
+            instructions: format::LenBytes(format::LenVec(self.instructions.take())),
         }
     }
 }

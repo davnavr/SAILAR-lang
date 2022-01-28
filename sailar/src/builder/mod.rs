@@ -13,8 +13,7 @@ pub use format::{FormatVersion, Identifier, VersionNumbers};
 pub use type_signatures::{Signatures as TypeSignatures, Type};
 
 pub struct Builder {
-    module_name: Identifier,
-    module_version: VersionNumbers,
+    identifier: format::ModuleIdentifier,
     format_version: FormatVersion,
     code: CodeDefinitions,
     type_signatures: TypeSignatures,
@@ -23,8 +22,10 @@ pub struct Builder {
 impl Builder {
     pub fn new(name: Identifier) -> Self {
         Self {
-            module_name: name,
-            module_version: VersionNumbers::default(),
+            identifier: format::ModuleIdentifier {
+                name,
+                version: VersionNumbers::default(),
+            },
             format_version: FormatVersion::minimum_supported_version().clone(),
             code: CodeDefinitions::new(),
             type_signatures: TypeSignatures::new(),
@@ -36,7 +37,7 @@ impl Builder {
     }
 
     pub fn set_module_version(&mut self, version: VersionNumbers) {
-        self.module_version = version;
+        self.identifier.version = version;
     }
 
     pub fn code(&mut self) -> &mut CodeDefinitions {
@@ -47,21 +48,18 @@ impl Builder {
         &mut self.type_signatures
     }
 
-    pub fn finish(self) -> format::Module {
+    pub fn finish(mut self) -> format::Module {
         format::Module {
             integer_size: format::numeric::IntegerSize::I4,
             format_version: self.format_version,
             header: format::LenBytes(format::ModuleHeader {
-                identifier: format::ModuleIdentifier {
-                    name: self.module_name,
-                    version: self.module_version,
-                },
+                identifier: self.identifier,
             }),
             identifiers: format::LenBytes(format::LenVec(Vec::new())),
             namespaces: format::LenBytes(format::LenVec(Vec::new())),
             type_signatures: format::LenBytes(format::LenVec(Vec::new())),
             function_signatures: format::LenBytes(format::LenVec(Vec::new())),
-            function_bodies: format::LenBytes(format::LenVec(Vec::new())),
+            function_bodies: format::LenBytes(format::LenVec(self.code.build())),
             data: format::LenBytes(format::LenVec(Vec::new())),
             imports: format::LenBytes(format::ModuleImports {
                 imported_modules: format::LenBytes(format::LenVec(Vec::new())),
@@ -79,5 +77,14 @@ impl Builder {
             struct_layouts: format::LenBytes(format::LenVec(Vec::new())),
             entry_point: format::LenBytes(None),
         }
+    }
+}
+
+impl std::fmt::Debug for Builder {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Builder")
+            .field("identifier", &self.identifier)
+            .field("format_version", &self.format_version)
+            .finish()
     }
 }
