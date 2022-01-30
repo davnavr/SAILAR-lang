@@ -12,54 +12,70 @@ pub use error::{Error, Result};
 pub use format::{FormatVersion, Identifier, VersionNumbers};
 pub use type_signatures::{Signatures as TypeSignatures, Type};
 
-pub struct Builder {
-    identifier: format::ModuleIdentifier,
-    format_version: FormatVersion,
-    code: CodeDefinitions,
-    type_signatures: TypeSignatures,
+pub struct Setup {
+    builder_identifier: Box<()>,
 }
 
-impl Builder {
-    pub fn new(name: Identifier) -> Self {
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+struct BuilderIdentifier<'b>(&'b ());
+
+pub struct Builder<'b> {
+    module_identifier: format::ModuleIdentifier,
+    format_version: FormatVersion,
+    code: CodeDefinitions<'b>,
+    type_signatures: TypeSignatures<'b>,
+}
+
+impl<'b> Builder<'b> {
+    pub fn new(setup: &'b mut Option<Setup>, name: Identifier) -> Self {
+        let identifier = BuilderIdentifier(
+            &setup
+                .insert(Setup {
+                    builder_identifier: Box::new(()),
+                })
+                .builder_identifier,
+        );
+
         Self {
-            identifier: format::ModuleIdentifier {
+            module_identifier: format::ModuleIdentifier {
                 name,
-                version: VersionNumbers::default(),
+                version: format::VersionNumbers::default(),
             },
             format_version: FormatVersion::minimum_supported_version().clone(),
-            code: CodeDefinitions::new(),
-            type_signatures: TypeSignatures::new(),
+            code: CodeDefinitions::new(identifier),
+            type_signatures: TypeSignatures::new(identifier),
         }
     }
 
-    pub fn set_format_version(&mut self, version: FormatVersion) {
+    pub fn set_format_version(&'b mut self, version: FormatVersion) {
         self.format_version = version;
     }
 
-    pub fn set_module_version(&mut self, version: VersionNumbers) {
-        self.identifier.version = version;
+    pub fn set_module_version(&'b mut self, version: VersionNumbers) {
+        self.module_identifier.version = version;
     }
 
-    pub fn code(&mut self) -> &mut CodeDefinitions {
+    pub fn code(&'b mut self) -> &'b mut CodeDefinitions {
         &mut self.code
     }
 
-    pub fn type_signatures(&mut self) -> &mut TypeSignatures {
-        &mut self.type_signatures
+    pub fn type_signatures(&'b self) -> &'b TypeSignatures {
+        &self.type_signatures
     }
 
-    pub fn finish(mut self) -> format::Module {
+    pub fn finish(&'b mut self) -> format::Module {
         format::Module {
             integer_size: format::numeric::IntegerSize::I4,
-            format_version: self.format_version,
+            format_version: self.format_version.clone(),
             header: format::LenBytes(format::ModuleHeader {
-                identifier: self.identifier,
+                identifier: self.module_identifier.clone(),
             }),
             identifiers: format::LenBytes(format::LenVec(Vec::new())),
             namespaces: format::LenBytes(format::LenVec(Vec::new())),
             type_signatures: format::LenBytes(format::LenVec(Vec::new())),
             function_signatures: format::LenBytes(format::LenVec(Vec::new())),
-            function_bodies: format::LenBytes(format::LenVec(self.code.build())),
+            function_bodies: format::LenBytes(format::LenVec(/* self.code.build() */ Vec::new())),
             data: format::LenBytes(format::LenVec(Vec::new())),
             imports: format::LenBytes(format::ModuleImports {
                 imported_modules: format::LenBytes(format::LenVec(Vec::new())),
@@ -80,10 +96,10 @@ impl Builder {
     }
 }
 
-impl std::fmt::Debug for Builder {
+impl<'b> std::fmt::Debug for &'b Builder<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Builder")
-            .field("identifier", &self.identifier)
+            .field("module_identifier", &self.module_identifier)
             .field("format_version", &self.format_version)
             .finish()
     }

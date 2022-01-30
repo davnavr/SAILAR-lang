@@ -1,5 +1,8 @@
 use crate::format::instruction_set::{self, Instruction};
-use crate::{builder, format};
+use crate::{
+    builder::{self, BuilderIdentifier},
+    format,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -11,7 +14,7 @@ pub struct RegisterOwner {
 #[derive(thiserror::Error, Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("expected register {register} in {expected:?} but got {actual:?}")]
+    #[error("expected register {register} in code {} block {} but got code {} block {}", .expected.code_index, .expected.block_index, .actual.code_index, .actual.block_index)]
     RegisterOwnerMismatch {
         register: format::indices::Register,
         expected: RegisterOwner,
@@ -23,45 +26,48 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Register {
-    // Could have reference to struct containing module, code, and block index
-    //module:
-    owner: RegisterOwner,
+pub struct Register<'b> {
+    builder: BuilderIdentifier<'b>,
+    owner: &'b RegisterOwner,
     index: format::indices::Register,
-    value_type: builder::Type,
+    value_type: &'b builder::Type<'b>,
 }
 
-impl Register {
-    pub fn index(&self) -> format::indices::Register {
+impl<'b> Register<'b> {
+    pub fn index(&'b self) -> format::indices::Register {
         self.index
     }
 
-    pub fn value_type(&self) -> &builder::Type {
-        &self.value_type
+    pub fn value_type(&'b self) -> &'b builder::Type<'b> {
+        self.value_type
     }
 }
 
 // Uses interior mutability, otherwise problems with borrowing occur if register references are used.
-pub struct Block {
-    owner_index: format::indices::Code,
-    index: format::indices::CodeBlock,
+pub struct Block<'b> {
+    builder: BuilderIdentifier<'b>,
+    register_owner: RegisterOwner,
     input_count: u32,
     expected_return_count: u32,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
-    registers: typed_arena::Arena<Register>,
+    registers: typed_arena::Arena<Register<'b>>,
     instructions: std::cell::RefCell<Vec<Instruction>>,
 }
 
-impl Block {
+impl<'b> Block<'b> {
     pub(super) fn new(
+        builder: builder::BuilderIdentifier<'b>,
         owner_index: format::indices::Code,
         index: format::indices::CodeBlock,
         input_count: u32,
         expected_return_count: u32,
     ) -> Self {
         Self {
-            owner_index,
-            index,
+            builder,
+            register_owner: RegisterOwner {
+                code_index: owner_index,
+                block_index: index,
+            },
             input_count,
             expected_return_count,
             register_index: builder::counter::Cell::new(),
@@ -70,21 +76,19 @@ impl Block {
         }
     }
 
-    pub fn index(&self) -> format::indices::CodeBlock {
-        self.index
+    pub fn index(&'b self) -> format::indices::CodeBlock {
+        self.register_owner.block_index
     }
 
     /// Returns the number of values that should be returned by any `ret` instruction in this block.
-    pub fn expected_return_count(&self) -> u32 {
+    pub fn expected_return_count(&'b self) -> u32 {
         self.expected_return_count
     }
 
-    fn allocate_register(&self, value_type: builder::Type) -> &Register {
+    fn allocate_register(&'b self, value_type: &'b builder::Type) -> &'b Register {
         self.registers.alloc(Register {
-            owner: RegisterOwner {
-                code_index: self.owner_index,
-                block_index: self.index,
-            },
+            builder: self.builder,
+            owner: &self.register_owner,
             index: format::indices::Register::Temporary(self.register_index.next()),
             value_type,
         })
@@ -94,15 +98,11 @@ impl Block {
         self.registers.reserve_extend(count)
     }
 
-    fn check_register(&self, register: &Register) -> Result<format::indices::Register> {
-        let expected_owner = RegisterOwner {
-            block_index: self.index,
-            code_index: self.owner_index,
-        };
-        if register.owner != expected_owner {
+    fn check_register(&'b self, register: &'b Register<'b>) -> Result<format::indices::Register> {
+        if register.owner != &self.register_owner {
             Err(Error::RegisterOwnerMismatch {
                 register: register.index,
-                expected: expected_owner,
+                expected: self.register_owner.clone(),
                 actual: register.owner.clone(),
             })
         } else {
@@ -110,11 +110,11 @@ impl Block {
         }
     }
 
-    fn check_many_registers<'b, R: std::iter::IntoIterator<Item = &'b Register>>(
+    fn check_many_registers<R: std::iter::IntoIterator<Item = &'b Register<'b>>>(
         &'b self,
         registers: R,
     ) -> Result<Vec<format::indices::Register>> {
-        let mut iterator = registers.into_iter();
+        let iterator = registers.into_iter();
         let mut indices = Vec::with_capacity({
             let (lower, upper) = iterator.size_hint();
             upper.unwrap_or(lower)
@@ -123,27 +123,33 @@ impl Block {
         for register in iterator {
             indices.push(self.check_register(register)?);
         }
+
         Ok(indices)
     }
 
-    pub fn emit_raw(&self, instruction: Instruction) {
+    pub fn emit_raw(&'b self, instruction: Instruction) {
         self.instructions.borrow_mut().push(instruction);
     }
 
-    pub fn nop(&self) {
+    pub fn nop(&'b self) {
         self.emit_raw(Instruction::Nop);
     }
 
-    pub fn const_i<C: Into<instruction_set::IntegerConstant>>(&self, constant: C) -> &Register {
+    pub fn const_i<C: Into<instruction_set::IntegerConstant>>(
+        &'b self,
+        constant: C,
+    ) -> &'b Register<'b> {
         let value = constant.into();
         let value_type = value.value_type();
         self.emit_raw(Instruction::ConstI(value));
-        self.allocate_register(format::type_system::Any::Primitive(
-            format::type_system::Primitive::from(value_type),
-        ))
+        self.allocate_register(
+            todo!("how to access type signatures?"), /* format::type_system::Any::Primitive(
+                                                         format::type_system::Primitive::from(value_type),
+                                                     ) */
+        )
     }
 
-    pub fn ret<'b, R: std::iter::IntoIterator<Item = &'b Register>>(
+    pub fn ret<R: std::iter::IntoIterator<Item = &'b Register<'b>>>(
         &'b self,
         results: R,
     ) -> Result<()> {
@@ -162,7 +168,7 @@ impl Block {
         }
     }
 
-    pub(super) fn build(&mut self) -> format::CodeBlock {
+    pub(super) fn build(&'b mut self) -> format::CodeBlock {
         format::CodeBlock {
             input_register_count: format::numeric::UInteger(self.input_count),
             exception_handler: None,

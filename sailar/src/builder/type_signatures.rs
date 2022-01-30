@@ -1,27 +1,30 @@
+use crate::builder;
 use crate::format::type_system;
 
-// #[derive(Clone)]
-// pub struct Type {
-//     signature: type_system::Any,
-//     //module: usize,
-// }
+pub struct Type<'b> {
+    signature: type_system::Any,
+    builder: builder::BuilderIdentifier<'b>,
+}
 
-pub type Type = type_system::Any;
-
-pub struct Signatures {
-    types: typed_arena::Arena<type_system::Any>,
+pub struct Signatures<'b> {
+    builder: builder::BuilderIdentifier<'b>,
+    types: typed_arena::Arena<Type<'b>>,
     //primitive_lookup: hash_map::HashMap<type_system::Primitive, type_system::Any>,
 }
 
-impl Signatures {
-    pub(super) fn new(/* module: usize */) -> Self {
+impl<'b> Signatures<'b> {
+    pub(super) fn new(builder: builder::BuilderIdentifier<'b>) -> Self {
         Self {
+            builder,
             types: typed_arena::Arena::new(),
             //primitive_lookup: hash_map::HashMap::new(),
         }
     }
 
-    pub fn insert_raw(&mut self, signature: type_system::Any) -> &Type {
-        self.types.alloc(signature)
+    pub fn insert_raw(&'b self, signature: type_system::Any) -> &'b Type<'b> {
+        self.types.alloc(Type {
+            signature,
+            builder: self.builder,
+        })
     }
 }
