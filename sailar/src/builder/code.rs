@@ -1,102 +1,68 @@
-use crate::builder::{self, Block, BuilderIdentifier};
+use crate::builder::{self, block::Block};
 use crate::format;
-use std::fmt::{Debug, Formatter};
 
-pub struct Definitions<'b> {
-    builder: BuilderIdentifier<'b>,
-    definitions: typed_arena::Arena<Code<'b>>,
+pub struct Definitions {
+    definitions: typed_arena::Arena<Code>,
     code_index: builder::counter::Cell<format::indices::Code>,
 }
 
-impl<'b> Definitions<'b> {
-    pub(super) fn new(builder: BuilderIdentifier<'b>) -> Self {
+impl Definitions {
+    pub fn new() -> Self {
         Self {
-            builder,
             definitions: typed_arena::Arena::new(),
             code_index: builder::counter::Cell::new(),
         }
     }
 
-    pub fn reserve(&'b mut self, additional: usize) {
-        self.definitions.reserve_extend(additional)
-    }
-
-    pub fn define(&'b mut self, input_count: u32, result_count: u32) -> &mut Code {
-        self.definitions.alloc(Code::new(
-            self.builder,
-            self.code_index.next(),
-            input_count,
-            result_count,
-        ))
-    }
-
-    pub(super) fn build(&'b mut self) -> Vec<format::Code> {
+    pub fn build(&mut self) -> Vec<format::Code> {
         self.definitions.iter_mut().map(Code::build).collect()
     }
 }
 
-// May also need interior mutability
-pub struct Code<'b> {
-    builder: BuilderIdentifier<'b>,
-    index: format::indices::Code,
-    input_count: u32,
-    result_count: u32,
-    entry_block: Block<'b>,
-    blocks: typed_arena::Arena<Block<'b>>,
-    block_index: builder::counter::Cell<format::indices::CodeBlock>,
-}
-
-impl<'b> Code<'b> {
-    fn new(
-        builder: BuilderIdentifier<'b>,
-        index: format::indices::Code,
-        input_count: u32,
-        result_count: u32,
-    ) -> Self {
-        Self {
-            builder,
-            index,
+impl<'a> builder::CodeDefinitions<'a> {
+    pub fn define(&'a mut self, input_count: u32, result_count: u32) -> builder::Code<'a> {
+        let code = self.definitions.definitions.alloc(Code::new(
+            self.definitions.code_index.next(),
             input_count,
             result_count,
-            entry_block: Block::new(
-                builder,
-                index,
-                format::indices::CodeBlock::from(0),
-                input_count,
-                result_count,
-            ),
-            blocks: typed_arena::Arena::new(),
-            block_index: builder::counter::Cell::with_start_value(1),
+        ));
+
+        builder::Code {
+            builder: self.builder,
+            code,
+            type_signatures: self.type_signatures,
         }
     }
 
-    pub fn index(&'b self) -> format::indices::Code {
-        self.index
+    pub fn reserve(&'a mut self, count: usize) {
+        self.definitions.definitions.reserve_extend(count);
     }
+}
 
-    pub fn input_count(&'b self) -> u32 {
-        self.input_count
-    }
+// May also need interior mutability
+pub struct Code {
+    index: format::indices::Code,
+    input_count: u32,
+    result_count: u32,
+    entry_block: Block,
+    blocks: typed_arena::Arena<Block>,
+    block_index: builder::counter::Cell<format::indices::CodeBlock>,
+}
 
-    pub fn result_count(&'b self) -> u32 {
-        self.result_count
-    }
-
-    pub fn entry_block(&'b self) -> &'b Block<'b> {
-        &self.entry_block
-    }
-
-    pub fn define_block(&'b mut self, input_count: u32) -> &'b Block {
-        self.blocks.alloc(Block::new(
-            self.builder,
-            self.index,
-            self.block_index.next(),
+impl Code {
+    fn new(index: format::indices::Code, input_count: u32, result_count: u32) -> Self {
+        let mut block_index = builder::counter::Cell::new();
+        Self {
+            index,
             input_count,
-            self.result_count,
-        ))
+            result_count,
+            entry_block: Block::new(block_index.next(), input_count, result_count),
+            blocks: typed_arena::Arena::new(),
+            block_index,
+        }
     }
 
-    pub(super) fn build(&'b mut self) -> format::Code {
+    pub fn build(&mut self) -> format::Code {
         format::Code {
             entry_block: self.entry_block.build(),
             blocks: format::LenVec(self.blocks.iter_mut().map(Block::build).collect()),
@@ -104,12 +70,35 @@ impl<'b> Code<'b> {
     }
 }
 
-impl<'b> Debug for &'b Code<'b> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Code")
-            .field("index", &self.index)
-            .field("input_count", &self.input_count)
-            .field("result_count", &self.result_count)
-            .finish()
+impl<'a> builder::Code<'a> {
+    pub fn index(&'a self) -> format::indices::Code {
+        self.code.index
+    }
+
+    pub fn input_count(&'a self) -> u32 {
+        self.code.input_count
+    }
+
+    pub fn result_count(&'a self) -> u32 {
+        self.code.result_count
+    }
+
+    pub fn entry_block(&'a mut self) -> builder::Block<'a> {
+        builder::Block::new(
+            &mut self.code.entry_block,
+            self.code.index,
+            self.builder,
+            self.type_signatures,
+        )
+    }
+
+    pub fn define_block(&'a mut self, input_count: u32) -> builder::Block<'a> {
+        let block = self.code.blocks.alloc(Block::new(
+            self.code.block_index.next(),
+            input_count,
+            self.code.result_count,
+        ));
+
+        builder::Block::new(block, self.code.index, self.builder, self.type_signatures)
     }
 }

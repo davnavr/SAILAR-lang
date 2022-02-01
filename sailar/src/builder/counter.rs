@@ -5,15 +5,11 @@ pub struct Cell<T> {
 }
 
 impl<T> Cell<T> {
-    pub fn with_start_value(start: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            next: std::cell::Cell::new(start),
+            next: std::cell::Cell::new(0),
             phantom: std::marker::PhantomData,
         }
-    }
-
-    pub fn new() -> Self {
-        Self::with_start_value(0)
     }
 }
 
