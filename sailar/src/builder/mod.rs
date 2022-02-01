@@ -92,7 +92,7 @@ impl Builder {
             }),
             identifiers: format::LenBytes(format::LenVec(Vec::new())),
             namespaces: format::LenBytes(format::LenVec(Vec::new())),
-            type_signatures: format::LenBytes(format::LenVec(Vec::new())),
+            type_signatures: format::LenBytes(format::LenVec(self.type_signatures.build())),
             function_signatures: format::LenBytes(format::LenVec(Vec::new())),
             function_bodies: format::LenBytes(format::LenVec(self.code.build())),
             data: format::LenBytes(format::LenVec(Vec::new())),

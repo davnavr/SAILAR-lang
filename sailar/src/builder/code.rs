@@ -19,8 +19,8 @@ impl Definitions {
     }
 }
 
-impl<'a> builder::CodeDefinitions<'a> {
-    pub fn define(&'a mut self, input_count: u32, result_count: u32) -> builder::Code<'a> {
+impl<'a, 'b> builder::CodeDefinitions<'a> where 'a: 'b {
+    pub fn define(&'b mut self, input_count: u32, result_count: u32) -> builder::Code<'b> {
         let code = self.definitions.definitions.alloc(Code::new(
             self.definitions.code_index.next(),
             input_count,
@@ -34,7 +34,7 @@ impl<'a> builder::CodeDefinitions<'a> {
         }
     }
 
-    pub fn reserve(&'a mut self, count: usize) {
+    pub fn reserve(&'b mut self, count: usize) {
         self.definitions.definitions.reserve_extend(count);
     }
 }
@@ -70,20 +70,20 @@ impl Code {
     }
 }
 
-impl<'a> builder::Code<'a> {
-    pub fn index(&'a self) -> format::indices::Code {
+impl<'a, 'b> builder::Code<'a> where 'a: 'b {
+    pub fn index(&'b self) -> format::indices::Code {
         self.code.index
     }
 
-    pub fn input_count(&'a self) -> u32 {
+    pub fn input_count(&'b self) -> u32 {
         self.code.input_count
     }
 
-    pub fn result_count(&'a self) -> u32 {
+    pub fn result_count(&'b self) -> u32 {
         self.code.result_count
     }
 
-    pub fn entry_block(&'a mut self) -> builder::Block<'a> {
+    pub fn entry_block(&'b mut self) -> builder::Block<'b> {
         builder::Block::new(
             &mut self.code.entry_block,
             self.code.index,
@@ -92,7 +92,7 @@ impl<'a> builder::Code<'a> {
         )
     }
 
-    pub fn define_block(&'a mut self, input_count: u32) -> builder::Block<'a> {
+    pub fn define_block(&'b mut self, input_count: u32) -> builder::Block<'b> {
         let block = self.code.blocks.alloc(Block::new(
             self.code.block_index.next(),
             input_count,
@@ -100,5 +100,9 @@ impl<'a> builder::Code<'a> {
         ));
 
         builder::Block::new(block, self.code.index, self.builder, self.type_signatures)
+    }
+
+    pub fn finish(self) -> &'a Code {
+        self.code
     }
 }

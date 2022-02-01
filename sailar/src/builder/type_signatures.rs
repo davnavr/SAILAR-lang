@@ -18,7 +18,9 @@ impl Signatures {
         }
     }
 
-    //pub fn build(&mut self) ->
+    pub fn build(&mut self) -> Vec<format::TypeSignature> {
+        std::mem::take(&mut self.types).into_vec()
+    }
 }
 
 impl<'a> builder::TypeSignatures<'a> {
