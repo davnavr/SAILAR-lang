@@ -19,15 +19,18 @@ impl Definitions {
     }
 }
 
-impl<'a, 'b> builder::CodeDefinitions<'a> where 'a: 'b {
-    pub fn define(&'b mut self, input_count: u32, result_count: u32) -> builder::Code<'b> {
+impl<'a, 'b> builder::CodeDefinitions<'a>
+where
+    'a: 'b,
+{
+    pub fn define(&'b mut self, input_count: u32, result_count: u32) -> Builder<'b> {
         let code = self.definitions.definitions.alloc(Code::new(
             self.definitions.code_index.next(),
             input_count,
             result_count,
         ));
 
-        builder::Code {
+        Builder {
             builder: self.builder,
             code,
             type_signatures: self.type_signatures,
@@ -39,7 +42,6 @@ impl<'a, 'b> builder::CodeDefinitions<'a> where 'a: 'b {
     }
 }
 
-// May also need interior mutability
 pub struct Code {
     index: format::indices::Code,
     input_count: u32,
@@ -62,6 +64,10 @@ impl Code {
         }
     }
 
+    pub fn index(&self) -> format::indices::Code {
+        self.index
+    }
+
     pub fn build(&mut self) -> format::Code {
         format::Code {
             entry_block: self.entry_block.build(),
@@ -70,7 +76,16 @@ impl Code {
     }
 }
 
-impl<'a, 'b> builder::Code<'a> where 'a: 'b {
+pub struct Builder<'a> {
+    builder: &'a (),
+    code: &'a mut Code,
+    type_signatures: &'a mut builder::type_signatures::Signatures,
+}
+
+impl<'a, 'b> Builder<'a>
+where
+    'a: 'b,
+{
     pub fn index(&'b self) -> format::indices::Code {
         self.code.index
     }
@@ -85,7 +100,7 @@ impl<'a, 'b> builder::Code<'a> where 'a: 'b {
 
     pub fn entry_block(&'b mut self) -> builder::Block<'b> {
         builder::Block::new(
-            &mut self.code.entry_block,
+            &self.code.entry_block,
             self.code.index,
             self.builder,
             self.type_signatures,

@@ -3,12 +3,27 @@ use crate::format;
 mod block;
 mod code;
 mod counter;
+mod definitions;
 mod error;
 mod type_signatures;
 
 pub use block::{Builder as Block, Error as InvalidInstruction};
+
+pub use code::{Builder as CodeBuilder, Code};
+
+pub use definitions::{
+    Builder as Definitions, Function as FunctionDefinition, FunctionBody,
+    FunctionBuilder as FunctionDefinitionBuilder, Functions as DefinedFunctions,
+};
+
 pub use error::{Error, Result};
-pub use format::{FormatVersion, Identifier as Name, VersionNumbers};
+
+pub use format::{FormatVersion, VersionNumbers};
+
+// TODO: Add borrowed version of format::Identifier simialr to how &str is borrowed String
+//pub type Name<'a> = std::borrow::Cow<'a, format::Identifier>;
+
+// TODO: Add extra lifetime parameters everywhere to allow usage of Identifier references.
 
 #[derive(Clone, Copy)]
 pub struct Type<'a> {
@@ -18,15 +33,10 @@ pub struct Type<'a> {
     signature: &'a format::type_system::Any,
 }
 
+// TODO: Get rid of type signatures, and just use Cow<SomeType>?
 pub struct TypeSignatures<'a> {
     builder: &'a (),
     signatures: &'a type_signatures::Signatures,
-}
-
-pub struct Code<'a> {
-    builder: &'a (),
-    code: &'a mut code::Code,
-    type_signatures: &'a mut type_signatures::Signatures,
 }
 
 pub struct CodeDefinitions<'a> {
@@ -41,10 +51,11 @@ pub struct Builder {
     format_version: FormatVersion,
     code: code::Definitions,
     type_signatures: type_signatures::Signatures,
+    definitions: definitions::Definitions,
 }
 
 impl Builder {
-    pub fn new(name: Name) -> Self {
+    pub fn new(name: format::Identifier) -> Self {
         Self {
             builder_identifier: Box::new(()),
             module_identifier: format::ModuleIdentifier {
@@ -54,6 +65,7 @@ impl Builder {
             format_version: FormatVersion::minimum_supported_version().clone(),
             code: code::Definitions::new(),
             type_signatures: type_signatures::Signatures::new(),
+            definitions: definitions::Definitions::new(),
         }
     }
 
@@ -82,7 +94,14 @@ impl Builder {
         }
     }
 
-    // setup may need to be consumed as well.
+    pub fn definitions(&mut self) -> Definitions<'_> {
+        Definitions::new(
+            &self.builder_identifier,
+            &mut self.definitions,
+            &mut self.type_signatures,
+        )
+    }
+
     pub fn finish(mut self) -> format::Module {
         format::Module {
             integer_size: format::numeric::IntegerSize::I4,
