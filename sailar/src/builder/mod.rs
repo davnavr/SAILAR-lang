@@ -69,14 +69,12 @@ impl Builder {
         }
     }
 
-    //pub fn format_version_mut
-
-    pub fn set_format_version(&mut self, version: FormatVersion) {
-        self.format_version = version;
+    pub fn format_version_mut(&mut self) -> &mut FormatVersion {
+        &mut self.format_version
     }
 
-    pub fn set_module_version(&mut self, version: VersionNumbers) {
-        self.module_identifier.version = version;
+    pub fn module_version_mut(&mut self) -> &mut VersionNumbers {
+        &mut self.module_identifier.version
     }
 
     pub fn code(&mut self) -> CodeDefinitions<'_> {
