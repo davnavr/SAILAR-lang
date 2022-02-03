@@ -11,7 +11,7 @@ pub enum Error {
     ResultCountMismatch { expected: u32, actual: u32 },
     #[error("expected {expected} arguments to be provided to function, but got {actual}")]
     ArgumentCountMismatch {
-        function: Rc<builder::Function>,
+        function: builder::Function,
         expected: u32,
         actual: u32,
     },
@@ -132,11 +132,7 @@ impl Block {
         }
     }
 
-    pub fn call<'a, A>(
-        &'a self,
-        callee: Rc<builder::Function>,
-        arguments: A,
-    ) -> Result<Vec<&Register>>
+    pub fn call<'a, A>(&'a self, callee: &builder::Function, arguments: A) -> Result<Vec<&Register>>
     where
         A: std::iter::IntoIterator<Item = &'a Register>,
     {
