@@ -26,6 +26,8 @@ impl std::cmp::PartialEq for Type {
     }
 }
 
+impl std::cmp::Eq for Type {}
+
 impl Type {
     pub fn index(&self) -> Index {
         match self.index.get() {

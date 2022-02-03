@@ -22,6 +22,25 @@ pub use type_signatures::{Signatures as TypeSignatures, Type};
 // TODO: Add borrowed version of format::Identifier simialr to how &str is borrowed String
 //pub type Name<'a> = std::borrow::Cow<'a, format::Identifier>;
 
+#[derive(Clone, Debug)]
+pub enum Function {
+    Defined(Rc<FunctionDefinition>),
+}
+
+impl Function {
+    pub fn index(&self) -> format::indices::Function {
+        match self {
+            Self::Defined(definition) => format::indices::Function::Defined(definition.index()),
+        }
+    }
+
+    pub fn signature(&self) -> &FunctionSig {
+        match self {
+            Self::Defined(definition) => definition.signature(),
+        }
+    }
+}
+
 pub struct Builder {
     //builder_identifier: Box<()>,
     module_identifier: format::ModuleIdentifier,

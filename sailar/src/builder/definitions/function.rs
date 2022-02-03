@@ -38,6 +38,8 @@ impl Definitions {
     }
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct Function {
     index: format::indices::FunctionDefinition,
     symbol: format::Identifier,
@@ -49,12 +51,7 @@ pub struct Function {
     is_export: std::cell::Cell<bool>,
 }
 
-impl Function {
-    pub fn index(&self) -> format::indices::FunctionDefinition {
-        self.index
-    }
-}
-
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Body {
     Defined(Rc<builder::Code>),
@@ -83,6 +80,14 @@ impl Function {
             body,
             is_export: std::cell::Cell::new(false),
         }
+    }
+
+    pub fn index(&self) -> format::indices::FunctionDefinition {
+        self.index
+    }
+
+    pub fn signature(&self) -> &builder::FunctionSig {
+        &self.signature
     }
 
     pub fn is_export(&self, exported: bool) {

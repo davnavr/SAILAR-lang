@@ -42,6 +42,7 @@ impl Definitions {
     }
 }
 
+#[non_exhaustive]
 pub struct Code {
     index: format::indices::Code,
     type_signatures: Rc<builder::TypeSignatures>,
@@ -124,5 +125,17 @@ impl Code {
                     .collect(),
             ),
         }
+    }
+}
+
+impl std::fmt::Debug for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Code")
+            .field("index", &self.index)
+            .field("input_count", &self.input_count)
+            .field("result_count", &self.result_count)
+            .field("entry_block", &self.entry_block)
+            .field("blocks", &self.blocks)
+            .finish_non_exhaustive()
     }
 }

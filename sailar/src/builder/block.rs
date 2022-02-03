@@ -9,6 +9,12 @@ pub use instruction_set::{BasicArithmeticOperation, Instruction, OverflowBehavio
 pub enum Error {
     #[error("expected {expected} values to be returned, but got {actual}")]
     ResultCountMismatch { expected: u32, actual: u32 },
+    #[error("expected {expected} arguments to be provided to function, but got {actual}")]
+    ArgumentCountMismatch {
+        function: Rc<builder::Function>,
+        expected: u32,
+        actual: u32,
+    },
     #[error(
         "expected register {register} to have type {expected:?} but actual type was {actual:?}"
     )]
@@ -35,6 +41,7 @@ impl OverflowingArithmeticResult<'_> {
     }
 }
 
+#[non_exhaustive]
 pub struct Block {
     index: format::indices::CodeBlock,
     type_signatures: Rc<builder::TypeSignatures>,
@@ -43,6 +50,17 @@ pub struct Block {
     instructions: std::cell::RefCell<Vec<Instruction>>,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
     registers: typed_arena::Arena<Register>,
+}
+
+impl std::fmt::Debug for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Block")
+        .field("index", &self.index)
+        .field("input_count", &self.input_count)
+        .field("return_count", &self.return_count)
+        .field("instructions", &self.instructions)
+        .finish_non_exhaustive()
+    }
 }
 
 impl Block {
@@ -112,6 +130,45 @@ impl Block {
                 actual: actual_count,
             })
         }
+    }
+
+    pub fn call<'a, A>(
+        &'a self,
+        callee: Rc<builder::Function>,
+        arguments: A,
+    ) -> Result<Vec<&Register>>
+    where
+        A: std::iter::IntoIterator<Item = &'a Register>,
+    {
+        let signature = callee.signature();
+        let expected_argument_count = signature.parameter_types().len();
+        let mut argument_indices = Vec::with_capacity(expected_argument_count);
+
+        for (argument_register, expected_argument_type) in
+            arguments.into_iter().zip(signature.parameter_types())
+        {
+            if std::borrow::Borrow::<builder::Type>::borrow(expected_argument_type)
+                != argument_register.value_type()
+            {
+                return Err(Error::RegisterTypeMismatch {
+                    register: argument_register.index,
+                    expected: expected_argument_type.clone(),
+                    actual: argument_register.value_type.clone(),
+                });
+            }
+
+            argument_indices.push(argument_register.index);
+        }
+
+        if argument_indices.len() != expected_argument_count {
+            return Err(Error::ArgumentCountMismatch {
+                function: callee.clone(),
+                expected: u32::try_from(expected_argument_count).unwrap(),
+                actual: u32::try_from(argument_indices.len()).unwrap(),
+            });
+        }
+
+        todo!()
     }
 
     /// Emits a basic arithmetic instruction.
@@ -218,6 +275,7 @@ impl Block {
 }
 
 // TODO: How to ensure registers have correct owners?
+#[derive(Debug)]
 pub struct Register {
     index: format::indices::Register,
     value_type: Rc<builder::Type>,

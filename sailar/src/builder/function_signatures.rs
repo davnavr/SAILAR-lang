@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 type Index = format::indices::FunctionSignature;
 
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct Function {
     index: Index,
     result_types: Vec<Rc<builder::Type>>,
@@ -13,6 +15,14 @@ pub struct Function {
 impl Function {
     pub fn index(&self) -> Index {
         self.index
+    }
+
+    pub fn result_types(&self) -> &[Rc<builder::Type>] {
+        &self.result_types
+    }
+
+    pub fn parameter_types(&self) -> &[Rc<builder::Type>] {
+        &self.parameter_types
     }
 }
 

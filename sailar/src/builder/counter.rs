@@ -1,4 +1,3 @@
-#[derive(Debug)]
 pub struct Cell<T> {
     next: std::cell::Cell<u32>,
     phantom: std::marker::PhantomData<T>,
