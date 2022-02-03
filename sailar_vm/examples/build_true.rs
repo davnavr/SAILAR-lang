@@ -17,24 +17,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             code
         };
 
-        let entry_point =
-            builder.definitions().functions().define(
-                format::Identifier::try_from("Main")?,
-                builder.function_signatures().insert(
-                    vec![builder
-                        .type_signatures()
-                        .primitive_type(type_system::FixedInt::S32)],
-                    Vec::new(),
-                ),
-                builder::FunctionBody::Defined(entry_code),
-            )
-        ;
+        let entry_point = builder.definitions().functions().define(
+            format::Identifier::try_from("Main")?,
+            builder.function_signatures().insert(
+                vec![builder
+                    .type_signatures()
+                    .primitive_type(type_system::FixedInt::S32)],
+                Vec::new(),
+            ),
+            builder::FunctionBody::Defined(entry_code),
+        );
 
         builder.set_entry_point(entry_point);
 
         builder.finish()
     };
 
-    todo!("{:?}", program);
+    let exit_code = sailar_vm::runtime::execute(|_| (), program, &[])?;
+    assert_eq!(exit_code, EXPECTED_EXIT_CODE);
+
     Ok(())
 }
