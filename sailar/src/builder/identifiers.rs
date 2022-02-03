@@ -23,4 +23,19 @@ impl Identifiers {
             hash_map::Entry::Vacant(vacant) => *vacant.insert(self.index.next()),
         }
     }
+
+    pub(super) fn build(&mut self) -> Vec<Identifier> {
+        let mut identifiers = Vec::new();
+        identifiers.resize_with(
+            self.lookup.len(),
+            std::mem::MaybeUninit::<Identifier>::zeroed,
+        );
+
+        for (id, index) in self.lookup.drain() {
+            identifiers[usize::try_from(index).unwrap()].write(id);
+        }
+
+        // All identifiers should be initialized, since there are no duplicate or skipped indices.
+        unsafe { std::mem::transmute::<_, Vec<Identifier>>(identifiers) }
+    }
 }

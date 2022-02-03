@@ -87,6 +87,7 @@ impl Builder {
         let code = self.code.build();
         let function_signatures = self.function_signatures.build();
         let type_signatures = self.type_signatures.build();
+        let definitions = self.definitions.build(&mut identifiers);
 
         format::Module {
             integer_size: format::numeric::IntegerSize::I4,
@@ -94,7 +95,7 @@ impl Builder {
             header: format::LenBytes(format::ModuleHeader {
                 identifier: self.module_identifier,
             }),
-            identifiers: format::LenBytes(format::LenVec(Vec::new())),
+            identifiers: format::LenBytes(format::LenVec(identifiers.build())),
             namespaces: format::LenBytes(format::LenVec(Vec::new())),
             type_signatures: format::LenBytes(format::LenVec(type_signatures)),
             function_signatures: format::LenBytes(format::LenVec(function_signatures)),
@@ -107,7 +108,7 @@ impl Builder {
                 imported_fields: format::LenBytes(format::LenVec(Vec::new())),
                 imported_functions: format::LenBytes(format::LenVec(Vec::new())),
             }),
-            definitions: format::LenBytes(self.definitions.build(&mut identifiers)),
+            definitions: format::LenBytes(definitions),
             struct_layouts: format::LenBytes(format::LenVec(Vec::new())),
             entry_point: format::LenBytes(None),
         }
