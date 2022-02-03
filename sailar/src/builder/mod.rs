@@ -3,7 +3,7 @@ use crate::format;
 mod block;
 mod code;
 mod counter;
-//mod definitions;
+mod definitions;
 mod error;
 mod type_signatures;
 

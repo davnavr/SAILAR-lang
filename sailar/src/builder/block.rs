@@ -98,7 +98,7 @@ impl Block {
         self.allocate_register(self.type_signatures.primitive_type(value_type))
     }
 
-    pub(super) fn build(&mut self) -> format::CodeBlock {
+    pub(super) fn build(&self) -> format::CodeBlock {
         format::CodeBlock {
             input_register_count: format::numeric::UInteger(self.input_count),
             exception_handler: None,
