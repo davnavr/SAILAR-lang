@@ -14,6 +14,18 @@ pub struct Type {
     signature: type_system::Any,
 }
 
+impl std::fmt::Debug for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.signature, f)
+    }
+}
+
+impl std::cmp::PartialEq for Type {
+    fn eq(&self, other: &Type) -> bool {
+        self.signature == other.signature
+    }
+}
+
 impl Type {
     pub fn index(&self) -> Index {
         match self.index.get() {

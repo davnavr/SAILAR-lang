@@ -156,6 +156,7 @@ pub enum OverflowBehavior {
     Ignore = 0,
     /// Introduces an extra temporary register containing a boolean value indicating if an overflow occured.
     Flag = 1,
+    //Saturate
 }
 
 // Could remove, only needed for ConvI
