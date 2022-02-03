@@ -34,7 +34,11 @@ impl Definitions {
     }
 
     pub(super) fn build(&mut self) -> Vec<format::Code> {
-        self.definitions.borrow_mut().iter_mut().map(|code| code.build()).collect()
+        self.definitions
+            .borrow_mut()
+            .iter_mut()
+            .map(|code| code.build())
+            .collect()
     }
 }
 
@@ -102,7 +106,7 @@ impl Code {
         let block_address = std::borrow::Borrow::borrow(&block) as *const Block;
 
         self.blocks.borrow_mut().push(block);
-        
+
         unsafe {
             // Address points to the memory allocated by the boxed Block.
             &*block_address
@@ -112,7 +116,13 @@ impl Code {
     fn build(&self) -> format::Code {
         format::Code {
             entry_block: self.entry_block.build(),
-            blocks: format::LenVec(self.blocks.borrow().iter().map(|block| block.build()).collect()),
+            blocks: format::LenVec(
+                self.blocks
+                    .borrow()
+                    .iter()
+                    .map(|block| block.build())
+                    .collect(),
+            ),
         }
     }
 }

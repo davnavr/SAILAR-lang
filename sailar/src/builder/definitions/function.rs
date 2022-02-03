@@ -1,38 +1,66 @@
 use crate::builder;
 use crate::format;
+use std::rc::Rc;
 
 pub struct Definitions {
-    definitions: typed_arena::Arena<Function>,
+    definitions: std::cell::RefCell<Vec<Rc<Function>>>,
     index: builder::counter::Cell<format::indices::FunctionDefinition>,
 }
 
 impl Definitions {
     pub fn new() -> Self {
         Self {
-            definitions: typed_arena::Arena::new(),
+            definitions: std::cell::RefCell::new(Vec::new()),
             index: builder::counter::Cell::new(),
         }
     }
 
-    pub fn build(&mut self) -> Vec<format::Function> {
-        self.definitions.iter_mut().map(Function::build).collect()
+    pub fn define(
+        &self,
+        symbol: format::Identifier,
+        signature: Rc<builder::FunctionSig>,
+        body: Body,
+    ) -> Rc<Function> {
+        let function = Rc::new(Function::new(self.index.next(), symbol, signature, body));
+        self.definitions.borrow_mut().push(function.clone());
+        function
+    }
+
+    pub(super) fn build(
+        &self,
+        identifiers: &mut builder::identifiers::Identifiers,
+    ) -> Vec<format::Function> {
+        self.definitions
+            .borrow()
+            .iter()
+            .map(|function| function.build(identifiers))
+            .collect()
     }
 }
 
 pub struct Function {
     index: format::indices::FunctionDefinition,
     symbol: format::Identifier,
+    // TODO Combine name and is_export into one struct so it can be wrapped in a RefCell.
     name: Option<format::Identifier>,
-    body: format::FunctionBody,
+    signature: Rc<builder::FunctionSig>,
+    body: Body,
     // Could be useful to store references to parameter and return types here, to help with type checking in block builder
+    is_export: std::cell::Cell<bool>,
+}
+
+impl Function {
+    pub fn index(&self) -> format::indices::FunctionDefinition {
+        self.index
+    }
 }
 
 #[non_exhaustive]
-pub enum Body<'a> {
-    Defined(&'a builder::Code),
+pub enum Body {
+    Defined(Rc<builder::Code>),
 }
 
-impl Body<'_> {
+impl Body {
     fn build(&self) -> format::FunctionBody {
         match self {
             Self::Defined(code) => format::FunctionBody::Defined(code.index()),
@@ -40,77 +68,42 @@ impl Body<'_> {
     }
 }
 
-impl<'a, 'b> builder::definitions::Functions<'a>
-where
-    'a: 'b,
-{
-    // TODO: How to specify body in a way that allows self-referential functions?
-    pub fn define(&'b mut self, symbol: format::Identifier, body: &Body<'a>) -> Builder<'b> {
-        let function = self.functions.definitions.alloc(Function {
-            index: self.functions.index.next(),
-            symbol,
-            name: None,
-            body: body.build(),
-        });
-
-        Builder {
-            builder: self.builder,
-            function,
-            type_signatures: self.type_signatures,
-        }
-    }
-}
-
 impl Function {
-    pub fn new(
+    fn new(
         index: format::indices::FunctionDefinition,
         symbol: format::Identifier,
-        body: format::FunctionBody,
+        signature: Rc<builder::FunctionSig>,
+        body: Body,
     ) -> Self {
         Self {
             index,
             symbol,
             name: None,
+            signature,
             body,
+            is_export: std::cell::Cell::new(false),
         }
     }
 
-    pub fn build(&mut self) -> format::Function {
+    pub fn is_export(&self, exported: bool) {
+        self.is_export.set(exported)
+    }
+
+    //pub fn set_name(&self, name: )
+
+    pub fn build(&self, identifiers: &mut builder::identifiers::Identifiers) -> format::Function {
+        let symbol = identifiers.insert_or_get(self.symbol.clone());
+
         format::Function {
-            name: todo!(), //self.name.unwrap_or(self.symbol),
-            signature: todo!(),
-            is_export: todo!(),
-            symbol: todo!(), //self.symbol,
-            body: self.body,
+            name: self
+                .name
+                .as_ref()
+                .map(|name| identifiers.insert_or_get(name.clone()))
+                .unwrap_or(symbol),
+            signature: self.signature.index(),
+            is_export: self.is_export.get(),
+            symbol,
+            body: self.body.build(),
         }
-    }
-}
-
-pub struct Builder<'a> {
-    builder: &'a (),
-    function: &'a mut Function,
-    type_signatures: &'a mut builder::type_signatures::Signatures,
-}
-
-impl<'a, 'b> Builder<'a>
-where
-    'a: 'b,
-{
-    fn new(
-        builder: &'a (),
-        function: &'a mut Function,
-        type_signatures: &'a mut builder::type_signatures::Signatures,
-    ) -> Self {
-        Self {
-            builder,
-            function,
-            type_signatures,
-        }
-    }
-
-    //pub fn set_name
-
-    pub fn finish(self) -> &'a Function {
-        self.function
     }
 }

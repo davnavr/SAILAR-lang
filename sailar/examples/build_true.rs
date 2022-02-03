@@ -1,8 +1,11 @@
-use sailar::{builder, format};
+use sailar::{
+    builder,
+    format::{self, type_system},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = {
-        let mut builder = builder::Builder::new(format::Identifier::try_from("True")?);
+        let builder = builder::Builder::new(format::Identifier::try_from("True")?);
 
         let entry_code = {
             let code = builder.code().define(0, 1);
@@ -10,6 +13,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let exit_code = entry_block.const_i(1);
             entry_block.ret([exit_code])?;
             code
+        };
+
+        let entry_point = {
+            let main = builder.definitions().functions().define(
+                format::Identifier::try_from("Main")?,
+                builder.function_signatures().insert(
+                    vec![builder
+                        .type_signatures()
+                        .primitive_type(type_system::FixedInt::S32)],
+                    Vec::new(),
+                ),
+                builder::FunctionBody::Defined(entry_code),
+            );
         };
 
         // let entry_point;

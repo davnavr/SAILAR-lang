@@ -4,16 +4,30 @@ use std::cell::RefCell;
 use std::collections::hash_map;
 use std::rc::Rc;
 
-type IndexCounter = Rc<builder::counter::Cell<format::indices::TypeSignature>>;
+type Index = format::indices::TypeSignature;
+
+type IndexCounter = Rc<builder::counter::Cell<Index>>;
 
 pub struct Type {
-    index: std::cell::Cell<Option<format::indices::TypeSignature>>,
+    index: std::cell::Cell<Option<Index>>,
     next_available_index: IndexCounter,
     signature: type_system::Any,
 }
 
+impl Type {
+    pub fn index(&self) -> Index {
+        match self.index.get() {
+            Some(existing) => existing,
+            None => {
+                let index = self.next_available_index.next();
+                self.index.set(Some(index));
+                index
+            }
+        }
+    }
+}
+
 pub struct Signatures {
-    //Vec<Rc<Type>> would ensure that unused types are removed
     index: IndexCounter,
     types: RefCell<Vec<Rc<Type>>>,
     primitive_lookup: RefCell<hash_map::HashMap<type_system::Primitive, Rc<Type>>>,
@@ -67,38 +81,3 @@ impl Signatures {
             .collect()
     }
 }
-
-// impl<'a> builder::TypeSignatures<'a> {
-//     pub fn insert_raw(&'a mut self, signature: type_system::Any) -> builder::Type<'a> {
-//         let type_signature = self.signatures.types.alloc(signature);
-//         builder::Type {
-//             index: self.signatures.index.next(),
-//             signature: type_signature,
-//         }
-//     }
-
-//     pub fn primitive<'b, T: Into<type_system::Primitive>>(
-//         &'b self,
-//         primitive: T,
-//     ) -> builder::Type<'a>
-//     where
-//         'a: 'b,
-//     {
-//         // // TODO: How to ensure indices are not out of order?
-//         // let signature = self.signatures.primitive_lookup.entry(primitive.into()).or_insert_with_key(|primitive_type| {
-//         //     type_system::Any::Primitive(*primitive_type)
-//         // });
-
-//         // builder::Type {
-//         //     index: self.signatures.index.next(),
-//         //     signature,
-//         // }
-//         builder::Type {
-//             index: self.signatures.index.next(),
-//             signature: self
-//                 .signatures
-//                 .types
-//                 .alloc(type_system::Any::Primitive(primitive.into())),
-//         }
-//     }
-// }

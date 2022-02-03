@@ -1,54 +1,34 @@
 use crate::builder;
+use crate::format;
 
-mod function;
+pub mod function;
 
-pub use function::{Body as FunctionBody, Builder as FunctionBuilder, Function};
+pub use function::Definitions as DefinedFunctions;
 
 pub struct Definitions {
-    functions: function::Definitions,
+    functions: DefinedFunctions,
 }
 
 impl Definitions {
     pub fn new() -> Self {
         Self {
-            functions: function::Definitions::new(),
-        }
-    }
-}
-
-pub struct Functions<'a> {
-    builder: &'a (),
-    functions: &'a mut function::Definitions,
-    type_signatures: &'a mut builder::type_signatures::Signatures,
-}
-
-pub struct Builder<'a> {
-    builder: &'a (),
-    definitions: &'a mut Definitions,
-    type_signatures: &'a mut builder::type_signatures::Signatures,
-}
-
-impl<'a, 'b> Builder<'a>
-where
-    'a: 'b,
-{
-    pub(super) fn new(
-        builder: &'a (),
-        definitions: &'a mut Definitions,
-        type_signatures: &'a mut builder::type_signatures::Signatures,
-    ) -> Self {
-        Self {
-            builder,
-            definitions,
-            type_signatures,
+            functions: DefinedFunctions::new(),
         }
     }
 
-    pub fn functions(&'b mut self) -> Functions<'b> {
-        Functions {
-            builder: self.builder,
-            functions: &mut self.definitions.functions,
-            type_signatures: self.type_signatures,
+    pub fn functions(&self) -> &DefinedFunctions {
+        &self.functions
+    }
+
+    pub(super) fn build(
+        &self,
+        identifiers: &mut builder::identifiers::Identifiers,
+    ) -> format::ModuleDefinitions {
+        format::ModuleDefinitions {
+            defined_structs: format::LenBytes(format::LenVec(Vec::new())),
+            defined_globals: format::LenBytes(format::LenVec(Vec::new())),
+            defined_fields: format::LenBytes(format::LenVec(Vec::new())),
+            defined_functions: format::LenBytes(format::LenVec(self.functions.build(identifiers))),
         }
     }
 }
