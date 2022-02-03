@@ -46,6 +46,7 @@ pub struct Block {
     index: format::indices::CodeBlock,
     type_signatures: Rc<builder::TypeSignatures>,
     input_count: u32,
+    input_registers: Box<[Register]>,
     return_count: u32,
     instructions: std::cell::RefCell<Vec<Instruction>>,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
@@ -67,13 +68,23 @@ impl Block {
     pub(super) fn new(
         index: format::indices::CodeBlock,
         type_signatures: Rc<builder::TypeSignatures>,
-        input_count: u32,
+        mut input_types: Vec<Rc<builder::Type>>,
         return_count: u32,
     ) -> Self {
         Self {
             index,
             type_signatures,
-            input_count,
+            input_count: input_types.len().try_into().unwrap(),
+            input_registers: input_types
+                .drain(..)
+                .zip(0u32..)
+                .map(|(input_type, index)| Register {
+                    value_type: input_type,
+                    index: format::indices::Register::Input(format::indices::InputRegister::from(
+                        index,
+                    )),
+                })
+                .collect(),
             return_count,
             instructions: std::cell::RefCell::new(Vec::new()),
             register_index: builder::counter::Cell::new(),
@@ -83,6 +94,14 @@ impl Block {
 
     pub fn index(&self) -> format::indices::CodeBlock {
         self.index
+    }
+
+    pub fn input_count(&self) -> u32 {
+        self.input_count
+    }
+
+    pub fn input_registers(&self) -> &[Register] {
+        &self.input_registers
     }
 
     /// Returns the number of values that should be returned by any `ret` instruction in this block.

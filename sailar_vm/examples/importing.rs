@@ -10,7 +10,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut builder = builder::Builder::new(format::Identifier::try_from("Library")?);
 
         let helper_code = {
-            let code = builder.code().define(1, 1);
+            let code = builder.code().define(
+                vec![builder
+                    .type_signatures()
+                    .primitive_type(type_system::FixedInt::S32)],
+                1,
+            );
             let entry_block = code.entry_block();
             // TODO: Get input register
             code
@@ -20,11 +25,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             helper_name.clone(),
             {
                 let signature = vec![builder
-                .type_signatures()
-                .primitive_type(type_system::FixedInt::S32)];
-                builder.function_signatures().insert(
-                signature.clone(), signature,
-            )},
+                    .type_signatures()
+                    .primitive_type(type_system::FixedInt::S32)];
+                builder
+                    .function_signatures()
+                    .insert(signature.clone(), signature)
+            },
             builder::FunctionBody::Defined(helper_code),
         );
 
@@ -34,15 +40,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let application = {
         let mut builder = builder::Builder::new(format::Identifier::try_from("True")?);
 
-        let library_import = builder.imports().modules().get_or_import(&library.header.0.identifier);
+        let library_import = builder
+            .imports()
+            .modules()
+            .get_or_import(&library.header.0.identifier);
 
-        let helper = builder.imports().functions().import(library_import, helper_name, {
-            let signature = vec![builder.type_signatures().primitive_type(format::type_system::FixedInt::S32)];
-            builder.function_signatures().insert(signature.clone(), signature)
-        });
+        let helper = builder
+            .imports()
+            .functions()
+            .import(library_import, helper_name, {
+                let signature = vec![builder
+                    .type_signatures()
+                    .primitive_type(format::type_system::FixedInt::S32)];
+                builder
+                    .function_signatures()
+                    .insert(signature.clone(), signature)
+            });
 
         let entry_code = {
-            let code = builder.code().define(0, 1);
+            let code = builder.code().define(Vec::new(), 1);
             let entry_block = code.entry_block();
             let value = entry_block.const_i(9);
             let result = entry_block.call(&builder::Function::Imported(helper), [value])?;

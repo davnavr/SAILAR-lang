@@ -18,11 +18,12 @@ impl Definitions {
         }
     }
 
-    pub fn define(&self, input_count: u32, result_count: u32) -> Rc<Code> {
+    // TODO: Store types of return values as well?
+    pub fn define(&self, input_types: Vec<Rc<builder::Type>>, result_count: u32) -> Rc<Code> {
         let code = Rc::new(Code::new(
             self.code_index.next(),
             self.type_signatures.clone(),
-            input_count,
+            input_types,
             result_count,
         ));
         self.definitions.borrow_mut().push(code.clone());
@@ -46,7 +47,7 @@ impl Definitions {
 pub struct Code {
     index: format::indices::Code,
     type_signatures: Rc<builder::TypeSignatures>,
-    input_count: u32,
+    input_types: Vec<Rc<builder::Type>>,
     result_count: u32,
     entry_block: Block,
     #[allow(clippy::vec_box)] // References to Blocks are required, and Vec may resize.
@@ -58,21 +59,21 @@ impl Code {
     fn new(
         index: format::indices::Code,
         type_signatures: Rc<builder::TypeSignatures>,
-        input_count: u32,
+        input_types: Vec<Rc<builder::Type>>,
         result_count: u32,
     ) -> Self {
         let block_index = builder::counter::Cell::new();
         let entry_block = Block::new(
             block_index.next(),
             type_signatures.clone(),
-            input_count,
+            input_types.clone(),
             result_count,
         );
 
         Self {
             index,
             type_signatures,
-            input_count,
+            input_types,
             result_count,
             entry_block,
             blocks: RefCell::new(Vec::new()),
@@ -85,7 +86,7 @@ impl Code {
     }
 
     pub fn input_count(&self) -> u32 {
-        self.input_count
+        self.entry_block().input_count()
     }
 
     pub fn result_count(&self) -> u32 {
@@ -97,11 +98,11 @@ impl Code {
     }
 
     #[allow(clippy::needless_lifetimes)]
-    pub fn define_block<'a>(&'a self, input_count: u32) -> &'a Block {
+    pub fn define_block<'a>(&'a self, input_types: Vec<Rc<builder::Type>>) -> &'a Block {
         let block = Box::new(Block::new(
             self.block_index.next(),
             self.type_signatures.clone(),
-            input_count,
+            input_types,
             self.result_count,
         ));
 
@@ -133,7 +134,7 @@ impl std::fmt::Debug for Code {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Code")
             .field("index", &self.index)
-            .field("input_count", &self.input_count)
+            .field("input_types", &self.input_types)
             .field("result_count", &self.result_count)
             .field("entry_block", &self.entry_block)
             .field("blocks", &self.blocks)

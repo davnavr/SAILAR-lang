@@ -21,6 +21,7 @@ impl Definitions {
         signature: Rc<builder::FunctionSig>,
         body: Body,
     ) -> Rc<Function> {
+        // TODO: Check that return count of body is correct.
         let function = Rc::new(Function::new(self.index.next(), symbol, signature, body));
         self.definitions.borrow_mut().push(function.clone());
         function
