@@ -16,7 +16,7 @@ where
 
 macro_rules! index_type {
     ($name: ident, $description: literal) => {
-        #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+        #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         #[doc = $description]
         pub struct $name(pub UInteger);
 

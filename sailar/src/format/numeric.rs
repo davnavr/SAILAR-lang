@@ -1,15 +1,15 @@
 /// Represents an unsigned integer in little-endian order.
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct UInteger(pub u32);
 
 /// Represents a signed integer in little-endian order.
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct SInteger(pub i32);
 
 /// Specifies the size of integers and indices in the module file.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum IntegerSize {
     I1 = 0,

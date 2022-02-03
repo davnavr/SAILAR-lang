@@ -4,46 +4,39 @@ use crate::format;
 pub struct Definitions {
     definitions: typed_arena::Arena<Code>,
     code_index: builder::counter::Cell<format::indices::Code>,
+    type_signatures: std::rc::Rc<builder::TypeSignatures>,
 }
 
 impl Definitions {
-    pub fn new() -> Self {
+    pub fn new(type_signatures: std::rc::Rc<builder::TypeSignatures>) -> Self {
         Self {
             definitions: typed_arena::Arena::new(),
             code_index: builder::counter::Cell::new(),
+            type_signatures,
         }
     }
 
-    pub fn build(&mut self) -> Vec<format::Code> {
-        self.definitions.iter_mut().map(Code::build).collect()
-    }
-}
-
-impl<'a, 'b> builder::CodeDefinitions<'a>
-where
-    'a: 'b,
-{
-    pub fn define(&'b mut self, input_count: u32, result_count: u32) -> Builder<'b> {
-        let code = self.definitions.definitions.alloc(Code::new(
-            self.definitions.code_index.next(),
+    pub fn define(&self, input_count: u32, result_count: u32) -> &Code {
+        self.definitions.alloc(Code::new(
+            self.code_index.next(),
+            self.type_signatures.clone(),
             input_count,
             result_count,
-        ));
-
-        Builder {
-            builder: self.builder,
-            code,
-            type_signatures: self.type_signatures,
-        }
+        ))
     }
 
-    pub fn reserve(&'b mut self, count: usize) {
-        self.definitions.definitions.reserve_extend(count);
+    pub fn reserve(&self, count: usize) {
+        self.definitions.reserve_extend(count);
+    }
+
+    pub(super) fn build(&mut self) -> Vec<format::Code> {
+        self.definitions.iter_mut().map(Code::build).collect()
     }
 }
 
 pub struct Code {
     index: format::indices::Code,
+    type_signatures: std::rc::Rc<builder::TypeSignatures>,
     input_count: u32,
     result_count: u32,
     entry_block: Block,
@@ -52,13 +45,26 @@ pub struct Code {
 }
 
 impl Code {
-    fn new(index: format::indices::Code, input_count: u32, result_count: u32) -> Self {
-        let mut block_index = builder::counter::Cell::new();
-        Self {
-            index,
+    fn new(
+        index: format::indices::Code,
+        type_signatures: std::rc::Rc<builder::TypeSignatures>,
+        input_count: u32,
+        result_count: u32,
+    ) -> Self {
+        let block_index = builder::counter::Cell::new();
+        let entry_block = Block::new(
+            block_index.next(),
+            type_signatures.clone(),
             input_count,
             result_count,
-            entry_block: Block::new(block_index.next(), input_count, result_count),
+        );
+
+        Self {
+            index,
+            type_signatures,
+            input_count,
+            result_count,
+            entry_block,
             blocks: typed_arena::Arena::new(),
             block_index,
         }
@@ -68,56 +74,31 @@ impl Code {
         self.index
     }
 
-    pub fn build(&mut self) -> format::Code {
+    pub fn input_count(&self) -> u32 {
+        self.input_count
+    }
+
+    pub fn result_count(&self) -> u32 {
+        self.result_count
+    }
+
+    pub fn entry_block(&self) -> &Block {
+        &self.entry_block
+    }
+
+    pub fn define_block(&self, input_count: u32) -> &Block {
+        self.blocks.alloc(Block::new(
+            self.block_index.next(),
+            self.type_signatures.clone(),
+            input_count,
+            self.result_count,
+        ))
+    }
+
+    pub(super) fn build(&mut self) -> format::Code {
         format::Code {
             entry_block: self.entry_block.build(),
             blocks: format::LenVec(self.blocks.iter_mut().map(Block::build).collect()),
         }
-    }
-}
-
-pub struct Builder<'a> {
-    builder: &'a (),
-    code: &'a mut Code,
-    type_signatures: &'a mut builder::type_signatures::Signatures,
-}
-
-impl<'a, 'b> Builder<'a>
-where
-    'a: 'b,
-{
-    pub fn index(&'b self) -> format::indices::Code {
-        self.code.index
-    }
-
-    pub fn input_count(&'b self) -> u32 {
-        self.code.input_count
-    }
-
-    pub fn result_count(&'b self) -> u32 {
-        self.code.result_count
-    }
-
-    pub fn entry_block(&'b mut self) -> builder::Block<'b> {
-        builder::Block::new(
-            &self.code.entry_block,
-            self.code.index,
-            self.builder,
-            self.type_signatures,
-        )
-    }
-
-    pub fn define_block(&'b mut self, input_count: u32) -> builder::Block<'b> {
-        let block = self.code.blocks.alloc(Block::new(
-            self.code.block_index.next(),
-            input_count,
-            self.code.result_count,
-        ));
-
-        builder::Block::new(block, self.code.index, self.builder, self.type_signatures)
-    }
-
-    pub fn finish(self) -> &'a Code {
-        self.code
     }
 }

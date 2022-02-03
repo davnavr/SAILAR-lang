@@ -3,69 +3,46 @@ use crate::format;
 mod block;
 mod code;
 mod counter;
-mod definitions;
+//mod definitions;
 mod error;
 mod type_signatures;
 
-pub use block::{Builder as Block, Error as InvalidInstruction};
+pub use block::{Block, Error as InvalidInstruction};
+pub use code::{Code, Definitions as CodeDefinitions};
 
-pub use code::{Builder as CodeBuilder, Code};
-
-pub use definitions::{
-    Builder as Definitions, Function as FunctionDefinition, FunctionBody,
-    FunctionBuilder as FunctionDefinitionBuilder, Functions as DefinedFunctions,
-};
+// pub use definitions::{
+//     Builder as Definitions, Function as FunctionDefinition, FunctionBody,
+//     FunctionBuilder as FunctionDefinitionBuilder, Functions as DefinedFunctions,
+// };
 
 pub use error::{Error, Result};
-
 pub use format::{FormatVersion, VersionNumbers};
+pub use type_signatures::{Signatures as TypeSignatures, Type};
 
 // TODO: Add borrowed version of format::Identifier simialr to how &str is borrowed String
 //pub type Name<'a> = std::borrow::Cow<'a, format::Identifier>;
 
-// TODO: Add extra lifetime parameters everywhere to allow usage of Identifier references.
-
-#[derive(Clone, Copy)]
-pub struct Type<'a> {
-    // TODO: Include builder ID?
-    //builder: &'a (),
-    index: format::indices::TypeSignature,
-    signature: &'a format::type_system::Any,
-}
-
-// TODO: Get rid of type signatures, and just use Cow<SomeType>?
-pub struct TypeSignatures<'a> {
-    builder: &'a (),
-    signatures: &'a type_signatures::Signatures,
-}
-
-pub struct CodeDefinitions<'a> {
-    builder: &'a (),
-    definitions: &'a mut code::Definitions,
-    type_signatures: &'a mut type_signatures::Signatures,
-}
-
 pub struct Builder {
-    builder_identifier: Box<()>,
+    //builder_identifier: Box<()>,
     module_identifier: format::ModuleIdentifier,
     format_version: FormatVersion,
     code: code::Definitions,
-    type_signatures: type_signatures::Signatures,
-    definitions: definitions::Definitions,
+    type_signatures: std::rc::Rc<TypeSignatures>,
 }
 
 impl Builder {
     pub fn new(name: format::Identifier) -> Self {
+        let type_signatures = std::rc::Rc::new(TypeSignatures::new());
+
         Self {
-            builder_identifier: Box::new(()),
+            //builder_identifier: Box::new(()),
             module_identifier: format::ModuleIdentifier {
                 name,
                 version: format::VersionNumbers::default(),
             },
             format_version: FormatVersion::minimum_supported_version().clone(),
-            code: code::Definitions::new(),
-            type_signatures: type_signatures::Signatures::new(),
-            definitions: definitions::Definitions::new(),
+            code: code::Definitions::new(type_signatures.clone()),
+            type_signatures,
         }
     }
 
@@ -77,27 +54,8 @@ impl Builder {
         &mut self.module_identifier.version
     }
 
-    pub fn code(&mut self) -> CodeDefinitions<'_> {
-        CodeDefinitions {
-            builder: &self.builder_identifier,
-            definitions: &mut self.code,
-            type_signatures: &mut self.type_signatures,
-        }
-    }
-
-    pub fn type_signatures(&mut self) -> TypeSignatures<'_> {
-        TypeSignatures {
-            builder: &self.builder_identifier,
-            signatures: &mut self.type_signatures,
-        }
-    }
-
-    pub fn definitions(&mut self) -> Definitions<'_> {
-        Definitions::new(
-            &self.builder_identifier,
-            &mut self.definitions,
-            &mut self.type_signatures,
-        )
+    pub fn code(&self) -> &CodeDefinitions {
+        &self.code
     }
 
     pub fn finish(mut self) -> format::Module {

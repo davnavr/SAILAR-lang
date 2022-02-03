@@ -13,6 +13,12 @@ impl<T> Cell<T> {
     }
 }
 
+impl<T> Default for Cell<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: From<u32>> Cell<T> {
     pub fn next(&self) -> T {
         let value = T::from(self.next.get());
