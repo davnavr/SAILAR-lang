@@ -4,19 +4,21 @@ use sailar::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    const EXPECTED_EXIT_CODE: i32 = 1;
+
     let program = {
-        let builder = builder::Builder::new(format::Identifier::try_from("True")?);
+        let mut builder = builder::Builder::new(format::Identifier::try_from("True")?);
 
         let entry_code = {
             let code = builder.code().define(0, 1);
             let entry_block = code.entry_block();
-            let exit_code = entry_block.const_i(1);
+            let exit_code = entry_block.const_i(EXPECTED_EXIT_CODE);
             entry_block.ret([exit_code])?;
             code
         };
 
-        let entry_point = {
-            let main = builder.definitions().functions().define(
+        let entry_point =
+            builder.definitions().functions().define(
                 format::Identifier::try_from("Main")?,
                 builder.function_signatures().insert(
                     vec![builder
@@ -25,20 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Vec::new(),
                 ),
                 builder::FunctionBody::Defined(entry_code),
-            );
-        };
+            )
+        ;
 
-        // let entry_point;
-        // {
-        //     let mut definitions = builder.definitions();
-        //     let mut functions = definitions.functions();
-        //     let mut main_function = functions.define(
-        //         format::Identifier::try_from("Main")?,
-        //         &builder::FunctionBody::Defined(entry_code),
-        //     );
-
-        //     entry_point = main_function.finish();
-        // }
+        builder.set_entry_point(entry_point);
 
         builder.finish()
     };

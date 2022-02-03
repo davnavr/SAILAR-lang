@@ -110,7 +110,7 @@ impl Builder {
             }),
             definitions: format::LenBytes(definitions),
             struct_layouts: format::LenBytes(format::LenVec(Vec::new())),
-            entry_point: format::LenBytes(None),
+            entry_point: format::LenBytes(self.entry_point.map(|main| main.index())),
         }
     }
 }
