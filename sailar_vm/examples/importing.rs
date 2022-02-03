@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let helper_name = format::Identifier::try_from("Helper")?;
 
     let library = {
-        let mut builder = builder::Builder::new(format::Identifier::try_from("Library")?);
+        let builder = builder::Builder::new(format::Identifier::try_from("Library")?);
 
         let helper_code = {
             let code = builder.code().define(
@@ -17,7 +17,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 1,
             );
             let entry_block = code.entry_block();
-            // TODO: Get input register
+            let input = &entry_block.input_registers()[0];
+            let other = entry_block.const_i(10i32);
+            let result = entry_block.add_overflowing(input, other)?;
+            entry_block.ret([result])?;
             code
         };
 
@@ -38,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let application = {
-        let mut builder = builder::Builder::new(format::Identifier::try_from("True")?);
+        let mut builder = builder::Builder::new(format::Identifier::try_from("Application")?);
 
         let library_import = builder
             .imports()
@@ -84,6 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //let exit_code = sailar_vm::runtime::execute(|_| (), program, &[])?;
     //assert_eq!(exit_code, EXPECTED_EXIT_CODE);
+    dbg!(&library);
+    dbg!(&application);
     todo!();
     Ok(())
 }

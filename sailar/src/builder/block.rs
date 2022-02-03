@@ -183,7 +183,18 @@ impl Block {
             });
         }
 
-        todo!()
+        self.emit_raw(Instruction::Call(
+            format::instruction_set::CallInstruction {
+                function: callee.index(),
+                arguments: format::LenVec(argument_indices),
+            },
+        ));
+
+        Ok(signature
+            .result_types()
+            .iter()
+            .map(|result_type| self.allocate_register(result_type.clone()))
+            .collect())
     }
 
     /// Emits a basic arithmetic instruction.
