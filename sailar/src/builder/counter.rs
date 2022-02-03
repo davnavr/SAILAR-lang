@@ -5,8 +5,12 @@ pub struct Cell<T> {
 
 impl<T> Cell<T> {
     pub fn new() -> Self {
+        Self::with_start_value(0)
+    }
+
+    pub fn with_start_value(value: u32) -> Self {
         Self {
-            next: std::cell::Cell::new(0),
+            next: std::cell::Cell::new(value),
             phantom: std::marker::PhantomData,
         }
     }

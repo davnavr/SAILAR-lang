@@ -49,6 +49,7 @@ pub struct Code {
     input_count: u32,
     result_count: u32,
     entry_block: Block,
+    #[allow(clippy::vec_box)] // References to Blocks are required, and Vec may resize.
     blocks: RefCell<Vec<Box<Block>>>,
     block_index: builder::counter::Cell<format::indices::CodeBlock>,
 }

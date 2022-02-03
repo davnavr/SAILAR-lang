@@ -8,6 +8,7 @@ mod definitions;
 mod error;
 mod function_signatures;
 mod identifiers;
+mod imports;
 mod type_signatures;
 
 pub use block::{Block, Error as InvalidInstruction};
@@ -17,35 +18,58 @@ pub use definitions::{DefinedFunctions, Definitions};
 pub use error::{Error, Result};
 pub use format::{FormatVersion, VersionNumbers};
 pub use function_signatures::{Function as FunctionSig, Signatures as FunctionSignatures};
+pub use imports::function::Function as FunctionImport;
+pub use imports::module::Module as ModuleImport;
+pub use imports::{ImportedFunctions, ImportedModules, Imports};
 pub use type_signatures::{Signatures as TypeSignatures, Type};
 
 // TODO: Add borrowed version of format::Identifier simialr to how &str is borrowed String
 //pub type Name<'a> = std::borrow::Cow<'a, format::Identifier>;
 
-#[derive(Clone, Debug)]
-pub enum Function {
-    Defined(Rc<FunctionDefinition>),
+macro_rules! definition_or_import {
+    ($name: ident, $defined_type: ty, $imported_type: ty, $index_type: ty) => {
+        #[derive(Clone, Debug)]
+        pub enum $name {
+            Defined(Rc<$defined_type>),
+            Imported(Rc<$imported_type>),
+        }
+
+        impl Function {
+            pub fn index(&self) -> $index_type {
+                match self {
+                    Self::Defined(definition) => <$index_type>::Defined(definition.index()),
+                    Self::Imported(import) => <$index_type>::Imported(import.index()),
+                }
+            }
+        }
+    };
 }
 
-impl Function {
-    pub fn index(&self) -> format::indices::Function {
-        match self {
-            Self::Defined(definition) => format::indices::Function::Defined(definition.index()),
-        }
-    }
+definition_or_import!(
+    Function,
+    FunctionDefinition,
+    FunctionImport,
+    format::indices::Function
+);
 
+impl Function {
     pub fn signature(&self) -> &FunctionSig {
         match self {
             Self::Defined(definition) => definition.signature(),
+            Self::Imported(import) => import.signature(),
         }
     }
 }
+
+// Could have an enum for Module to refer to module import or current module.
+//pub enum Module
 
 pub struct Builder {
     //builder_identifier: Box<()>,
     module_identifier: format::ModuleIdentifier,
     format_version: FormatVersion,
     code: code::Definitions,
+    imports: Imports,
     definitions: Definitions,
     function_signatures: Rc<FunctionSignatures>,
     type_signatures: Rc<TypeSignatures>,
@@ -65,6 +89,7 @@ impl Builder {
             },
             format_version: FormatVersion::minimum_supported_version().clone(),
             code: code::Definitions::new(type_signatures.clone()),
+            imports: Imports::new(),
             definitions: Definitions::new(),
             function_signatures,
             type_signatures,
@@ -92,6 +117,10 @@ impl Builder {
         &self.function_signatures
     }
 
+    pub fn imports(&self) -> &Imports {
+        &self.imports
+    }
+
     pub fn definitions(&self) -> &Definitions {
         &self.definitions
     }
@@ -107,6 +136,7 @@ impl Builder {
         let function_signatures = self.function_signatures.build();
         let type_signatures = self.type_signatures.build();
         let definitions = self.definitions.build(&mut identifiers);
+        let imports = self.imports.build(&mut identifiers);
 
         format::Module {
             integer_size: format::numeric::IntegerSize::I4,
@@ -120,13 +150,7 @@ impl Builder {
             function_signatures: format::LenBytes(format::LenVec(function_signatures)),
             function_bodies: format::LenBytes(format::LenVec(code)),
             data: format::LenBytes(format::LenVec(Vec::new())),
-            imports: format::LenBytes(format::ModuleImports {
-                imported_modules: format::LenBytes(format::LenVec(Vec::new())),
-                imported_structs: format::LenBytes(format::LenVec(Vec::new())),
-                imported_globals: format::LenBytes(format::LenVec(Vec::new())),
-                imported_fields: format::LenBytes(format::LenVec(Vec::new())),
-                imported_functions: format::LenBytes(format::LenVec(Vec::new())),
-            }),
+            imports: format::LenBytes(imports),
             definitions: format::LenBytes(definitions),
             struct_layouts: format::LenBytes(format::LenVec(Vec::new())),
             entry_point: format::LenBytes(self.entry_point.map(|main| main.index())),

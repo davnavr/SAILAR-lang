@@ -55,11 +55,11 @@ pub struct Block {
 impl std::fmt::Debug for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Block")
-        .field("index", &self.index)
-        .field("input_count", &self.input_count)
-        .field("return_count", &self.return_count)
-        .field("instructions", &self.instructions)
-        .finish_non_exhaustive()
+            .field("index", &self.index)
+            .field("input_count", &self.input_count)
+            .field("return_count", &self.return_count)
+            .field("instructions", &self.instructions)
+            .finish_non_exhaustive()
     }
 }
 

@@ -57,10 +57,7 @@ impl Signatures {
         fn collect_type_indices(
             types: &[Rc<builder::Type>],
         ) -> Vec<format::indices::TypeSignature> {
-            types
-                .into_iter()
-                .map(|signature| signature.index())
-                .collect()
+            types.iter().map(|signature| signature.index()).collect()
         }
 
         self.signatures
