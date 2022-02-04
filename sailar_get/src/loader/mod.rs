@@ -55,8 +55,10 @@ fn read_index_from<
     })
 }
 
+pub type PointerSize = std::num::NonZeroU8;
+
 pub struct Loader<'a> {
-    pointer_size: u8,
+    pointer_size: PointerSize,
     // TODO: Don't need arena for modules.
     module_arena: typed_arena::Arena<Module<'a>>,
     loaded_modules: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
@@ -65,7 +67,7 @@ pub struct Loader<'a> {
 impl<'a> Loader<'a> {
     pub fn initialize(
         loader: &'a mut Option<Loader<'a>>,
-        pointer_size: u8,
+        pointer_size: PointerSize,
         application: format::Module,
     ) -> (&'a Self, &'a Module<'a>) {
         let loaded = loader.insert(Self {
@@ -78,7 +80,7 @@ impl<'a> Loader<'a> {
     }
 
     /// Returns the presumed pointer size, in bytes, used by all loaded modules.
-    pub fn pointer_size(&'a self) -> u8 {
+    pub fn pointer_size(&'a self) -> PointerSize {
         self.pointer_size
     }
 

@@ -66,7 +66,8 @@ impl From<interpreter::Error> for Error {
     }
 }
 
-const RUNTIME_POINTER_SIZE: u8 = std::mem::size_of::<usize>() as u8;
+const RUNTIME_POINTER_SIZE: loader::PointerSize =
+    unsafe { loader::PointerSize::new_unchecked(std::mem::size_of::<usize>() as u8) };
 
 impl<'l> Runtime<'l> {
     pub fn initialize(
