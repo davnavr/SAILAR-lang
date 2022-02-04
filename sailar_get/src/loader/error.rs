@@ -18,6 +18,8 @@ pub enum Error {
         field: format::indices::FieldDefinition,
         owner: format::indices::StructDefinition,
     },
+    #[error("the module {0:?} could not be loaded")]
+    ModuleNotFound(format::ModuleIdentifier),
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error>),
 }

@@ -7,6 +7,7 @@ mod error;
 mod field;
 mod function;
 mod module;
+mod resolver;
 mod structure;
 mod symbol;
 mod type_signature;
@@ -17,6 +18,7 @@ pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
+pub use resolver::{ReferenceResolver, ResolverClosure};
 pub use structure::Struct;
 pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
 pub use type_signature::Type as TypeSignature;
@@ -59,24 +61,30 @@ pub type PointerSize = std::num::NonZeroU8;
 
 pub struct Loader<'a> {
     pointer_size: PointerSize,
-    // TODO: Don't need arena for modules.
-    module_arena: typed_arena::Arena<Module<'a>>,
-    loaded_modules: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
+    resolver: &'a dyn ReferenceResolver,
+    resolved_modules: typed_arena::Arena<Module<'a>>,
+    module_lookup: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
 }
 
 impl<'a> Loader<'a> {
     pub fn initialize(
         loader: &'a mut Option<Loader<'a>>,
         pointer_size: PointerSize,
+        resolver: &'a dyn ReferenceResolver,
         application: format::Module,
     ) -> (&'a Self, &'a Module<'a>) {
         let loaded = loader.insert(Self {
             pointer_size,
-            module_arena: typed_arena::Arena::new(),
-            loaded_modules: std::cell::RefCell::new(hash_map::HashMap::new()),
+            resolver,
+            resolved_modules: typed_arena::Arena::new(),
+            module_lookup: std::cell::RefCell::new(hash_map::HashMap::new()),
         });
 
-        (loaded, loaded.load_module_raw(application))
+        (loaded, loaded.force_load_module(application))
+    }
+
+    fn force_load_module(&'a self, module: format::Module) -> &'a Module<'a> {
+        self.resolved_modules.alloc(Module::new(self, module))
     }
 
     /// Returns the presumed pointer size, in bytes, used by all loaded modules.
@@ -84,31 +92,28 @@ impl<'a> Loader<'a> {
         self.pointer_size
     }
 
-    // TODO: Return error if module with same id already loaded. Rename this to force_load_module
-    fn load_module_raw(&'a self, source: format::Module) -> &'a Module<'a> {
-        let identifier = source.header.0.identifier.clone();
-        match self.loaded_modules.borrow_mut().entry(identifier) {
+    pub fn load_module(&'a self, name: &ModuleIdentifier) -> Result<&'a Module<'a>> {
+        match self.module_lookup.borrow_mut().entry(name.clone()) {
+            hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
             hash_map::Entry::Vacant(vacant) => {
-                let loaded = self.module_arena.alloc(Module::new(self, source));
-                vacant.insert(loaded);
-                loaded
+                let loaded = self
+                    .resolver
+                    .resolve(name)?
+                    .ok_or_else(|| Error::ModuleNotFound(name.clone()))?;
+                Ok(*vacant.insert(self.force_load_module(*loaded)))
             }
-            hash_map::Entry::Occupied(occupied) => occupied.get(),
         }
     }
 
-    // TODO: How to force loading of a module if it is an import of one of the already loaded modules?
     pub fn lookup_module(&'a self, name: &ModuleIdentifier) -> Option<&'a Module<'a>> {
-        self.loaded_modules.borrow().get(name).copied()
+        self.module_lookup.borrow().get(name).copied()
     }
 
     pub fn lookup_function(&'a self, name: Symbol<'a>) -> Vec<&'a Function<'a>> {
-        let mut results = Vec::new();
-        for module in self.loaded_modules.borrow().values() {
-            if let Some(function) = module.lookup_function(name.clone()) {
-                results.push(function);
-            }
-        }
-        results
+        self.module_lookup
+            .borrow()
+            .values()
+            .filter_map(|module| module.lookup_function(name.clone()))
+            .collect()
     }
 }
