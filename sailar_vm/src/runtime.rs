@@ -72,10 +72,11 @@ const RUNTIME_POINTER_SIZE: loader::PointerSize =
 impl<'l> Runtime<'l> {
     pub fn initialize(
         initializer: &'l mut Initializer<'l>,
+        resolver: Option<&'l dyn loader::ReferenceResolver>,
         application: sailar::format::Module,
     ) -> &'l Self {
         let (loader, program) =
-            loader::Loader::initialize(&mut initializer.loader, RUNTIME_POINTER_SIZE, application);
+            loader::Loader::initialize(&mut initializer.loader, RUNTIME_POINTER_SIZE, resolver.unwrap_or(&()), application);
 
         initializer.runtime.insert(Self {
             loader,
@@ -157,13 +158,13 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub fn execute<S: FnOnce(&mut Initializer) -> ()>(
+pub fn execute<S: FnOnce(&mut Initializer) -> Box<dyn loader::ReferenceResolver>>(
     setup: S,
     application: sailar::format::Module,
     arguments: &[&str],
 ) -> Result<i32, Error> {
     let mut initializer = Initializer::new();
-    setup(&mut initializer);
-    let runtime = Runtime::initialize(&mut initializer, application);
+    let resolver = setup(&mut initializer);
+    let runtime = Runtime::initialize(&mut initializer, Some(std::borrow::Borrow::borrow(&resolver)), application);
     runtime.invoke_entry_point(arguments, None)
 }

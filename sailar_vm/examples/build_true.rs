@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.finish()
     };
 
-    let exit_code = sailar_vm::runtime::execute(|_| (), program, &[])?;
+    let exit_code = sailar_vm::runtime::execute(|_| Box::new(()), program, &[])?;
     assert_eq!(exit_code, EXPECTED_EXIT_CODE);
 
     Ok(())
