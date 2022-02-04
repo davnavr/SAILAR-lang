@@ -1,5 +1,6 @@
 use crate::loader::{self, cache, Error, Result};
-use sailar::format;
+use sailar::{format, hashing::IntegerHashBuilder};
+use std::cell::RefCell;
 use std::collections::hash_map;
 
 pub struct Module<'a> {
@@ -14,13 +15,14 @@ pub struct Module<'a> {
     //loaded_globals
     loaded_functions:
         cache::IndexLookup<'a, format::indices::FunctionDefinition, loader::Function<'a>>,
-    function_lookup_cache:
-        std::cell::RefCell<hash_map::HashMap<loader::Symbol<'a>, &'a loader::Function<'a>>>,
-    module_import_cache: std::cell::RefCell<
+    function_lookup_cache: RefCell<hash_map::HashMap<loader::Symbol<'a>, &'a loader::Function<'a>>>,
+    module_import_cache:
+        RefCell<hash_map::HashMap<format::indices::Module, &'a Module<'a>, IntegerHashBuilder>>,
+    function_import_cache: RefCell<
         hash_map::HashMap<
-            format::indices::Module,
-            &'a Module<'a>,
-            sailar::hashing::IntegerHashBuilder,
+            format::indices::FunctionImport,
+            &'a loader::Function<'a>,
+            IntegerHashBuilder,
         >,
     >,
 }
@@ -55,9 +57,12 @@ impl<'a> Module<'a> {
             loaded_structs: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
-            function_lookup_cache: std::cell::RefCell::new(hash_map::HashMap::new()),
-            module_import_cache: std::cell::RefCell::new(hash_map::HashMap::with_hasher(
-                sailar::hashing::IntegerHashBuilder::default(),
+            function_lookup_cache: RefCell::new(hash_map::HashMap::new()),
+            module_import_cache: RefCell::new(hash_map::HashMap::with_hasher(
+                IntegerHashBuilder::default(),
+            )),
+            function_import_cache: RefCell::new(hash_map::HashMap::with_hasher(
+                IntegerHashBuilder::default(),
             )),
         }
     }
@@ -195,6 +200,33 @@ impl<'a> Module<'a> {
         )
     }
 
+    pub fn load_function_import_raw(
+        &'a self,
+        index: format::indices::FunctionImport,
+    ) -> Result<&'a loader::Function<'a>> {
+        match self.function_import_cache.borrow_mut().entry(index) {
+            hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
+            hash_map::Entry::Vacant(vacant) => loader::read_index_from(
+                index,
+                &self.source.imports.0.imported_functions.0,
+                |import| {
+                    let owning_module = self.load_module_raw(import.module)?;
+                    let symbol = self.load_identifier_raw(import.symbol)?;
+                    let function = owning_module
+                        .lookup_function(loader::Symbol::Borrowed(symbol))
+                        .ok_or_else(|| Error::ImportNotFound {
+                            index: index.0,
+                            symbol: symbol.clone(),
+                        })?;
+
+                    // TODO: Check signature of imported function.
+
+                    Ok(*vacant.insert(function))
+                },
+            ),
+        }
+    }
+
     pub fn load_function_raw(
         &'a self,
         index: format::indices::Function,
@@ -276,26 +308,17 @@ impl<'a> Module<'a> {
         &'a self,
         index: format::indices::Module,
     ) -> Result<&'a loader::Module<'a>> {
-        match index.0 .0 {
-            0u32 => Ok(self),
-            unsigned_index => match self.module_import_cache.borrow_mut().entry(index) {
-                hash_map::Entry::Vacant(vacant) => {
-                    let raw_index = usize::try_from(unsigned_index - 1)
-                        .map_err(|_| Error::IndexOutOfBounds(index.0))?;
-
-                    let import_name = self
-                        .source
-                        .imports
-                        .0
-                        .imported_modules
-                        .0
-                        .get(raw_index)
-                        .ok_or_else(|| Error::IndexOutOfBounds(index.0))?;
-
-                    Ok(*vacant.insert(self.loader.load_module(import_name)?))
-                }
+        if index.0 .0 == 0u32 {
+            Ok(self)
+        } else {
+            match self.module_import_cache.borrow_mut().entry(index) {
+                hash_map::Entry::Vacant(vacant) => loader::read_index_from(
+                    index,
+                    &self.source.imports.0.imported_modules.0,
+                    |import_name| Ok(*vacant.insert(self.loader.load_module(import_name)?)),
+                ),
                 hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
-            },
+            }
         }
     }
 }

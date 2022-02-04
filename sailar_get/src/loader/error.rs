@@ -20,6 +20,11 @@ pub enum Error {
     },
     #[error("the module {0:?} could not be loaded")]
     ModuleNotFound(format::ModuleIdentifier),
+    #[error("the import at index {index} corresponding to the symbol {symbol} could not be found")]
+    ImportNotFound {
+        index: format::numeric::UInteger,
+        symbol: format::Identifier,
+    },
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error>),
 }
