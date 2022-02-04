@@ -114,10 +114,10 @@ impl<'l> Runtime<'l> {
     /// Interprets the entry point of the program, supplying the specified arguments.
     pub fn invoke_entry_point(
         &'l self,
-        argv: &[&str],
+        arguments: &[&str],
         debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
     ) -> Result<i32, Error> {
-        if !argv.is_empty() {
+        if !arguments.is_empty() {
             todo!("Command line arguments are not yet supported")
         }
 
@@ -155,3 +155,14 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+pub fn execute<S: FnOnce(&mut Initializer) -> ()>(
+    setup: S,
+    application: sailar::format::Module,
+    arguments: &[&str],
+) -> Result<i32, Error> {
+    let mut initializer = Initializer::new();
+    setup(&mut initializer);
+    let runtime = Runtime::initialize(&mut initializer, application);
+    runtime.invoke_entry_point(arguments, None)
+}

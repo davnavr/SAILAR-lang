@@ -110,6 +110,12 @@ impl Primitive {
     primitive_fixed_integer_type!(u64, U64);
 }
 
+impl From<FixedInt> for Primitive {
+    fn from(fixed_type: FixedInt) -> Self {
+        Self::Int(Int::Fixed(fixed_type))
+    }
+}
+
 impl Display for Primitive {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
@@ -120,7 +126,7 @@ impl Display for Primitive {
 }
 
 /// Represents the type of a parameter or a method return type.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum Any {
     Primitive(Primitive),
     Struct(indices::Struct),
