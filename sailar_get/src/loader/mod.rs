@@ -13,7 +13,7 @@ mod symbol;
 mod type_signature;
 
 pub use code::{Block as CodeBlock, Code};
-pub use error::Error;
+pub use error::*;
 pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};

@@ -102,7 +102,7 @@ impl<'a> Module<'a> {
             &self.type_signature_cache,
             index,
             |_| self.load_type_signature_raw(index).map(Some),
-            |source| Ok(loader::TypeSignature::new(self, source)),
+            |source| Ok(loader::TypeSignature::new(self, source, index)),
         )
     }
 
@@ -113,6 +113,17 @@ impl<'a> Module<'a> {
         let mut types = Vec::with_capacity(indices.len());
         for index in indices {
             types.push(self.load_type_signature_raw(*index)?);
+        }
+        Ok(types)
+    }
+
+    fn collect_type_signatures(
+        &'a self,
+        indices: &'a [format::indices::TypeSignature],
+    ) -> Result<Vec<&'a loader::TypeSignature<'a>>> {
+        let mut types = Vec::with_capacity(indices.len());
+        for index in indices {
+            types.push(self.load_type_signature(*index)?);
         }
         Ok(types)
     }
@@ -136,8 +147,8 @@ impl<'a> Module<'a> {
             |_| self.load_function_signature_raw(index).map(Some),
             |signature| {
                 Ok(loader::FunctionSignature::new(
-                    self.collect_type_signatures_raw(&signature.return_types)?,
-                    self.collect_type_signatures_raw(&signature.parameter_types)?,
+                    self.collect_type_signatures(&signature.return_types)?,
+                    self.collect_type_signatures(&signature.parameter_types)?,
                 ))
             },
         )
@@ -196,7 +207,7 @@ impl<'a> Module<'a> {
                 let functions: &[_] = &self.source.definitions.defined_functions;
                 Ok(functions.get(raw_index))
             },
-            |source| Ok(loader::Function::new(self, source)),
+            |source| Ok(loader::Function::new(self, source, index)),
         )
     }
 
@@ -219,7 +230,19 @@ impl<'a> Module<'a> {
                             symbol: symbol.clone(),
                         })?;
 
-                    // TODO: Check signature of imported function.
+                    let expected_signature = self.load_function_signature(import.signature)?;
+
+                    if expected_signature != function.signature()? {
+                        return Err(loader::FunctionImportSignatureMismatch {
+                            symbol: symbol.clone(),
+                            import: index,
+                            import_signature: expected_signature.into_raw(),
+                            importing_module: self.identifier().clone(),
+                            definition: function.index(),
+                            definition_signature: function.signature()?.into_raw(),
+                            defining_module: function.declaring_module().identifier().clone(),
+                        })?;
+                    }
 
                     Ok(*vacant.insert(function))
                 },
@@ -235,8 +258,8 @@ impl<'a> Module<'a> {
             format::indices::Function::Defined(defined_index) => {
                 self.load_function_definition_raw(defined_index)
             }
-            format::indices::Function::Imported(_) => {
-                todo!("resolution of function imports is not yet supported")
+            format::indices::Function::Imported(imported_index) => {
+                self.load_function_import_raw(imported_index)
             }
         }
     }
@@ -285,12 +308,13 @@ impl<'a> Module<'a> {
                 for (definition, index) in function_definitions.iter().zip(0u32..) {
                     match self.load_identifier_raw(definition.symbol) {
                         Ok(actual_symbol) if actual_symbol == vacant.key().as_ref() => {
+                            let definition_index = format::indices::FunctionDefinition::from(index);
+
                             let loaded = self
                                 .loaded_functions
-                                .insert_or_get::<(), _>(
-                                    format::indices::FunctionDefinition::from(index),
-                                    |_| Ok(loader::Function::new(self, definition)),
-                                )
+                                .insert_or_get::<(), _>(definition_index, |_| {
+                                    Ok(loader::Function::new(self, definition, definition_index))
+                                })
                                 .unwrap();
 
                             return Some(*vacant.insert(loaded) as &'a _);

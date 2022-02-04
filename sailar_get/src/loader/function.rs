@@ -2,21 +2,22 @@ use crate::loader::{self, cache, Result};
 use sailar::format;
 
 pub struct Function<'a> {
-    source: &'a format::Function,
     module: &'a loader::Module<'a>,
+    source: &'a format::Function,
+    index: format::indices::FunctionDefinition,
     code: cache::Once<Option<&'a loader::Code<'a>>>,
 }
 
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct Signature<'a> {
-    return_types: Vec<&'a format::TypeSignature>, // TODO: Use loaded type signatures for function signature.
-    parameter_types: Vec<&'a format::TypeSignature>,
+    return_types: Vec<&'a loader::TypeSignature<'a>>,
+    parameter_types: Vec<&'a loader::TypeSignature<'a>>,
 }
 
 impl<'a> Signature<'a> {
     pub(crate) fn new(
-        return_types: Vec<&'a format::TypeSignature>,
-        parameter_types: Vec<&'a format::TypeSignature>,
+        return_types: Vec<&'a loader::TypeSignature<'a>>,
+        parameter_types: Vec<&'a loader::TypeSignature<'a>>,
     ) -> Self {
         Self {
             return_types,
@@ -24,22 +25,44 @@ impl<'a> Signature<'a> {
         }
     }
 
-    pub fn return_types(&self) -> &[&'a format::TypeSignature] {
+    pub fn return_types(&'a self) -> &[&'a loader::TypeSignature<'a>] {
         &self.return_types
     }
 
-    pub fn parameter_types(&self) -> &[&'a format::TypeSignature] {
+    pub fn parameter_types(&'a self) -> &[&'a loader::TypeSignature<'a>] {
         &self.parameter_types
+    }
+
+    pub fn into_raw(&'a self) -> format::FunctionSignature {
+        fn map_raw<'a>(
+            types: &[&'a loader::TypeSignature<'a>],
+        ) -> format::LenVec<format::indices::TypeSignature> {
+            format::LenVec(types.iter().map(|signature| signature.index()).collect())
+        }
+
+        format::FunctionSignature {
+            return_types: map_raw(self.return_types()),
+            parameter_types: map_raw(self.parameter_types()),
+        }
     }
 }
 
 impl<'a> Function<'a> {
-    pub(super) fn new(module: &'a loader::Module<'a>, source: &'a format::Function) -> Self {
+    pub(super) fn new(
+        module: &'a loader::Module<'a>,
+        source: &'a format::Function,
+        index: format::indices::FunctionDefinition,
+    ) -> Self {
         Self {
             source,
             module,
+            index,
             code: cache::Once::default(),
         }
+    }
+
+    pub fn index(&'a self) -> format::indices::FunctionDefinition {
+        self.index
     }
 
     pub fn is_export(&'a self) -> bool {
