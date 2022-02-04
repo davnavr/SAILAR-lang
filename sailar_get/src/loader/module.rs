@@ -17,7 +17,7 @@ pub struct Module<'a> {
         cache::IndexLookup<'a, format::indices::FunctionDefinition, loader::Function<'a>>,
     function_lookup_cache: RefCell<hash_map::HashMap<loader::Symbol<'a>, &'a loader::Function<'a>>>,
     module_import_cache:
-        RefCell<hash_map::HashMap<format::indices::Module, &'a Module<'a>, IntegerHashBuilder>>,
+        RefCell<hash_map::HashMap<format::numeric::UInteger, &'a Module<'a>, IntegerHashBuilder>>,
     function_import_cache: RefCell<
         hash_map::HashMap<
             format::indices::FunctionImport,
@@ -321,12 +321,14 @@ impl<'a> Module<'a> {
         &'a self,
         index: format::indices::Module,
     ) -> Result<&'a loader::Module<'a>> {
-        if index.0 .0 == 0u32 {
+        let format::numeric::UInteger(unsigned_index) = index.0;
+        if unsigned_index == 0u32 {
             Ok(self)
         } else {
-            match self.module_import_cache.borrow_mut().entry(index) {
+            let import_index = format::numeric::UInteger(unsigned_index - 1);
+            match self.module_import_cache.borrow_mut().entry(import_index) {
                 hash_map::Entry::Vacant(vacant) => loader::read_index_from(
-                    index,
+                    import_index,
                     &self.source.imports.0.imported_modules.0,
                     |import_name| Ok(*vacant.insert(self.loader.load_module(import_name)?)),
                 ),

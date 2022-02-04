@@ -85,7 +85,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut library_source = Some(library);
-
     let exit_code = sailar_vm::runtime::execute(
         |_, resolver| {
             *resolver = Some(loader::ResolverClosure(|_: &format::ModuleIdentifier| {
