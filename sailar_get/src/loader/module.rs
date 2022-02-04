@@ -16,6 +16,13 @@ pub struct Module<'a> {
         cache::IndexLookup<'a, format::indices::FunctionDefinition, loader::Function<'a>>,
     function_lookup_cache:
         std::cell::RefCell<hash_map::HashMap<loader::Symbol<'a>, &'a loader::Function<'a>>>,
+    module_import_cache: std::cell::RefCell<
+        hash_map::HashMap<
+            format::indices::Module,
+            &'a Module<'a>,
+            sailar::hashing::IntegerHashBuilder,
+        >,
+    >,
 }
 
 fn load_raw_cached<'a, I, T, L, F, C>(
@@ -49,6 +56,9 @@ impl<'a> Module<'a> {
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
             function_lookup_cache: std::cell::RefCell::new(hash_map::HashMap::new()),
+            module_import_cache: std::cell::RefCell::new(hash_map::HashMap::with_hasher(
+                sailar::hashing::IntegerHashBuilder::default(),
+            )),
         }
     }
 
@@ -259,6 +269,33 @@ impl<'a> Module<'a> {
                 None
             }
             hash_map::Entry::Occupied(occupied) => Some(occupied.get()),
+        }
+    }
+
+    pub fn load_module_raw(
+        &'a self,
+        index: format::indices::Module,
+    ) -> Result<&'a loader::Module<'a>> {
+        match index.0 .0 {
+            0u32 => Ok(self),
+            unsigned_index => match self.module_import_cache.borrow_mut().entry(index) {
+                hash_map::Entry::Vacant(vacant) => {
+                    let raw_index = usize::try_from(unsigned_index - 1)
+                        .map_err(|_| Error::IndexOutOfBounds(index.0))?;
+
+                    let import_name = self
+                        .source
+                        .imports
+                        .0
+                        .imported_modules
+                        .0
+                        .get(raw_index)
+                        .ok_or_else(|| Error::IndexOutOfBounds(index.0))?;
+
+                    Ok(*vacant.insert(self.loader.load_module(import_name)?))
+                }
+                hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
+            },
         }
     }
 }
