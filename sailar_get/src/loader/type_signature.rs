@@ -92,7 +92,7 @@ fn compare_raw_types<'a>(
 impl<'a> std::cmp::PartialEq for &'a Type<'a> {
     fn eq(&self, other: &Self) -> bool {
         // Check if both types are defiend in the same module
-        if self.module as *const _ == other.module as *const _ {
+        if std::ptr::eq(self.module, other.module) {
             // Loaded modules ensure that loaded type signatures are unique, so comparison by signature is allowed.
             self.index == other.index
         } else {

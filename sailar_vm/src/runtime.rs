@@ -72,11 +72,15 @@ const RUNTIME_POINTER_SIZE: loader::PointerSize =
 impl<'l> Runtime<'l> {
     pub fn initialize(
         initializer: &'l mut Initializer<'l>,
-        resolver: Option<&'l dyn loader::ReferenceResolver>,
+        resolver: &'l mut dyn loader::ReferenceResolver,
         application: sailar::format::Module,
     ) -> &'l Self {
-        let (loader, program) =
-            loader::Loader::initialize(&mut initializer.loader, RUNTIME_POINTER_SIZE, resolver.unwrap_or(&()), application);
+        let (loader, program) = loader::Loader::initialize(
+            &mut initializer.loader,
+            RUNTIME_POINTER_SIZE,
+            resolver,
+            application,
+        );
 
         initializer.runtime.insert(Self {
             loader,
@@ -158,13 +162,20 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub fn execute<S: FnOnce(&mut Initializer) -> Box<dyn loader::ReferenceResolver>>(
+pub fn execute<R: loader::ReferenceResolver, S: FnOnce(&mut Initializer, &mut Option<R>) -> ()>(
     setup: S,
     application: sailar::format::Module,
     arguments: &[&str],
 ) -> Result<i32, Error> {
     let mut initializer = Initializer::new();
-    let resolver = setup(&mut initializer);
-    let runtime = Runtime::initialize(&mut initializer, Some(std::borrow::Borrow::borrow(&resolver)), application);
+    let mut resolver = None;
+    setup(&mut initializer, &mut resolver);
+
+    let mut reference_resolver = resolver
+        .as_mut()
+        .map(|r| r as &mut dyn loader::ReferenceResolver);
+
+    let runtime = Runtime::initialize(&mut initializer, &mut reference_resolver, application);
+
     runtime.invoke_entry_point(arguments, None)
 }

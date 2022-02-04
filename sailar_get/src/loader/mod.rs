@@ -61,7 +61,7 @@ pub type PointerSize = std::num::NonZeroU8;
 
 pub struct Loader<'a> {
     pointer_size: PointerSize,
-    resolver: &'a dyn ReferenceResolver,
+    resolver: std::cell::RefCell<&'a mut dyn ReferenceResolver>,
     resolved_modules: typed_arena::Arena<Module<'a>>,
     module_lookup: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
 }
@@ -70,12 +70,12 @@ impl<'a> Loader<'a> {
     pub fn initialize(
         loader: &'a mut Option<Loader<'a>>,
         pointer_size: PointerSize,
-        resolver: &'a dyn ReferenceResolver,
+        resolver: &'a mut dyn ReferenceResolver,
         application: format::Module,
     ) -> (&'a Self, &'a Module<'a>) {
         let loaded = loader.insert(Self {
             pointer_size,
-            resolver,
+            resolver: std::cell::RefCell::new(resolver),
             resolved_modules: typed_arena::Arena::new(),
             module_lookup: std::cell::RefCell::new(hash_map::HashMap::new()),
         });
@@ -98,6 +98,7 @@ impl<'a> Loader<'a> {
             hash_map::Entry::Vacant(vacant) => {
                 let loaded = self
                     .resolver
+                    .borrow_mut()
                     .resolve(name)?
                     .ok_or_else(|| Error::ModuleNotFound(name.clone()))?;
                 Ok(*vacant.insert(self.force_load_module(*loaded)))

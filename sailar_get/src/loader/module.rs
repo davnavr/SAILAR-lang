@@ -106,17 +106,6 @@ impl<'a> Module<'a> {
         )
     }
 
-    fn collect_type_signatures_raw(
-        &'a self,
-        indices: &'a [format::indices::TypeSignature],
-    ) -> Result<Vec<&'a format::TypeSignature>> {
-        let mut types = Vec::with_capacity(indices.len());
-        for index in indices {
-            types.push(self.load_type_signature_raw(*index)?);
-        }
-        Ok(types)
-    }
-
     fn collect_type_signatures(
         &'a self,
         indices: &'a [format::indices::TypeSignature],
@@ -233,7 +222,7 @@ impl<'a> Module<'a> {
                     let expected_signature = self.load_function_signature(import.signature)?;
 
                     if expected_signature != function.signature()? {
-                        return Err(loader::FunctionImportSignatureMismatch {
+                        return Err(Error::from(loader::FunctionImportSignatureMismatch {
                             symbol: symbol.clone(),
                             import: index,
                             import_signature: expected_signature.into_raw(),
@@ -241,7 +230,7 @@ impl<'a> Module<'a> {
                             definition: function.index(),
                             definition_signature: function.signature()?.into_raw(),
                             defining_module: function.declaring_module().identifier().clone(),
-                        })?;
+                        }));
                     }
 
                     Ok(*vacant.insert(function))

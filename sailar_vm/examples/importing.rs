@@ -1,7 +1,6 @@
-use sailar::{
-    builder,
-    format::{self, type_system},
-};
+use sailar::builder;
+use sailar::format::{self, type_system};
+use sailar_get::loader;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let helper_name = format::Identifier::try_from("Helper")?;
@@ -37,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder::FunctionBody::Defined(helper_code),
         );
 
-        builder.finish()
+        Box::new(builder.finish())
     };
 
     let application = {
@@ -85,10 +84,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.finish()
     };
 
-    //let exit_code = sailar_vm::runtime::execute(|_| (), program, &[])?;
-    //assert_eq!(exit_code, EXPECTED_EXIT_CODE);
-    dbg!(&library);
-    dbg!(&application);
-    todo!();
+    let mut library_source = Some(library);
+
+    let exit_code = sailar_vm::runtime::execute(
+        |_, resolver| {
+            *resolver = Some(loader::ResolverClosure(|_: &format::ModuleIdentifier| {
+                Ok(library_source.take())
+            }));
+        },
+        application,
+        &[],
+    )?;
+
+    assert_eq!(exit_code, 19i32);
     Ok(())
 }
