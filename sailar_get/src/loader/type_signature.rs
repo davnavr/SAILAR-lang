@@ -79,7 +79,7 @@ fn compare_raw_types<'a>(
 ) -> bool {
     match (x, y) {
         (type_system::Any::Primitive(x), type_system::Any::Primitive(y)) => x == y,
-        (type_system::Any::Struct(x), type_system::Any::Struct(y)) => todo!(
+        (type_system::Any::Struct(_x), type_system::Any::Struct(_y)) => todo!(
             "loading of structs is not yet implemented, so checking of struct types is not too"
         ),
         (type_system::Any::NativePointer(x), type_system::Any::NativePointer(y)) => {

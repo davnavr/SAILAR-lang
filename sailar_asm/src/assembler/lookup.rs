@@ -103,7 +103,7 @@ where
     ) -> Result<I, E> {
         self.try_insert_fallible(
             key,
-            |index| value(index),
+            value,
             |existing_index, _| Ok(existing_index),
         )
     }

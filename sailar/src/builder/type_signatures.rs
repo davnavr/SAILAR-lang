@@ -48,7 +48,7 @@ pub struct Signatures {
 }
 
 impl Signatures {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             index: IndexCounter::new(builder::counter::Cell::new()),
             types: RefCell::new(Vec::new()),

@@ -13,7 +13,7 @@ pub struct Imports {
 }
 
 impl Imports {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             modules: ImportedModules::new(),
             functions: ImportedFunctions::new(),

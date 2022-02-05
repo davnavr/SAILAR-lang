@@ -10,7 +10,7 @@ pub struct Identifiers {
 }
 
 impl Identifiers {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             index: counter::Cell::new(),
             lookup: hash_map::HashMap::new(),

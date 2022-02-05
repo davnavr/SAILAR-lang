@@ -162,7 +162,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub fn execute<R: loader::ReferenceResolver, S: FnOnce(&mut Initializer, &mut Option<R>) -> ()>(
+pub fn execute<R: loader::ReferenceResolver, S: FnOnce(&mut Initializer, &mut Option<R>)>(
     setup: S,
     application: sailar::format::Module,
     arguments: &[&str],

@@ -10,7 +10,7 @@ pub struct Definitions {
 }
 
 impl Definitions {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             functions: DefinedFunctions::new(),
         }

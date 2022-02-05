@@ -72,7 +72,7 @@ impl From<LiteralString> for String {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Type {
     Primitive(PrimitiveType),
     Struct(GlobalSymbol),
@@ -92,6 +92,18 @@ impl std::hash::Hash for Type {
         }
     }
 }
+
+impl std::cmp::PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Primitive(x), Self::Primitive(y)) => x == y,
+            (Self::Struct(x), Self::Struct(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
+impl std::cmp::Eq for Type {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BasicArithmeticOperation {

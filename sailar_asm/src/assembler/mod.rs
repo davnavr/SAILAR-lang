@@ -363,16 +363,16 @@ pub fn assemble_declarations(
     }
 }
 
-pub fn assemble_from_str(
-    input: &str,
-) -> Result<
+pub type AssemblerResult = Result<
     format::Module,
     (
         Vec<crate::lexer::Error>,
         Vec<crate::parser::Error>,
         Vec<Error>,
     ),
-> {
+>;
+
+pub fn assemble_from_str(input: &str) -> AssemblerResult {
     let (tree, lexer_errors, parser_errors) = crate::parser::tree_from_str(input);
     let module;
     let assembler_errors;

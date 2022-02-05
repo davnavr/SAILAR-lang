@@ -6,10 +6,10 @@ pub(super) enum Error {
     #[error("{0}")]
     Message(Cow<'static, str>),
     #[error(transparent)]
-    ArgumentError(#[from] clap::Error),
+    Argument(#[from] clap::Error),
     #[error(transparent)]
-    LoaderError(#[from] LoaderError),
-    //RuntimeError(#[from] )
+    Loader(#[from] LoaderError),
+    //Runtime(#[from] )
 }
 
 impl From<&'static str> for Error {

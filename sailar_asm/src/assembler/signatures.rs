@@ -79,7 +79,7 @@ impl<'a> FunctionLookup<'a> {
                     let mut commit = true;
 
                     for ty in types {
-                        match type_lookup.get(&ty, struct_lookup) {
+                        match type_lookup.get(ty, struct_lookup) {
                             Ok(index) if commit => indices.push(index),
                             Ok(_) => (),
                             Err(error) => {

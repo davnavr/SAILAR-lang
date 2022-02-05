@@ -1,13 +1,13 @@
 use clap::Parser as _;
 use sailar::format::Identifier;
-use sailar_vm::interpreter::{call_stack, debugger, BlockIndex, InstructionLocation, Interpreter};
-use std::{
-    fmt::{Display, Formatter, Write as _},
-    io::Write as _,
-};
+use sailar_vm::interpreter::{call_stack, debugger, Interpreter};
+use std::fmt::{Display, Formatter, Write as _};
+use std::io::Write as _;
 
 mod commands;
 mod input;
+
+use commands::Error;
 
 #[derive(Debug)]
 pub struct Location<'a>(pub &'a debugger::InstructionLocation);
@@ -32,7 +32,7 @@ impl Display for ModuleSymbol<'_> {
         let version = &self.0.version;
         if version.is_empty() {
             f.write_str(", v")?;
-            for (i, number) in version.0.into_iter().enumerate() {
+            for (i, number) in version.0.iter().enumerate() {
                 if i > 0 {
                     f.write_char('.')?;
                 }
@@ -152,8 +152,8 @@ impl CommandLineDebugger {
 
                         Ok(None)
                     }
-                    Some(_) => Err("multiples matches for function symbol")?,
-                    None => Err("no function found with symbol")?,
+                    Some(_) => Err(Error::from("multiples matches for function symbol")),
+                    None => Err(Error::from("no function found with symbol")),
                 }
             }
         );

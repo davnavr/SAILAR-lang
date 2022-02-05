@@ -26,14 +26,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = {
-        let application_arguments = application_arguments_start
+        let application_arguments: Vec<_> = application_arguments_start
             .map(|start| {
                 all_arguments[start + 1..all_arguments.len()]
                     .iter()
                     .map(String::as_str)
                     .collect()
             })
-            .unwrap_or(Vec::default());
+            .unwrap_or_default();
 
         let application =
             sailar::parser::parse_module(&mut std::fs::File::open(interpreter_arguments.program)?)?;

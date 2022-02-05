@@ -8,7 +8,7 @@ pub struct Definitions {
 }
 
 impl Definitions {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             definitions: std::cell::RefCell::new(Vec::new()),
             index: builder::counter::Cell::new(),

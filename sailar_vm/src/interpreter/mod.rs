@@ -102,9 +102,9 @@ impl<'l> Interpreter<'l> {
             frame: &mut call_stack::Frame<'l>,
             indices: &'l [indices::Register],
         ) -> Result<Vec<Register>> {
-            let mut registers = Vec::with_capacity(indices.len());
+            let mut registers: Vec<Register> = Vec::with_capacity(indices.len());
             for index in indices.iter() {
-                registers.push(frame.registers.get(*index)?.clone());
+                registers.push(*frame.registers.get(*index)?);
             }
             Ok(registers)
         }
@@ -233,10 +233,10 @@ impl<'l> Interpreter<'l> {
 
                 // TODO: Validate signature of callee.
                 let expected_parameter_count = callee.raw_signature()?.parameter_types.len();
-                let mut arguments = Vec::with_capacity(expected_parameter_count);
+                let mut arguments: Vec<Register> = Vec::with_capacity(expected_parameter_count);
 
                 for index in &call.arguments.0 {
-                    arguments.push(current_frame.registers.get(*index)?.clone());
+                    arguments.push(*current_frame.registers.get(*index)?);
                 }
 
                 if arguments.len() != expected_parameter_count {
