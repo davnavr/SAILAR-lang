@@ -174,7 +174,7 @@ pub struct Frame<'l> {
     function: interpreter::LoadedFunction<'l>,
     pub(super) result_count: usize,
     pub(super) registers: Registers,
-    pub(super) instructions: InstructionPointer<'l>,
+    pub(super) instructions: InstructionPointer<'l>, // Option<InstructionPointer<'l>>
 }
 
 impl<'l> Frame<'l> {
@@ -191,6 +191,10 @@ impl<'l> Frame<'l> {
             temporary_registers: self.registers.temporaries.clone().into_boxed_slice(),
         }
     }
+
+    //pub(super) fn instructions(&mut self) -> Result<&mut InstructionPointer<'l>> {
+    //    self.instructions.ok_or_else(|| todo!("error for no IP, function is not defined in SAIL"))
+    //}
 
     /// Updates the instruction pointer to point at the specified target.
     ///
@@ -480,11 +484,26 @@ impl<'l> Stack<'l> {
 
                 self.breakpoints.update_in(&mut frame)?;
                 self.current = Some(frame);
-
-                Ok(())
             }
-            format::FunctionBody::External { .. } => todo!("external calls not yet supported"),
+            format::FunctionBody::External {
+                library,
+                entry_point_name,
+            } => {
+                let current_module = function.declaring_module();
+                let library_name = current_module.load_identifier_raw(*library);
+                let entry_point_symbol = current_module.load_identifier_raw(*entry_point_name);
+                let previous = self.current.take();
+
+                // self.current = Some(Box::new(Frame {
+                //     depth,
+                //     function,
+                //     previous,
+                // }));
+                todo!("setup frame for external call")
+            }
         }
+
+        Ok(())
     }
 
     pub(super) fn update_current_breakpoints(&mut self) -> Result<()> {

@@ -1,9 +1,12 @@
+//! Contains the code for interpreting SAILAR code, managing the call stack, etc.
+
 use sailar::format::{indices, instruction_set, type_system};
 use sailar_get::loader;
 
 pub mod call_stack;
 pub mod debugger;
 pub mod error;
+pub mod ffi;
 pub mod mem;
 pub mod register;
 
