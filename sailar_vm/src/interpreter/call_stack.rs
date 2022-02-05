@@ -8,7 +8,7 @@ use std::collections::{hash_map, BTreeSet, VecDeque};
 #[derive(Clone, Debug)]
 pub struct TraceFrame {
     depth: usize,
-    location: InstructionLocation,
+    location: Option<InstructionLocation>,
     function: debugger::FunctionSymbol<'static>,
     input_registers: Box<[Register]>,
     temporary_registers: Box<[Register]>,
@@ -19,7 +19,7 @@ impl TraceFrame {
         self.depth
     }
 
-    pub fn location(&self) -> &InstructionLocation {
+    pub fn location(&self) -> &Option<InstructionLocation> {
         &self.location
     }
 
@@ -44,6 +44,10 @@ pub(crate) struct Registers {
 }
 
 impl Registers {
+    pub fn inputs(&self) -> &[Register] {
+        &self.inputs
+    }
+
     pub fn define_temporary(&mut self, temporary: Register) {
         self.temporaries.push(temporary)
     }
@@ -168,13 +172,18 @@ impl<'l> InstructionPointer<'l> {
     }
 }
 
+pub(super) enum Code<'l> {
+    Defined(InstructionPointer<'l>),
+    External(&'l dyn interpreter::ffi::Handler),
+}
+
 pub struct Frame<'l> {
     depth: usize,
     previous: Option<Box<Frame<'l>>>,
     function: interpreter::LoadedFunction<'l>,
     pub(super) result_count: usize,
     pub(super) registers: Registers,
-    pub(super) instructions: InstructionPointer<'l>, // Option<InstructionPointer<'l>>
+    code: Code<'l>,
 }
 
 impl<'l> Frame<'l> {
@@ -185,16 +194,26 @@ impl<'l> Frame<'l> {
     pub fn trace(&self) -> TraceFrame {
         TraceFrame {
             depth: self.depth,
-            location: self.instructions.location(),
+            location: match &self.code {
+                Code::Defined(instructions) => Some(instructions.location()),
+                Code::External(_) => None,
+            },
             function: self.function.full_symbol().unwrap().to_owned(),
             input_registers: self.registers.inputs.clone().into_boxed_slice(),
             temporary_registers: self.registers.temporaries.clone().into_boxed_slice(),
         }
     }
 
-    //pub(super) fn instructions(&mut self) -> Result<&mut InstructionPointer<'l>> {
-    //    self.instructions.ok_or_else(|| todo!("error for no IP, function is not defined in SAIL"))
-    //}
+    pub(super) fn code_mut(&mut self) -> &mut Code<'l> {
+        &mut self.code
+    }
+
+    fn instructions(&mut self) -> Result<&mut InstructionPointer<'l>> {
+        match &mut self.code {
+            Code::Defined(ref mut instructions) => Ok(instructions),
+            _ => Err(ErrorKind::UndefinedFunctionBody(self.function.index())),
+        }
+    }
 
     /// Updates the instruction pointer to point at the specified target.
     ///
@@ -206,10 +225,10 @@ impl<'l> Frame<'l> {
         self.registers.inputs.clear();
         self.registers.inputs.extend_from_slice(inputs);
 
-        self.instructions.jump(target)?;
+        self.instructions()?.jump(target)?;
 
         let expected_input_count = self
-            .instructions
+            .instructions()?
             .current_block()
             .input_register_count
             .try_into()
@@ -337,13 +356,17 @@ impl BreakpointLookup {
     }
 
     fn update_in<'l>(&mut self, frame: &mut Frame<'l>) -> Result<()> {
+        let function = &frame.function.full_symbol()?.to_owned();
+        let instructions = frame.instructions()?;
+
         self.copy_breakpoints_to(
-            &frame.function.full_symbol()?.to_owned(),
-            frame.instructions.block_index,
-            frame.instructions.code_index(),
-            frame.instructions.last_breakpoint_hit,
-            &mut frame.instructions.breakpoints,
+            function,
+            instructions.block_index,
+            instructions.code_index(),
+            instructions.last_breakpoint_hit,
+            &mut instructions.breakpoints,
         );
+
         Ok(())
     }
 
@@ -450,6 +473,7 @@ impl<'l> Stack<'l> {
         &mut self,
         function: interpreter::LoadedFunction<'l>,
         arguments: &[Register],
+        external_call_handler: &'l interpreter::ffi::HandlerLookup,
     ) -> Result<()> {
         let depth = self.depth() + 1;
         if depth > self.capacity.get() {
@@ -465,21 +489,22 @@ impl<'l> Stack<'l> {
             });
         }
 
+        let inputs = arguments.to_vec();
+
         match function.raw_body() {
             format::FunctionBody::Defined(code_index) => {
                 let code = function.declaring_module().load_code_source(*code_index)?;
                 let previous = self.current.take();
-
                 let mut frame = Box::new(Frame {
                     depth,
                     function,
                     previous,
                     result_count: signature.return_types().len(),
                     registers: Registers {
-                        inputs: arguments.to_vec(),
+                        inputs,
                         temporaries: Vec::new(),
                     },
-                    instructions: InstructionPointer::new(code),
+                    code: Code::Defined(InstructionPointer::new(code)),
                 });
 
                 self.breakpoints.update_in(&mut frame)?;
@@ -490,16 +515,25 @@ impl<'l> Stack<'l> {
                 entry_point_name,
             } => {
                 let current_module = function.declaring_module();
-                let library_name = current_module.load_identifier_raw(*library);
-                let entry_point_symbol = current_module.load_identifier_raw(*entry_point_name);
+                let library_name = current_module.load_identifier_raw(*library)?;
+                let entry_point_symbol = current_module.load_identifier_raw(*entry_point_name)?;
                 let previous = self.current.take();
 
-                // self.current = Some(Box::new(Frame {
-                //     depth,
-                //     function,
-                //     previous,
-                // }));
-                todo!("setup frame for external call")
+                self.current = Some(Box::new(Frame {
+                    depth,
+                    function,
+                    previous,
+                    result_count: signature.return_types().len(),
+                    registers: Registers {
+                        inputs,
+                        temporaries: Vec::new(),
+                    },
+                    code: Code::External(
+                        external_call_handler
+                            .get(library_name, entry_point_symbol)
+                            .and_then(|_| todo!("actual external calls are not yet supported"))?,
+                    ),
+                }));
             }
         }
 

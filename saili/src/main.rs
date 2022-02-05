@@ -66,13 +66,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(runtime::Error::InterpreterError(error)) => {
             eprintln!("Error: {}", error);
             for frame in error.stack_trace() {
-                let location = frame.location();
-                eprintln!(
-                    "- {} at block {} instruction {}",
-                    debugging::FunctionSymbol(frame.function()),
-                    location.block_index,
-                    location.code_index
-                );
+                eprint!("- {} ", debugging::FunctionSymbol(frame.function()));
+
+                match frame.location() {
+                    Some(location) => eprintln!(
+                        "at block {} instruction {}",
+                        location.block_index,
+                        location.code_index
+                    ),
+                    None => eprintln!("(external call)"),
+                }
+                
                 // TODO: Have option to hide register values.
                 for (index, input) in frame.input_registers().iter().enumerate() {
                     eprintln!(" > %i{} = {}", index, input);

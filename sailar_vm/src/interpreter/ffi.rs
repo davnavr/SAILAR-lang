@@ -66,7 +66,7 @@ impl HandlerLookup {
     }
 
     pub fn get(
-        &mut self,
+        &self,
         library: &Identifier,
         symbol: &Identifier,
     ) -> Result<Option<&dyn Handler>, MissingHandlerError> {

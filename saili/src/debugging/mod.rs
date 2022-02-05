@@ -10,16 +10,18 @@ mod input;
 use commands::Error;
 
 #[derive(Debug)]
-pub struct Location<'a>(pub &'a debugger::InstructionLocation);
+pub struct Location<'a>(pub Option<&'a debugger::InstructionLocation>);
 
 impl Display for Location<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        let Self(location) = self;
-        write!(
-            f,
-            "at block {} index {}",
-            location.block_index, location.code_index
-        )
+        match self.0 {
+            Some(location) => write!(
+                f,
+                "at block {} index {}",
+                location.block_index, location.code_index
+            ),
+            None => f.write_str("(external call)"),
+        }
     }
 }
 
@@ -164,7 +166,7 @@ impl CommandLineDebugger {
                 println!(
                     "- {} {}",
                     FunctionSymbol(function),
-                    Location(breakpoint.location())
+                    Location(Some(breakpoint.location()))
                 );
             }
 
@@ -192,7 +194,7 @@ impl CommandLineDebugger {
                     println!(
                         "- {} {}",
                         FunctionSymbol(frame.function()),
-                        Location(frame.location())
+                        Location(frame.location().as_ref())
                     );
                     if arguments.show_registers {
                         print_registers('i', frame.input_registers());

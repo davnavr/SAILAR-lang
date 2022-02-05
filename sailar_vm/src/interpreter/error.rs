@@ -1,4 +1,4 @@
-use super::{call_stack, register, BlockIndex};
+use super::{call_stack, ffi, register, BlockIndex};
 use sailar::format;
 
 pub type LoaderError = sailar_get::loader::Error;
@@ -27,6 +27,12 @@ pub enum ErrorKind {
         expected: register::Type,
         actual: register::Type,
     },
+    #[error("expected function {0} to contain SAILAR code, but no body was defined")]
+    UndefinedFunctionBody(format::indices::FunctionDefinition),
+    #[error(transparent)]
+    MissingExternalFunctionHandler(#[from] ffi::MissingHandlerError),
+    #[error("error occured in function handler {0}")]
+    InternalFunctionHandler(Box<dyn std::error::Error>),
 }
 
 #[derive(Debug)]

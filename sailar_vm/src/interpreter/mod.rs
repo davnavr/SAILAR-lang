@@ -58,6 +58,12 @@ pub struct Interpreter<'l> {
     call_stack: call_stack::Stack<'l>,
     value_stack: ValueStack,
     debugger: Option<&'l mut dyn debugger::Debugger>,
+    external_call_handler: &'l ffi::HandlerLookup,
+}
+
+enum Fetched<'l> {
+    Instruction(&'l instruction_set::Instruction),
+    Handler(&'l dyn ffi::Handler),
 }
 
 impl<'l> Interpreter<'l> {
@@ -66,12 +72,14 @@ impl<'l> Interpreter<'l> {
         call_stack_capacity: call_stack::Capacity,
         value_stack_capacity: mem::stack::Capacity,
         debugger: Option<&'l mut dyn debugger::Debugger>,
+        external_call_handler: &'l ffi::HandlerLookup,
     ) -> Self {
         Self {
             loader,
             call_stack: call_stack::Stack::new(call_stack_capacity),
             value_stack: ValueStack::new(value_stack_capacity),
             debugger,
+            external_call_handler,
         }
     }
 
@@ -83,13 +91,15 @@ impl<'l> Interpreter<'l> {
         self.loader
     }
 
-    fn next_instruction(&mut self) -> Result<Option<&'l instruction_set::Instruction>> {
+    fn fetch(&mut self) -> Result<Option<Fetched<'l>>> {
         match self.call_stack.peek_mut() {
-            Some(current_frame) => current_frame
-                .instructions
-                .next_instruction()
-                .map(Some)
-                .ok_or(ErrorKind::UnexpectedEndOfBlock),
+            Some(current_frame) => match current_frame.code_mut() {
+                call_stack::Code::Defined(instructions) => instructions
+                    .next_instruction()
+                    .map(|instruction| Some(Fetched::Instruction(instruction)))
+                    .ok_or(ErrorKind::UnexpectedEndOfBlock),
+                call_stack::Code::External(handler) => Ok(Some(Fetched::Handler(*handler))),
+            },
             None => Ok(None),
         }
     }
@@ -244,7 +254,8 @@ impl<'l> Interpreter<'l> {
                     arguments.push(*current_frame.registers.get(*index)?);
                 }
 
-                self.call_stack.push(callee, &arguments)?;
+                self.call_stack
+                    .push(callee, &arguments, self.external_call_handler)?;
             }
             Instruction::Add(operation) => basic_arithmetic_operation(
                 self.call_stack.current_mut()?,
@@ -428,11 +439,37 @@ impl<'l> Interpreter<'l> {
         // Wait for the debugger, if one is attached, to tell the application to start.
         self.debugger_loop();
 
-        self.call_stack.push(entry_point, arguments)?;
+        self.call_stack
+            .push(entry_point, arguments, self.external_call_handler)?;
 
         let mut entry_point_results = Vec::new();
-        while let Some(instruction) = self.next_instruction()? {
-            self.execute_instruction(instruction, &mut entry_point_results)?;
+        while let Some(code) = self.fetch()? {
+            match code {
+                Fetched::Instruction(instruction) => {
+                    self.execute_instruction(instruction, &mut entry_point_results)?
+                }
+                Fetched::Handler(handler) => {
+                    let mut results = handler
+                        .call(self.call_stack.current()?.registers.inputs())
+                        .map_err(ErrorKind::InternalFunctionHandler)?;
+
+                    // Duplicate code with ret interpreter.
+                    let popped = self.call_stack.pop()?;
+                    if popped.result_count != results.len() {
+                        return Err(ErrorKind::ResultCountMismatch {
+                            expected: popped.result_count,
+                            actual: results.len(),
+                        });
+                    }
+
+                    match self.call_stack.peek_mut() {
+                        Some(previous_frame) => {
+                            previous_frame.registers.append_temporaries(&mut results)
+                        }
+                        None => entry_point_results = results,
+                    }
+                }
+            }
         }
         Ok(entry_point_results)
     }
@@ -445,9 +482,16 @@ pub fn run<'l>(
     call_stack_capacity: call_stack::Capacity,
     value_stack_capacity: mem::stack::Capacity,
     debugger: Option<&'l mut (dyn debugger::Debugger + 'l)>,
+    external_call_handler: &'l ffi::HandlerLookup,
 ) -> std::result::Result<Vec<Register>, Error> {
-    let mut interpreter =
-        Interpreter::initialize(loader, call_stack_capacity, value_stack_capacity, debugger);
+    let mut interpreter = Interpreter::initialize(
+        loader,
+        call_stack_capacity,
+        value_stack_capacity,
+        debugger,
+        external_call_handler,
+    );
+
     interpreter
         .execute_entry_point(arguments, entry_point)
         .map_err(|kind| Error::new(kind, interpreter.call_stack.stack_trace()))

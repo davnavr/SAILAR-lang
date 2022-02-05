@@ -69,7 +69,7 @@ impl<'a> Type<'a> {
         Ok(match self.size.get() {
             Some(size) => size,
             None => {
-                let size = calculate_size(self.declaring_module(), &self.source)?;
+                let size = calculate_size(self.declaring_module(), self.source)?;
                 self.size.set(Some(size));
                 size
             }

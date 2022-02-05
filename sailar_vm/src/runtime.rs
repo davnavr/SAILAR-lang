@@ -1,4 +1,4 @@
-use crate::interpreter::{self, debugger};
+use crate::interpreter::{self, debugger, ffi};
 use sailar_get::loader;
 
 const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::call_stack::Capacity =
@@ -7,6 +7,7 @@ const DEFAULT_CALL_STACK_MAX_DEPTH: interpreter::call_stack::Capacity =
 pub struct Runtime<'l> {
     loader: &'l loader::Loader<'l>,
     program: &'l loader::Module<'l>,
+    external_call_handler: &'l ffi::HandlerLookup,
     value_stack_capacity: interpreter::mem::stack::Capacity,
     call_stack_capacity: interpreter::call_stack::Capacity,
 }
@@ -14,6 +15,7 @@ pub struct Runtime<'l> {
 pub struct Initializer<'l> {
     runtime: Option<Runtime<'l>>,
     loader: Option<loader::Loader<'l>>,
+    external_call_handler: Option<ffi::HandlerLookup>,
     value_stack_capacity: interpreter::mem::stack::Capacity,
     call_stack_capacity: interpreter::call_stack::Capacity,
 }
@@ -23,6 +25,7 @@ impl<'l> Default for Initializer<'l> {
         Self {
             runtime: None,
             loader: None,
+            external_call_handler: None,
             value_stack_capacity: interpreter::mem::stack::DEFAULT_CAPACITY,
             call_stack_capacity: DEFAULT_CALL_STACK_MAX_DEPTH,
         }
@@ -85,6 +88,9 @@ impl<'l> Runtime<'l> {
         initializer.runtime.insert(Self {
             loader,
             program,
+            external_call_handler: initializer
+                .external_call_handler
+                .insert(ffi::HandlerLookup::default()),
             value_stack_capacity: initializer.value_stack_capacity,
             call_stack_capacity: initializer.call_stack_capacity,
         })
@@ -112,6 +118,7 @@ impl<'l> Runtime<'l> {
             self.call_stack_capacity,
             self.value_stack_capacity,
             debugger,
+            self.external_call_handler,
         )?;
 
         Ok(results)
