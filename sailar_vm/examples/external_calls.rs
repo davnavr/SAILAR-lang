@@ -32,17 +32,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         let entry_code = {
-            let code = builder.code().define(Vec::new(), 1);
+            let code = builder.code().define(Vec::new(), 0);
             let entry_block = code.entry_block();
-            let message_length =
-                entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap());
+            let message_length = entry_block.conv_i_overflowing(
+                entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
+                type_system::Int::UNative,
+            )?;
 
-            let message_register = entry_block.alloca(message_length, byte_type);
+            let message_register = entry_block.alloca(message_length.result(), byte_type);
             entry_block.mem_init_from_data(message_register, message_data);
 
             entry_block.call(
                 &builder::Function::Defined(helper),
-                [message_register, message_length],
+                [message_register, message_length.result()],
             )?;
 
             entry_block.ret(&[])?;

@@ -230,6 +230,13 @@ impl Block {
         Ok(self.allocate_register(x.value_type.clone()))
     }
 
+    fn allocate_overflow_flag(&self) -> &Register {
+        self.allocate_register(
+            self.type_signatures
+                .primitive(format::type_system::FixedInt::U8),
+        )
+    }
+
     fn overflowing_arithmetic_operation<I>(
         &self,
         instruction: I,
@@ -242,10 +249,7 @@ impl Block {
         let result = self.basic_arithmetic_operation(instruction, x, y, OverflowBehavior::Flag)?;
         Ok(OverflowingArithmeticResult {
             result,
-            overflowed: self.allocate_register(
-                self.type_signatures
-                    .primitive(format::type_system::FixedInt::U8),
-            ),
+            overflowed: self.allocate_overflow_flag(),
         })
     }
 
@@ -287,6 +291,44 @@ impl Block {
         let value_type = value.value_type();
         self.emit_raw(Instruction::ConstI(value));
         self.allocate_register(self.type_signatures.primitive(value_type))
+    }
+
+    fn integer_conversion_operation(
+        &self,
+        operand: &Register,
+        target_type: format::type_system::Int,
+        overflow: OverflowBehavior,
+    ) -> &Register {
+        // TODO: Check that operand is an integer or pointer
+        self.emit_raw(Instruction::ConvI {
+            target_type,
+            overflow,
+            operand: operand.index(),
+        });
+        self.allocate_register(self.type_signatures.primitive(target_type))
+    }
+
+    pub fn conv_i(
+        &self,
+        operand: &Register,
+        target_type: format::type_system::Int,
+    ) -> Result<&Register> {
+        Ok(self.integer_conversion_operation(operand, target_type, OverflowBehavior::Ignore))
+    }
+
+    pub fn conv_i_overflowing(
+        &self,
+        operand: &Register,
+        target_type: format::type_system::Int,
+    ) -> Result<OverflowingArithmeticResult> {
+        Ok(OverflowingArithmeticResult {
+            result: self.integer_conversion_operation(
+                operand,
+                target_type,
+                OverflowBehavior::Flag,
+            ),
+            overflowed: self.allocate_overflow_flag(),
+        })
     }
 
     /// Emits a `mem.init` instruction, using module data as a source.

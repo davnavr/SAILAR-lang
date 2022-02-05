@@ -461,7 +461,7 @@ pub enum Instruction {
     /// - For conversion from an unsigned integer to a larger unsigned integer, performs zero extension.
     /// - Truncates when converting from one integer type to a smaller integer type.
     ConvI {
-        target_type: type_system::Int,
+        target_type: type_system::Int, //pub enum IntegerConversion { ToInt(type_system::Int), ToPointer(type_system::Any) }
         overflow: OverflowBehavior,
         operand: RegisterIndex,
     },
