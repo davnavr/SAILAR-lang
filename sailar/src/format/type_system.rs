@@ -116,6 +116,12 @@ impl From<FixedInt> for Primitive {
     }
 }
 
+impl From<Int> for Primitive {
+    fn from(integer_type: Int) -> Self {
+        Self::Int(integer_type)
+    }
+}
+
 impl Display for Primitive {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
@@ -152,6 +158,12 @@ impl FixedArray {
     }
 }
 
+impl Display for FixedArray {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "[{} * {}]", self.element_type, self.length)
+    }
+}
+
 /// Represents the type of a parameter or a method return type.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum Any {
@@ -160,6 +172,17 @@ pub enum Any {
     /// A native pointer to an instance of the specified type.
     NativePointer(Box<Any>),
     FixedArray(Box<FixedArray>),
+}
+
+impl std::fmt::Display for Any {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Primitive(primitive) => write!(f, "{}", primitive),
+            Self::Struct(index) => write!(f, "struct {}", index),
+            Self::NativePointer(pointee_type) => write!(f, "*{}", pointee_type),
+            Self::FixedArray(array_type) => write!(f, "{}", array_type),
+        }
+    }
 }
 
 impl From<FixedArray> for Any {
