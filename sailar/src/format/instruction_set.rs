@@ -135,6 +135,7 @@ pub enum Opcode {
     MemSt,
     MemLd,
     MemCpy,
+    MemInit,
     Alloca = 253,
     Break = 254,
     /// Not an instruction, indicates that there are more opcode bytes to follow.
@@ -309,6 +310,39 @@ impl TryFrom<u8> for ComparisonKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum MemoryInitializationFlags {
+    FromData = 0,
+}
+
+impl TryFrom<u8> for MemoryInitializationFlags {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value == Self::FromData as u8 {
+            Ok(Self::FromData)
+        } else {
+            Err(value)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+pub enum MemoryInitializationSource {
+    FromData(indices::Data),
+    //FromValue { count: RegisterIndex, source: RegisterIndex },
+}
+
+impl MemoryInitializationSource {
+    pub fn flags(&self) -> MemoryInitializationFlags {
+        match self {
+            Self::FromData(_) => MemoryInitializationFlags::FromData,
+        }
+    }
+}
+
 /// Represents an instruction consisting of an opcode and one or more operands.
 #[derive(Debug, PartialEq)]
 pub enum Instruction {
@@ -467,6 +501,20 @@ pub enum Instruction {
         field: FieldIndex,
         object: RegisterIndex,
     },
+    /// ```txt
+    /// mem.init <count> in <destination> with <value>
+    /// mem.init <destination> from <data>
+    /// ```
+    /// Sets values in some region of memory stored in the address specified by the `destination` register.
+    ///
+    /// # Structure
+    /// - `destination`
+    /// - `flags`
+    /// - ...
+    MemInit {
+        destination: RegisterIndex,
+        source: MemoryInitializationSource,
+    },
     // TODO: Have flag to avoid zero-ing memory.
     /// ```txt
     /// <result> = alloca <amount> of <type>;
@@ -512,6 +560,7 @@ impl Instruction {
             Instruction::ConvI { .. } => Opcode::ConvI,
             Instruction::Cmp { .. } => Opcode::Cmp,
             Instruction::Field { .. } => Opcode::Field,
+            Instruction::MemInit { .. } => Opcode::MemInit,
             Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
         }
@@ -528,6 +577,7 @@ impl Instruction {
             | Instruction::Switch { .. }
             | Instruction::Br { .. }
             | Instruction::BrIf { .. }
+            | Instruction::MemInit { .. }
             | Instruction::Break => 0,
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })

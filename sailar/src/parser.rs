@@ -43,6 +43,8 @@ pub enum Error {
     InvalidOverflowBehavior(u8),
     #[error("{0:#02X} is not a valid comparison kind")]
     InvalidComparisonKind(u8),
+    #[error("{0:#02X} is not a valid memory initialization flags combination")]
+    InvalidMemoryInitializationFlags(u8),
     #[error("{0:#02X} is not a valid struct flags combination")]
     InvalidStructFlags(u8),
     #[error("{0:#02X} is not a valid field flags combination")]
@@ -377,6 +379,22 @@ fn instruction<R: Read>(
             field: unsigned_index(src, size)?,
             object: unsigned_index(src, size)?,
         }),
+        Opcode::MemInit => {
+            let destination = unsigned_index(src, size)?;
+            let flags = instruction_set::MemoryInitializationFlags::try_from(byte(src)?)
+                .map_err(Error::InvalidMemoryInitializationFlags)?;
+
+            Ok(Instruction::MemInit {
+                destination,
+                source: match flags {
+                    instruction_set::MemoryInitializationFlags::FromData => {
+                        instruction_set::MemoryInitializationSource::FromData(unsigned_index(
+                            src, size,
+                        )?)
+                    }
+                },
+            })
+        }
         Opcode::Alloca => Ok(Instruction::Alloca {
             amount: unsigned_index(src, size)?,
             element_type: unsigned_index(src, size)?,

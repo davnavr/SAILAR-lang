@@ -329,6 +329,18 @@ fn block_instruction<W: Write>(
             unsigned_index(out, *field, size)?;
             unsigned_index(out, *object, size)
         }
+        Instruction::MemInit {
+            destination,
+            source,
+        } => {
+            unsigned_index(out, *destination, size)?;
+            write(out, source.flags() as u8)?;
+            match source {
+                instruction_set::MemoryInitializationSource::FromData(data) => {
+                    unsigned_index(out, *data, size)
+                }
+            }
+        }
         Instruction::Alloca {
             amount,
             element_type,
