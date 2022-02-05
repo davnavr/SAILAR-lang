@@ -5,11 +5,16 @@ use sailar::format::Identifier;
 use std::borrow::Borrow as _;
 use std::collections::hash_map;
 
+pub type HandlerResult = Result<Vec<interpreter::Register>, Box<dyn std::error::Error>>;
+
 pub trait Handler {
-    fn call<'l>(
-        &self,
-        inputs: &[interpreter::Register],
-    ) -> Result<Vec<interpreter::Register>, Box<dyn std::error::Error>>;
+    fn call(&self, inputs: &[interpreter::Register]) -> HandlerResult;
+}
+
+impl<F: Fn(&[interpreter::Register]) -> HandlerResult> Handler for F {
+    fn call(&self, inputs: &[interpreter::Register]) -> HandlerResult {
+        (self)(inputs)
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -75,6 +80,47 @@ impl HandlerLookup {
                     symbol: symbol.clone(),
                 }),
             None => Ok(None),
+        }
+    }
+}
+
+impl Default for HandlerLookup {
+    fn default() -> Self {
+        let mut internal_handler = hash_map::HashMap::<_, Box<dyn Handler>>::new();
+
+        internal_handler.insert(
+            Identifier::try_from("print").unwrap(),
+            Box::new(|inputs: &[interpreter::Register]| {
+                use std::io::Write as _;
+
+                let address = match &inputs[0] {
+                    interpreter::Register::Pointer(pointer) => pointer.address(),
+                    bad => todo!("invalid address type {:?}", bad),
+                };
+
+                let count = usize::try_from(&inputs[1])?;
+
+                // Safety is decided by the calling interpreted code, so the following may not always be valid.
+                let message = unsafe { std::slice::from_raw_parts(address, count) };
+
+                let mut out = std::io::stdout();
+                out.write_all(message)?;
+                out.flush()?;
+                Ok(Vec::new())
+            }),
+        );
+
+        Self {
+            lookup: {
+                let mut lookup = hash_map::HashMap::new();
+                lookup.insert(
+                    Identifier::try_from("saili").unwrap(),
+                    Library {
+                        handlers: internal_handler,
+                    },
+                );
+                lookup
+            },
         }
     }
 }
