@@ -8,22 +8,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = {
         let mut builder = builder::Builder::new(format::Identifier::try_from("Hello")?);
 
+        let byte_type = builder
+            .type_signatures()
+            .primitive(type_system::Primitive::from(type_system::FixedInt::U8));
+
         let message = b"Hello World!\n";
         let message_data = builder.data().define(Box::new(b"Hello World!\n".clone()));
-        let message_type = builder.type_signatures().fixed_array(
-            builder
-                .type_signatures()
-                .primitive(type_system::Primitive::from(type_system::FixedInt::U8)),
-            u32::try_from(message.len())?,
-        );
+        let message_type = builder
+            .type_signatures()
+            .fixed_array(byte_type.clone(), u32::try_from(message.len())?);
 
         let helper = builder.definitions().functions().define(
-            format::Identifier::try_from("Helper")?,
+            format::Identifier::try_from("Print")?,
             builder.function_signatures().insert(
-                vec![builder
-                    .type_signatures()
-                    .primitive(type_system::FixedInt::S32)],
                 Vec::new(),
+                vec![builder.type_signatures().native_pointer(byte_type)],
             ),
             builder::FunctionBody::from(builder::ExternalFunction::new(
                 std::rc::Rc::new(format::Identifier::try_from("saili")?),
@@ -36,6 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let entry_block = code.entry_block();
             let message_register = entry_block.alloca(entry_block.const_i(1), message_type);
             entry_block.mem_init_from_data(message_register, message_data);
+            entry_block.call(&builder::Function::Defined(helper), [message_register])?;
+            entry_block.ret(&[])?;
             code
         };
 
@@ -50,10 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.finish()
     };
 
-    dbg!(&program);
-
     let exit_code = sailar_vm::runtime::execute::<(), _>(|_, _| (), program, &[])?;
     assert_eq!(exit_code, 0);
+
+    // TODO: Check stdout
 
     Ok(())
 }
