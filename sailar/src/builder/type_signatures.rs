@@ -45,13 +45,20 @@ impl Type {
             }
         }
     }
+
+    pub fn as_raw(&self) -> &type_system::Any {
+        &self.signature
+    }
 }
+
+type ArrayLookupKey = (Rc<Type>, u32);
 
 pub struct Signatures {
     index: IndexCounter,
     types: RefCell<Vec<Rc<Type>>>,
     primitive_lookup: RefCell<hash_map::HashMap<type_system::Primitive, Rc<Type>>>,
-    array_lookup: RefCell<hash_map::HashMap<(Rc<Type>, u32), Rc<Type>>>,
+    array_lookup: RefCell<hash_map::HashMap<ArrayLookupKey, Rc<Type>>>,
+    native_pointer_lookup: RefCell<hash_map::HashMap<Rc<Type>, Rc<Type>>>,
 }
 
 impl Signatures {
@@ -61,6 +68,7 @@ impl Signatures {
             types: RefCell::new(Vec::new()),
             primitive_lookup: RefCell::new(hash_map::HashMap::new()),
             array_lookup: RefCell::new(hash_map::HashMap::new()),
+            native_pointer_lookup: RefCell::new(hash_map::HashMap::new()),
         }
     }
 
@@ -98,6 +106,21 @@ impl Signatures {
                         array_length,
                     ))),
                 )
+                .clone(),
+            hash_map::Entry::Occupied(occupied) => occupied.get().clone(),
+        }
+    }
+
+    pub fn native_pointer(&self, element_type: Rc<Type>) -> Rc<Type> {
+        match self
+            .native_pointer_lookup
+            .borrow_mut()
+            .entry(element_type.clone())
+        {
+            hash_map::Entry::Vacant(vacant) => vacant
+                .insert(self.insert_raw(type_system::Any::NativePointer(Box::new(
+                    element_type.signature.clone(),
+                ))))
                 .clone(),
             hash_map::Entry::Occupied(occupied) => occupied.get().clone(),
         }

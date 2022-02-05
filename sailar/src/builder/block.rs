@@ -289,6 +289,19 @@ impl Block {
         self.allocate_register(self.type_signatures.primitive(value_type))
     }
 
+    pub fn alloca(&self, amount: &Register, element_type: Rc<builder::Type>) -> &Register {
+        match amount.value_type().as_raw() {
+            format::TypeSignature::Primitive(_) => {
+                self.emit_raw(Instruction::Alloca {
+                    amount: amount.index(),
+                    element_type: element_type.index(),
+                });
+                self.allocate_register(self.type_signatures.native_pointer(element_type))
+            }
+            _ => todo!("amount register should be an integer type"),
+        }
+    }
+
     pub(super) fn build(&self) -> format::CodeBlock {
         format::CodeBlock {
             input_register_count: format::numeric::UInteger(self.input_count),
