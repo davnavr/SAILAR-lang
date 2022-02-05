@@ -3,6 +3,7 @@ use sailar::{
     format::{self, type_system},
 };
 
+/// Showcases building and executing an extremely simple program that returns an exit code.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     const EXPECTED_EXIT_CODE: i32 = 1;
 

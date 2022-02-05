@@ -10,7 +10,7 @@ pub struct Definitions {
 }
 
 impl Definitions {
-    pub fn new(type_signatures: Rc<builder::TypeSignatures>) -> Self {
+    pub(super) fn new(type_signatures: Rc<builder::TypeSignatures>) -> Self {
         Self {
             definitions: RefCell::new(Vec::new()),
             code_index: builder::counter::Cell::new(),

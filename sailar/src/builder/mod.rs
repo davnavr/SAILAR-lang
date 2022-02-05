@@ -4,6 +4,7 @@ use std::rc::Rc;
 mod block;
 mod code;
 mod counter;
+mod data;
 mod definitions;
 mod error;
 mod function_signatures;
@@ -13,6 +14,7 @@ mod type_signatures;
 
 pub use block::{Block, Error as InvalidInstruction};
 pub use code::{Code, Definitions as CodeDefinitions};
+pub use data::{Data, Definitions as DataDefinitions};
 pub use definitions::function::{Body as FunctionBody, Function as FunctionDefinition};
 pub use definitions::{DefinedFunctions, Definitions};
 pub use error::{Error, Result};
@@ -68,7 +70,8 @@ pub struct Builder {
     //builder_identifier: Box<()>,
     module_identifier: format::ModuleIdentifier,
     format_version: FormatVersion,
-    code: code::Definitions,
+    code: CodeDefinitions,
+    data: DataDefinitions,
     imports: Imports,
     definitions: Definitions,
     function_signatures: Rc<FunctionSignatures>,
@@ -88,7 +91,8 @@ impl Builder {
                 version: format::VersionNumbers::default(),
             },
             format_version: FormatVersion::minimum_supported_version().clone(),
-            code: code::Definitions::new(type_signatures.clone()),
+            code: CodeDefinitions::new(type_signatures.clone()),
+            data: DataDefinitions::new(),
             imports: Imports::new(),
             definitions: Definitions::new(),
             function_signatures,
@@ -107,6 +111,10 @@ impl Builder {
 
     pub fn code(&self) -> &CodeDefinitions {
         &self.code
+    }
+
+    pub fn data(&self) -> &DataDefinitions {
+        &self.data
     }
 
     pub fn type_signatures(&self) -> &TypeSignatures {
@@ -149,7 +157,7 @@ impl Builder {
             type_signatures: format::LenBytes(format::LenVec(type_signatures)),
             function_signatures: format::LenBytes(format::LenVec(function_signatures)),
             function_bodies: format::LenBytes(format::LenVec(code)),
-            data: format::LenBytes(format::LenVec(Vec::new())),
+            data: format::LenBytes(format::LenVec(self.data.build())),
             imports: format::LenBytes(imports),
             definitions: format::LenBytes(definitions),
             struct_layouts: format::LenBytes(format::LenVec(Vec::new())),
