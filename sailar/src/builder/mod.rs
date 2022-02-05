@@ -156,6 +156,10 @@ impl Builder {
             entry_point: format::LenBytes(self.entry_point.map(|main| main.index())),
         }
     }
+
+    pub fn write_to<W: std::io::Write>(self, output: &mut W) -> crate::writer::Result {
+        crate::writer::write_module(&self.finish(), output)
+    }
 }
 
 impl std::fmt::Debug for Builder {
