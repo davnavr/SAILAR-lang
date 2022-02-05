@@ -3,6 +3,7 @@ use std::collections::hash_map;
 
 mod cache;
 mod code;
+mod data;
 mod error;
 mod field;
 mod function;
@@ -13,6 +14,7 @@ mod symbol;
 mod type_signature;
 
 pub use code::{Block as CodeBlock, Code};
+pub use data::Data;
 pub use error::*;
 pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};

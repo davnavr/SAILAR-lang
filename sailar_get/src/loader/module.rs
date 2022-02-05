@@ -11,6 +11,7 @@ pub struct Module<'a> {
     type_signature_cache:
         cache::IndexLookup<'a, format::indices::TypeSignature, loader::TypeSignature<'a>>,
     code_cache: cache::IndexLookup<'a, format::indices::Code, loader::Code<'a>>,
+    data_cache: cache::IndexLookup<'a, format::indices::Data, loader::Data<'a>>,
     loaded_structs: cache::IndexLookup<'a, format::indices::StructDefinition, loader::Struct<'a>>,
     //loaded_globals
     loaded_functions:
@@ -54,6 +55,7 @@ impl<'a> Module<'a> {
             function_signature_cache: cache::IndexLookup::new(),
             type_signature_cache: cache::IndexLookup::new(),
             code_cache: cache::IndexLookup::new(),
+            data_cache: cache::IndexLookup::new(),
             loaded_structs: cache::IndexLookup::new(),
             loaded_functions: cache::IndexLookup::new(),
             // TODO: Could construct the function_lookup_cache IF the module is known to not have an entry point.
@@ -140,6 +142,15 @@ impl<'a> Module<'a> {
                     self.collect_type_signatures(&signature.parameter_types)?,
                 ))
             },
+        )
+    }
+
+    pub fn load_data_raw(&'a self, index: format::indices::Data) -> Result<&'a loader::Data<'a>> {
+        load_raw_cached(
+            &self.data_cache,
+            index,
+            |_| loader::read_index_from(index, &self.source.data.0, Ok).map(Some),
+            |code| Ok(loader::Data::new(self, code)),
         )
     }
 
