@@ -18,7 +18,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             format::Identifier::try_from("Print")?,
             builder.function_signatures().insert(
                 Vec::new(),
-                vec![builder.type_signatures().native_pointer(byte_type.clone()), builder.type_signatures().primitive(type_system::Int::UNative)],
+                vec![
+                    builder.type_signatures().native_pointer(byte_type.clone()),
+                    builder
+                        .type_signatures()
+                        .primitive(type_system::Int::UNative),
+                ],
             ),
             builder::FunctionBody::from(builder::ExternalFunction::new(
                 std::rc::Rc::new(format::Identifier::try_from("saili")?),
@@ -29,12 +34,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry_code = {
             let code = builder.code().define(Vec::new(), 1);
             let entry_block = code.entry_block();
-            let message_register = entry_block.alloca(
-                entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
-                byte_type,
-            );
+            let message_length =
+                entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap());
+
+            let message_register = entry_block.alloca(message_length, byte_type);
             entry_block.mem_init_from_data(message_register, message_data);
-            entry_block.call(&builder::Function::Defined(helper), [message_register])?;
+
+            entry_block.call(
+                &builder::Function::Defined(helper),
+                [message_register, message_length],
+            )?;
+
             entry_block.ret(&[])?;
             code
         };

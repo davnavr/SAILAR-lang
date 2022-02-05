@@ -224,6 +224,7 @@ impl<'l> Interpreter<'l> {
                     .current_jump_to(BlockIndex::from(target), &inputs)?
             }
             Instruction::Call(call) => {
+                // TODO: Move creation of argument vector into call_stack.push
                 let current_frame = self.call_stack.current()?;
 
                 let callee = current_frame
@@ -232,18 +233,12 @@ impl<'l> Interpreter<'l> {
                     .load_function_raw(call.function)?;
 
                 // TODO: Validate signature of callee.
-                let expected_parameter_count = callee.raw_signature()?.parameter_types.len();
-                let mut arguments: Vec<Register> = Vec::with_capacity(expected_parameter_count);
+                // Parameter count is checked when callee is pushed onto call stack.
+                let mut arguments: Vec<Register> = Vec::with_capacity(call.arguments.0.len());
 
                 for index in &call.arguments.0 {
+                    //match signture.parameter_types().get(i) {
                     arguments.push(*current_frame.registers.get(*index)?);
-                }
-
-                if arguments.len() != expected_parameter_count {
-                    return Err(ErrorKind::InputCountMismatch {
-                        expected: expected_parameter_count,
-                        actual: arguments.len(),
-                    });
                 }
 
                 self.call_stack.push(callee, &arguments)?;
