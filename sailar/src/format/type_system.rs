@@ -1,4 +1,4 @@
-use crate::format::indices;
+use crate::format::{indices, numeric};
 use std::fmt::{Display, Formatter};
 
 /// Integer types with a fixed size.
@@ -125,6 +125,33 @@ impl Display for Primitive {
     }
 }
 
+/// Type representing a fixed-length contiguous sequence of elements of a specified type.
+/// # Structure
+/// - `length`
+/// - `element_type`
+#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub struct FixedArray {
+    element_type: Any,
+    length: numeric::UInteger,
+}
+
+impl FixedArray {
+    pub fn new<L: Into<u32>>(element_type: Any, length: L) -> Self {
+        Self {
+            element_type,
+            length: numeric::UInteger(length.into()),
+        }
+    }
+
+    pub fn length(&self) -> numeric::UInteger {
+        self.length
+    }
+
+    pub fn element_type(&self) -> &Any {
+        &self.element_type
+    }
+}
+
 /// Represents the type of a parameter or a method return type.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub enum Any {
@@ -132,7 +159,13 @@ pub enum Any {
     Struct(indices::Struct),
     /// A native pointer to an instance of the specified type.
     NativePointer(Box<Any>),
-    //FixedArray { element_type: Box<AnyType>, length: IntegerConstant },
+    FixedArray(Box<FixedArray>),
+}
+
+impl From<FixedArray> for Any {
+    fn from(array_type: FixedArray) -> Self {
+        Self::FixedArray(Box::new(array_type))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
@@ -157,8 +190,8 @@ pub enum Tag {
     Struct = 0xDE,
     F32 = 0xF4,
     F64 = 0xF8,
-    ///// Indicates an array type. Followed by an unsigned integer length, and element type.
-    //FixedArray = 0xFA,
+    /// Indicates an array type. Followed by an unsigned integer length, and element type.
+    FixedArray = 0xFA,
 }
 
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]

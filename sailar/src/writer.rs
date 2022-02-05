@@ -171,6 +171,11 @@ fn type_signature<W: Write>(
             write(out, type_system::Tag::NativePointer as u8)?;
             type_signature(out, pointee, size)
         }
+        Any::FixedArray(array_type) => {
+            write(out, type_system::Tag::FixedArray as u8)?;
+            unsigned_integer(out, array_type.length(), size)?;
+            type_signature(out, array_type.element_type(), size)
+        }
     }
 }
 

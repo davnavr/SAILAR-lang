@@ -191,7 +191,16 @@ fn type_signature<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<ty
     match type_tag(src)? {
         type_system::Tag::Unit => unreachable!(),
         type_system::Tag::Struct => Ok(type_system::Any::Struct(unsigned_index(src, size)?)),
-        type_system::Tag::NativePointer => todo!("parse native pointer types"),
+        type_system::Tag::NativePointer => Ok(type_system::Any::NativePointer(Box::new(
+            type_signature(src, size)?,
+        ))),
+        type_system::Tag::FixedArray => {
+            let length = unsigned_integer(src, size)?;
+            Ok(type_system::Any::from(type_system::FixedArray::new(
+                type_signature(src, size)?,
+                length.0,
+            )))
+        }
         tag => Ok(type_system::Any::Primitive(
             type_system::Primitive::try_from(tag)?,
         )),
