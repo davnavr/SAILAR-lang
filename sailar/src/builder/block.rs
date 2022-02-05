@@ -244,7 +244,7 @@ impl Block {
             result,
             overflowed: self.allocate_register(
                 self.type_signatures
-                    .primitive_type(format::type_system::FixedInt::U8),
+                    .primitive(format::type_system::FixedInt::U8),
             ),
         })
     }
@@ -286,7 +286,7 @@ impl Block {
         let value = constant.into();
         let value_type = value.value_type();
         self.emit_raw(Instruction::ConstI(value));
-        self.allocate_register(self.type_signatures.primitive_type(value_type))
+        self.allocate_register(self.type_signatures.primitive(value_type))
     }
 
     pub(super) fn build(&self) -> format::CodeBlock {

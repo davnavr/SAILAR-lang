@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let code = builder.code().define(
                 vec![builder
                     .type_signatures()
-                    .primitive_type(type_system::FixedInt::S32)],
+                    .primitive(type_system::FixedInt::S32)],
                 1,
             );
             let entry_block = code.entry_block();
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 let signature = vec![builder
                     .type_signatures()
-                    .primitive_type(type_system::FixedInt::S32)];
+                    .primitive(type_system::FixedInt::S32)];
                 builder
                     .function_signatures()
                     .insert(signature.clone(), signature)
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .import(library_import, helper_name, {
                 let signature = vec![builder
                     .type_signatures()
-                    .primitive_type(format::type_system::FixedInt::S32)];
+                    .primitive(format::type_system::FixedInt::S32)];
                 builder
                     .function_signatures()
                     .insert(signature.clone(), signature)
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.function_signatures().insert(
                 vec![builder
                     .type_signatures()
-                    .primitive_type(type_system::FixedInt::S32)],
+                    .primitive(type_system::FixedInt::S32)],
                 Vec::new(),
             ),
             builder::FunctionBody::Defined(entry_code),

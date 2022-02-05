@@ -28,6 +28,12 @@ impl std::cmp::PartialEq for Type {
 
 impl std::cmp::Eq for Type {}
 
+impl std::hash::Hash for Type {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.signature, state);
+    }
+}
+
 impl Type {
     pub fn index(&self) -> Index {
         match self.index.get() {
@@ -45,6 +51,7 @@ pub struct Signatures {
     index: IndexCounter,
     types: RefCell<Vec<Rc<Type>>>,
     primitive_lookup: RefCell<hash_map::HashMap<type_system::Primitive, Rc<Type>>>,
+    array_lookup: RefCell<hash_map::HashMap<(Rc<Type>, u32), Rc<Type>>>,
 }
 
 impl Signatures {
@@ -53,6 +60,7 @@ impl Signatures {
             index: IndexCounter::new(builder::counter::Cell::new()),
             types: RefCell::new(Vec::new()),
             primitive_lookup: RefCell::new(hash_map::HashMap::new()),
+            array_lookup: RefCell::new(hash_map::HashMap::new()),
         }
     }
 
@@ -66,13 +74,32 @@ impl Signatures {
         type_signature
     }
 
-    pub fn primitive_type<T: Into<type_system::Primitive>>(&self, primitive: T) -> Rc<Type> {
+    pub fn primitive<T: Into<type_system::Primitive>>(&self, primitive: T) -> Rc<Type> {
         let primitive_type = primitive.into();
         match self.primitive_lookup.borrow_mut().entry(primitive_type) {
             hash_map::Entry::Occupied(existing) => existing.get().clone(),
             hash_map::Entry::Vacant(vacant) => vacant
                 .insert(self.insert_raw(type_system::Any::Primitive(primitive_type)))
                 .clone(),
+        }
+    }
+
+    pub fn fixed_array<L: Into<u32>>(&self, element_type: Rc<Type>, length: L) -> Rc<Type> {
+        let array_length = length.into();
+        match self
+            .array_lookup
+            .borrow_mut()
+            .entry((element_type.clone(), array_length))
+        {
+            hash_map::Entry::Vacant(vacant) => vacant
+                .insert(
+                    self.insert_raw(type_system::Any::from(type_system::FixedArray::new(
+                        element_type.signature.clone(),
+                        array_length,
+                    ))),
+                )
+                .clone(),
+            hash_map::Entry::Occupied(occupied) => occupied.get().clone(),
         }
     }
 
