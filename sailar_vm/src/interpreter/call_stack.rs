@@ -531,7 +531,13 @@ impl<'l> Stack<'l> {
                     code: Code::External(
                         external_call_handler
                             .get(library_name, entry_point_symbol)
-                            .and_then(|_| todo!("actual external calls are not yet supported"))?,
+                            .and_then(|handler| {
+                                handler.ok_or_else(|| {
+                                    todo!(
+                                        "actual external calls are not yet supported (libloading)"
+                                    )
+                                })
+                            })?,
                     ),
                 }));
             }
