@@ -44,7 +44,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             initializer.set_value_stack_capacity(capacity);
         }
 
-        let runtime = runtime::Runtime::initialize(&mut initializer, None, application);
+        let mut resolver = (); // TODO: Add resolver that reads modules passed in as imports.
+
+        let runtime = runtime::Runtime::initialize(&mut initializer, &mut resolver, application);
 
         let mut debugger;
 

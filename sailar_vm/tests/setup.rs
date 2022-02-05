@@ -12,7 +12,8 @@ pub fn initialize_from_str<
     let program = sailar_asm::assembler::assemble_from_str(module).unwrap();
     let mut initializer = runtime::Initializer::new();
     let mut debugger = setup(&program, &mut initializer);
-    let runtime = Runtime::initialize(&mut initializer, None, program);
+    let mut resolver = ();
+    let runtime = Runtime::initialize(&mut initializer, &mut resolver, program);
 
     body(&mut debugger, &runtime);
 }
