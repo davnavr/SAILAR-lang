@@ -9,6 +9,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut builder = builder::Builder::new(format::Identifier::try_from("Hello")?);
         let message = builder.data().define(Box::new(b"Hello World!\n".clone()));
 
+        let helper = builder.definitions().functions().define(
+            format::Identifier::try_from("Helper")?,
+            builder.function_signatures().insert(
+                vec![builder
+                    .type_signatures()
+                    .primitive_type(type_system::FixedInt::S32)],
+                Vec::new(),
+            ),
+            builder::FunctionBody::from(builder::ExternalFunction::new(
+                std::rc::Rc::new(format::Identifier::try_from("saili")?),
+                format::Identifier::try_from("print")?,
+            )),
+        );
+
         builder.finish()
     };
 

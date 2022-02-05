@@ -15,7 +15,9 @@ mod type_signatures;
 pub use block::{Block, Error as InvalidInstruction};
 pub use code::{Code, Definitions as CodeDefinitions};
 pub use data::{Data, Definitions as DataDefinitions};
-pub use definitions::function::{Body as FunctionBody, Function as FunctionDefinition};
+pub use definitions::function::{
+    Body as FunctionBody, ExternalFunction, Function as FunctionDefinition,
+};
 pub use definitions::{DefinedFunctions, Definitions};
 pub use error::{Error, Result};
 pub use format::{FormatVersion, VersionNumbers};

@@ -52,17 +52,36 @@ pub struct Function {
     is_export: std::cell::Cell<bool>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ExternalFunction {
+    library: Rc<format::Identifier>,
+    symbol: format::Identifier,
+}
+
+impl ExternalFunction {
+    pub fn new(library: Rc<format::Identifier>, symbol: format::Identifier) -> Self {
+        Self { library, symbol }
+    }
+
+    pub fn library(&self) -> &Rc<format::Identifier> {
+        &self.library
+    }
+
+    pub fn symbol(&self) -> &format::Identifier {
+        &self.symbol
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Body {
     Defined(Rc<builder::Code>),
+    External(Box<ExternalFunction>),
 }
 
-impl Body {
-    fn build(&self) -> format::FunctionBody {
-        match self {
-            Self::Defined(code) => format::FunctionBody::Defined(code.index()),
-        }
+impl From<ExternalFunction> for Body {
+    fn from(body: ExternalFunction) -> Self {
+        Self::External(Box::new(body))
     }
 }
 
@@ -109,7 +128,13 @@ impl Function {
             signature: self.signature.index(),
             is_export: self.is_export.get(),
             symbol,
-            body: self.body.build(),
+            body: match &self.body {
+                Body::Defined(code) => format::FunctionBody::Defined(code.index()),
+                Body::External(external) => format::FunctionBody::External {
+                    library: identifiers.insert_or_get((*external.library).clone()),
+                    entry_point_name: identifiers.insert_or_get(external.symbol.clone()),
+                },
+            },
         }
     }
 }
