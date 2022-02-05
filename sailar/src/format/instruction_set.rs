@@ -329,7 +329,6 @@ impl TryFrom<u8> for MemoryInitializationFlags {
 }
 
 #[derive(Debug, PartialEq)]
-#[non_exhaustive]
 pub enum MemoryInitializationSource {
     FromData(indices::Data),
     //FromValue { count: RegisterIndex, source: RegisterIndex },

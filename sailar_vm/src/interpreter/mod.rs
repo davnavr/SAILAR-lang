@@ -342,6 +342,37 @@ impl<'l> Interpreter<'l> {
                     });
                 }
             }
+            Instruction::MemInit {
+                destination,
+                source,
+            } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let destination_register = current_frame.registers.get(*destination)?;
+
+                let destination_address = match destination_register {
+                    register::Register::Pointer(address) => address,
+                    _ => {
+                        return Err(ErrorKind::RegisterTypeMismatch {
+                            expected: register::Type::Pointer(0),
+                            actual: destination_register.value_type(),
+                        })
+                    }
+                };
+
+                match source {
+                    // Source is from a slice, so it is always valid and aligned.
+                    instruction_set::MemoryInitializationSource::FromData(data_index) => unsafe {
+                        let data = current_frame
+                            .function()
+                            .declaring_module()
+                            .load_data_raw(*data_index)?
+                            .bytes();
+
+                        // TODO: Undefined behavior when destination is unaligned.
+                        std::ptr::copy(data.as_ptr(), destination_address.address(), data.len());
+                    },
+                }
+            }
             Instruction::Alloca {
                 element_type,
                 amount,

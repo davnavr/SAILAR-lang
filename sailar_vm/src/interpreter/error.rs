@@ -1,4 +1,5 @@
 use super::{call_stack, register, BlockIndex};
+use sailar::format;
 
 pub type LoaderError = sailar_get::loader::Error;
 
@@ -14,7 +15,7 @@ pub enum ErrorKind {
     #[error("end of block unexpectedly reached")]
     UnexpectedEndOfBlock,
     #[error("undefined register {0}")]
-    UndefinedRegister(sailar::format::indices::Register),
+    UndefinedRegister(format::indices::Register),
     #[error("undefined block {0}")]
     UndefinedBlock(BlockIndex),
     #[error("expected {expected} input values but got {actual}")]
