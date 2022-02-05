@@ -7,14 +7,22 @@ use sailar::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program = {
         let mut builder = builder::Builder::new(format::Identifier::try_from("Hello")?);
-        let message = builder.data().define(Box::new(b"Hello World!\n".clone()));
+
+        let message = b"Hello World!\n";
+        let message_data = builder.data().define(Box::new(b"Hello World!\n".clone()));
+        let message_type = builder.type_signatures().fixed_array(
+            builder
+                .type_signatures()
+                .primitive(type_system::Primitive::from(type_system::FixedInt::U8)),
+            u32::try_from(message.len())?,
+        );
 
         let helper = builder.definitions().functions().define(
             format::Identifier::try_from("Helper")?,
             builder.function_signatures().insert(
                 vec![builder
                     .type_signatures()
-                    .primitive_type(type_system::FixedInt::S32)],
+                    .primitive(type_system::FixedInt::S32)],
                 Vec::new(),
             ),
             builder::FunctionBody::from(builder::ExternalFunction::new(
@@ -22,6 +30,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 format::Identifier::try_from("print")?,
             )),
         );
+
+        let entry_code = {
+            let code = builder.code().define(Vec::new(), 1);
+            let entry_block = code.entry_block();
+            let message_register = entry_block.alloca(entry_block.const_i(1), message_type);
+            entry_block.mem_init_from_data(message_register, message_data);
+            code
+        };
+
+        let entry_point = builder.definitions().functions().define(
+            format::Identifier::try_from("Main")?,
+            builder.function_signatures().insert(Vec::new(), Vec::new()),
+            builder::FunctionBody::Defined(entry_code),
+        );
+
+        builder.set_entry_point(entry_point);
 
         builder.finish()
     };

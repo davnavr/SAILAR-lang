@@ -289,6 +289,15 @@ impl Block {
         self.allocate_register(self.type_signatures.primitive(value_type))
     }
 
+    /// Emits a `mem.init` instruction, using module data as a source.
+    pub fn mem_init_from_data(&self, destination: &Register, source: Rc<builder::Data>) {
+        // TODO: Check that destianation of mem.init is a pointer.
+        self.emit_raw(Instruction::MemInit {
+            destination: destination.index(),
+            source: instruction_set::MemoryInitializationSource::FromData(source.index()),
+        });
+    }
+
     pub fn alloca(&self, amount: &Register, element_type: Rc<builder::Type>) -> &Register {
         match amount.value_type().as_raw() {
             format::TypeSignature::Primitive(_) => {

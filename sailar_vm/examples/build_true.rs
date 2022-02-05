@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.function_signatures().insert(
                 vec![builder
                     .type_signatures()
-                    .primitive_type(type_system::FixedInt::S32)],
+                    .primitive(type_system::FixedInt::S32)],
                 Vec::new(),
             ),
             builder::FunctionBody::Defined(entry_code),
