@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .unwrap_or_default();
 
-        let application =
+        let (application, _) =
             sailar::parser::parse_module(&mut std::fs::File::open(interpreter_arguments.program)?)?;
 
         let mut initializer = runtime::Initializer::new();
