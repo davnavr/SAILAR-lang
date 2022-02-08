@@ -17,6 +17,12 @@ pub enum IntegerSize {
     I4,
 }
 
+impl Default for IntegerSize {
+    fn default() -> Self {
+        Self::I4
+    }
+}
+
 macro_rules! integer_traits {
     ($t: ty, $backing_type: ty) => {
         impl<T> From<T> for $t

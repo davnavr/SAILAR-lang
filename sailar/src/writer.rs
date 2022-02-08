@@ -38,14 +38,6 @@ fn unsigned_index<W: Write, I: Into<numeric::UInteger>>(
     unsigned_integer(out, index.into(), size)
 }
 
-fn signed_integer<W: Write>(
-    out: &mut W,
-    numeric::SInteger(value): numeric::SInteger,
-    size: numeric::IntegerSize,
-) -> Result {
-    unsigned_integer(out, numeric::UInteger(value as u32), size)
-}
-
 fn unsigned_length<W: Write>(out: &mut W, length: usize, size: numeric::IntegerSize) -> Result {
     match u32::try_from(length) {
         Ok(value) => unsigned_integer(out, numeric::UInteger(value), size),
