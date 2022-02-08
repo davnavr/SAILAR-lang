@@ -81,15 +81,6 @@ pub enum StructLayout {
 
 numeric_enum_conversion!(StructLayout, u8, Unspecified, ExplicitSize);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum HashAlgorithm {
-    None = 0,
-    Sha256,
-}
-
-numeric_enum_conversion!(HashAlgorithm, u8, None, Sha256);
-
 macro_rules! export_flag {
     ($flag_type: ty) => {
         impl $flag_type {

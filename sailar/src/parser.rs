@@ -1,5 +1,6 @@
 use crate::buffers;
 use crate::format::{self, flags, instruction_set, numeric, type_system};
+use sha2::{Digest, Sha256};
 use std::io::Read;
 
 #[derive(thiserror::Error, Debug)]
@@ -65,14 +66,16 @@ struct Input<'a, R> {
     source: R,
     integer_size: numeric::IntegerSize,
     buffer_pool: &'a buffers::BufferPool,
+    hasher: &'a mut Sha256,
 }
 
 impl<R: Read> Input<'_, R> {
-    fn change_input<I: Read>(&self, input: I) -> Input<'_, I> {
+    fn change_input<I: Read>(&mut self, input: I) -> Input<'_, I> {
         Input {
             source: input,
             integer_size: self.integer_size,
             buffer_pool: self.buffer_pool,
+            hasher: &mut self.hasher,
         }
     }
 
@@ -465,12 +468,16 @@ impl<R: Read> Input<'_, R> {
     fn module_import(&mut self) -> Result<format::ModuleImport> {
         Ok(format::ModuleImport {
             identifier: self.module_identifier()?,
-            hash: match format::ModuleHashKind::try_from(self.byte()?)
-                .map_err(Error::InvalidModuleHashAlgorithm)?
-            {
-                format::ModuleHashKind::None => format::ModuleHash::None,
-                format::ModuleHashKind::Sha256 => {
-                    format::ModuleHash::Sha256(Box::new(self.fixed_bytes()?))
+            hash: {
+                match self.unsigned_length()? {
+                    0usize => None,
+                    256usize => Some(Box::new(self.fixed_bytes::<256>()?)),
+                    length => {
+                        return Err(Box::new(Error::InvalidByteLength {
+                            expected: 256,
+                            actual: length,
+                        }))
+                    }
                 }
             },
         })
@@ -589,7 +596,7 @@ impl<R: Read> Input<'_, R> {
         Ok(format::LenBytes(if length > 0usize {
             let mut buffer = self.buffer_pool.rent_with_length(length);
             self.fill_buffer(&mut buffer)?;
-            let mut buffer_slice: &[u8] = &mut buffer;
+            let buffer_slice: &[u8] = &mut buffer;
             self.change_input(buffer_slice)
                 .length_encoded_vector(parser)?
         } else {
@@ -629,15 +636,16 @@ impl<R: Read> Input<'_, R> {
 }
 
 /// Parses a binary module.
-pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(format::Module, format::ModuleHash)>*/
-{
+pub fn parse_module<R: Read>(input: &mut R) -> Result<(format::Module, format::ModuleHash)> {
     let buffers = buffers::BufferPool::new();
+    let mut hasher = sha2::Sha256::new();
 
     let mut source = Input {
         source: input,
         // Integer size is updated once parsed.
         integer_size: numeric::IntegerSize::default(),
         buffer_pool: &buffers,
+        hasher: &mut hasher,
     };
 
     source.magic_bytes(format::MAGIC, || Error::InvalidModuleMagic)?;
@@ -666,7 +674,7 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
 
     let buffers = buffers::BufferPool::new();
 
-    Ok(format::Module {
+    let module = format::Module {
         integer_size: source.integer_size,
         format_version,
         // Header is always present.
@@ -679,17 +687,13 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
             &data_vectors,
             1,
             || format::LenVec(Vec::new()),
-            |data| {
-                data.length_encoded_vector(|src| src.identifier())
-            },
+            |data| data.length_encoded_vector(|src| src.identifier()),
         )?,
         namespaces: source.module_data(
             &data_vectors,
             2,
             || format::LenVec(Vec::new()),
-            |data| {
-                data.length_encoded_vector(|src| src.namespace_definition())
-            },
+            |data| data.length_encoded_vector(|src| src.namespace_definition()),
         )?,
         type_signatures: source.module_data(
             &data_vectors,
@@ -704,9 +708,9 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
             &data_vectors,
             5,
             || format::LenVec(Vec::new()),
-            |mut data| data.length_encoded_vector(|src| src.function_body()),
+            |data| data.length_encoded_vector(|src| src.function_body()),
         )?,
-        data: source.module_data_or_default(&data_vectors, 6, |mut data| {
+        data: source.module_data_or_default(&data_vectors, 6, |data| {
             data.length_encoded_vector(|src| src.data_array())
         })?,
         imports: source.module_data(
@@ -721,21 +725,11 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
             },
             |data| {
                 Ok(format::ModuleImports {
-                    imported_modules: data.double_length_encoded(|src| {
-                        src.module_import()
-                    })?,
-                    imported_structs: data.double_length_encoded(|src| {
-                        src.struct_import()
-                    })?,
-                    imported_globals: data.double_length_encoded(
-                        |src| todo!(),
-                    )?,
-                    imported_fields: data.double_length_encoded(|src| {
-                        src.field_import()
-                    })?,
-                    imported_functions: data.double_length_encoded(|src| {
-                        src.function_import()
-                    })?,
+                    imported_modules: data.double_length_encoded(|src| src.module_import())?,
+                    imported_structs: data.double_length_encoded(|src| src.struct_import())?,
+                    imported_globals: data.double_length_encoded(|src| todo!())?,
+                    imported_fields: data.double_length_encoded(|src| src.field_import())?,
+                    imported_functions: data.double_length_encoded(|src| src.function_import())?,
                 })
             },
         )?,
@@ -750,18 +744,11 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
             },
             |data| {
                 Ok(format::ModuleDefinitions {
-                    defined_structs: data.double_length_encoded(|src| {
-                        src.struct_definition()
-                    })?,
-                    defined_globals: data.double_length_encoded(
-                        |src| todo!(),
-                    )?,
-                    defined_fields: data.double_length_encoded(|src| {
-                        src.field_definition()
-                    })?,
-                    defined_functions: data.double_length_encoded(|src| {
-                        src.function_definition()
-                    })?,
+                    defined_structs: data.double_length_encoded(|src| src.struct_definition())?,
+                    defined_globals: data.double_length_encoded(|src| todo!())?,
+                    defined_fields: data.double_length_encoded(|src| src.field_definition())?,
+                    defined_functions: data
+                        .double_length_encoded(|src| src.function_definition())?,
                 })
             },
         )?,
@@ -777,5 +764,7 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(
             || None,
             |data| data.unsigned_index().map(Some),
         )?,
-    })
+    };
+
+    Ok((module, Box::new(hasher.finalize().as_slice().try_into().expect("hash length should be 256 bytes"))))
 }

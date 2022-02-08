@@ -55,7 +55,7 @@ impl Imports {
 pub struct Module {
     index: format::indices::Module,
     identifier: format::ModuleIdentifier,
-    hash: RefCell<format::ModuleHash>,
+    hash: RefCell<Option<format::ModuleHash>>,
 }
 
 impl Module {
@@ -67,7 +67,7 @@ impl Module {
     //pub fn import_function
 
     pub fn set_hash(&self, hash: format::ModuleHash) {
-        self.hash.replace(hash);
+        self.hash.replace(Some(hash));
     }
 
     pub fn identifier(&self) -> &format::ModuleIdentifier {

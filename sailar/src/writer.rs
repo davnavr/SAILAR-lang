@@ -411,11 +411,11 @@ fn module_import<W: Write>(
     size: numeric::IntegerSize,
 ) -> Result {
     module_identifier(out, &import.identifier, size)?;
-    write(out, import.hash.kind() as u8)?;
     match &import.hash {
-        format::ModuleHash::None => Ok(()),
-        format::ModuleHash::Sha256(hash) => {
+        None => unsigned_length(out, 0, size),
+        Some(hash) => {
             let bytes: &[u8; 256] = hash;
+            unsigned_length(out, bytes.len(), size)?;
             write_bytes(out, bytes)
         }
     }
