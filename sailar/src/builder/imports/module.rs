@@ -26,6 +26,7 @@ impl Imports {
                 let module = Rc::new(Module {
                     index: self.index.next(),
                     identifier: identifier.clone(),
+                    hash: RefCell::default(),
                 });
 
                 self.imports.borrow_mut().push(module.clone());
@@ -34,13 +35,16 @@ impl Imports {
         }
     }
 
-    pub(super) fn build(&self) -> Vec<format::ModuleIdentifier> {
+    pub(super) fn build(&self) -> Vec<format::ModuleImport> {
         self.imports
             .borrow_mut()
             .drain(..)
-            .map(|import| match Rc::try_unwrap(import) {
-                Ok(owned) => owned.identifier,
-                Err(import) => import.identifier.clone(),
+            .map(|import| format::ModuleImport {
+                hash: import.hash.take(),
+                identifier: match Rc::try_unwrap(import) {
+                    Ok(owned) => owned.identifier,
+                    Err(import) => import.identifier.clone(),
+                },
             })
             .collect()
     }
@@ -51,6 +55,7 @@ impl Imports {
 pub struct Module {
     index: format::indices::Module,
     identifier: format::ModuleIdentifier,
+    hash: RefCell<format::ModuleHash>,
 }
 
 impl Module {
@@ -60,6 +65,10 @@ impl Module {
 
     //Might be nicer to have function, field, global import helpers be here, since modules logically own them.
     //pub fn import_function
+
+    pub fn set_hash(&self, hash: format::ModuleHash) {
+        self.hash.replace(hash);
+    }
 
     pub fn identifier(&self) -> &format::ModuleIdentifier {
         &self.identifier

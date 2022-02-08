@@ -341,7 +341,7 @@ impl<'a> Module<'a> {
                 hash_map::Entry::Vacant(vacant) => loader::read_index_from(
                     import_index,
                     &self.source.imports.0.imported_modules.0,
-                    |import_name| Ok(*vacant.insert(self.loader.load_module(import_name)?)),
+                    |import| Ok(*vacant.insert(self.loader.load_module(&import.identifier)?)),
                 ),
                 hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
             }

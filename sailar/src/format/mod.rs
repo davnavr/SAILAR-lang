@@ -155,10 +155,44 @@ pub struct FunctionImport {
     //pub type_parameters: (),
 }
 
+pub use flags::HashAlgorithm as ModuleHashKind;
+
+/// Uniquely identifies an imported module.
+///
+/// # Structure
+/// - `kind`
+/// - `hash`
+#[derive(Clone, Debug)]
+pub enum ModuleHash {
+    None,
+    Sha256(Box<[u8; 256]>),
+}
+
+impl Default for ModuleHash {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl ModuleHash {
+    pub fn kind(&self) -> ModuleHashKind {
+        match self {
+            Self::None => ModuleHashKind::None,
+            Self::Sha256(_) => ModuleHashKind::Sha256,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ModuleImport {
+    pub identifier: ModuleIdentifier,
+    pub hash: ModuleHash,
+}
+
 /// Contains the structs, fields, and functions imported by a module.
 #[derive(Debug)]
 pub struct ModuleImports {
-    pub imported_modules: LenVecBytes<ModuleIdentifier>,
+    pub imported_modules: LenVecBytes<ModuleImport>,
     pub imported_structs: LenVecBytes<StructImport>,
     pub imported_globals: LenVecBytes<GlobalImport>,
     pub imported_fields: LenVecBytes<FieldImport>,

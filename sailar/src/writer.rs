@@ -413,6 +413,22 @@ fn namespace_definition<W: Write>(
     length_encoded_indices(out, &namespace.functions, size)
 }
 
+fn module_import<W: Write>(
+    out: &mut W,
+    import: &format::ModuleImport,
+    size: numeric::IntegerSize,
+) -> Result {
+    module_identifier(out, &import.identifier, size)?;
+    write(out, import.hash.kind() as u8)?;
+    match &import.hash {
+        format::ModuleHash::None => Ok(()),
+        format::ModuleHash::Sha256(hash) => {
+            let bytes: &[u8; 256] = hash;
+            write_bytes(out, bytes)
+        }
+    }
+}
+
 fn struct_import<W: Write>(
     out: &mut W,
     import: &format::StructImport,
@@ -475,7 +491,7 @@ fn module_imports<W: Write>(
         imports.imported_modules.as_ref(),
         size,
         buffer_pool,
-        |out, id| module_identifier(out, id, size),
+        |out, id| module_import(out, id, size),
     )?;
     double_length_encoded_vector(
         out,

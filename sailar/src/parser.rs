@@ -53,6 +53,8 @@ pub enum Error {
     InvalidFunctionFlags(u8),
     #[error("{0:#02X} is not a valid struct layout")]
     InvalidStructLayoutFlags(u8),
+    #[error("{0:#02X} is not a valid module hash algorithm")]
+    InvalidModuleHashAlgorithm(u8),
     #[error(transparent)]
     InputOutputError(#[from] std::io::Error),
 }
@@ -477,6 +479,24 @@ fn namespace_definition<R: Read>(
     })
 }
 
+fn module_import<R: Read>(
+    src: &mut R,
+    size: numeric::IntegerSize,
+    buffer_pool: &buffers::BufferPool,
+) -> Result<format::ModuleImport> {
+    Ok(format::ModuleImport {
+        identifier: module_identifier(src, size, buffer_pool)?,
+        hash: match format::ModuleHashKind::try_from(byte(src)?)
+            .map_err(Error::InvalidModuleHashAlgorithm)?
+        {
+            format::ModuleHashKind::None => format::ModuleHash::None,
+            format::ModuleHashKind::Sha256 => {
+                format::ModuleHash::Sha256(Box::new(fixed_bytes(src)?))
+            }
+        },
+    })
+}
+
 fn struct_import<R: Read>(src: &mut R, size: numeric::IntegerSize) -> Result<format::StructImport> {
     Ok(format::StructImport {
         module: unsigned_index(src, size)?,
@@ -634,7 +654,7 @@ fn module_data_or_default<T: Default, F: FnOnce(&[u8]) -> Result<T>>(
 }
 
 /// Parses a binary module.
-pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
+pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> /*Result<(format::Module, format::ModuleHash)>*/ {
     magic_bytes(input, format::MAGIC, Error::InvalidModuleMagic)?;
     let size = integer_size(input)?;
     let format_version = format::FormatVersion {
@@ -717,7 +737,7 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<format::Module> {
             |mut data| {
                 Ok(format::ModuleImports {
                     imported_modules: double_length_encoded(&mut data, size, &buffers, |src| {
-                        module_identifier(src, size, &buffers)
+                        module_import(src, size, &buffers)
                     })?,
                     imported_structs: double_length_encoded(&mut data, size, &buffers, |src| {
                         struct_import(src, size)

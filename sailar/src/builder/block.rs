@@ -322,11 +322,7 @@ impl Block {
         target_type: format::type_system::Int,
     ) -> Result<OverflowingArithmeticResult> {
         Ok(OverflowingArithmeticResult {
-            result: self.integer_conversion_operation(
-                operand,
-                target_type,
-                OverflowBehavior::Flag,
-            ),
+            result: self.integer_conversion_operation(operand, target_type, OverflowBehavior::Flag),
             overflowed: self.allocate_overflow_flag(),
         })
     }
