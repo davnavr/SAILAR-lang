@@ -1,0 +1,9 @@
+[package]
+name = "sailar_aot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+llvm-sys = "130.0.3"
+sailar_get = { path = "../sailar_get" }
+thiserror = "1.0.30"
