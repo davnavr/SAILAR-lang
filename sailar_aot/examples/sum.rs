@@ -5,16 +5,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         use sailar::builder;
         use sailar::format::{self, type_system};
 
-        let mut builder = builder::Builder::new(format::Identifier::try_from("Example")?);
+        let builder = builder::Builder::new(format::Identifier::try_from("Example")?);
         let type_int = builder
             .type_signatures()
             .primitive(type_system::FixedInt::S32);
 
-        builder.definitions().functions().define(
+        let sum = builder.definitions().functions().define(
             format::Identifier::try_from("Sum")?,
             builder.function_signatures().insert(
-                vec![type_int.clone(), type_int.clone()],
                 vec![type_int.clone()],
+                vec![type_int.clone(), type_int.clone()],
             ),
             builder::FunctionBody::Defined({
                 let code = builder
@@ -27,6 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 code
             }),
         );
+
+        sum.is_export(true);
 
         builder.finish()
     };
@@ -57,12 +59,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("valid target machine")
         };
 
-        let module = sailar_aot::compile(program, &mut (), &context, {
-            use inkwell::targets::{CodeModel, RelocMode, Target, TargetMachine};
-            let triple = TargetMachine::get_default_triple();
-            &target
-        });
+        let module = sailar_aot::compile(program, &mut (), &context, &target)?;
 
+        //module.get_function("Example_Sum"))
         todo!("compilation should be done")
     };
 

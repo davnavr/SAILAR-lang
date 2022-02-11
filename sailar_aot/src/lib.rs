@@ -3,6 +3,7 @@ use sailar_get::loader;
 use std::cell::RefCell;
 use std::collections::hash_map;
 
+mod code_gen;
 mod error;
 
 pub use error::{Error, Result};
@@ -98,7 +99,10 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
                     Some(return_type) if signature.return_types().len() == 1 => {
                         self.get_type(return_type).as_any_type_enum()
                     }
-                    Some(_) => todo!("multiple return types are not yet supported"),
+                    Some(_) => todo!(
+                        "multiple return types {} are not yet supported",
+                        signature.return_types().len()
+                    ),
                     None => AnyTypeEnum::VoidType(self.context.void_type()),
                 };
 
@@ -157,7 +161,7 @@ impl<'l> NameLookup<'l> {
                 let mut name = identifier.name.to_string();
 
                 for number in identifier.version.0.iter() {
-                    write!(&mut name, "_{}", number);
+                    write!(&mut name, "_{}", number).unwrap();
                 }
 
                 name
