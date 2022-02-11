@@ -33,8 +33,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.finish()
     };
 
-    let sum: SumFn = {
-        let context = inkwell::context::Context::create();
+    let context = inkwell::context::Context::create();
+    let module;
+    let execution_engine;
+
+    let sum: inkwell::execution_engine::JitFunction<SumFn> = {
         let optimization_level = inkwell::OptimizationLevel::None;
 
         let target = {
@@ -59,13 +62,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("valid target machine")
         };
 
-        let module = sailar_aot::compile(program, &mut (), &context, &target)?;
+        module = sailar_aot::compile(program, &mut (), &context, &target)?;
+        execution_engine = module
+            .create_jit_execution_engine(optimization_level)
+            .unwrap();
 
-        //module.get_function("Example_Sum"))
-        todo!("compilation should be done")
+        unsafe { execution_engine.get_function("Example_Sum")? }
     };
 
-    assert_eq!(unsafe { sum(9, 10) }, 9i32 + 10);
+    assert_eq!(unsafe { sum.call(9, 10) }, 9i32 + 10);
+    println!("{}", module.print_to_string().to_string());
 
     Ok(())
 }

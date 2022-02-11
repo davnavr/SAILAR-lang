@@ -86,7 +86,7 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
         signature: &'l loader::FunctionSignature<'l>,
     ) -> inkwell::types::FunctionType<'c> {
         // TODO: Make custom enum that is like AnyTypeEnum, but excludes FunctionType.
-        use inkwell::types::{AnyType, AnyTypeEnum, BasicType as _, BasicTypeEnum};
+        use inkwell::types::{AnyType, AnyTypeEnum};
 
         match self
             .function_lookup
@@ -227,6 +227,12 @@ pub fn compile<'c>(
                 Some(inkwell::module::Linkage::External),
             )),
         };
+    }
+
+    let code_builder = context.create_builder();
+    let code = code_gen::Cache::new(&code_builder);
+    for (function, value) in function_lookup.iter() {
+        code_gen::generate(context, function.0, *value, &code)?;
     }
 
     Ok(module)

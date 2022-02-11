@@ -3,11 +3,16 @@ use sailar::format;
 
 pub struct Block<'a> {
     source: &'a format::CodeBlock,
+    index: format::indices::CodeBlock,
 }
 
 impl<'a> Block<'a> {
-    fn new(source: &'a format::CodeBlock) -> Self {
-        Self { source }
+    fn new(source: &'a format::CodeBlock, index: format::indices::CodeBlock) -> Self {
+        Self { source, index }
+    }
+
+    pub fn index(&'a self) -> format::indices::CodeBlock {
+        self.index
     }
 
     pub fn as_raw(&'a self) -> &'a format::CodeBlock {
@@ -51,9 +56,13 @@ impl<'a> Code<'a> {
                     &self.source.blocks[raw_index - 1]
                 };
 
-                Ok(Block::new(source))
+                Ok(Block::new(source, index))
             }),
             None => Err(Error::IndexOutOfBounds(index.into())),
         })
+    }
+
+    pub fn entry_block(&'a self) -> &'a Block<'a> {
+        self.load_block(format::indices::CodeBlock::from(0u32)).unwrap()
     }
 }
