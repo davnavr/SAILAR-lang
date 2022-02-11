@@ -26,8 +26,9 @@ impl<T> std::hash::Hash for ComparableRef<'_, T> {
 struct TypeLookup<'c, 'l> {
     context: &'c Context,
     loader: &'l loader::Loader<'l>,
-    type_lookup:
-        RefCell<hash_map::HashMap<&'l loader::TypeSignature<'l>, inkwell::types::BasicTypeEnum<'c>>>,
+    type_lookup: RefCell<
+        hash_map::HashMap<&'l loader::TypeSignature<'l>, inkwell::types::BasicTypeEnum<'c>>,
+    >,
     function_lookup: RefCell<
         hash_map::HashMap<
             ComparableRef<'l, loader::FunctionSignature<'l>>,
@@ -84,7 +85,7 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
         signature: &'l loader::FunctionSignature<'l>,
     ) -> inkwell::types::FunctionType<'c> {
         // TODO: Make custom enum that is like AnyTypeEnum, but excludes FunctionType.
-        use inkwell::types::{AnyTypeEnum, BasicTypeEnum, BasicType as _};
+        use inkwell::types::{AnyType, AnyTypeEnum, BasicType as _, BasicTypeEnum};
 
         match self
             .function_lookup
@@ -95,7 +96,7 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
             hash_map::Entry::Vacant(vacant) => *vacant.insert({
                 let return_type = match signature.return_types().first() {
                     Some(return_type) if signature.return_types().len() == 1 => {
-                        self.get_type(return_type)
+                        self.get_type(return_type).as_any_type_enum()
                     }
                     Some(_) => todo!("multiple return types are not yet supported"),
                     None => AnyTypeEnum::VoidType(self.context.void_type()),
@@ -104,18 +105,36 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
                 let parameter_types = signature
                     .parameter_types()
                     .iter()
-                    .map(|parameter_type| self.get_type(parameter_type))
+                    .map(|parameter_type| {
+                        inkwell::types::BasicMetadataTypeEnum::from(self.get_type(parameter_type))
+                    })
                     .collect::<Vec<_>>();
 
                 match return_type {
-                    AnyTypeEnum::ArrayType(array_type) => array_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::FloatType(float_type) => float_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::FunctionType(_) => todo!("cannot return function type, return a function pointer instead"),
-                    AnyTypeEnum::IntType(integer_type) => integer_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::PointerType(pointer_type) => pointer_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::StructType(struct_type) => struct_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::VectorType(vector_type) => vector_type.fn_type(parameter_types.as_slice(), false),
-                    AnyTypeEnum::VoidType(void_type) => void_type.fn_type(parameter_types.as_slice(), false),
+                    AnyTypeEnum::ArrayType(array_type) => {
+                        array_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::FloatType(float_type) => {
+                        float_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::FunctionType(_) => {
+                        todo!("cannot return function type, return a function pointer instead")
+                    }
+                    AnyTypeEnum::IntType(integer_type) => {
+                        integer_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::PointerType(pointer_type) => {
+                        pointer_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::StructType(struct_type) => {
+                        struct_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::VectorType(vector_type) => {
+                        vector_type.fn_type(parameter_types.as_slice(), false)
+                    }
+                    AnyTypeEnum::VoidType(void_type) => {
+                        void_type.fn_type(parameter_types.as_slice(), false)
+                    }
                 }
             }),
         }
