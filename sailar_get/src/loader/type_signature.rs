@@ -122,3 +122,9 @@ impl<'a> std::cmp::PartialEq for &'a Type<'a> {
 }
 
 impl<'a> std::cmp::Eq for &'a Type<'a> {}
+
+impl<'a> std::hash::Hash for &'a Type<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hasher::write_usize(state, *self as *const Type<'a> as usize)
+    }
+}
