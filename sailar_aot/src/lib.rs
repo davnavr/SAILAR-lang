@@ -7,6 +7,7 @@ use sailar_get::loader;
 pub fn compile(
     application: format::Module,
     resolver: &mut dyn loader::ReferenceResolver,
+    context: &Context,
     target: &targets::TargetMachine,
 ) {
     let mut loader = None;
@@ -21,7 +22,6 @@ pub fn compile(
         application,
     );
 
-    let context = Context::create();
     let module = context.create_module(&application.identifier().name);
-    todo!()
+    todo!();
 }
