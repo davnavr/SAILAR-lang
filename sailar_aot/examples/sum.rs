@@ -12,9 +12,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         builder.definitions().functions().define(
             format::Identifier::try_from("Sum")?,
-            builder
-                .function_signatures()
-                .insert(vec![type_int.clone(), type_int.clone()], vec![type_int.clone()]),
+            builder.function_signatures().insert(
+                vec![type_int.clone(), type_int.clone()],
+                vec![type_int.clone()],
+            ),
             builder::FunctionBody::Defined({
                 let code = builder
                     .code()
@@ -31,11 +32,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let sum: SumFn = {
-        use inkwell::context::Context;
-        let context = Context::create();
-        let module = sailar_aot::compile(program, &mut (), &context, todo!("pick the target"));
+        let context = inkwell::context::Context::create();
+        let optimization_level = inkwell::OptimizationLevel::None;
 
-        todo!()
+        let target = {
+            use inkwell::targets::{
+                CodeModel, InitializationConfig, RelocMode, Target, TargetMachine,
+            };
+
+            Target::initialize_native(&InitializationConfig::default()).unwrap();
+
+            let triple = TargetMachine::get_default_triple();
+
+            Target::from_triple(&triple)
+                .unwrap()
+                .create_target_machine(
+                    &triple,
+                    &TargetMachine::get_host_cpu_name().to_string(),
+                    &TargetMachine::get_host_cpu_features().to_string(),
+                    optimization_level,
+                    RelocMode::Default,
+                    CodeModel::JITDefault,
+                )
+                .expect("valid target machine")
+        };
+
+        let module = sailar_aot::compile(program, &mut (), &context, {
+            use inkwell::targets::{CodeModel, RelocMode, Target, TargetMachine};
+            let triple = TargetMachine::get_default_triple();
+            &target
+        });
+
+        todo!("compilation should be done")
     };
 
     assert_eq!(unsafe { sum(9, 10) }, 9i32 + 10);

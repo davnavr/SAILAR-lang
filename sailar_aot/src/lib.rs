@@ -3,13 +3,17 @@ use inkwell::targets;
 use sailar::format;
 use sailar_get::loader;
 
+mod error;
+
+pub use error::{Error, Result};
+
 /// Compiles the specified SAILAR module with its dependencies into an LLVM module.
-pub fn compile(
+pub fn compile<'c>(
     application: format::Module,
     resolver: &mut dyn loader::ReferenceResolver,
-    context: &Context,
+    context: &'c Context,
     target: &targets::TargetMachine,
-) {
+) -> Result<inkwell::module::Module<'c>> {
     let mut loader = None;
     let (loader, application) = loader::Loader::initialize(
         &mut loader,
@@ -22,6 +26,8 @@ pub fn compile(
         application,
     );
 
+    let entry_point = application.entry_point()?.ok_or(Error::MissingEntryPoint);
+
     let module = context.create_module(&application.identifier().name);
-    todo!();
+    Ok(module)
 }
