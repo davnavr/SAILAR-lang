@@ -102,6 +102,7 @@ impl<'a> Function<'a> {
         self.code
             .get_or_insert_fallible(|| match self.raw_body() {
                 format::FunctionBody::Defined(index) => {
+                    // TODO: Check that the parameter types match the code's types.
                     Ok(Some(self.module.load_code_raw(*index)?))
                 }
                 format::FunctionBody::External { .. } => Ok(None),
