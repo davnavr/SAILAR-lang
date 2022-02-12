@@ -451,7 +451,6 @@ dependencies = [
  "bitflags",
  "sha2",
  "thiserror",
- "typed-arena",
 ]
 
 [[package]]
