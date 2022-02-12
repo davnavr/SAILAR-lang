@@ -72,9 +72,9 @@ pub struct CodeExceptionHandler {
 }
 
 /// Represents a basic block, which contain the instructions that make up a function body.
-/// 
+///
 /// Note that code blocks contain the exact number and types of all inputs and temporary registers to help with analysis.
-/// 
+///
 /// # Structure
 /// - [`CodeBlock::flags()`]
 /// - [`CodeBlock::input_registers`]

@@ -350,7 +350,8 @@ fn code_block<W: Write>(
     buffer_pool: &buffers::BufferPool,
 ) -> Result {
     write(out, block.flags().bits())?;
-    unsigned_integer(out, block.input_register_count, size)?;
+    length_encoded_indices(out, &block.input_registers, size)?;
+    length_encoded_indices(out, &block.temporary_registers, size)?;
 
     // Flags already indicate if exception handler is present or if exception register is used.
     if let Some(exception_handler) = &block.exception_handler {
