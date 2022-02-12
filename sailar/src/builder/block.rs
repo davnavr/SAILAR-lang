@@ -150,22 +150,36 @@ impl Block {
     where
         R: std::iter::IntoIterator<Item = &'a Register>,
     {
-        // TODO: Check that types are correct.
-        let result_indices = results
-            .into_iter()
-            .map(|register| register.index)
-            .collect::<Vec<_>>();
+        let result_registers = results.into_iter().enumerate();
+        let mut result_indices = Vec::with_capacity({
+            let size = result_registers.size_hint();
+            size.1.unwrap_or(size.0)
+        });
 
-        let actual_count = result_indices.len().try_into().unwrap();
+        for (index, register) in result_registers {
+            if let Some(expected_type) = self.expected_return_types().get(index) {
+                if &register.value_type != expected_type {
+                    return Err(Error::RegisterTypeMismatch {
+                        register: register.index,
+                        expected: expected_type.clone(),
+                        actual: register.value_type.clone(),
+                    });
+                }
+            }
+
+            result_indices.push(register.index);
+        }
+
+        let actual_count = result_indices.len();
 
         self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
 
-        if actual_count == self.expected_return_count() {
+        if actual_count == self.expected_return_types().len() {
             Ok(())
         } else {
             Err(Error::ResultCountMismatch {
                 expected: self.expected_return_count(),
-                actual: actual_count,
+                actual: u32::try_from(actual_count).unwrap(),
             })
         }
     }
