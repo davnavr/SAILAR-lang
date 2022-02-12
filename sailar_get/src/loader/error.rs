@@ -2,6 +2,7 @@ use sailar::format;
 
 #[derive(thiserror::Error, Debug)]
 #[error("the imported function {symbol} imported in {import_signature:?} at index {import} and defined in {defining_module:?} at index {definition} was expected to have the signature {import_signature:?} from the importing module's point of view, but the actual signature was {definition_signature:?} from the imported module's point of view")]
+#[non_exhaustive]
 pub struct FunctionImportSignatureMismatch {
     pub symbol: format::Identifier,
     pub import: format::indices::FunctionImport,
@@ -10,6 +11,14 @@ pub struct FunctionImportSignatureMismatch {
     pub definition: format::indices::FunctionDefinition,
     pub definition_signature: format::FunctionSignature,
     pub defining_module: format::ModuleIdentifier,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("expected {expected:?} but actual input types were {actual:?}")]
+#[non_exhaustive]
+pub struct InputTypeMismatchError {
+    pub expected: Vec<format::TypeSignature>,
+    pub actual: Vec<format::TypeSignature>,
 }
 
 // TODO: Box all large error cases, split them into separate structs.
@@ -41,11 +50,24 @@ pub enum Error {
     #[error(transparent)]
     FunctionImportSignatureMismatch(#[from] Box<FunctionImportSignatureMismatch>),
     #[error(transparent)]
+    InputTypeMismatch(#[from] Box<InputTypeMismatchError>),
+    #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error>),
 }
 
-impl From<FunctionImportSignatureMismatch> for Error {
-    fn from(mismatch: FunctionImportSignatureMismatch) -> Self {
-        Self::FunctionImportSignatureMismatch(Box::new(mismatch))
-    }
+macro_rules! boxed_error_conversion {
+    ($source_type: ty, $case_name: ident) => {
+        impl From<$source_type> for Error {
+            fn from(mismatch: $source_type) -> Self {
+                Self::$case_name(Box::new(mismatch))
+            }
+        }
+    };
 }
+
+boxed_error_conversion!(
+    FunctionImportSignatureMismatch,
+    FunctionImportSignatureMismatch
+);
+
+boxed_error_conversion!(InputTypeMismatchError, InputTypeMismatch);
