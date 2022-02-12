@@ -71,17 +71,26 @@ pub struct CodeExceptionHandler {
     pub exception_register: Option<indices::InputRegister>,
 }
 
+/// Represents a basic block, which contain the instructions that make up a function body.
+/// 
+/// Note that code blocks contain the exact number and types of all inputs and temporary registers to help with analysis.
+/// 
 /// # Structure
 /// - [`CodeBlock::flags()`]
-/// - [`CodeBlock::input_register_count`]
+/// - [`CodeBlock::input_registers`]
+/// - [`CodeBlock::temporary_registers`]
 /// - [`CodeBlock::exception_handler`]
 /// - [`CodeBlock::instructions`]
 #[derive(Debug)]
 pub struct CodeBlock {
-    /// A variable-length integer placed after the flags indicating the number of input registers for this block.
+    /// A length-encoded vector placed after the flags indicating the number and types of the input registers for this block.
     ///
-    /// For the entry block's count, this should match the number of arguments of the function.
-    pub input_register_count: numeric::UInteger,
+    /// For the entry block's count, the number and types of the inputs should match the number and types of the arguments of the
+    /// function.
+    pub input_registers: LenVec<indices::TypeSignature>,
+    /// Describes the total number of temporary registers introduced in this block, as well as the types of the values contained
+    /// in each temporary.
+    pub temporary_registers: LenVec<indices::TypeSignature>,
     /// Specifies the block that control should be transferred to if an exception is thrown inside this block.
     pub exception_handler: Option<CodeExceptionHandler>,
     /// The instructions of the block.
