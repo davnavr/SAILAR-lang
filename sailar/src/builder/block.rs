@@ -1,5 +1,6 @@
 use crate::format::instruction_set;
 use crate::{builder, format};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use instruction_set::{BasicArithmeticOperation, Instruction, OverflowBehavior};
@@ -47,10 +48,11 @@ pub struct Block {
     type_signatures: Rc<builder::TypeSignatures>,
     input_count: u32,
     input_registers: Box<[Register]>,
-    return_count: u32,
-    instructions: std::cell::RefCell<Vec<Instruction>>,
+    return_types: Box<[Rc<builder::Type>]>,
+    instructions: RefCell<Vec<Instruction>>,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
-    registers: typed_arena::Arena<Register>,
+    #[allow(clippy::vec_box)]
+    registers: RefCell<Vec<Box<Register>>>,
 }
 
 impl std::fmt::Debug for Block {
@@ -58,7 +60,6 @@ impl std::fmt::Debug for Block {
         f.debug_struct("Block")
             .field("index", &self.index)
             .field("input_count", &self.input_count)
-            .field("return_count", &self.return_count)
             .field("instructions", &self.instructions)
             .finish_non_exhaustive()
     }
@@ -68,27 +69,33 @@ impl Block {
     pub(super) fn new(
         index: format::indices::CodeBlock,
         type_signatures: Rc<builder::TypeSignatures>,
-        mut input_types: Vec<Rc<builder::Type>>,
-        return_count: u32,
+        input_types: &[Rc<builder::Type>],
+        result_types: &[Rc<builder::Type>],
     ) -> Self {
+        let (input_count, input_registers) = {
+            let mut count = 0u32;
+            let mut registers = Vec::with_capacity(input_types.len());
+            for input_type in input_types.iter() {
+                registers.push(Register {
+                    value_type: input_type.clone(),
+                    index: format::indices::Register::Input(format::indices::InputRegister::from(
+                        count,
+                    )),
+                });
+                count += 1;
+            }
+            (count, registers.into_boxed_slice())
+        };
+
         Self {
             index,
             type_signatures,
-            input_count: input_types.len().try_into().unwrap(),
-            input_registers: input_types
-                .drain(..)
-                .zip(0u32..)
-                .map(|(input_type, index)| Register {
-                    value_type: input_type,
-                    index: format::indices::Register::Input(format::indices::InputRegister::from(
-                        index,
-                    )),
-                })
-                .collect(),
-            return_count,
-            instructions: std::cell::RefCell::new(Vec::new()),
+            input_count,
+            input_registers,
+            return_types: result_types.to_vec().into_boxed_slice(),
+            instructions: RefCell::default(),
             register_index: builder::counter::Cell::new(),
-            registers: typed_arena::Arena::new(),
+            registers: RefCell::default(),
         }
     }
 
@@ -106,18 +113,29 @@ impl Block {
 
     /// Returns the number of values that should be returned by any `ret` instruction in this block.
     pub fn expected_return_count(&self) -> u32 {
-        self.return_count
+        u32::try_from(self.return_types.len()).unwrap()
     }
 
-    fn allocate_register(&self, value_type: Rc<builder::Type>) -> &Register {
-        self.registers.alloc(Register {
+    pub fn expected_return_types(&self) -> &[Rc<builder::Type>] {
+        &self.return_types
+    }
+
+    #[allow(clippy::needless_lifetimes)]
+    fn allocate_register<'a>(&'a self, value_type: Rc<builder::Type>) -> &'a Register {
+        let register = Box::new(Register {
             index: format::indices::Register::Temporary(self.register_index.next()),
             value_type,
-        })
+        });
+
+        let allocated = &*register as *const Register;
+
+        self.registers.borrow_mut().push(register);
+
+        unsafe { &*allocated }
     }
 
     pub fn reserve_registers(&self, count: usize) {
-        self.registers.reserve_extend(count)
+        self.registers.borrow_mut().reserve(count)
     }
 
     pub fn emit_raw(&self, instruction: Instruction) {
@@ -132,6 +150,7 @@ impl Block {
     where
         R: std::iter::IntoIterator<Item = &'a Register>,
     {
+        // TODO: Check that types are correct.
         let result_indices = results
             .into_iter()
             .map(|register| register.index)
@@ -141,11 +160,11 @@ impl Block {
 
         self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
 
-        if actual_count == self.return_count {
+        if actual_count == self.expected_return_count() {
             Ok(())
         } else {
             Err(Error::ResultCountMismatch {
-                expected: self.return_count,
+                expected: self.expected_return_count(),
                 actual: actual_count,
             })
         }
@@ -351,11 +370,21 @@ impl Block {
 
     pub(super) fn build(&self) -> format::CodeBlock {
         format::CodeBlock {
-            input_register_count: format::numeric::UInteger(self.input_count),
+            input_registers: format::LenVec(
+                self.input_registers
+                    .iter()
+                    .map(|input| input.value_type.index())
+                    .collect(),
+            ),
+            temporary_registers: format::LenVec(
+                self.registers
+                    .borrow()
+                    .iter()
+                    .map(|register| register.value_type.index())
+                    .collect(),
+            ),
             exception_handler: None,
-            instructions: format::LenBytes(format::LenVec(std::cell::RefCell::take(
-                &self.instructions,
-            ))),
+            instructions: format::LenBytes(format::LenVec(RefCell::take(&self.instructions))),
         }
     }
 }

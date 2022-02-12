@@ -419,8 +419,6 @@ impl<R: Read> Input<'_, R> {
     fn code_block(&mut self) -> Result<format::CodeBlock> {
         let flags = self.byte_flags(flags::CodeBlock::from_bits, Error::InvalidCodeBlockFlags)?;
 
-        let input_register_count = self.unsigned_integer()?;
-
         Ok(format::CodeBlock {
             input_registers: self.length_encoded_indices()?,
             temporary_registers: self.length_encoded_indices()?,
