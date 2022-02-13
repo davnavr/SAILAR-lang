@@ -42,6 +42,8 @@ pub struct Block<'a> {
     index: format::indices::CodeBlock,
     input_types: cache::Once<Box<[&'a loader::TypeSignature<'a>]>>,
     input_registers: cache::Once<Box<[Register<'a>]>>,
+    temporary_types: cache::Once<Box<[&'a loader::TypeSignature<'a>]>>,
+    temporary_registers: cache::Once<Box<[Register<'a>]>>,
 }
 
 impl<'a> Block<'a> {
@@ -56,6 +58,8 @@ impl<'a> Block<'a> {
             index,
             input_types: cache::Once::new(),
             input_registers: cache::Once::new(),
+            temporary_types: cache::Once::new(),
+            temporary_registers: cache::Once::new(),
         }
     }
 
@@ -118,9 +122,21 @@ impl<'a> Block<'a> {
         Self::register_types(&self.input_types, || self.input_registers())
     }
 
-    //pub fn temporary_registers
+    pub fn temporary_registers(&'a self) -> Result<&'a [Register<'a>]> {
+        self.registers(
+            &self.temporary_registers,
+            &self.source.temporary_registers.0,
+            |index| {
+                format::indices::Register::Temporary(format::indices::TemporaryRegister::from(
+                    index,
+                ))
+            },
+        )
+    }
 
-    //pub fn temporary_types
+    pub fn temporary_types(&'a self) -> Result<&'a [&'a loader::TypeSignature<'a>]> {
+        Self::register_types(&self.temporary_types, || self.temporary_registers())
+    }
 }
 
 pub struct Code<'a> {
