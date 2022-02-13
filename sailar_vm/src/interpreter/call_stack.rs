@@ -135,7 +135,13 @@ impl<'l> InstructionPointer<'l> {
     fn jump(&mut self, target: BlockIndex) -> Result<()> {
         match target
             .0
-            .map(|index| Some(self.code.load_block(format::indices::CodeBlock::try_from(index).unwrap()).unwrap()))
+            .map(|index| {
+                Some(
+                    self.code
+                        .load_block(format::indices::CodeBlock::try_from(index).unwrap())
+                        .unwrap(),
+                )
+            })
             .unwrap_or_else(|| Some(self.code.entry_block()))
         {
             Some(block) => {
