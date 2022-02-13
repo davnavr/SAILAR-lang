@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         let entry_code = {
-            let code = builder.code().define(Vec::new(), 0);
+            let code = builder.code().define(Vec::new(), Vec::new());
             let entry_block = code.entry_block();
             let message_length = entry_block.conv_i_overflowing(
                 entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
@@ -58,7 +58,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         builder.set_entry_point(entry_point);
-
         builder.finish()
     };
 

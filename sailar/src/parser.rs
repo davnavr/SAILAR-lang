@@ -75,7 +75,7 @@ impl<R: Read> Input<'_, R> {
             source: input,
             integer_size: self.integer_size,
             buffer_pool: self.buffer_pool,
-            hasher: &mut self.hasher,
+            hasher: self.hasher,
         }
     }
 

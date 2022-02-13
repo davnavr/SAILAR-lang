@@ -7,14 +7,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let library = {
         let builder = builder::Builder::new(format::Identifier::try_from("Library")?);
+        let int_type = builder
+            .type_signatures()
+            .primitive(type_system::FixedInt::S32);
 
         let helper_code = {
-            let code = builder.code().define(
-                vec![builder
-                    .type_signatures()
-                    .primitive(type_system::FixedInt::S32)],
-                1,
-            );
+            let code = builder
+                .code()
+                .define(vec![int_type.clone()], vec![int_type.clone()]);
             let entry_block = code.entry_block();
             let input = &entry_block.input_registers()[0];
             let other = entry_block.const_i(10i32);
@@ -25,14 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         builder.definitions().functions().define(
             helper_name.clone(),
-            {
-                let signature = vec![builder
-                    .type_signatures()
-                    .primitive(type_system::FixedInt::S32)];
-                builder
-                    .function_signatures()
-                    .insert(signature.clone(), signature)
-            },
+            builder
+                .function_signatures()
+                .insert(signature.clone(), vec![int_type]),
             builder::FunctionBody::Defined(helper_code),
         );
 
@@ -41,6 +36,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let application = {
         let mut builder = builder::Builder::new(format::Identifier::try_from("Application")?);
+        let int_type = builder
+            .type_signatures()
+            .primitive(format::type_system::FixedInt::S32);
 
         let library_import = builder
             .imports()
@@ -51,16 +49,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .imports()
             .functions()
             .import(library_import, helper_name, {
-                let signature = vec![builder
-                    .type_signatures()
-                    .primitive(format::type_system::FixedInt::S32)];
                 builder
                     .function_signatures()
-                    .insert(signature.clone(), signature)
+                    .insert(signature.clone(), vec![int_type.clone()])
             });
 
         let entry_code = {
-            let code = builder.code().define(Vec::new(), 1);
+            let code = builder.code().define(Vec::new(), vec![int_type.clone()]);
             let entry_block = code.entry_block();
             let value = entry_block.const_i(9);
             let result = entry_block.call(&builder::Function::Imported(helper), [value])?;
@@ -70,12 +65,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let entry_point = builder.definitions().functions().define(
             format::Identifier::try_from("Main")?,
-            builder.function_signatures().insert(
-                vec![builder
-                    .type_signatures()
-                    .primitive(type_system::FixedInt::S32)],
-                Vec::new(),
-            ),
+            builder
+                .function_signatures()
+                .insert(vec![int_type], Vec::new()),
             builder::FunctionBody::Defined(entry_code),
         );
 

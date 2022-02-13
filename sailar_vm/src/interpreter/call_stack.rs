@@ -1,6 +1,7 @@
 use crate::interpreter::{self, debugger, ErrorKind, Result};
 use interpreter::{BlockIndex, InstructionLocation, Register};
 use sailar::format::{self, indices, instruction_set};
+use sailar_get::loader;
 use std::borrow::{Borrow as _, BorrowMut as _};
 use std::collections::{hash_map, BTreeSet, VecDeque};
 
@@ -83,7 +84,7 @@ impl Registers {
 // }
 
 pub(super) struct InstructionPointer<'l> {
-    code: &'l format::Code,
+    code: &'l loader::Code<'l>,
     block_index: BlockIndex,
     previous_block: Option<BlockIndex>,
     instructions: &'l [instruction_set::Instruction],
@@ -95,21 +96,24 @@ pub(super) struct InstructionPointer<'l> {
 static BREAK: &instruction_set::Instruction = &instruction_set::Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
-    fn new(code: &'l format::Code) -> Self {
+    fn new(code: &'l loader::Code<'l>) -> Self {
         Self {
             code,
             block_index: BlockIndex::entry(),
             previous_block: None,
-            instructions: &code.entry_block.instructions,
+            instructions: code.entry_block().raw_instructions(),
             breakpoints: VecDeque::new(),
             last_breakpoint_hit: None,
         }
     }
 
-    pub fn current_block(&self) -> &'l format::CodeBlock {
+    pub fn current_block(&self) -> &'l loader::CodeBlock<'l> {
         match self.block_index {
-            BlockIndex(None) => &self.code.entry_block,
-            BlockIndex(Some(other_index)) => &self.code.blocks[other_index],
+            BlockIndex(None) => self.code.entry_block(),
+            BlockIndex(Some(other_index)) => self
+                .code
+                .load_block(format::indices::CodeBlock::try_from(other_index).unwrap())
+                .unwrap(),
         }
     }
 
@@ -117,7 +121,7 @@ impl<'l> InstructionPointer<'l> {
         unsafe {
             self.instructions
                 .as_ptr()
-                .offset_from(self.current_block().instructions.0.as_ptr()) as usize
+                .offset_from(self.current_block().raw_instructions().as_ptr()) as usize
         }
     }
 
@@ -131,13 +135,13 @@ impl<'l> InstructionPointer<'l> {
     fn jump(&mut self, target: BlockIndex) -> Result<()> {
         match target
             .0
-            .map(|index| self.code.blocks.get(index))
-            .unwrap_or(Some(&self.code.entry_block))
+            .map(|index| Some(self.code.load_block(format::indices::CodeBlock::try_from(index).unwrap()).unwrap()))
+            .unwrap_or_else(|| Some(self.code.entry_block()))
         {
             Some(block) => {
                 self.previous_block = Some(self.block_index);
                 self.block_index = target;
-                self.instructions = &block.instructions;
+                self.instructions = block.raw_instructions();
                 Ok(())
             }
             None => Err(ErrorKind::UndefinedBlock(target)),
@@ -219,6 +223,7 @@ impl<'l> Frame<'l> {
     ///
     /// The breakpoint list must be updated afterward.
     fn jump(&mut self, target: BlockIndex, inputs: &[Register]) -> Result<()> {
+        // Replace temporary registers
         self.registers.temporaries.clear();
 
         // Replace input registers with new inputs.
@@ -227,13 +232,11 @@ impl<'l> Frame<'l> {
 
         self.instructions()?.jump(target)?;
 
-        let expected_input_count = self
-            .instructions()?
-            .current_block()
-            .input_register_count
-            .try_into()
-            .unwrap();
+        let current_block = self.instructions()?.current_block();
 
+        // TODO: Use loader to check against register type information.
+
+        let expected_input_count = current_block.input_registers()?.len();
         if expected_input_count != inputs.len() {
             return Err(ErrorKind::InputCountMismatch {
                 expected: expected_input_count,
@@ -493,7 +496,7 @@ impl<'l> Stack<'l> {
 
         match function.raw_body() {
             format::FunctionBody::Defined(code_index) => {
-                let code = function.declaring_module().load_code_source(*code_index)?;
+                let code = function.declaring_module().load_code_raw(*code_index)?;
                 let previous = self.current.take();
                 let mut frame = Box::new(Frame {
                     depth,
@@ -506,6 +509,8 @@ impl<'l> Stack<'l> {
                     },
                     code: Code::Defined(InstructionPointer::new(code)),
                 });
+
+                // TODO: Call `jump` to run the common register initialization code?
 
                 self.breakpoints.update_in(&mut frame)?;
                 self.current = Some(frame);

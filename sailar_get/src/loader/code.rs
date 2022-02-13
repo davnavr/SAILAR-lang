@@ -75,6 +75,10 @@ impl<'a> Block<'a> {
         self.source
     }
 
+    pub fn raw_instructions(&'a self) -> &'a [format::instruction_set::Instruction] {
+        &self.source.instructions.0 .0
+    }
+
     fn registers<I: Fn(u32) -> format::indices::Register>(
         &'a self,
         cache: &'a cache::Once<Box<[Register<'a>]>>,
