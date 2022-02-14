@@ -84,6 +84,10 @@ pub fn generate<'b, 'c, 'l>(
             register_lookup.clear();
             register_lookup.reserve(input_registers.len() + temporary_registers.len());
 
+            // TODO: A hashmap will be needed to keep track of incoming values used for phi.
+            // TODO: Create Phi nodes for input registers.
+            // TODO: Create sailar_get helper for determining where an input register can get its value from.
+
             // TODO: This should only be used for the entry block.
             for (input, index) in input_registers.iter().zip(0u32..) {
                 match register_lookup.entry(ComparableRef(input)) {
