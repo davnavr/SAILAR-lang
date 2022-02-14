@@ -84,6 +84,7 @@ pub fn generate<'b, 'c, 'l>(
             register_lookup.clear();
             register_lookup.reserve(input_registers.len() + temporary_registers.len());
 
+            // TODO: This should only be used for the entry block.
             for (input, index) in input_registers.iter().zip(0u32..) {
                 match register_lookup.entry(ComparableRef(input)) {
                     hash_map::Entry::Vacant(vacant) => {
@@ -154,36 +155,34 @@ pub fn generate<'b, 'c, 'l>(
                         Some(_) => todo!("multiple return values are not yet supported"),
                     });
                 }
-                // sail::Instruction::ConstI(value) => {
-                //     let constant = match *value {
-                //         sail::IntegerConstant::S8(value) => {
-                //             context.i8_type().const_int(value as u64, value < 0)
-                //         }
-                //         sail::IntegerConstant::U8(value) => {
-                //             context.i8_type().const_int(value as u64, false)
-                //         }
-                //         sail::IntegerConstant::S16(value) => {
-                //             context.i16_type().const_int(value as u64, value < 0)
-                //         }
-                //         sail::IntegerConstant::U16(value) => {
-                //             context.i16_type().const_int(value as u64, false)
-                //         }
-                //         sail::IntegerConstant::S32(value) => {
-                //             context.i32_type().const_int(value as u64, value < 0)
-                //         }
-                //         sail::IntegerConstant::U32(value) => {
-                //             context.i32_type().const_int(value as u64, false)
-                //         }
-                //         sail::IntegerConstant::S64(value) => {
-                //             context.i64_type().const_int(value as u64, value < 0)
-                //         }
-                //         sail::IntegerConstant::U64(value) => {
-                //             context.i64_type().const_int(value as u64, false)
-                //         }
-                //     };
-
-                //     todo!("a {:?}", constant.as_instruction());
-                // }
+                sail::Instruction::ConstI(value) => {
+                    define_temporary(inkwell::values::BasicValueEnum::IntValue(match *value {
+                        sail::IntegerConstant::S8(value) => {
+                            context.i8_type().const_int(value as u64, value < 0)
+                        }
+                        sail::IntegerConstant::U8(value) => {
+                            context.i8_type().const_int(value as u64, false)
+                        }
+                        sail::IntegerConstant::S16(value) => {
+                            context.i16_type().const_int(value as u64, value < 0)
+                        }
+                        sail::IntegerConstant::U16(value) => {
+                            context.i16_type().const_int(value as u64, false)
+                        }
+                        sail::IntegerConstant::S32(value) => {
+                            context.i32_type().const_int(value as u64, value < 0)
+                        }
+                        sail::IntegerConstant::U32(value) => {
+                            context.i32_type().const_int(value as u64, false)
+                        }
+                        sail::IntegerConstant::S64(value) => {
+                            context.i64_type().const_int(value as u64, value < 0)
+                        }
+                        sail::IntegerConstant::U64(value) => {
+                            context.i64_type().const_int(value as u64, false)
+                        }
+                    }))?;
+                }
                 sail::Instruction::Add(operation) => {
                     let x = lookup_register(operation.x)?;
                     let y = lookup_register(operation.y)?;
