@@ -100,6 +100,7 @@ impl<'a> Block<'a> {
         Ok(types)
     }
 
+    // TODO: Return input register slice?
     pub fn input_registers(&'a self) -> Result<&'a [Register<'a>]> {
         self.registers(
             &self.input_registers,
@@ -129,47 +130,72 @@ impl<'a> Block<'a> {
     }
 
     pub fn register_at(&'a self, index: format::indices::Register) -> Result<&'a Register<'a>> {
-        todo!()
+        match index {
+            format::indices::Register::Input(input_index) => {
+                loader::read_index_from(*input_index, self.input_registers()?, Ok)
+            }
+            format::indices::Register::Temporary(temporary_index) => {
+                loader::read_index_from(*temporary_index, self.temporary_registers()?, Ok)
+            }
+        }
     }
 
     /// Returns all possible blocks that control can transfer to when the current block is executed, as well as the registers
     /// used as inputs to the target block.
     pub fn jump_targets(&'a self) -> Result<&'a [JumpTarget<'a>]> {
-        self.jump_targets.get_or_insert_fallible(|| {
-            use format::instruction_set::Instruction;
+        self.jump_targets
+            .get_or_insert_fallible(|| {
+                use format::instruction_set::Instruction;
 
-            let mut targets = Vec::new();
+                let mut targets = Vec::new();
 
-            let push_targets = |target: format::indices::CodeBlock, input_indices: &'a [format::indices::Register]| -> Result<()> {
-                let destination = self.code.load_block(target)?;
+                let mut push_targets = |target: format::indices::CodeBlock,
+                                        input_indices: &'a [format::indices::Register]|
+                 -> Result<()> {
+                    let destination = self.code.load_block(target)?;
 
-                // TODO: Could check that input count and types matches target block.
-                let mut inputs = Vec::with_capacity(input_indices.len());
-                for index in input_indices.iter() {
-                    inputs.push(self.register_at(*index)?);
-                }
-
-                targets.push(JumpTarget {
-                    destination,
-                    inputs: inputs.into_boxed_slice(),
-                });
-
-                Ok(())
-            };
-
-            for instruction in self.raw_instructions().rev() {
-                match instruction {
-                    //Instruction::Switch
-                    Instruction::Br { target, input_registers: input_indices } => {
-                        push_targets(target, &input_indices.0)?;
-                        break;
+                    // TODO: Could check that input count and types matches target block.
+                    let mut inputs = Vec::with_capacity(input_indices.len());
+                    for index in input_indices.iter() {
+                        inputs.push(self.register_at(*index)?);
                     }
-                    _ => (),
-                }
-            }
 
-            Ok(targets)
-        }).map(|targets| targets as &'a [_])
+                    targets.push(JumpTarget {
+                        destination,
+                        inputs: inputs.into_boxed_slice(),
+                    });
+
+                    Ok(())
+                };
+
+                for instruction in self.raw_instructions().iter().rev() {
+                    match instruction {
+                        Instruction::Switch => {
+                            todo!("switch is not yet supported in jump target calculations")
+                        }
+                        Instruction::Br {
+                            target,
+                            input_registers,
+                        } => {
+                            push_targets(*target, &input_registers.0)?;
+                            break;
+                        }
+                        Instruction::BrIf {
+                            true_branch,
+                            false_branch,
+                            input_registers,
+                        } => {
+                            push_targets(*true_branch, &input_registers.0)?;
+                            push_targets(*false_branch, &input_registers.0)?;
+                            break;
+                        }
+                        _ => (),
+                    }
+                }
+
+                Ok(targets)
+            })
+            .map(|targets| targets as &'a [_])
     }
 }
 
@@ -223,13 +249,17 @@ impl<'a> Code<'a> {
     }
 
     pub fn all_blocks(&'a self) -> Result<&'a [&'a Block<'a>]> {
-        self.all_blocks.get_or_insert_fallible(|| {
-            let mut blocks = Vec::with_capacity(self.blocks.len());
-            for index in 0..self.blocks.len() {
-                blocks.push(self.load_block(format::indices::CodeBlock::try_from(index).unwrap())?);
-            }
-            Ok(blocks.into_boxed_slice())
-        }).map(|blocks| blocks as &'a [_])
+        self.all_blocks
+            .get_or_insert_fallible(|| {
+                let mut blocks = Vec::with_capacity(self.blocks.len());
+                for index in 0..self.blocks.len() {
+                    blocks.push(
+                        self.load_block(format::indices::CodeBlock::try_from(index).unwrap())?,
+                    );
+                }
+                Ok(blocks.into_boxed_slice())
+            })
+            .map(|blocks| blocks as &'a [_])
     }
 
     pub fn input_types(&'a self) -> Result<&'a [&'a loader::TypeSignature<'a>]> {

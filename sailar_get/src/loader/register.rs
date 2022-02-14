@@ -44,25 +44,27 @@ impl<'a> Register<'a> {
     pub fn as_input(&'a self) -> Option<&'a Input<'a>> {
         match self.index {
             format::indices::Register::Temporary(_) => None,
-            format::indices::Register::Input(_) => self.input.get_or_insert_fallible::<loader::Error, _>(|| {
-                let mut sources = Vec::new();
-                
-                for block in self.block.declaring_code().all_blocks()? {
-                    let jump_targets = block.jump_targets()?;
-                    todo!();
-                }
-                
-                Ok(Input {
-                    sources,
+            format::indices::Register::Input(_) => self
+                .input
+                .get_or_insert_fallible::<loader::Error, _>(|| {
+                    let mut sources = Vec::new();
+
+                    for block in self.block.declaring_code().all_blocks()? {
+                        for target in block.jump_targets()? {
+                            todo!();
+                        }
+                    }
+
+                    Ok(Input { sources })
                 })
-            }).ok(),
+                .ok(),
         }
     }
 }
 
 pub enum InputSource<'a> {
     Callee,
-    Other(&'a loader::Register<'a>)
+    Other(&'a loader::Register<'a>),
 }
 
 pub struct Input<'a> {
