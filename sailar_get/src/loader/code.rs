@@ -132,10 +132,10 @@ impl<'a> Block<'a> {
     pub fn register_at(&'a self, index: format::indices::Register) -> Result<&'a Register<'a>> {
         match index {
             format::indices::Register::Input(input_index) => {
-                loader::read_index_from(*input_index, self.input_registers()?, Ok)
+                loader::read_index_from(input_index, self.input_registers()?, Ok)
             }
             format::indices::Register::Temporary(temporary_index) => {
-                loader::read_index_from(*temporary_index, self.temporary_registers()?, Ok)
+                loader::read_index_from(temporary_index, self.temporary_registers()?, Ok)
             }
         }
     }
@@ -170,7 +170,7 @@ impl<'a> Block<'a> {
 
                 for instruction in self.raw_instructions().iter().rev() {
                     match instruction {
-                        Instruction::Switch => {
+                        Instruction::Switch { .. } => {
                             todo!("switch is not yet supported in jump target calculations")
                         }
                         Instruction::Br {
@@ -184,6 +184,7 @@ impl<'a> Block<'a> {
                             true_branch,
                             false_branch,
                             input_registers,
+                            ..
                         } => {
                             push_targets(*true_branch, &input_registers.0)?;
                             push_targets(*false_branch, &input_registers.0)?;

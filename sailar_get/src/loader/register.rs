@@ -42,6 +42,7 @@ impl<'a> Register<'a> {
     }
 
     pub fn as_input(&'a self) -> Option<&'a Input<'a>> {
+        // TODO: If self is the entry block, then append Callee as an input source
         match self.index {
             format::indices::Register::Temporary(_) => None,
             format::indices::Register::Input(_) => self
@@ -51,7 +52,9 @@ impl<'a> Register<'a> {
 
                     for block in self.block.declaring_code().all_blocks()? {
                         for target in block.jump_targets()? {
-                            todo!();
+                            if std::ptr::eq(self.block, target.destination()) {
+                                sources.push(InputSource::Other(target.inputs()));
+                            }
                         }
                     }
 
@@ -64,9 +67,15 @@ impl<'a> Register<'a> {
 
 pub enum InputSource<'a> {
     Callee,
-    Other(&'a loader::Register<'a>),
+    Other(&'a [&'a loader::Register<'a>]),
 }
 
 pub struct Input<'a> {
     sources: Vec<InputSource<'a>>,
+}
+
+impl<'a> Input<'a> {
+    pub fn sources(&'a self) -> &'a [InputSource<'a>] {
+        &self.sources
+    }
 }

@@ -24,13 +24,6 @@ impl<T> Once<T> {
             Ok(value.insert(initializer()?))
         }
     }
-
-    pub fn get_or_insert<'a, F: FnOnce() -> T>(&'a self, initializer: F) -> &'a T {
-        self.get_or_insert_fallible(|| {
-            std::result::Result::<T, std::convert::Infallible>::Ok(initializer())
-        })
-        .unwrap()
-    }
 }
 
 impl<T> Default for Once<T> {
