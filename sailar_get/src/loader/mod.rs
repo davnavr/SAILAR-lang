@@ -23,7 +23,7 @@ pub use module::Module;
 pub use resolver::{ReferenceResolver, ResolverClosure};
 pub use structure::Struct;
 pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
-pub use type_signature::Type as TypeSignature;
+pub use type_signature::{calculate_size as calculate_raw_type_size, Type as TypeSignature};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -128,12 +128,11 @@ impl<'l> Interpreter<'l> {
             overflowed: bool,
         ) -> Result<()> {
             match behavior {
-                OverflowBehavior::Ignore => (),
+                OverflowBehavior::Ignore => Ok(()),
                 OverflowBehavior::Flag => {
                     frame.registers.define_temporary(Register::from(overflowed))
                 }
             }
-            Ok(())
         }
 
         type BasicArithmeticOperation =
@@ -150,7 +149,7 @@ impl<'l> Interpreter<'l> {
                 expected: x.value_type(),
                 actual: y.value_type(),
             })?; // TODO: Move check for equal register types into actual operation
-            frame.registers.define_temporary(result);
+            frame.registers.define_temporary(result)?;
             handle_value_overflow(frame, operation.overflow, overflowed)
         }
 
@@ -276,7 +275,7 @@ impl<'l> Interpreter<'l> {
                 .call_stack
                 .current_mut()?
                 .registers
-                .define_temporary(Register::from(*value)),
+                .define_temporary(Register::from(*value))?,
             Instruction::ConvI {
                 target_type,
                 operand,
@@ -287,7 +286,7 @@ impl<'l> Interpreter<'l> {
                     .registers
                     .get(*operand)?
                     .convert_to_integer(*target_type);
-                current_frame.registers.define_temporary(converted);
+                current_frame.registers.define_temporary(converted)?;
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }
             Instruction::Cmp { x, kind, y } => {
@@ -317,7 +316,7 @@ impl<'l> Interpreter<'l> {
                         ComparisonKind::GreaterThanOrEqual => {
                             result == Ordering::Greater || result == Ordering::Equal
                         }
-                    }));
+                    }))?;
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;
@@ -337,7 +336,7 @@ impl<'l> Interpreter<'l> {
 
                     current_frame
                         .registers
-                        .define_temporary(Register::Pointer(address))
+                        .define_temporary(Register::Pointer(address))?;
                 } else {
                     return Err(ErrorKind::RegisterTypeMismatch {
                         expected: register::Type::Pointer(
@@ -408,7 +407,7 @@ impl<'l> Interpreter<'l> {
 
                 current_frame.registers.define_temporary(Register::Pointer(
                     register::PointerVal::new(address, element_size),
-                ));
+                ))?;
             }
             Instruction::Break => {
                 self.debugger_loop();

@@ -7,6 +7,3 @@ edition = "2021"
 sailar = { path = "../sailar" }
 sailar_get = { path = "../sailar_get" }
 thiserror = "1.0.30"
-
-[dev-dependencies]
-sailar_asm = { path = "../sailar_asm" }

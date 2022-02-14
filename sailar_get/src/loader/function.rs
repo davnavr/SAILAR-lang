@@ -1,4 +1,4 @@
-use crate::loader::{self, cache, Result};
+use crate::loader::{self, cache, error, Result};
 use sailar::format;
 
 pub struct Function<'a> {
@@ -102,7 +102,25 @@ impl<'a> Function<'a> {
         self.code
             .get_or_insert_fallible(|| match self.raw_body() {
                 format::FunctionBody::Defined(index) => {
-                    Ok(Some(self.module.load_code_raw(*index)?))
+                    // TODO: Check that the parameter types match the code's types.
+                    let code = self.module.load_code_raw(*index)?;
+
+                    let expected_input_types = self.signature()?.parameter_types();
+                    let actual_input_types = code.input_types()?;
+                    if expected_input_types != actual_input_types {
+                        fn raw_types<'a>(
+                            types: &'a [&'a loader::TypeSignature<'a>],
+                        ) -> Vec<format::TypeSignature> {
+                            types.iter().map(|t| t.as_raw().clone()).collect()
+                        }
+
+                        return Err(error::Error::from(error::InputTypeMismatchError {
+                            expected: raw_types(expected_input_types),
+                            actual: raw_types(actual_input_types),
+                        }));
+                    }
+
+                    Ok(Some(code))
                 }
                 format::FunctionBody::External { .. } => Ok(None),
             })

@@ -18,13 +18,16 @@ impl Definitions {
         }
     }
 
-    // TODO: Store types of return values as well?
-    pub fn define(&self, input_types: Vec<Rc<builder::Type>>, result_count: u32) -> Rc<Code> {
+    pub fn define(
+        &self,
+        input_types: Vec<Rc<builder::Type>>,
+        result_types: Vec<Rc<builder::Type>>,
+    ) -> Rc<Code> {
         let code = Rc::new(Code::new(
             self.code_index.next(),
             self.type_signatures.clone(),
-            input_types,
-            result_count,
+            input_types.into_boxed_slice(),
+            result_types.into_boxed_slice(),
         ));
         self.definitions.borrow_mut().push(code.clone());
         code
@@ -47,8 +50,8 @@ impl Definitions {
 pub struct Code {
     index: format::indices::Code,
     type_signatures: Rc<builder::TypeSignatures>,
-    input_types: Vec<Rc<builder::Type>>,
-    result_count: u32,
+    input_types: Box<[Rc<builder::Type>]>,
+    result_types: Box<[Rc<builder::Type>]>,
     entry_block: Block,
     #[allow(clippy::vec_box)] // References to Blocks are required, and Vec may resize.
     blocks: RefCell<Vec<Box<Block>>>,
@@ -59,22 +62,22 @@ impl Code {
     fn new(
         index: format::indices::Code,
         type_signatures: Rc<builder::TypeSignatures>,
-        input_types: Vec<Rc<builder::Type>>,
-        result_count: u32,
+        input_types: Box<[Rc<builder::Type>]>,
+        result_types: Box<[Rc<builder::Type>]>,
     ) -> Self {
         let block_index = builder::counter::Cell::new();
         let entry_block = Block::new(
             block_index.next(),
             type_signatures.clone(),
-            input_types.clone(),
-            result_count,
+            &input_types,
+            &result_types,
         );
 
         Self {
             index,
             type_signatures,
             input_types,
-            result_count,
+            result_types,
             entry_block,
             blocks: RefCell::new(Vec::new()),
             block_index,
@@ -90,7 +93,7 @@ impl Code {
     }
 
     pub fn result_count(&self) -> u32 {
-        self.result_count
+        u32::try_from(self.result_types.len()).unwrap()
     }
 
     pub fn entry_block(&self) -> &Block {
@@ -98,22 +101,20 @@ impl Code {
     }
 
     #[allow(clippy::needless_lifetimes)]
-    pub fn define_block<'a>(&'a self, input_types: Vec<Rc<builder::Type>>) -> &'a Block {
+    pub fn define_block<'a>(&'a self, input_types: &[Rc<builder::Type>]) -> &'a Block {
         let block = Box::new(Block::new(
             self.block_index.next(),
             self.type_signatures.clone(),
             input_types,
-            self.result_count,
+            &self.result_types,
         ));
 
         let block_address = std::borrow::Borrow::borrow(&block) as *const Block;
 
         self.blocks.borrow_mut().push(block);
 
-        unsafe {
-            // Address points to the memory allocated by the boxed Block.
-            &*block_address
-        }
+        // Address points to the memory allocated by the boxed Block.
+        unsafe { &*block_address }
     }
 
     fn build(&self) -> format::Code {
@@ -121,7 +122,7 @@ impl Code {
             entry_block: self.entry_block.build(),
             blocks: format::LenVec(
                 self.blocks
-                    .borrow()
+                    .take()
                     .iter()
                     .map(|block| block.build())
                     .collect(),
@@ -135,7 +136,7 @@ impl std::fmt::Debug for Code {
         f.debug_struct("Code")
             .field("index", &self.index)
             .field("input_types", &self.input_types)
-            .field("result_count", &self.result_count)
+            .field("result_types", &self.result_types)
             .field("entry_block", &self.entry_block)
             .field("blocks", &self.blocks)
             .finish_non_exhaustive()

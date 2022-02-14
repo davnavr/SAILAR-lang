@@ -9,9 +9,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let program = {
         let mut builder = builder::Builder::new(format::Identifier::try_from("True")?);
+        let int_type = builder
+            .type_signatures()
+            .primitive(type_system::FixedInt::S32);
 
         let entry_code = {
-            let code = builder.code().define(Vec::new(), 1);
+            let code = builder.code().define(Vec::new(), vec![int_type.clone()]);
             let entry_block = code.entry_block();
             let exit_code = entry_block.const_i(EXPECTED_EXIT_CODE);
             entry_block.ret([exit_code])?;
@@ -20,17 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let entry_point = builder.definitions().functions().define(
             format::Identifier::try_from("Main")?,
-            builder.function_signatures().insert(
-                vec![builder
-                    .type_signatures()
-                    .primitive(type_system::FixedInt::S32)],
-                Vec::new(),
-            ),
+            builder
+                .function_signatures()
+                .insert(vec![int_type], Vec::new()),
             builder::FunctionBody::Defined(entry_code),
         );
 
         builder.set_entry_point(entry_point);
-
         builder.finish()
     };
 

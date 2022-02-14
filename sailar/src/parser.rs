@@ -75,7 +75,7 @@ impl<R: Read> Input<'_, R> {
             source: input,
             integer_size: self.integer_size,
             buffer_pool: self.buffer_pool,
-            hasher: &mut self.hasher,
+            hasher: self.hasher,
         }
     }
 
@@ -419,10 +419,9 @@ impl<R: Read> Input<'_, R> {
     fn code_block(&mut self) -> Result<format::CodeBlock> {
         let flags = self.byte_flags(flags::CodeBlock::from_bits, Error::InvalidCodeBlockFlags)?;
 
-        let input_register_count = self.unsigned_integer()?;
-
         Ok(format::CodeBlock {
-            input_register_count,
+            input_registers: self.length_encoded_indices()?,
+            temporary_registers: self.length_encoded_indices()?,
             exception_handler: if flags.is_empty() { None } else { todo!() },
             instructions: {
                 let length = self.unsigned_length()?;
@@ -766,5 +765,14 @@ pub fn parse_module<R: Read>(input: &mut R) -> Result<(format::Module, format::M
         )?,
     };
 
-    Ok((module, Box::new(hasher.finalize().as_slice().try_into().expect("hash length should be 256 bytes"))))
+    Ok((
+        module,
+        Box::new(
+            hasher
+                .finalize()
+                .as_slice()
+                .try_into()
+                .expect("hash length should be 256 bytes"),
+        ),
+    ))
 }

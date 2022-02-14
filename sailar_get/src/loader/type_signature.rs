@@ -9,7 +9,10 @@ pub struct Type<'a> {
     module: &'a loader::Module<'a>,
 }
 
-fn calculate_size<'a>(module: &'a loader::Module<'a>, source: &'a type_system::Any) -> Result<u32> {
+pub fn calculate_size<'a>(
+    module: &'a loader::Module<'a>,
+    source: &'a type_system::Any,
+) -> Result<u32> {
     use type_system::{FixedInt, Int, Primitive, Real};
 
     Ok(match source {

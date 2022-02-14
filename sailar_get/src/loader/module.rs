@@ -2,7 +2,7 @@ use crate::loader::{self, cache, Error, Result};
 use sailar::{format, hashing::IntegerHashBuilder};
 use std::cell::RefCell;
 use std::collections::hash_map;
-use std::iter::{Iterator, ExactSizeIterator};
+use std::iter::{ExactSizeIterator, Iterator};
 
 pub struct Module<'a> {
     loader: &'a loader::Loader<'a>,
@@ -364,8 +364,12 @@ impl<'a> Iterator for Functions<'a> {
     type Item = &'a loader::Function<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let function = self.module.load_function_definition_raw(format::indices::FunctionDefinition::from(self.index)).ok()?;
+        let function = self
+            .module
+            .load_function_definition_raw(format::indices::FunctionDefinition::from(self.index))
+            .ok()?;
         self.index += 1u32;
+        self.length -= 1;
         Some(function)
     }
 
