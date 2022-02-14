@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sailar_aot::compile(program, &mut (), &context, &target)?
     };
 
+    println!("{}", module.print_to_string().to_string());
     assert!(module.write_bitcode_to_path(&std::path::Path::new("false.bc")));
     Ok(())
 }

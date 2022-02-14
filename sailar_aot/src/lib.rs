@@ -210,10 +210,9 @@ pub fn compile<'c>(
         .filter(|function| function.is_export())
         .collect::<Vec<_>>();
 
-    if let Some(entry_point_function) = application.entry_point()? {
+    let application_entry_point = application.entry_point()?;
+    if let Some(entry_point_function) = application_entry_point {
         undefined_functions.push(entry_point_function);
-
-        // TODO: Define a "main" function.
     }
 
     let mut function_names = NameLookup {
@@ -241,6 +240,31 @@ pub fn compile<'c>(
         if definition.count_basic_blocks() == 0u32 {
             code_gen::generate(context, function, definition, &code)?;
         }
+    }
+
+    if let Some(entry_point_function) = application_entry_point {
+        let entry_point_value = *function_lookup
+            .get(&ComparableRef(entry_point_function))
+            .expect("entry point function should have entry in lookup");
+
+        // TODO: Add parameters for application arguments when necessary.
+        let main = module.add_function(
+            "main",
+            context.i32_type().fn_type(&[], false),
+            Some(inkwell::module::Linkage::External),
+        );
+
+        let main_block = context.append_basic_block(main, "entry");
+        code_builder.position_at_end(main_block);
+        // TODO: Check if entry_point_signature returns an INTEGER exit code.
+        code_builder.build_return(
+            code_builder
+                .build_call(entry_point_value, &[], "exit_code")
+                .try_as_basic_value()
+                .left()
+                .as_ref()
+                .map(|exit_code| exit_code as &dyn inkwell::values::BasicValue),
+        );
     }
 
     Ok(module)
