@@ -192,11 +192,8 @@ pub fn compile<'c>(
 
     let module = context.create_module(&application.identifier().name);
 
-    let mut function_lookup = hash_map::HashMap::<
-        ComparableRef<loader::Function<'_>>,
-        inkwell::values::FunctionValue<'c>,
-    >::with_capacity(
-        application.source().definitions.0.defined_functions.0.len()
+    let mut function_lookup = hash_map::HashMap::with_capacity(
+        application.source().definitions.0.defined_functions.0.len(),
     );
 
     let type_lookup = TypeLookup {
@@ -208,33 +205,42 @@ pub fn compile<'c>(
 
     // Contains the functions that did not have their LLVM bitcode generated.
     // TODO: Include entry point function
-    let mut remaining_functions = application
+    let mut undefined_functions = application
         .iter_defined_functions()
         .filter(|function| function.is_export())
         .collect::<Vec<_>>();
+
+    if let Some(entry_point_function) = application.entry_point()? {
+        undefined_functions.push(entry_point_function);
+
+        // TODO: Define a "main" function.
+    }
 
     let mut function_names = NameLookup {
         module_prefixes: hash_map::HashMap::new(),
     };
 
-    while let Some(function) = remaining_functions.pop() {
-        let definition = match function_lookup.entry(ComparableRef(function)) {
-            hash_map::Entry::Occupied(occupied) => *occupied.get(),
-            hash_map::Entry::Vacant(vacant) => *vacant.insert(module.add_function(
-                &function_names.get(function)?,
-                type_lookup.get_function(function.signature()?),
-                // TODO: Function DECLARATIONS (different from definitions) cannot be marked Private, but being able to mark non-exported functions as Private in LLVM would be nice.
-                Some(inkwell::module::Linkage::External),
-            )),
-        };
-
-        // TODO: As code for an exported function is generated, push private functions that are called into the function_lookup.
-    }
-
     let code_builder = context.create_builder();
     let code = code_gen::Cache::new(&code_builder);
-    for (function, value) in function_lookup.iter() {
-        code_gen::generate(context, function.0, *value, &code)?;
+
+    while let Some(function) = undefined_functions.pop() {
+        let definition = match function_lookup.entry(ComparableRef(function)) {
+            hash_map::Entry::Occupied(occupied) => *occupied.get(),
+            hash_map::Entry::Vacant(vacant) => {
+                let defined = module.add_function(
+                    &function_names.get(function)?,
+                    type_lookup.get_function(function.signature()?),
+                    // TODO: Function DECLARATIONS (different from definitions) cannot be marked Private, but being able to mark non-exported functions as Private in LLVM would be nice.
+                    Some(inkwell::module::Linkage::External),
+                );
+                undefined_functions.push(function);
+                *vacant.insert(defined)
+            }
+        };
+
+        if definition.count_basic_blocks() > 0 {
+            code_gen::generate(context, function, definition, &code)?;
+        }
     }
 
     Ok(module)
