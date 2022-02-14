@@ -71,12 +71,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match frame.location() {
                     Some(location) => eprintln!(
                         "at block {} instruction {}",
-                        location.block_index,
-                        location.code_index
+                        location.block_index, location.code_index
                     ),
                     None => eprintln!("(external call)"),
                 }
-                
+
                 // TODO: Have option to hide register values.
                 for (index, input) in frame.input_registers().iter().enumerate() {
                     eprintln!(" > %i{} = {}", index, input);

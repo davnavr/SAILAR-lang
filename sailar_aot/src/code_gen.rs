@@ -143,6 +143,17 @@ pub fn generate<'b, 'c, 'l>(
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {
                 sail::Instruction::Nop => (),
+                sail::Instruction::Ret(values) => {
+                    let return_value;
+                    builder.build_return(match values.0.first() {
+                        None => None,
+                        Some(return_register) if values.len() == 1 => {
+                            return_value = lookup_register(*return_register)?;
+                            Some(&return_value)
+                        }
+                        Some(_) => todo!("multiple return values are not yet supported"),
+                    });
+                }
                 // sail::Instruction::ConstI(value) => {
                 //     let constant = match *value {
                 //         sail::IntegerConstant::S8(value) => {
@@ -181,12 +192,12 @@ pub fn generate<'b, 'c, 'l>(
                             inkwell::values::BasicValueEnum::IntValue(x_int),
                             inkwell::values::BasicValueEnum::IntValue(y_int),
                         ) => {
+                            // TODO: Handle other overflow behaviors.
                             if operation.overflow != sail::OverflowBehavior::Ignore {
                                 todo!("unsupported overflow behavior {:?}", operation.overflow)
                             }
 
-                            //TODO: Handle other overflow behaviors.
-                            //TODO: Check that integer types are the same.
+                            // TODO: Check that integer types are the same.
                             define_temporary(inkwell::values::BasicValueEnum::IntValue(
                                 builder.build_int_add(x_int, y_int, ""),
                             ))?
