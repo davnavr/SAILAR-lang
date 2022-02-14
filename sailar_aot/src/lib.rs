@@ -238,7 +238,7 @@ pub fn compile<'c>(
             }
         };
 
-        if definition.count_basic_blocks() > 0 {
+        if definition.count_basic_blocks() == 0u32 {
             code_gen::generate(context, function, definition, &code)?;
         }
     }
