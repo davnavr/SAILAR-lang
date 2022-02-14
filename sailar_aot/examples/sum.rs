@@ -17,9 +17,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vec![type_int.clone(), type_int.clone()],
             ),
             builder::FunctionBody::Defined({
-                let code = builder
-                    .code()
-                    .define(vec![type_int.clone(), type_int.clone()], 1);
+                let code = builder.code().define(
+                    vec![type_int.clone(), type_int.clone()],
+                    vec![type_int.clone()],
+                );
+
                 let entry_block = code.entry_block();
                 let inputs = entry_block.input_registers();
                 let result = entry_block.add_overflowing(&inputs[0], &inputs[1])?;

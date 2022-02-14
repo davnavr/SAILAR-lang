@@ -1,6 +1,6 @@
 //! Translates SAILAR bytecode into LLVM bitcode.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ComparableRef;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -14,6 +14,12 @@ pub struct Cache<'b, 'c, 'l> {
         hash_map::HashMap<ComparableRef<'l, sailar_get::loader::CodeBlock<'l>>, BasicBlock<'c>>,
     >,
     block_buffer: RefCell<Vec<(&'l sailar_get::loader::CodeBlock<'l>, BasicBlock<'c>)>>,
+    register_map: RefCell<
+        hash_map::HashMap<
+            ComparableRef<'l, sailar_get::loader::Register<'l>>,
+            inkwell::values::BasicValueEnum<'c>,
+        >,
+    >,
 }
 
 impl<'b, 'c, 'l> Cache<'b, 'c, 'l> {
@@ -22,6 +28,7 @@ impl<'b, 'c, 'l> Cache<'b, 'c, 'l> {
             builder,
             block_lookup: RefCell::default(),
             block_buffer: RefCell::default(),
+            register_map: RefCell::default(),
         }
     }
 }
@@ -69,7 +76,69 @@ pub fn generate<'b, 'c, 'l>(
     }
 
     for (block, code) in cache.block_buffer.borrow_mut().iter().copied() {
-        cache.builder.position_at_end(code);
+        let input_registers = block.input_registers()?;
+        let temporary_registers = block.temporary_registers()?;
+
+        {
+            let mut register_lookup = cache.register_map.borrow_mut();
+            register_lookup.clear();
+            register_lookup.reserve(input_registers.len() + temporary_registers.len());
+
+            for (input, index) in input_registers.iter().zip(0u32..) {
+                match register_lookup.entry(ComparableRef(input)) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(
+                            value
+                                .get_nth_param(index)
+                                .expect("parameter should be defined"),
+                        );
+                    }
+                    hash_map::Entry::Occupied(_) => {
+                        unreachable!("input registers should not be duplicated")
+                    }
+                }
+            }
+        }
+
+        let mut define_temporary = {
+            let mut index = 0usize;
+            move |value: inkwell::values::BasicValueEnum<'c>| -> Result<()> {
+                match temporary_registers.get(index) {
+                    None => Err(Error::TooManyTemporariesDefined {
+                        expected: temporary_registers.len(),
+                    }),
+                    Some(temporary) => {
+                        match cache
+                            .register_map
+                            .borrow_mut()
+                            .entry(ComparableRef(temporary))
+                        {
+                            hash_map::Entry::Vacant(vacant) => {
+                                // TODO: Check that basic value matches type of temporary register.
+                                vacant.insert(value);
+                                index += 1;
+                                Ok(())
+                            }
+                            hash_map::Entry::Occupied(_) => unreachable!(
+                                "temporary registers should not have duplicate definitions"
+                            ),
+                        }
+                    }
+                }
+            }
+        };
+
+        let lookup_register = |index: sailar::format::indices::Register| -> Result<inkwell::values::BasicValueEnum<'c>> {
+            let register = match index {
+                sailar::format::indices::Register::Input(input) => block.input_registers()?.get(usize::try_from(input).unwrap()),
+                sailar::format::indices::Register::Temporary(temporary) => block.temporary_registers()?.get(usize::try_from(temporary).unwrap()),
+            }.ok_or(Error::UndefinedRegister(index))?;
+
+            cache.register_map.borrow().get(&ComparableRef(register)).ok_or(Error::UndefinedRegister(index)).map(|value| *value)
+        };
+
+        let builder = cache.builder;
+        builder.position_at_end(code);
 
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {
@@ -104,7 +173,36 @@ pub fn generate<'b, 'c, 'l>(
 
                 //     todo!("a {:?}", constant.as_instruction());
                 // }
-                
+                sail::Instruction::Add(operation) => {
+                    let x = lookup_register(operation.x)?;
+                    let y = lookup_register(operation.y)?;
+                    match (x, y) {
+                        (
+                            inkwell::values::BasicValueEnum::IntValue(x_int),
+                            inkwell::values::BasicValueEnum::IntValue(y_int),
+                        ) => {
+                            if operation.overflow != sail::OverflowBehavior::Ignore {
+                                todo!("unsupported overflow behavior {:?}", operation.overflow)
+                            }
+
+                            //TODO: Handle other overflow behaviors.
+                            //TODO: Check that integer types are the same.
+                            define_temporary(inkwell::values::BasicValueEnum::IntValue(
+                                builder.build_int_add(x_int, y_int, ""),
+                            ))?
+                        }
+                        (_, inkwell::values::BasicValueEnum::IntValue(_)) => {
+                            return Err(Error::RegisterTypeMismatch {
+                                register: operation.x,
+                            })
+                        }
+                        _ => {
+                            return Err(Error::RegisterTypeMismatch {
+                                register: operation.y,
+                            })
+                        }
+                    }
+                }
                 bad => todo!("add support for compiling instruction {:?}", bad),
             }
         }

@@ -227,6 +227,8 @@ pub fn compile<'c>(
                 Some(inkwell::module::Linkage::External),
             )),
         };
+
+        // TODO: As code for an exported function is generated, push private functions that are called into the function_lookup.
     }
 
     let code_builder = context.create_builder();

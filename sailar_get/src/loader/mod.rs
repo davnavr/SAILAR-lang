@@ -13,7 +13,7 @@ mod structure;
 mod symbol;
 mod type_signature;
 
-pub use code::{Block as CodeBlock, Code};
+pub use code::{Block as CodeBlock, Code, Register};
 pub use data::Data;
 pub use error::*;
 pub use field::Field;
