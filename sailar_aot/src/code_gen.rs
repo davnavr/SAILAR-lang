@@ -1,7 +1,7 @@
 //! Translates SAILAR bytecode into LLVM bitcode.
 
 use crate::error::{Error, Result};
-use crate::{ComparableRef, TypeLookup};
+use crate::{ComparableRef, DataLookup, TypeLookup};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use sailar::format::instruction_set as sail;
@@ -30,6 +30,7 @@ type InputFixups<'c, 'l> = Vec<(
 pub struct Cache<'b, 'c, 'l> {
     builder: &'b Builder<'c>,
     type_lookup: &'b TypeLookup<'c, 'l>,
+    data_lookup: &'b DataLookup<'b, 'c, 'l>,
     block_lookup: RefCell<BlockLookup<'c, 'l>>,
     block_buffer: RefCell<Vec<(&'l sailar_get::loader::CodeBlock<'l>, BasicBlock<'c>)>>,
     register_map: RefCell<RegisterMap<'c, 'l>>,
@@ -38,10 +39,15 @@ pub struct Cache<'b, 'c, 'l> {
 }
 
 impl<'b, 'c, 'l> Cache<'b, 'c, 'l> {
-    pub(crate) fn new(builder: &'b Builder<'c>, type_lookup: &'b TypeLookup<'c, 'l>) -> Self {
+    pub(crate) fn new(
+        builder: &'b Builder<'c>,
+        type_lookup: &'b TypeLookup<'c, 'l>,
+        data_lookup: &'b DataLookup<'b, 'c, 'l>,
+    ) -> Self {
         Self {
             builder,
             type_lookup,
+            data_lookup,
             block_lookup: RefCell::default(),
             block_buffer: RefCell::default(),
             register_map: RefCell::default(),
@@ -248,7 +254,22 @@ pub fn generate<'b, 'c, 'l>(
                     destination,
                     source,
                 } => {
-                    todo!("initialize from data array")
+                    // TODO: Error handling if destination is not an address.
+                    let destination_address = lookup_register(*destination)?.into_pointer_value();
+                    match source {
+                        sail::MemoryInitializationSource::FromData(data_index) => {
+                            let data = function.declaring_module().load_data_raw(*data_index)?;
+                            let data_value = cache.data_lookup.get(data);
+                            // TODO: Get length from data_value type instead, and use .len() on array type.
+                            let data_length = context
+                                .i32_type()
+                                .const_int(u64::try_from(data.bytes().len()).unwrap(), false);
+
+                            builder
+                                .build_memcpy(destination_address, 1, data_value, 1, data_length)
+                                .unwrap();
+                        }
+                    }
                 }
                 bad => todo!("add support for compiling instruction {:?}", bad),
             }

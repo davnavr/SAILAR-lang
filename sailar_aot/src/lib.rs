@@ -145,16 +145,17 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
     }
 }
 
-struct DataLookup<'c, 'l> {
+struct DataLookup<'b, 'c, 'l> {
     context: &'c Context,
+    module: &'b inkwell::module::Module<'c>,
     lookup: RefCell<
-        hash_map::HashMap<ComparableRef<'l, loader::Data<'l>>, inkwell::values::ArrayValue<'c>>,
+        hash_map::HashMap<ComparableRef<'l, loader::Data<'l>>, inkwell::values::PointerValue<'c>>,
     >,
     buffer: RefCell<Vec<inkwell::values::IntValue<'c>>>,
 }
 
-impl<'c, 'l> DataLookup<'c, 'l> {
-    fn get(&self, data: &'l loader::Data<'l>) -> inkwell::values::ArrayValue<'c> {
+impl<'b, 'c, 'l> DataLookup<'b, 'c, 'l> {
+    fn get(&self, data: &'l loader::Data<'l>) -> inkwell::values::PointerValue<'c> {
         match self.lookup.borrow_mut().entry(ComparableRef(data)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => {
@@ -166,7 +167,11 @@ impl<'c, 'l> DataLookup<'c, 'l> {
                         .iter()
                         .map(|byte| data_type.const_int(u64::from(*byte), false)),
                 );
-                *vacant.insert(data_type.const_array(&buffer))
+
+                let data_value = data_type.const_array(&buffer);
+                let constant = self.module.add_global(data_value.get_type(), None, "");
+                constant.set_initializer(&data_value);
+                *vacant.insert(constant.as_pointer_value())
             }
         }
     }
@@ -205,14 +210,13 @@ pub fn compile<'c>(
     context: &'c Context,
     target: &inkwell::targets::TargetMachine,
 ) -> Result<inkwell::module::Module<'c>> {
+    let pointer_byte_size = target.get_target_data().get_pointer_byte_size(None);
+
     let mut loader = None;
     let (loader, application) = loader::Loader::initialize(
         &mut loader,
-        loader::PointerSize::try_from(
-            std::num::NonZeroU32::try_from(target.get_target_data().get_pointer_byte_size(None))
-                .unwrap(),
-        )
-        .unwrap(),
+        loader::PointerSize::try_from(std::num::NonZeroU32::try_from(pointer_byte_size).unwrap())
+            .unwrap(),
         resolver,
         application,
     );
@@ -232,6 +236,7 @@ pub fn compile<'c>(
 
     let data_lookup = DataLookup {
         context,
+        module: &module,
         lookup: RefCell::default(),
         buffer: RefCell::default(),
     };
@@ -253,7 +258,7 @@ pub fn compile<'c>(
     };
 
     let code_builder = context.create_builder();
-    let code = code_gen::Cache::new(&code_builder, &type_lookup);
+    let code = code_gen::Cache::new(&code_builder, &type_lookup, &data_lookup);
 
     while let Some(function) = undefined_functions.pop() {
         let definition = match function_lookup.entry(ComparableRef(function)) {
