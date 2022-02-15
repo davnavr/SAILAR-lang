@@ -1,2 +1,4 @@
 # LLVM
 *.bc
+*.obj
+*.exe
