@@ -145,6 +145,33 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
     }
 }
 
+struct DataLookup<'c, 'l> {
+    context: &'c Context,
+    lookup: RefCell<
+        hash_map::HashMap<ComparableRef<'l, loader::Data<'l>>, inkwell::values::ArrayValue<'c>>,
+    >,
+    buffer: RefCell<Vec<inkwell::values::IntValue<'c>>>,
+}
+
+impl<'c, 'l> DataLookup<'c, 'l> {
+    fn get(&self, data: &'l loader::Data<'l>) -> inkwell::values::ArrayValue<'c> {
+        match self.lookup.borrow_mut().entry(ComparableRef(data)) {
+            hash_map::Entry::Occupied(occupied) => *occupied.get(),
+            hash_map::Entry::Vacant(vacant) => {
+                let data_type = self.context.i8_type();
+                let mut buffer = self.buffer.borrow_mut();
+                buffer.clear();
+                buffer.extend(
+                    data.bytes()
+                        .iter()
+                        .map(|byte| data_type.const_int(u64::from(*byte), false)),
+                );
+                *vacant.insert(data_type.const_array(&buffer))
+            }
+        }
+    }
+}
+
 struct NameLookup<'l> {
     module_prefixes: hash_map::HashMap<ComparableRef<'l, loader::Module<'l>>, String>,
 }
@@ -203,13 +230,19 @@ pub fn compile<'c>(
         function_lookup: RefCell::default(),
     };
 
+    let data_lookup = DataLookup {
+        context,
+        lookup: RefCell::default(),
+        buffer: RefCell::default(),
+    };
+
     // Contains the functions that did not have their LLVM bitcode generated.
-    // TODO: Include entry point function
     let mut undefined_functions = application
         .iter_defined_functions()
         .filter(|function| function.is_export())
         .collect::<Vec<_>>();
 
+    // Include entry point in list of functions to compile, if it is defined.
     let application_entry_point = application.entry_point()?;
     if let Some(entry_point_function) = application_entry_point {
         undefined_functions.push(entry_point_function);

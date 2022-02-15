@@ -62,7 +62,6 @@ pub fn generate<'b, 'c, 'l>(
     cache.input_lookup.borrow_mut().clear();
     cache.input_fixups.borrow_mut().clear();
 
-    // TODO: Append an entry block.
     // Block placed before the "entry" block, used since LLVM does not allow usage of phi instructions in the entry block.
     // This conflicts with SAILAR, which allows branching back and passing inputs to the entry block.
     let actual_entry_block = context.append_basic_block(value, "entry");
@@ -244,6 +243,12 @@ pub fn generate<'b, 'c, 'l>(
                             })
                         }
                     }
+                }
+                sail::Instruction::MemInit {
+                    destination,
+                    source,
+                } => {
+                    todo!("initialize from data array")
                 }
                 bad => todo!("add support for compiling instruction {:?}", bad),
             }
