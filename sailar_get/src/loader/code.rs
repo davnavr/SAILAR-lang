@@ -1,5 +1,14 @@
-use crate::loader::{self, cache, Error, Register, Result};
+use crate::loader::cache::Once;
+use crate::loader::{self, Error, Register, Result};
 use sailar::format;
+
+pub enum InputSource<'a> {
+    Callee,
+    Block {
+        block: &'a Block<'a>,
+        registers: &'a [&'a loader::Register<'a>],
+    },
+}
 
 pub struct JumpTarget<'a> {
     destination: &'a Block<'a>,
@@ -20,11 +29,12 @@ pub struct Block<'a> {
     source: &'a format::CodeBlock,
     code: &'a Code<'a>,
     index: format::indices::CodeBlock,
-    input_types: cache::Once<Box<[&'a loader::TypeSignature<'a>]>>,
-    input_registers: cache::Once<Box<[Register<'a>]>>,
-    temporary_types: cache::Once<Box<[&'a loader::TypeSignature<'a>]>>,
-    temporary_registers: cache::Once<Box<[Register<'a>]>>,
-    jump_targets: cache::Once<Vec<JumpTarget<'a>>>,
+    input_types: Once<Box<[&'a loader::TypeSignature<'a>]>>,
+    input_registers: Once<Box<[Register<'a>]>>,
+    temporary_types: Once<Box<[&'a loader::TypeSignature<'a>]>>,
+    temporary_registers: Once<Box<[Register<'a>]>>,
+    jump_targets: Once<Vec<JumpTarget<'a>>>,
+    input_sources: Once<Vec<InputSource<'a>>>,
 }
 
 impl<'a> Block<'a> {
@@ -37,12 +47,17 @@ impl<'a> Block<'a> {
             source,
             code,
             index,
-            input_types: cache::Once::new(),
-            input_registers: cache::Once::new(),
-            temporary_types: cache::Once::new(),
-            temporary_registers: cache::Once::new(),
-            jump_targets: cache::Once::new(),
+            input_types: Once::new(),
+            input_registers: Once::new(),
+            temporary_types: Once::new(),
+            temporary_registers: Once::new(),
+            jump_targets: Once::new(),
+            input_sources: Once::new(),
         }
+    }
+
+    pub fn is_entry_block(&'a self) -> bool {
+        self.index.0 .0 == 0u32
     }
 
     pub fn declaring_module(&'a self) -> &'a loader::Module<'a> {
@@ -67,7 +82,7 @@ impl<'a> Block<'a> {
 
     fn registers<I: Fn(u32) -> format::indices::Register>(
         &'a self,
-        cache: &'a cache::Once<Box<[Register<'a>]>>,
+        cache: &'a Once<Box<[Register<'a>]>>,
         types: &'a [format::indices::TypeSignature],
         register_index: I,
     ) -> Result<&'a [Register<'a>]> {
@@ -86,7 +101,7 @@ impl<'a> Block<'a> {
     }
 
     fn register_types<R: FnOnce() -> Result<&'a [Register<'a>]>>(
-        cache: &'a cache::Once<Box<[&'a loader::TypeSignature<'a>]>>,
+        cache: &'a Once<Box<[&'a loader::TypeSignature<'a>]>>,
         registers: R,
     ) -> Result<&'a [&'a loader::TypeSignature<'a>]> {
         let types = cache.get_or_insert_fallible(|| -> Result<_> {
@@ -196,15 +211,40 @@ impl<'a> Block<'a> {
 
                 Ok(targets)
             })
-            .map(|targets| targets as &'a [_])
+            .map(Vec::as_slice)
+    }
+
+    pub fn input_sources(&'a self) -> Result<&'a [InputSource<'a>]> {
+        self.input_sources
+            .get_or_insert_fallible(|| {
+                let mut sources = Vec::new();
+
+                if self.is_entry_block() {
+                    sources.push(InputSource::Callee);
+                }
+
+                for other_block in self.code.all_blocks()?.iter() {
+                    for target in other_block.jump_targets()? {
+                        if std::ptr::eq(self, target.destination()) {
+                            sources.push(InputSource::Block {
+                                block: other_block,
+                                registers: target.inputs(),
+                            });
+                        }
+                    }
+                }
+
+                Ok(sources)
+            })
+            .map(Vec::as_slice)
     }
 }
 
 pub struct Code<'a> {
     source: &'a format::Code,
     module: &'a loader::Module<'a>,
-    blocks: Box<[cache::Once<Block<'a>>]>,
-    all_blocks: cache::Once<Box<[&'a Block<'a>]>>,
+    blocks: Box<[Once<Block<'a>>]>,
+    all_blocks: Once<Box<[&'a Block<'a>]>>,
 }
 
 impl<'a> Code<'a> {
@@ -214,10 +254,10 @@ impl<'a> Code<'a> {
             source,
             blocks: {
                 let mut blocks = Vec::new();
-                blocks.resize_with(1 + source.blocks.len(), cache::Once::new);
+                blocks.resize_with(1 + source.blocks.len(), Once::new);
                 blocks.into_boxed_slice()
             },
-            all_blocks: cache::Once::new(),
+            all_blocks: Once::new(),
         }
     }
 

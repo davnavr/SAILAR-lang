@@ -14,14 +14,14 @@ mod structure;
 mod symbol;
 mod type_signature;
 
-pub use code::{Block as CodeBlock, Code, JumpTarget};
+pub use code::{Block as CodeBlock, Code, JumpTarget, InputSource};
 pub use data::Data;
 pub use error::*;
 pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};
 pub use function::{Function, Signature as FunctionSignature};
 pub use module::Module;
-pub use register::{Input as InputRegister, Register};
+pub use register::Register;
 pub use resolver::{ReferenceResolver, ResolverClosure};
 pub use structure::Struct;
 pub use symbol::{Function as FunctionSymbol, Module as ModuleSymbol, Symbol};
