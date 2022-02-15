@@ -220,7 +220,7 @@ pub fn compile<'c>(
     };
 
     let code_builder = context.create_builder();
-    let code = code_gen::Cache::new(&code_builder);
+    let code = code_gen::Cache::new(&code_builder, &type_lookup);
 
     while let Some(function) = undefined_functions.pop() {
         let definition = match function_lookup.entry(ComparableRef(function)) {

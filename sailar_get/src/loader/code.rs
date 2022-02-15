@@ -214,6 +214,8 @@ impl<'a> Block<'a> {
             .map(Vec::as_slice)
     }
 
+    /// Returns all blocks that transfer control to the current block, along with the registers used as inputs to the current
+    /// block.
     pub fn input_sources(&'a self) -> Result<&'a [InputSource<'a>]> {
         self.input_sources
             .get_or_insert_fallible(|| {
