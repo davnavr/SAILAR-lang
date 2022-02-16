@@ -265,12 +265,20 @@ pub fn compile<'c>(
         let definition = match function_lookup.entry(ComparableRef(function)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => {
+                use inkwell::module::Linkage;
+
+                let linkage = if function.is_export() {
+                    Linkage::External
+                } else {
+                    Linkage::Private
+                };
+
                 let defined = module.add_function(
                     &function_names.get(function)?,
                     type_lookup.get_function(function.signature()?),
-                    // TODO: Function DECLARATIONS (different from definitions) cannot be marked Private, but being able to mark non-exported functions as Private in LLVM would be nice.
-                    Some(inkwell::module::Linkage::External),
+                    Some(linkage),
                 );
+
                 undefined_functions.push(function);
                 *vacant.insert(defined)
             }
