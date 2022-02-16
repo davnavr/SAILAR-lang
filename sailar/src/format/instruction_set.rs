@@ -255,7 +255,11 @@ impl SwitchLookupTable {
     }
 
     #[must_use]
-    pub fn insert(&mut self, value: IntegerConstant, target: BlockIndex /*, inputs: I*/) -> bool {
+    pub fn insert(
+        &mut self,
+        value: IntegerConstant,
+        target: BlockIndex, /*, inputs: I*/
+    ) -> bool {
         match self.lookup.entry(value) {
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(target);

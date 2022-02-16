@@ -1,5 +1,6 @@
 use crate::format::instruction_set;
 use crate::{builder, format};
+use std::borrow::Borrow as _;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -8,8 +9,14 @@ pub use instruction_set::{BasicArithmeticOperation, Instruction, OverflowBehavio
 #[derive(thiserror::Error, Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("expected {expected} values to be returned, but got {actual}")]
+    #[error("expected {expected} values to be returned but got {actual}")]
     ResultCountMismatch { expected: u32, actual: u32 },
+    #[error("block {block} expected {expected} inputs but got {actual}")]
+    InputCountMismatch {
+        block: format::indices::CodeBlock,
+        expected: u32,
+        actual: u32,
+    },
     #[error("expected {expected} arguments to be provided to function, but got {actual}")]
     ArgumentCountMismatch {
         function: builder::Function,
@@ -48,6 +55,7 @@ pub struct Block {
     type_signatures: Rc<builder::TypeSignatures>,
     input_count: u32,
     input_registers: Box<[Register]>,
+    input_types: Box<[Rc<builder::Type>]>,
     return_types: Box<[Rc<builder::Type>]>,
     instructions: RefCell<Vec<Instruction>>,
     register_index: builder::counter::Cell<format::indices::TemporaryRegister>,
@@ -72,19 +80,27 @@ impl Block {
         input_types: &[Rc<builder::Type>],
         result_types: &[Rc<builder::Type>],
     ) -> Self {
-        let (input_count, input_registers) = {
+        let (input_count, input_registers, input_types) = {
             let mut count = 0u32;
             let mut registers = Vec::with_capacity(input_types.len());
+            let mut types = Vec::with_capacity(registers.capacity());
             for input_type in input_types.iter() {
+                types.push(input_type.clone());
+
                 registers.push(Register {
                     value_type: input_type.clone(),
                     index: format::indices::Register::Input(format::indices::InputRegister::from(
                         count,
                     )),
                 });
+
                 count += 1;
             }
-            (count, registers.into_boxed_slice())
+            (
+                count,
+                registers.into_boxed_slice(),
+                types.into_boxed_slice(),
+            )
         };
 
         Self {
@@ -92,6 +108,7 @@ impl Block {
             type_signatures,
             input_count,
             input_registers,
+            input_types,
             return_types: result_types.to_vec().into_boxed_slice(),
             instructions: RefCell::default(),
             register_index: builder::counter::Cell::new(),
@@ -109,6 +126,10 @@ impl Block {
 
     pub fn input_registers(&self) -> &[Register] {
         &self.input_registers
+    }
+
+    pub fn input_types(&self) -> &[Rc<builder::Type>] {
+        &self.input_types
     }
 
     /// Returns the number of values that should be returned by any `ret` instruction in this block.
@@ -146,42 +167,119 @@ impl Block {
         self.emit_raw(Instruction::Nop);
     }
 
+    fn check_register_types<'a, R, E>(
+        &'a self,
+        registers: R,
+        expected_types: &[Rc<builder::Type>],
+        count_mismatch: E,
+    ) -> Result<Vec<format::indices::Register>>
+    where
+        R: std::iter::IntoIterator<Item = &'a Register>,
+        E: FnOnce(usize) -> Error,
+    {
+        let all_registers = registers.into_iter();
+        let mut indices = Vec::with_capacity({
+            let size = all_registers.size_hint();
+            size.1.unwrap_or(size.0)
+        });
+
+        for (index, register) in all_registers.enumerate() {
+            match expected_types.get(index) {
+                Some(expected_value_type)
+                    if register.value_type() == Rc::borrow(expected_value_type) =>
+                {
+                    indices.push(register.index())
+                }
+                Some(expected_value_type) => {
+                    return Err(Error::RegisterTypeMismatch {
+                        register: register.index(),
+                        expected: expected_value_type.clone(),
+                        actual: register.value_type.clone(),
+                    })
+                }
+                None => return Err(count_mismatch(indices.len())),
+            }
+        }
+
+        Ok(indices)
+    }
+
     pub fn ret<'a, R>(&'a self, results: R) -> Result<()>
     where
         R: std::iter::IntoIterator<Item = &'a Register>,
     {
-        let result_registers = results.into_iter().enumerate();
-        let mut result_indices = Vec::with_capacity({
-            let size = result_registers.size_hint();
-            size.1.unwrap_or(size.0)
-        });
-
-        for (index, register) in result_registers {
-            if let Some(expected_type) = self.expected_return_types().get(index) {
-                if &register.value_type != expected_type {
-                    return Err(Error::RegisterTypeMismatch {
-                        register: register.index,
-                        expected: expected_type.clone(),
-                        actual: register.value_type.clone(),
-                    });
+        let result_indices =
+            self.check_register_types(results, self.expected_return_types(), |actual_count| {
+                Error::ResultCountMismatch {
+                    expected: self.expected_return_count(),
+                    actual: u32::try_from(actual_count).unwrap(),
                 }
-            }
-
-            result_indices.push(register.index);
-        }
-
-        let actual_count = result_indices.len();
+            })?;
 
         self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
+        Ok(())
+    }
 
-        if actual_count == self.expected_return_types().len() {
-            Ok(())
-        } else {
-            Err(Error::ResultCountMismatch {
-                expected: self.expected_return_count(),
-                actual: u32::try_from(actual_count).unwrap(),
-            })
-        }
+    fn check_target_branch<'a, I>(
+        &'a self,
+        target: &Self,
+        inputs: I,
+    ) -> Result<(format::indices::CodeBlock, Vec<format::indices::Register>)>
+    where
+        I: std::iter::IntoIterator<Item = &'a Register>,
+    {
+        // TODO: how to get Rc to owning code to check that owners are correct
+        let input_indices =
+            self.check_register_types(inputs, target.input_types(), |actual_count| {
+                Error::InputCountMismatch {
+                    block: target.index(),
+                    expected: u32::try_from(target.input_types().len()).unwrap(),
+                    actual: u32::try_from(actual_count).unwrap(),
+                }
+            })?;
+
+        Ok((target.index(), input_indices))
+    }
+
+    pub fn branch<'a, I>(&'a self, target: &Self, inputs: I) -> Result<()>
+    where
+        I: std::iter::IntoIterator<Item = &'a Register>,
+    {
+        let (target_branch, input_indices) = self.check_target_branch(target, inputs)?;
+
+        self.emit_raw(Instruction::Br {
+            target: target_branch,
+            input_registers: format::LenVec(input_indices),
+        });
+
+        Ok(())
+    }
+
+    pub fn branch_if<'a, I>(
+        &'a self,
+        condition: &'a Register,
+        true_target: &Self,
+        true_inputs: I,
+        false_target: &Self,
+        false_inputs: I,
+    ) -> Result<()>
+    where
+        I: std::iter::IntoIterator<Item = &'a Register>,
+    {
+        let (true_target_branch, true_input_indices) =
+            self.check_target_branch(true_target, true_inputs)?;
+        let (false_target_branch, false_input_indices) =
+            self.check_target_branch(false_target, false_inputs)?;
+
+        self.emit_raw(Instruction::BrIf {
+            condition: condition.index(),
+            true_branch: true_target_branch,
+            true_inputs: format::LenVec(true_input_indices),
+            false_branch: false_target_branch,
+            false_inputs: format::LenVec(false_input_indices),
+        });
+
+        Ok(())
     }
 
     pub fn call<'a, A>(&'a self, callee: &builder::Function, arguments: A) -> Result<Vec<&Register>>
@@ -189,32 +287,14 @@ impl Block {
         A: std::iter::IntoIterator<Item = &'a Register>,
     {
         let signature = callee.signature();
-        let expected_argument_count = signature.parameter_types().len();
-        let mut argument_indices = Vec::with_capacity(expected_argument_count);
-
-        for (argument_register, expected_argument_type) in
-            arguments.into_iter().zip(signature.parameter_types())
-        {
-            if std::borrow::Borrow::<builder::Type>::borrow(expected_argument_type)
-                != argument_register.value_type()
-            {
-                return Err(Error::RegisterTypeMismatch {
-                    register: argument_register.index,
-                    expected: expected_argument_type.clone(),
-                    actual: argument_register.value_type.clone(),
-                });
-            }
-
-            argument_indices.push(argument_register.index);
-        }
-
-        if argument_indices.len() != expected_argument_count {
-            return Err(Error::ArgumentCountMismatch {
-                function: callee.clone(),
-                expected: u32::try_from(expected_argument_count).unwrap(),
-                actual: u32::try_from(argument_indices.len()).unwrap(),
-            });
-        }
+        let argument_indices =
+            self.check_register_types(arguments, signature.parameter_types(), |actual_count| {
+                Error::ArgumentCountMismatch {
+                    function: callee.clone(),
+                    expected: u32::try_from(signature.parameter_types().len()).unwrap(),
+                    actual: u32::try_from(actual_count).unwrap(),
+                }
+            })?;
 
         self.emit_raw(Instruction::Call(
             format::instruction_set::CallInstruction {
