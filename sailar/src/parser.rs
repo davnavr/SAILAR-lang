@@ -336,8 +336,9 @@ impl<R: Read> Input<'_, R> {
             Opcode::BrIf => Ok(Instruction::BrIf {
                 condition: self.unsigned_index()?,
                 true_branch: self.unsigned_index()?,
+                true_inputs: self.length_encoded_indices()?,
                 false_branch: self.unsigned_index()?,
-                input_registers: self.length_encoded_indices()?,
+                false_inputs: self.length_encoded_indices()?,
             }),
             Opcode::Call => Ok(Instruction::Call(
                 format::instruction_set::CallInstruction {
