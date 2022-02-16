@@ -67,7 +67,9 @@ impl std::fmt::Debug for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Block")
             .field("index", &self.index)
-            .field("input_count", &self.input_count)
+            .field("input_registers", &self.input_registers)
+            .field("return_types", &self.return_types)
+            .field("temporary_registers", &self.registers.borrow())
             .field("instructions", &self.instructions)
             .finish_non_exhaustive()
     }
