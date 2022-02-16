@@ -225,20 +225,22 @@ impl<'b, 'c, 'l> FunctionLookup<'b, 'c, 'l> {
         match self.lookup.borrow_mut().entry(ComparableRef(function)) {
             hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
             hash_map::Entry::Vacant(vacant) => {
-                use inkwell::module::Linkage;
-
-                let linkage = if function.is_export() {
-                    Linkage::External
-                } else {
-                    Linkage::Private
-                };
-
+                let linkage: inkwell::module::Linkage;
                 let constructed_name;
-                let name: &str = if let Some(external) = function.as_external()? {
-                    external.symbol().as_str()
+                let name: &str;
+
+                if let Some(external) = function.as_external()? {
+                    linkage = inkwell::module::Linkage::External;
+                    name = external.symbol().as_str()
                 } else {
+                    linkage = if function.is_export() {
+                        inkwell::module::Linkage::External
+                    } else {
+                        inkwell::module::Linkage::Private
+                    };
+
                     constructed_name = self.function_names.get(function)?;
-                    constructed_name.as_str()
+                    name = constructed_name.as_str()
                 };
 
                 let defined = self.module.add_function(
