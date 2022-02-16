@@ -179,13 +179,13 @@ impl<'b, 'c, 'l> DataLookup<'b, 'c, 'l> {
 }
 
 struct NameLookup<'l> {
-    module_prefixes: hash_map::HashMap<ComparableRef<'l, loader::Module<'l>>, String>,
+    module_prefixes: RefCell<hash_map::HashMap<ComparableRef<'l, loader::Module<'l>>, String>>,
 }
 
 impl<'l> NameLookup<'l> {
-    fn get(&mut self, function: &'l loader::Function<'l>) -> Result<String> {
-        let module_name = self
-            .module_prefixes
+    fn get(&self, function: &'l loader::Function<'l>) -> Result<String> {
+        let mut prefixes = self.module_prefixes.borrow_mut();
+        let module_name = prefixes
             .entry(ComparableRef(function.declaring_module()))
             .or_insert_with_key(|module| {
                 use std::fmt::Write;
@@ -201,6 +201,48 @@ impl<'l> NameLookup<'l> {
             });
 
         Ok(format!("{}_{}", module_name, function.symbol()?))
+    }
+}
+
+struct FunctionLookup<'b, 'c, 'l> {
+    lookup: RefCell<
+        hash_map::HashMap<
+            ComparableRef<'l, loader::Function<'l>>,
+            inkwell::values::FunctionValue<'c>,
+        >,
+    >,
+    undefined: RefCell<Vec<&'l loader::Function<'l>>>,
+    module: &'b inkwell::module::Module<'c>,
+    function_names: &'b NameLookup<'l>,
+    type_lookup: &'b TypeLookup<'c, 'l>,
+}
+
+impl<'b, 'c, 'l> FunctionLookup<'b, 'c, 'l> {
+    fn get(
+        &self,
+        function: &'l loader::Function<'l>,
+    ) -> Result<inkwell::values::FunctionValue<'c>> {
+        match self.lookup.borrow_mut().entry(ComparableRef(function)) {
+            hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
+            hash_map::Entry::Vacant(vacant) => {
+                use inkwell::module::Linkage;
+
+                let linkage = if function.is_export() {
+                    Linkage::External
+                } else {
+                    Linkage::Private
+                };
+
+                let defined = self.module.add_function(
+                    &self.function_names.get(function)?,
+                    self.type_lookup.get_function(function.signature()?),
+                    Some(linkage),
+                );
+
+                self.undefined.borrow_mut().push(function);
+                Ok(*vacant.insert(defined))
+            }
+        }
     }
 }
 
@@ -224,10 +266,6 @@ pub fn compile<'c>(
 
     let module = context.create_module(&application.identifier().name);
 
-    let mut function_lookup = hash_map::HashMap::with_capacity(
-        application.source().definitions.0.defined_functions.0.len(),
-    );
-
     let type_lookup = TypeLookup {
         context,
         loader,
@@ -242,57 +280,50 @@ pub fn compile<'c>(
         buffer: RefCell::default(),
     };
 
-    // Contains the functions that did not have their LLVM bitcode generated.
-    let mut undefined_functions = application
-        .iter_defined_functions()
-        .filter(|function| function.is_export())
-        .collect::<Vec<_>>();
+    let function_names = NameLookup {
+        module_prefixes: RefCell::default(),
+    };
+
+    let function_lookup = FunctionLookup {
+        lookup: RefCell::new(hash_map::HashMap::with_capacity(
+            application.source().definitions.0.defined_functions.0.len(),
+        )),
+        undefined: RefCell::new(
+            application
+                .iter_defined_functions()
+                .filter(|function| function.is_export())
+                .collect::<Vec<_>>(),
+        ),
+        module: &module,
+        type_lookup: &type_lookup,
+        function_names: &function_names,
+    };
 
     // Include entry point in list of functions to compile, if it is defined.
     let application_entry_point = application.entry_point()?;
     if let Some(entry_point_function) = application_entry_point {
-        undefined_functions.push(entry_point_function);
+        function_lookup
+            .undefined
+            .borrow_mut()
+            .push(entry_point_function);
     }
 
-    let mut function_names = NameLookup {
-        module_prefixes: hash_map::HashMap::new(),
-    };
-
     let code_builder = context.create_builder();
-    let code = code_gen::Cache::new(&code_builder, &type_lookup, &data_lookup);
+    let code = code_gen::Cache::new(&code_builder, &function_lookup, &type_lookup, &data_lookup);
 
-    while let Some(function) = undefined_functions.pop() {
-        let definition = match function_lookup.entry(ComparableRef(function)) {
-            hash_map::Entry::Occupied(occupied) => *occupied.get(),
-            hash_map::Entry::Vacant(vacant) => {
-                use inkwell::module::Linkage;
-
-                let linkage = if function.is_export() {
-                    Linkage::External
-                } else {
-                    Linkage::Private
-                };
-
-                let defined = module.add_function(
-                    &function_names.get(function)?,
-                    type_lookup.get_function(function.signature()?),
-                    Some(linkage),
-                );
-
-                undefined_functions.push(function);
-                *vacant.insert(defined)
-            }
-        };
-
+    while let Some(function) = {
+        // Avoids a mutable borrow error.
+        let mut undefined = function_lookup.undefined.borrow_mut();
+        undefined.pop().as_ref().copied()
+    } {
+        let definition = function_lookup.get(function)?;
         if definition.count_basic_blocks() == 0u32 {
             code_gen::generate(context, function, definition, &code)?;
         }
     }
 
     if let Some(entry_point_function) = application_entry_point {
-        let entry_point_value = *function_lookup
-            .get(&ComparableRef(entry_point_function))
-            .expect("entry point function should have entry in lookup");
+        let entry_point_value = function_lookup.get(entry_point_function)?;
 
         // TODO: Add parameters for application arguments when necessary.
         let main = module.add_function(

@@ -1,7 +1,7 @@
 //! Translates SAILAR bytecode into LLVM bitcode.
 
 use crate::error::{Error, Result};
-use crate::{ComparableRef, DataLookup, TypeLookup};
+use crate::{ComparableRef, DataLookup, FunctionLookup, TypeLookup};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use sailar::format::instruction_set as sail;
@@ -29,6 +29,7 @@ type InputFixups<'c, 'l> = Vec<(
 
 pub struct Cache<'b, 'c, 'l> {
     builder: &'b Builder<'c>,
+    function_lookup: &'b FunctionLookup<'b, 'c, 'l>,
     type_lookup: &'b TypeLookup<'c, 'l>,
     data_lookup: &'b DataLookup<'b, 'c, 'l>,
     block_lookup: RefCell<BlockLookup<'c, 'l>>,
@@ -36,16 +37,19 @@ pub struct Cache<'b, 'c, 'l> {
     register_map: RefCell<RegisterMap<'c, 'l>>,
     input_lookup: RefCell<InputLookup<'c, 'l>>,
     input_fixups: RefCell<InputFixups<'c, 'l>>,
+    value_buffer: RefCell<Vec<inkwell::values::BasicMetadataValueEnum<'c>>>,
 }
 
 impl<'b, 'c, 'l> Cache<'b, 'c, 'l> {
     pub(crate) fn new(
         builder: &'b Builder<'c>,
+        function_lookup: &'b FunctionLookup<'b, 'c, 'l>,
         type_lookup: &'b TypeLookup<'c, 'l>,
         data_lookup: &'b DataLookup<'b, 'c, 'l>,
     ) -> Self {
         Self {
             builder,
+            function_lookup,
             type_lookup,
             data_lookup,
             block_lookup: RefCell::default(),
@@ -53,6 +57,7 @@ impl<'b, 'c, 'l> Cache<'b, 'c, 'l> {
             register_map: RefCell::default(),
             input_lookup: RefCell::default(),
             input_fixups: RefCell::default(),
+            value_buffer: RefCell::default(),
         }
     }
 }
@@ -179,6 +184,19 @@ pub fn generate<'b, 'c, 'l>(
             lookup_register(block.register_at(index)?)
         };
 
+        let lookup_indexed_arguments = |indices: &'l [sailar::format::indices::Register]| -> Result<
+            std::cell::RefMut<[inkwell::values::BasicMetadataValueEnum<'c>]>,
+        > {
+            let mut buffer = cache.value_buffer.borrow_mut();
+            buffer.clear();
+            for index in indices.iter().copied() {
+                buffer.push(lookup_indexed_register(index)?.into());
+            }
+            Ok(std::cell::RefMut::map(buffer, |buffer| {
+                buffer.as_mut_slice()
+            }))
+        };
+
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {
                 sail::Instruction::Nop => (),
@@ -192,6 +210,21 @@ pub fn generate<'b, 'c, 'l>(
                         }
                         Some(_) => todo!("multiple return values are not yet supported"),
                     });
+                }
+                sail::Instruction::Call(call) => {
+                    let callee = cache
+                        .function_lookup
+                        .get(block.declaring_module().load_function_raw(call.function)?)?;
+
+                    let arguments = lookup_indexed_arguments(&call.arguments.0)?;
+
+                    if let Some(return_value) = builder
+                        .build_call(callee, &arguments, "")
+                        .try_as_basic_value()
+                        .left()
+                    {
+                        define_temporary(return_value)?;
+                    }
                 }
                 sail::Instruction::ConstI(value) => {
                     define_temporary(inkwell::values::BasicValueEnum::IntValue(match *value {
