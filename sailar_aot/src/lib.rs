@@ -233,8 +233,16 @@ impl<'b, 'c, 'l> FunctionLookup<'b, 'c, 'l> {
                     Linkage::Private
                 };
 
+                let constructed_name;
+                let name: &str = if let Some(external) = function.as_external()? {
+                    external.symbol().as_str()
+                } else {
+                    constructed_name = self.function_names.get(function)?;
+                    constructed_name.as_str()
+                };
+
                 let defined = self.module.add_function(
-                    &self.function_names.get(function)?,
+                    name,
                     self.type_lookup.get_function(function.signature()?),
                     Some(linkage),
                 );

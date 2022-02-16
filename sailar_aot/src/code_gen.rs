@@ -68,16 +68,18 @@ pub fn generate<'b, 'c, 'l>(
     value: inkwell::values::FunctionValue<'c>,
     cache: &Cache<'b, 'c, 'l>,
 ) -> Result<()> {
-    cache.block_lookup.borrow_mut().clear();
-    cache.block_buffer.borrow_mut().clear();
-    cache.input_lookup.borrow_mut().clear();
-    cache.input_fixups.borrow_mut().clear();
-
     // Block placed before the "entry" block, used since LLVM does not allow usage of phi instructions in the entry block.
     // This conflicts with SAILAR, which allows branching back and passing inputs to the entry block.
-    let actual_entry_block = context.append_basic_block(value, "entry");
+    let actual_entry_block;
 
     if let Some(code) = function.code()? {
+        cache.block_lookup.borrow_mut().clear();
+        cache.block_buffer.borrow_mut().clear();
+        cache.input_lookup.borrow_mut().clear();
+        cache.input_fixups.borrow_mut().clear();
+
+        actual_entry_block = context.append_basic_block(value, "entry");
+
         let cache_block = |block: &'l sailar_get::loader::CodeBlock<'l>| -> Result<BasicBlock> {
             match cache.block_lookup.borrow_mut().entry(ComparableRef(block)) {
                 hash_map::Entry::Vacant(vacant) => {
@@ -101,7 +103,7 @@ pub fn generate<'b, 'c, 'l>(
             cache_block(code.load_block(index)?)?;
         }
     } else {
-        todo!("cannot compile, external functions not yet supported")
+        return Ok(());
     }
 
     for (block, code) in cache.block_buffer.borrow_mut().iter().copied() {

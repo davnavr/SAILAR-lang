@@ -19,7 +19,7 @@ pub use data::Data;
 pub use error::*;
 pub use field::Field;
 pub use format::{Identifier, ModuleIdentifier};
-pub use function::{Function, Signature as FunctionSignature};
+pub use function::{External as ExternalFunction, Function, Signature as FunctionSignature};
 pub use module::Module;
 pub use register::Register;
 pub use resolver::{ReferenceResolver, ResolverClosure};

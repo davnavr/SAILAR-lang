@@ -47,6 +47,21 @@ impl<'a> Signature<'a> {
     }
 }
 
+pub struct External<'a> {
+    library: &'a format::Identifier,
+    symbol: &'a format::Identifier,
+}
+
+impl<'a> External<'a> {
+    pub fn library(&self) -> &'a format::Identifier {
+        self.library
+    }
+
+    pub fn symbol(&self) -> &'a format::Identifier {
+        self.symbol
+    }
+}
+
 impl<'a> Function<'a> {
     pub(super) fn new(
         module: &'a loader::Module<'a>,
@@ -125,6 +140,19 @@ impl<'a> Function<'a> {
                 format::FunctionBody::External { .. } => Ok(None),
             })
             .map(|result| *result)
+    }
+
+    pub fn as_external(&'a self) -> Result<Option<External>> {
+        match self.raw_body() {
+            format::FunctionBody::Defined(_) => Ok(None),
+            format::FunctionBody::External {
+                library,
+                entry_point_name,
+            } => Ok(Some(External {
+                library: self.module.load_identifier_raw(*library)?,
+                symbol: self.module.load_identifier_raw(*entry_point_name)?,
+            })),
+        }
     }
 }
 
