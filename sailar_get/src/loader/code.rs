@@ -197,12 +197,13 @@ impl<'a> Block<'a> {
                         }
                         Instruction::BrIf {
                             true_branch,
+                            true_inputs,
                             false_branch,
-                            input_registers,
+                            false_inputs,
                             ..
                         } => {
-                            push_targets(*true_branch, &input_registers.0)?;
-                            push_targets(*false_branch, &input_registers.0)?;
+                            push_targets(*true_branch, &true_inputs.0)?;
+                            push_targets(*false_branch, &false_inputs.0)?;
                             break;
                         }
                         _ => (),

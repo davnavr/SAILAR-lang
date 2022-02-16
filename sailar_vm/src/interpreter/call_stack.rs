@@ -125,7 +125,7 @@ impl<'l> InstructionPointer<'l> {
             BlockIndex(None) => self.code.entry_block(),
             BlockIndex(Some(other_index)) => self
                 .code
-                .load_block(format::indices::CodeBlock::try_from(other_index).unwrap())
+                .load_block(format::indices::CodeBlock::try_from(other_index + 1).unwrap())
                 .unwrap(),
         }
     }
@@ -151,7 +151,7 @@ impl<'l> InstructionPointer<'l> {
             .map(|index| {
                 Some(
                     self.code
-                        .load_block(format::indices::CodeBlock::try_from(index).unwrap())
+                        .load_block(format::indices::CodeBlock::try_from(index + 1).unwrap())
                         .unwrap(),
                 )
             })
@@ -259,6 +259,9 @@ impl<'l> Frame<'l> {
 
         // TODO: Use loader to check against register type information.
         // TODO: Remove self.result_count
+
+        self.registers.input_types = current_block.input_types()?;
+        self.registers.temporary_types = current_block.temporary_types()?;
 
         let expected_input_count = current_block.input_registers()?.len();
         if expected_input_count != inputs.len() {

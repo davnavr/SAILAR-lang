@@ -261,13 +261,15 @@ fn block_instruction<W: Write>(
         Instruction::BrIf {
             condition,
             true_branch,
+            true_inputs,
             false_branch,
-            input_registers,
+            false_inputs,
         } => {
             unsigned_index(out, *condition, size)?;
             unsigned_index(out, *true_branch, size)?;
+            length_encoded_indices(out, true_inputs, size)?;
             unsigned_index(out, *false_branch, size)?;
-            length_encoded_indices(out, input_registers, size)
+            length_encoded_indices(out, false_inputs, size)
         }
         Instruction::Call(call) => {
             unsigned_index(out, call.function, size)?;

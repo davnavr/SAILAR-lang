@@ -21,8 +21,8 @@ pub use versioning::{Format as FormatVersion, Numbers as VersionNumbers};
 
 pub type LenVecBytes<T> = LenBytes<LenVec<T>>;
 
-/// The magic number for `binmdl` files.
-pub static MAGIC: &[u8] = "binmdl\0".as_bytes();
+/// The magic number for binary modules.
+pub static MAGIC: &[u8] = "sailar\0\0".as_bytes();
 
 /// Used to organize the structs, functions, and globals of a module.
 ///
