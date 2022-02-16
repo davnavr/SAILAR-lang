@@ -295,15 +295,21 @@ pub fn compile<'c>(
 
         let main_block = context.append_basic_block(main, "entry");
         code_builder.position_at_end(main_block);
-        // TODO: Check if entry_point_signature returns an INTEGER exit code.
-        code_builder.build_return(
-            code_builder
-                .build_call(entry_point_value, &[], "exit_code")
-                .try_as_basic_value()
-                .left()
+
+        let entry_point_result = code_builder
+            .build_call(entry_point_value, &[], "exit_code")
+            .try_as_basic_value()
+            .left();
+
+        // TODO: Check that the entry point returns an INTEGER exit code.
+        let zero_exit_code = context.i32_type().const_zero();
+
+        code_builder.build_return(Some(
+            entry_point_result
                 .as_ref()
-                .map(|exit_code| exit_code as &dyn inkwell::values::BasicValue),
-        );
+                .map(|exit_code| exit_code as &dyn inkwell::values::BasicValue)
+                .unwrap_or(&zero_exit_code),
+        ));
     }
 
     Ok(module)
