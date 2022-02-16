@@ -39,6 +39,25 @@ struct TypeLookup<'c, 'l> {
 }
 
 impl<'c, 'l> TypeLookup<'c, 'l> {
+    fn get_integer_type<T: Into<sailar::format::type_system::Int>>(
+        &self,
+        integer_type: T,
+    ) -> inkwell::types::IntType<'c> {
+        use sailar::format::type_system::FixedInt;
+
+        match self
+            .loader
+            .native_integer_type()
+            .expect("todo: how to handle invalid native integer type?")
+            .convert_integer_type(integer_type.into())
+        {
+            FixedInt::U8 | FixedInt::S8 => self.context.i8_type(),
+            FixedInt::U16 | FixedInt::S16 => self.context.i16_type(),
+            FixedInt::U32 | FixedInt::S32 => self.context.i32_type(),
+            FixedInt::U64 | FixedInt::S64 => self.context.i64_type(),
+        }
+    }
+
     fn get_type(
         &self,
         signature: &'l loader::TypeSignature<'l>,
@@ -50,25 +69,7 @@ impl<'c, 'l> TypeLookup<'c, 'l> {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => *vacant.insert(match signature.as_raw() {
                 sailar_types::Any::Primitive(sailar_types::Primitive::Int(int)) => {
-                    BasicTypeEnum::IntType(match int {
-                        sailar_types::Int::Fixed(fixed_int) => match fixed_int {
-                            sailar_types::FixedInt::U8 | sailar_types::FixedInt::S8 => {
-                                self.context.i8_type()
-                            }
-                            sailar_types::FixedInt::U16 | sailar_types::FixedInt::S16 => {
-                                self.context.i16_type()
-                            }
-                            sailar_types::FixedInt::U32 | sailar_types::FixedInt::S32 => {
-                                self.context.i32_type()
-                            }
-                            sailar_types::FixedInt::U64 | sailar_types::FixedInt::S64 => {
-                                self.context.i64_type()
-                            }
-                        },
-                        sailar_types::Int::SNative | sailar_types::Int::UNative => self
-                            .context
-                            .custom_width_int_type(u32::from(self.loader.pointer_size().get())),
-                    })
+                    BasicTypeEnum::IntType(self.get_integer_type(*int))
                 }
                 sailar_types::Any::Primitive(sailar_types::Primitive::Real(real)) => {
                     BasicTypeEnum::FloatType(match real {

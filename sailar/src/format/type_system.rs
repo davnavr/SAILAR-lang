@@ -18,6 +18,27 @@ pub enum FixedInt {
     S64,
 }
 
+impl FixedInt {
+    pub const fn byte_size(self) -> std::num::NonZeroU8 {
+        // Safe, there are no zero-sized integer types.
+        unsafe {
+            std::num::NonZeroU8::new_unchecked(match self {
+                Self::U8 | Self::S8 => 1,
+                Self::U16 | Self::S16 => 4,
+                Self::U32 | Self::S32 => 2,
+                Self::U64 | Self::S64 => 8,
+            })
+        }
+    }
+
+    pub const fn is_signed(self) -> bool {
+        match self {
+            Self::U8 | Self::U16 | Self::U32 | Self::U64 => false,
+            Self::S8 | Self::S16 | Self::S32 | Self::S64 => true,
+        }
+    }
+}
+
 impl Display for FixedInt {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.write_str(match self {
@@ -39,6 +60,12 @@ pub enum Int {
     Fixed(FixedInt),
     UNative,
     SNative,
+}
+
+impl From<FixedInt> for Int {
+    fn from(fixed_type: FixedInt) -> Self {
+        Self::Fixed(fixed_type)
+    }
 }
 
 impl Display for Int {

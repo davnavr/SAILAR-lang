@@ -76,6 +76,17 @@ impl NativeIntegerType {
     pub fn unsigned(&self) -> format::type_system::FixedInt {
         self.unsigned
     }
+
+    pub fn convert_integer_type(
+        &self,
+        integer_type: format::type_system::Int,
+    ) -> format::type_system::FixedInt {
+        match integer_type {
+            format::type_system::Int::Fixed(fixed_type) => fixed_type,
+            format::type_system::Int::SNative => self.signed,
+            format::type_system::Int::UNative => self.unsigned,
+        }
+    }
 }
 
 pub struct Loader<'a> {

@@ -78,6 +78,31 @@ impl<'a> Type<'a> {
             }
         })
     }
+
+    /// Returns the underlying fixed-sized integer type if the current type signature represents an integer type, converting
+    /// pointer-sized integer types to the corresponding fixed-sized type.
+    pub fn as_fixed_int_type(&'a self) -> Option<type_system::FixedInt> {
+        Some(
+            self.declaring_module()
+                .loader()
+                .native_integer_type()
+                .ok()?
+                .convert_integer_type(type_system::Int::try_from(self).ok()?),
+        )
+    }
+}
+
+impl<'a> TryFrom<&'a Type<'a>> for type_system::Int {
+    type Error = &'a type_system::Any;
+
+    fn try_from(signature: &'a Type<'a>) -> std::result::Result<Self, Self::Error> {
+        match signature.as_raw() {
+            type_system::Any::Primitive(type_system::Primitive::Int(integer_type)) => {
+                Ok(*integer_type)
+            }
+            bad => Err(bad),
+        }
+    }
 }
 
 fn compare_raw_types<'a>(

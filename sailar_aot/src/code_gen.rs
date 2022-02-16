@@ -167,15 +167,16 @@ pub fn generate<'b, 'c, 'l>(
             }
         };
 
-        // TODO: Have helper to lookup faster if a Register<'l> already exists instead of having bounds checking with indices.
+        let lookup_register = |register: &'l sailar_get::loader::Register<'l>| -> Result<inkwell::values::BasicValueEnum<'c>> {
+            cache.register_map
+                .borrow()
+                .get(&ComparableRef(register))
+                .ok_or_else(|| Error::UndefinedRegister(register.index()))
+                .map(|value| *value)
+        };
 
-        let lookup_register = |index: sailar::format::indices::Register| -> Result<inkwell::values::BasicValueEnum<'c>> {
-            let register = match index {
-                sailar::format::indices::Register::Input(input) => block.input_registers()?.get(usize::try_from(input).unwrap()),
-                sailar::format::indices::Register::Temporary(temporary) => block.temporary_registers()?.get(usize::try_from(temporary).unwrap()),
-            }.ok_or(Error::UndefinedRegister(index))?;
-
-            cache.register_map.borrow().get(&ComparableRef(register)).ok_or(Error::UndefinedRegister(index)).map(|value| *value)
+        let lookup_indexed_register = |index: sailar::format::indices::Register| -> Result<inkwell::values::BasicValueEnum<'c>> {
+            lookup_register(block.register_at(index)?)
         };
 
         for instruction in block.as_raw().instructions.0.iter() {
@@ -186,7 +187,7 @@ pub fn generate<'b, 'c, 'l>(
                     builder.build_return(match values.0.first() {
                         None => None,
                         Some(return_register) if values.len() == 1 => {
-                            return_value = lookup_register(*return_register)?;
+                            return_value = lookup_indexed_register(*return_register)?;
                             Some(&return_value)
                         }
                         Some(_) => todo!("multiple return values are not yet supported"),
@@ -220,9 +221,68 @@ pub fn generate<'b, 'c, 'l>(
                         }
                     }))?;
                 }
+                sail::Instruction::ConvI {
+                    target_type,
+                    overflow,
+                    operand,
+                } => {
+                    // TODO: Handle other overflow behaviors.
+                    if *overflow != sail::OverflowBehavior::Ignore {
+                        todo!("unsupported overflow behavior {:?} for `conv.i`", overflow)
+                    }
+
+                    let target_integer_type = block
+                        .declaring_module()
+                        .loader()
+                        .native_integer_type()?
+                        .convert_integer_type(*target_type);
+
+                    let actual_target_type =
+                        cache.type_lookup.get_integer_type(target_integer_type);
+
+                    let operand_register = block.register_at(*operand)?;
+                    let operand_integer_type = operand_register
+                        .value_type()
+                        .as_fixed_int_type()
+                        .expect("todo: error for invalid operand type in conv.i");
+
+                    let operand_value = lookup_register(operand_register)?;
+
+                    define_temporary(if operand_integer_type == target_integer_type {
+                        operand_value
+                    } else if operand_integer_type.byte_size() < target_integer_type.byte_size() {
+                        // The operand's type is smaller, so a sign extension or a zero extension is possible.
+                        let target_is_signed = target_integer_type.is_signed();
+                        if operand_integer_type.is_signed() == target_is_signed {
+                            // A sign or zero extension can occur without worrying about differing signs.
+                            if target_is_signed {
+                                builder
+                                    .build_int_s_extend(
+                                        operand_value.into_int_value(),
+                                        actual_target_type,
+                                        "",
+                                    )
+                                    .into()
+                            } else {
+                                builder
+                                    .build_int_z_extend(
+                                        operand_value.into_int_value(),
+                                        actual_target_type,
+                                        "",
+                                    )
+                                    .into()
+                            }
+                        } else {
+                            todo!("integer extensions with differing signs are not yet supported")
+                        }
+                    } else {
+                        //trunc .. to
+                        todo!("integer truncations using conv.i are not yet supported")
+                    })?;
+                }
                 sail::Instruction::Add(operation) => {
-                    let x = lookup_register(operation.x)?;
-                    let y = lookup_register(operation.y)?;
+                    let x = lookup_indexed_register(operation.x)?;
+                    let y = lookup_indexed_register(operation.y)?;
                     match (x, y) {
                         (
                             inkwell::values::BasicValueEnum::IntValue(x_int),
@@ -230,7 +290,10 @@ pub fn generate<'b, 'c, 'l>(
                         ) => {
                             // TODO: Handle other overflow behaviors.
                             if operation.overflow != sail::OverflowBehavior::Ignore {
-                                todo!("unsupported overflow behavior {:?}", operation.overflow)
+                                todo!(
+                                    "unsupported overflow behavior {:?} for `add`",
+                                    operation.overflow
+                                )
                             }
 
                             // TODO: Check that integer types are the same.
@@ -255,7 +318,8 @@ pub fn generate<'b, 'c, 'l>(
                     source,
                 } => {
                     // TODO: Error handling if destination is not an address.
-                    let destination_address = lookup_register(*destination)?.into_pointer_value();
+                    let destination_address =
+                        lookup_indexed_register(*destination)?.into_pointer_value();
                     match source {
                         sail::MemoryInitializationSource::FromData(data_index) => {
                             let data = function.declaring_module().load_data_raw(*data_index)?;
@@ -290,7 +354,7 @@ pub fn generate<'b, 'c, 'l>(
                         todo!("multiple input values are not yet supported")
                     }
 
-                    let input_value = lookup_register(input_register.index())?;
+                    let input_value = lookup_register(input_register)?;
                     target_input_values[0].add_incoming(&[(
                         &input_value,
                         *block_lookup

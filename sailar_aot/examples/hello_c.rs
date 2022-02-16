@@ -6,25 +6,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             format::{self, type_system},
         };
 
-        let mut builder = builder::Builder::new(format::Identifier::try_from("Hello")?);
+        let mut builder = builder::Builder::new(format::Identifier::try_from("Message")?);
 
         let byte_type = builder
             .type_signatures()
             .primitive(type_system::FixedInt::U8);
 
+        // TODO: Make sure this matches the C `int` type.
+        let int_type = builder
+            .type_signatures()
+            .primitive(type_system::FixedInt::S32);
+
         let message_data = builder.data().define(Box::new(b"Hello World!\n".clone()));
 
         let helper = builder.definitions().functions().define(
             format::Identifier::try_from("PrintC")?,
-            builder.function_signatures().insert(
-                Vec::new(),
-                vec![
-                    builder.type_signatures().native_pointer(byte_type.clone()),
-                    builder
-                        .type_signatures()
-                        .primitive(type_system::Int::UNative),
-                ],
-            ),
+            builder
+                .function_signatures()
+                .insert(vec![int_type.clone()], vec![int_type.clone()]),
             builder::FunctionBody::from(builder::ExternalFunction::new(
                 std::rc::Rc::new(format::Identifier::try_from("libc")?),
                 format::Identifier::try_from("putchar")?,
@@ -34,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry_code = {
             let code = builder.code().define(Vec::new(), Vec::new());
             let entry_block = code.entry_block();
+
             let message_length = entry_block.conv_i_overflowing(
                 entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
                 type_system::Int::UNative,
@@ -42,10 +42,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let message_register = entry_block.alloca(message_length.result(), byte_type);
             entry_block.mem_init_from_data(message_register, message_data);
 
-            entry_block.call(
-                &builder::Function::Defined(helper),
-                [message_register, message_length.result()],
-            )?;
+            // entry_block.call(
+            //     &builder::Function::Defined(helper),
+            //     [entry_block.const_i(60i32)],
+            // )?;
 
             entry_block.ret(&[])?;
             code
