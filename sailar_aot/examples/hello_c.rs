@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sailar_aot::compile(program, &mut (), &context, &target)?
     };
 
-    println!("{}", module.print_to_string());
+    module.print_to_stderr();
     todo!("llvm");
 
     Ok(())

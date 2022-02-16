@@ -335,6 +335,24 @@ pub fn generate<'b, 'c, 'l>(
                         }
                     }
                 }
+                sail::Instruction::Alloca {
+                    amount,
+                    element_type,
+                } => {
+                    let amount_value = lookup_indexed_register(*amount)?.into_int_value();
+                    let allocation_type = cache.type_lookup.get_type(
+                        block
+                            .declaring_module()
+                            .load_type_signature(*element_type)?,
+                    );
+
+                    // TODO: Zero out alloca'ed memory by default.
+                    define_temporary(
+                        builder
+                            .build_array_alloca(allocation_type, amount_value, "")
+                            .into(),
+                    )?;
+                }
                 bad => todo!("add support for compiling instruction {:?}", bad),
             }
         }
