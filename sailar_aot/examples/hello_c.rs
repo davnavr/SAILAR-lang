@@ -105,7 +105,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     module.print_to_stderr();
-    todo!("llvm");
+
+    assert!(module.write_bitcode_to_path(&std::path::Path::new("hello_c.bc")));
 
     Ok(())
 }
