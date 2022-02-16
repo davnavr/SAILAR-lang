@@ -341,7 +341,7 @@ impl Block {
         self.allocate_register(self.type_signatures.primitive(target_type))
     }
 
-    pub fn conv_i(
+    pub fn conv_i_overflowing(
         &self,
         operand: &Register,
         target_type: format::type_system::Int,
@@ -349,7 +349,7 @@ impl Block {
         Ok(self.integer_conversion_operation(operand, target_type, OverflowBehavior::Ignore))
     }
 
-    pub fn conv_i_overflowing(
+    pub fn conv_i(
         &self,
         operand: &Register,
         target_type: format::type_system::Int,

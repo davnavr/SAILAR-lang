@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 type_system::Int::UNative,
             )?;
 
-            let message_register = entry_block.alloca(message_length.result(), byte_type);
+            let message_register = entry_block.alloca(message_length, byte_type);
             entry_block.mem_init_from_data(message_register, message_data);
 
             // entry_block.call(
