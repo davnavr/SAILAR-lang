@@ -151,7 +151,7 @@ impl<'l> InstructionPointer<'l> {
             .map(|index| {
                 Some(
                     self.code
-                        .load_block(format::indices::CodeBlock::try_from(index).unwrap())
+                        .load_block(format::indices::CodeBlock::try_from(index + 1).unwrap())
                         .unwrap(),
                 )
             })
