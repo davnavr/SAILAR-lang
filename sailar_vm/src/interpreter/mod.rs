@@ -220,16 +220,20 @@ impl<'l> Interpreter<'l> {
             Instruction::BrIf {
                 condition,
                 true_branch: true_target,
+                true_inputs: true_input_indices,
                 false_branch: false_target,
-                input_registers: input_register_indices,
+                false_inputs: false_input_indices,
             } => {
                 let current = self.call_stack.current_mut()?;
-                let inputs = collect_registers_from(current, input_register_indices)?;
+                let inputs;
+                let target;
 
-                let target = if current.registers.get(*condition)?.is_truthy() {
-                    *true_target
+                if current.registers.get(*condition)?.is_truthy() {
+                    target = *true_target;
+                    inputs = collect_registers_from(current, true_input_indices)?;
                 } else {
-                    *false_target
+                    target = *false_target;
+                    inputs = collect_registers_from(current, false_input_indices)?;
                 };
 
                 self.call_stack
