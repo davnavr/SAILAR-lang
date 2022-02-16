@@ -8,18 +8,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut builder = builder::Builder::new(format::Identifier::try_from("Message")?);
 
-        let byte_type = builder
-            .type_signatures()
-            .primitive(type_system::FixedInt::U8);
+        // let byte_type = builder
+        //     .type_signatures()
+        //     .primitive(type_system::FixedInt::U8);
 
         // TODO: Make sure this matches the C `int` type.
         let int_type = builder
             .type_signatures()
             .primitive(type_system::FixedInt::S32);
 
-        let message_data = builder.data().define(Box::new(b"Hello World!\n".clone()));
+        //let message_data = builder.data().define(Box::new(b"Hello World!\n".clone()));
 
-        let helper = builder.definitions().functions().define(
+        let print = builder.definitions().functions().define(
             format::Identifier::try_from("PrintC")?,
             builder
                 .function_signatures()
@@ -34,20 +34,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let code = builder.code().define(Vec::new(), Vec::new());
             let entry_block = code.entry_block();
 
-            let message_length = entry_block.conv_i_overflowing(
-                entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
-                type_system::Int::UNative,
-            )?;
+            {
+                // let message_length = entry_block.conv_i_overflowing(
+                //     entry_block.const_i(u32::try_from(message_data.bytes().len()).unwrap()),
+                //     type_system::Int::UNative,
+                // )?;
 
-            let message_register = entry_block.alloca(message_length, byte_type);
-            entry_block.mem_init_from_data(message_register, message_data);
+                // let message_register = entry_block.alloca(message_length, byte_type);
+                // entry_block.mem_init_from_data(message_register, message_data);
 
-            // entry_block.call(
-            //     &builder::Function::Defined(helper),
-            //     [entry_block.const_i(60i32)],
-            // )?;
+                // entry_block.call(
+                //     &builder::Function::Defined(helper),
+                //     [entry_block.const_i(60i32)],
+                // )?;
 
-            entry_block.ret(&[])?;
+                entry_block.call(
+                    &builder::Function::Defined(print),
+                    [entry_block.const_i(65i32)],
+                )?;
+
+                entry_block.ret(&[])?;
+            }
+
+            // let loop_body = code.define_block(&[  ]);
+            // {
+
+            // }
+
             code
         };
 
