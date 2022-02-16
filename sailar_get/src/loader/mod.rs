@@ -14,7 +14,7 @@ mod structure;
 mod symbol;
 mod type_signature;
 
-pub use code::{Block as CodeBlock, Code, JumpTarget, InputSource};
+pub use code::{Block as CodeBlock, Code, InputSource, JumpTarget};
 pub use data::Data;
 pub use error::*;
 pub use field::Field;
@@ -63,11 +63,27 @@ fn read_index_from<
 
 pub type PointerSize = std::num::NonZeroU8;
 
+pub struct NativeIntegerType {
+    signed: format::type_system::FixedInt,
+    unsigned: format::type_system::FixedInt,
+}
+
+impl NativeIntegerType {
+    pub fn signed(&self) -> format::type_system::FixedInt {
+        self.signed
+    }
+
+    pub fn unsigned(&self) -> format::type_system::FixedInt {
+        self.unsigned
+    }
+}
+
 pub struct Loader<'a> {
     pointer_size: PointerSize,
     resolver: std::cell::RefCell<&'a mut dyn ReferenceResolver>,
     resolved_modules: typed_arena::Arena<Module<'a>>,
     module_lookup: std::cell::RefCell<hash_map::HashMap<ModuleIdentifier, &'a Module<'a>>>,
+    native_integer_type: cache::Once<NativeIntegerType>,
 }
 
 impl<'a> Loader<'a> {
@@ -82,6 +98,7 @@ impl<'a> Loader<'a> {
             resolver: std::cell::RefCell::new(resolver),
             resolved_modules: typed_arena::Arena::new(),
             module_lookup: std::cell::RefCell::new(hash_map::HashMap::new()),
+            native_integer_type: cache::Once::default(),
         });
 
         (loaded, loaded.force_load_module(application))
@@ -94,6 +111,25 @@ impl<'a> Loader<'a> {
     /// Returns the presumed pointer size, in bytes, used by all loaded modules.
     pub fn pointer_size(&'a self) -> PointerSize {
         self.pointer_size
+    }
+
+    pub fn native_integer_type(&'a self) -> Result<&'a NativeIntegerType> {
+        self.native_integer_type
+            .get_or_insert_fallible(|| match self.pointer_size.get() {
+                2u8 => Ok(NativeIntegerType {
+                    signed: format::type_system::FixedInt::S16,
+                    unsigned: format::type_system::FixedInt::U16,
+                }),
+                4u8 => Ok(NativeIntegerType {
+                    signed: format::type_system::FixedInt::S32,
+                    unsigned: format::type_system::FixedInt::U32,
+                }),
+                8u8 => Ok(NativeIntegerType {
+                    signed: format::type_system::FixedInt::S64,
+                    unsigned: format::type_system::FixedInt::U64,
+                }),
+                _ => Err(Error::InvalidPointerSize(self.pointer_size)),
+            })
     }
 
     pub fn load_module(&'a self, name: &ModuleIdentifier) -> Result<&'a Module<'a>> {

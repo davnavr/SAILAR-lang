@@ -51,6 +51,8 @@ pub enum Error {
     FunctionImportSignatureMismatch(#[from] Box<FunctionImportSignatureMismatch>),
     #[error(transparent)]
     InputTypeMismatch(#[from] Box<InputTypeMismatchError>),
+    #[error("pointers of size {0} bytes are not supported")]
+    InvalidPointerSize(crate::loader::PointerSize),
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error>),
 }
