@@ -255,16 +255,17 @@ impl Block {
         Ok(())
     }
 
-    pub fn branch_if<'a, I>(
+    pub fn branch_if<'a, T, F>(
         &'a self,
         condition: &'a Register,
         true_target: &Self,
-        true_inputs: I,
+        true_inputs: T,
         false_target: &Self,
-        false_inputs: I,
+        false_inputs: F,
     ) -> Result<()>
     where
-        I: std::iter::IntoIterator<Item = &'a Register>,
+        T: std::iter::IntoIterator<Item = &'a Register>,
+        F: std::iter::IntoIterator<Item = &'a Register>,
     {
         let (true_target_branch, true_input_indices) =
             self.check_target_branch(true_target, true_inputs)?;
