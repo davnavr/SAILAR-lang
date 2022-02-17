@@ -1,6 +1,7 @@
 use crate::loader::cache::Once;
 use crate::loader::{self, Error, Register, Result};
 use sailar::format;
+use std::fmt::{Debug, Formatter};
 
 pub enum InputSource<'a> {
     Callee,
@@ -243,6 +244,14 @@ impl<'a> Block<'a> {
     }
 }
 
+impl<'a> Debug for &'a Block<'a> {
+    fn fmt(&self, format: &mut Formatter) -> std::fmt::Result {
+        format.debug_struct("Block")
+            .field("index", &self.index())
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct Code<'a> {
     source: &'a format::Code,
     module: &'a loader::Module<'a>,
@@ -308,5 +317,13 @@ impl<'a> Code<'a> {
 
     pub fn input_types(&'a self) -> Result<&'a [&'a loader::TypeSignature<'a>]> {
         self.entry_block().input_types()
+    }
+}
+
+impl<'a> Debug for &'a Code<'a> {
+    fn fmt(&self, format: &mut Formatter) -> std::fmt::Result {
+        format.debug_struct("Code")
+            .field("blocks", &self.all_blocks())
+            .finish_non_exhaustive()
     }
 }

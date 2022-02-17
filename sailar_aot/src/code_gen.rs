@@ -99,7 +99,7 @@ pub fn generate<'b, 'c, 'l>(
         cache.builder.build_unconditional_branch(entry_block);
 
         for index in 0..code.as_raw().blocks.0.len() {
-            let index = sailar::format::indices::CodeBlock::try_from(index).unwrap();
+            let index = sailar::format::indices::CodeBlock::try_from(index + 1).unwrap();
             cache_block(code.load_block(index)?)?;
         }
     } else {
@@ -199,6 +199,11 @@ pub fn generate<'b, 'c, 'l>(
             }))
         };
 
+        let lookup_branch_target = |target: sailar::format::indices::CodeBlock| -> Result<inkwell::basic_block::BasicBlock<'c>> {
+            let target_block = block.declaring_code().load_block(target)?;
+            Ok(*cache.block_lookup.borrow_mut().get(&ComparableRef(target_block)).expect("all target blocks should exist in lookup"))
+        };
+
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {
                 sail::Instruction::Nop => (),
@@ -212,6 +217,18 @@ pub fn generate<'b, 'c, 'l>(
                         }
                         Some(_) => todo!("multiple return values are not yet supported"),
                     });
+                }
+                sail::Instruction::Br { target, .. } => {
+                    builder.build_unconditional_branch(lookup_branch_target(*target)?);
+                }
+                sail::Instruction::BrIf {
+                    condition,
+                    true_branch,
+                    true_inputs,
+                    false_branch,
+                    false_inputs,
+                } => {
+                    todo!("conditional branch, may need to restructure generation of phi nodes")
                 }
                 sail::Instruction::Call(call) => {
                     let callee = cache
