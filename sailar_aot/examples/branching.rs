@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let program = {
         use sailar::builder;
-        use sailar::format::{self, type_system};
+        use sailar::format::{self, instruction_set::ComparisonKind, type_system};
 
         let builder = builder::Builder::new(format::Identifier::try_from("Branching")?);
 
@@ -45,9 +45,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .define(vec![int_type.clone()], vec![int_type.clone()]);
 
                 let entry_block = code.entry_block();
-                //<= 0
-                //entry_block.branch_if();
+                let one_block = code.define_block(&[]);
+                let loop_body = code.define_block(&[int_type.clone(), int_type.clone()]);
+                let loop_exit = code.define_block(&[int_type.clone()]);
 
+                {
+                    let input = &entry_block.input_registers()[0];
+                    let is_le_1 = entry_block.cmp(
+                        entry_block.const_i(1i32),
+                        input,
+                        ComparisonKind::LessThanOrEqual,
+                    )?;
+
+                    entry_block.branch_if(
+                        is_le_1,
+                        one_block,
+                        [],
+                        loop_body,
+                        [input, entry_block.const_i(0i32)],
+                    )?;
+                }
+
+                {
+                    let n_0 = &loop_body.input_registers()[0];
+                    let acc_0 = &loop_body.input_registers()[1];
+                    let acc_1 = loop_body.add_overflowing(acc_0, loop_body.mul_overflowing(acc_0, n_0)?)?;
+                    let one = loop_body.const_i(1i32);
+                    let n_1 = loop_body.sub_overflowing(one, n_0)?;
+
+                    loop_body.branch_if(
+                        loop_body.cmp(one, n_1, ComparisonKind::Equal)?,
+                        loop_exit,
+                        [acc_1],
+                        loop_body,
+                        [n_1, acc_1],
+                    )?;
+                }
+
+                one_block.ret([one_block.const_i(0i32)])?;
+                loop_exit.ret([&loop_exit.input_registers()[0]])?;
                 code
             }),
         );
@@ -95,7 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(100i32, unsafe { square.call(10i32) });
 
     let factorial: inkwell::execution_engine::JitFunction<TestFn> =
-        unsafe { execution_engine.get_function("Branching_Factorial") };
+        unsafe { execution_engine.get_function("Branching_Factorial")? };
 
     assert_eq!(1i32, unsafe { square.call(0i32) });
     assert_eq!(1i32, unsafe { square.call(1i32) });
