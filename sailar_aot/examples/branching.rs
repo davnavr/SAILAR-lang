@@ -69,7 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let n_0 = &loop_body.input_registers()[0];
                     let acc_0 = &loop_body.input_registers()[1];
-                    let acc_1 = loop_body.add_overflowing(acc_0, loop_body.mul_overflowing(acc_0, n_0)?)?;
+                    let acc_1 =
+                        loop_body.add_overflowing(acc_0, loop_body.mul_overflowing(acc_0, n_0)?)?;
                     let one = loop_body.const_i(1i32);
                     let n_1 = loop_body.sub_overflowing(one, n_0)?;
 

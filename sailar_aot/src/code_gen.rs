@@ -309,11 +309,22 @@ pub fn generate<'b, 'c, 'l>(
                 sail::Instruction::BrIf {
                     condition,
                     true_branch,
-                    true_inputs,
                     false_branch,
-                    false_inputs,
+                    ..
                 } => {
-                    todo!("conditional branch, may need to restructure generation of phi nodes")
+                    if let inkwell::values::BasicValueEnum::IntValue(comparison) =
+                        lookup_indexed_register(*condition)?
+                    {
+                        builder.build_conditional_branch(
+                            comparison,
+                            lookup_branch_target(*true_branch)?,
+                            lookup_branch_target(*false_branch)?,
+                        );
+                    } else {
+                        return Err(Error::RegisterTypeMismatch {
+                            register: *condition,
+                        });
+                    }
                 }
                 sail::Instruction::Call(call) => {
                     let callee = cache
@@ -546,6 +557,8 @@ pub fn generate<'b, 'c, 'l>(
                 let target_input_values = input_lookup
                     .get_mut(&ComparableRef(target.destination()))
                     .expect("all blocks should have entry in input lookup");
+
+                assert_eq!(target.destination().input_registers()?.len(), target_input_registers.len());
 
                 if let Some(input_register) = target_input_registers.first() {
                     if target_input_registers.len() > 1 {
