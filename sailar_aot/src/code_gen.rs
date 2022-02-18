@@ -106,44 +106,60 @@ pub fn generate<'b, 'c, 'l>(
         return Ok(());
     }
 
+    {
+        let mut input_lookup = cache.input_lookup.borrow_mut();
+
+        for (block, code) in cache.block_buffer.borrow_mut().iter().copied() {
+            let mut input_register_values = Vec::new();
+
+            let builder = cache.builder;
+            builder.position_at_end(code);
+
+            for (input, input_index) in block.input_registers()?.iter().zip(0u32..) {
+                let input_value =
+                    builder.build_phi(cache.type_lookup.get_type(input.value_type()), "");
+
+                if block.is_entry_block() {
+                    let argument = &value
+                        .get_nth_param(input_index)
+                        .expect("parameter should be defined");
+
+                    input_value.add_incoming(&[(argument, actual_entry_block)]);
+                }
+
+                input_register_values.push(input_value);
+            }
+
+            if let hash_map::Entry::Vacant(vacant) = input_lookup.entry(ComparableRef(block)) {
+                vacant.insert(input_register_values);
+            } else {
+                unreachable!("blocks in input lookup should not be duplicated")
+            }
+        }
+    }
+
     for (block, code) in cache.block_buffer.borrow_mut().iter().copied() {
         let input_registers = block.input_registers()?;
         let temporary_registers = block.temporary_registers()?;
-        let builder = cache.builder;
-        builder.position_at_end(code);
 
         {
             let mut register_lookup = cache.register_map.borrow_mut();
             register_lookup.clear();
             register_lookup.reserve(input_registers.len() + temporary_registers.len());
 
-            let is_entry_block = block.is_entry_block();
-            let mut input_register_values = Vec::new();
-            let mut input_lookup = cache.input_lookup.borrow_mut();
+            let input_register_lookup = cache.input_lookup.borrow();
+            let input_register_values = input_register_lookup
+                .get(&ComparableRef(block))
+                .expect("all blocks should have entry in input lookup");
 
-            for (input, input_index) in input_registers.iter().zip(0u32..) {
+            for (input, input_value) in input_registers.iter().zip(input_register_values) {
                 if let hash_map::Entry::Vacant(vacant) = register_lookup.entry(ComparableRef(input))
                 {
-                    let input_value =
-                        builder.build_phi(cache.type_lookup.get_type(input.value_type()), "");
-
-                    if is_entry_block {
-                        input_value.add_incoming(&[(
-                            &value
-                                .get_nth_param(input_index)
-                                .expect("parameter should be defined"),
-                            actual_entry_block,
-                        )]);
-                    }
-
-                    input_register_values.push(input_value);
                     vacant.insert(input_value.as_basic_value());
                 } else {
                     unreachable!("input registers should not be duplicated")
                 }
             }
-
-            input_lookup.insert(ComparableRef(block), input_register_values);
         }
 
         let mut define_temporary = {
@@ -203,6 +219,9 @@ pub fn generate<'b, 'c, 'l>(
             let target_block = block.declaring_code().load_block(target)?;
             Ok(*cache.block_lookup.borrow_mut().get(&ComparableRef(target_block)).expect("all target blocks should exist in lookup"))
         };
+
+        let builder = cache.builder;
+        builder.position_at_end(code);
 
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {

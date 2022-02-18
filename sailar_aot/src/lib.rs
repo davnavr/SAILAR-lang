@@ -24,7 +24,10 @@ impl<T> std::hash::Hash for ComparableRef<'_, T> {
     }
 }
 
-impl<'a, T> std::fmt::Debug for ComparableRef<'a, T> where &'a T: std::fmt::Debug {
+impl<'a, T> std::fmt::Debug for ComparableRef<'a, T>
+where
+    &'a T: std::fmt::Debug,
+{
     fn fmt(&self, format: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.0, format)
     }
