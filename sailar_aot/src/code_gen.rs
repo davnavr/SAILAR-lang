@@ -492,7 +492,7 @@ pub fn generate<'b, 'c, 'l>(
                     target_input_values[0].add_incoming(&[(
                         &input_value,
                         *block_lookup
-                            .get(&ComparableRef(target.destination()))
+                            .get(&ComparableRef(block))
                             .expect("all blocks should exist in lookup"),
                     )]);
                 }

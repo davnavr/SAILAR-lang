@@ -26,6 +26,15 @@ impl<'a> JumpTarget<'a> {
     }
 }
 
+impl Debug for JumpTarget<'_> {
+    fn fmt(&self, format: &mut Formatter) -> std::fmt::Result {
+        format.debug_struct("JumpTarget")
+            .field("destination", &self.destination.index)
+            .field("inputs", &self.inputs)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct Block<'a> {
     source: &'a format::CodeBlock,
     code: &'a Code<'a>,
@@ -247,7 +256,9 @@ impl<'a> Block<'a> {
 impl<'a> Debug for &'a Block<'a> {
     fn fmt(&self, format: &mut Formatter) -> std::fmt::Result {
         format.debug_struct("Block")
-            .field("index", &self.index())
+            .field("index", &self.index)
+            .field("jump_targets", &self.jump_targets())
+            .field("raw_instructions", &self.raw_instructions())
             .finish_non_exhaustive()
     }
 }

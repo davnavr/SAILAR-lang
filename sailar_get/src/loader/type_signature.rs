@@ -92,6 +92,16 @@ impl<'a> Type<'a> {
     }
 }
 
+impl<'a> std::fmt::Debug for &'a Type<'a> {
+    fn fmt(&self, format: &mut std::fmt::Formatter) -> std::fmt::Result {
+        format.debug_struct("Type")
+            .field("source", &self.source)
+            .field("index", &self.index)
+            .field("size", &self.size())
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a> TryFrom<&'a Type<'a>> for type_system::Int {
     type Error = &'a type_system::Any;
 

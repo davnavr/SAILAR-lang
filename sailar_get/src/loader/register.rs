@@ -39,3 +39,12 @@ impl<'a> Register<'a> {
         }
     }
 }
+
+impl<'a> std::fmt::Debug for &'a Register<'a> {
+    fn fmt(&self, format: &mut std::fmt::Formatter) -> std::fmt::Result {
+        format.debug_struct("Register")
+            .field("index", &self.index)
+            .field("value_type", &self.value_type)
+            .finish_non_exhaustive()
+    }
+}
