@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )?;
                 }
 
-                one_block.ret([one_block.const_i(0i32)])?;
+                one_block.ret([one_block.const_i(1i32)])?;
                 loop_exit.ret([&loop_exit.input_registers()[0]])?;
                 code
             }),

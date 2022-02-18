@@ -558,15 +558,14 @@ pub fn generate<'b, 'c, 'l>(
                     .get_mut(&ComparableRef(target.destination()))
                     .expect("all blocks should have entry in input lookup");
 
-                assert_eq!(target.destination().input_registers()?.len(), target_input_registers.len());
+                assert_eq!(
+                    target.destination().input_registers()?.len(),
+                    target_input_registers.len()
+                );
 
-                if let Some(input_register) = target_input_registers.first() {
-                    if target_input_registers.len() > 1 {
-                        todo!("multiple input values are not yet supported")
-                    }
-
+                for (index, input_register) in target_input_registers.iter().enumerate() {
                     let input_value = lookup_register(input_register)?;
-                    target_input_values[0].add_incoming(&[(
+                    target_input_values[index].add_incoming(&[(
                         &input_value,
                         *block_lookup
                             .get(&ComparableRef(block))
