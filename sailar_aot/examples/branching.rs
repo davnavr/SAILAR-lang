@@ -65,12 +65,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let module = sailar_aot::compile(program, &mut (), &context, &target)?;
+
+    println!("{}", module.print_to_string().to_string());
+
     let execution_engine = module
         .create_jit_execution_engine(optimization_level)
         .unwrap();
 
-    println!("{}", module.print_to_string().to_string());
-    todo!("exec");
+    let square: inkwell::execution_engine::JitFunction<TestFn> =
+        unsafe { execution_engine.get_function("Branching_Square")? };
+
+    assert_eq!(9i32, unsafe { square.call(3i32) });
+    assert_eq!(100i32, unsafe { square.call(10i32) });
 
     Ok(())
 }
