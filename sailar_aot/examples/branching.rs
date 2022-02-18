@@ -1,8 +1,6 @@
 /// Showcases the translation of branching instructions with inputs.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    type SquareFn = unsafe extern "C" fn(i32) -> i32;
-
-    //type FactorialFn = unsafe extern "C" fn(i32) -> i32;
+    type TestFn = unsafe extern "C" fn(i32) -> i32;
 
     let program = {
         use sailar::builder;

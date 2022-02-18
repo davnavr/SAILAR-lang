@@ -223,6 +223,72 @@ pub fn generate<'b, 'c, 'l>(
         let builder = cache.builder;
         builder.position_at_end(code);
 
+        let pointer_as_unsigned_native =
+            |pointer_value: inkwell::values::PointerValue<'c>| -> inkwell::values::IntValue<'c> {
+                let native_type = cache
+                    .type_lookup
+                    .get_integer_type(sailar::format::type_system::Int::UNative);
+
+                builder.build_ptr_to_int(pointer_value, native_type, "")
+            };
+
+        let basic_arithmetic_operation =
+            |operation: &'l sail::BasicArithmeticOperation,
+             allow_pointer_arithmetic: bool|
+             -> Result<(inkwell::values::IntValue<'c>, inkwell::values::IntValue<'c>)> {
+                let x = lookup_indexed_register(operation.x)?;
+                let y = lookup_indexed_register(operation.y)?;
+                let x_value;
+                let y_value;
+
+                match (x, y) {
+                    (
+                        inkwell::values::BasicValueEnum::IntValue(x_int),
+                        inkwell::values::BasicValueEnum::IntValue(y_int),
+                    ) => {
+                        x_value = x_int;
+                        y_value = y_int;
+                    }
+                    (
+                        inkwell::values::BasicValueEnum::PointerValue(x_pointer),
+                        inkwell::values::BasicValueEnum::IntValue(y_int),
+                    ) if allow_pointer_arithmetic => {
+                        x_value = pointer_as_unsigned_native(x_pointer);
+                        y_value = y_int;
+                    }
+                    (
+                        inkwell::values::BasicValueEnum::IntValue(x_int),
+                        inkwell::values::BasicValueEnum::PointerValue(y_pointer),
+                    ) if allow_pointer_arithmetic => {
+                        x_value = x_int;
+                        y_value = pointer_as_unsigned_native(y_pointer);
+                    }
+                    (_, inkwell::values::BasicValueEnum::IntValue(_)) => {
+                        return Err(Error::RegisterTypeMismatch {
+                            register: operation.x,
+                        })
+                    }
+                    _ => {
+                        return Err(Error::RegisterTypeMismatch {
+                            register: operation.y,
+                        })
+                    }
+                }
+
+                // TODO: Convert result basck into a pointer if it was a pointer.
+
+                // TODO: Handle other overflow behaviors.
+                if operation.overflow != sail::OverflowBehavior::Ignore {
+                    todo!(
+                        "unsupported overflow behavior {:?} for `add`",
+                        operation.overflow
+                    )
+                }
+
+                // TODO: Check that integer types are the same.
+                Ok((x_value, y_value))
+            };
+
         for instruction in block.as_raw().instructions.0.iter() {
             match instruction {
                 sail::Instruction::Nop => (),
@@ -352,37 +418,16 @@ pub fn generate<'b, 'c, 'l>(
                     })?;
                 }
                 sail::Instruction::Add(operation) => {
-                    let x = lookup_indexed_register(operation.x)?;
-                    let y = lookup_indexed_register(operation.y)?;
-                    match (x, y) {
-                        (
-                            inkwell::values::BasicValueEnum::IntValue(x_int),
-                            inkwell::values::BasicValueEnum::IntValue(y_int),
-                        ) => {
-                            // TODO: Handle other overflow behaviors.
-                            if operation.overflow != sail::OverflowBehavior::Ignore {
-                                todo!(
-                                    "unsupported overflow behavior {:?} for `add`",
-                                    operation.overflow
-                                )
-                            }
-
-                            // TODO: Check that integer types are the same.
-                            define_temporary(inkwell::values::BasicValueEnum::IntValue(
-                                builder.build_int_add(x_int, y_int, ""),
-                            ))?
-                        }
-                        (_, inkwell::values::BasicValueEnum::IntValue(_)) => {
-                            return Err(Error::RegisterTypeMismatch {
-                                register: operation.x,
-                            })
-                        }
-                        _ => {
-                            return Err(Error::RegisterTypeMismatch {
-                                register: operation.y,
-                            })
-                        }
-                    }
+                    let (x_value, y_value) = basic_arithmetic_operation(operation, true)?;
+                    define_temporary(builder.build_int_add(x_value, y_value, "").into())?;
+                }
+                sail::Instruction::Sub(operation) => {
+                    let (x_value, y_value) = basic_arithmetic_operation(operation, true)?;
+                    define_temporary(builder.build_int_sub(x_value, y_value, "").into())?;
+                }
+                sail::Instruction::Mul(operation) => {
+                    let (x_value, y_value) = basic_arithmetic_operation(operation, false)?;
+                    define_temporary(builder.build_int_mul(x_value, y_value, "").into())?;
                 }
                 sail::Instruction::MemInit {
                     destination,
