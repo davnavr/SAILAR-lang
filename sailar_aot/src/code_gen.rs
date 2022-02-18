@@ -429,6 +429,70 @@ pub fn generate<'b, 'c, 'l>(
                     let (x_value, y_value) = basic_arithmetic_operation(operation, false)?;
                     define_temporary(builder.build_int_mul(x_value, y_value, "").into())?;
                 }
+                sail::Instruction::Cmp {
+                    x: x_index,
+                    kind,
+                    y: y_index,
+                } => {
+                    let x_register = block.register_at(*x_index)?;
+                    let x = lookup_register(x_register)?;
+                    let y = lookup_indexed_register(*y_index)?;
+                    let comparison;
+
+                    match (x, y) {
+                        (
+                            inkwell::values::BasicValueEnum::IntValue(x_int),
+                            inkwell::values::BasicValueEnum::IntValue(y_int),
+                        ) => {
+                            if let Ok(operand_type) =
+                                sailar::format::type_system::Int::try_from(x_register.value_type())
+                            {
+                                let predicate = match kind {
+                                    sail::ComparisonKind::Equal => inkwell::IntPredicate::EQ,
+                                    sail::ComparisonKind::NotEqual => inkwell::IntPredicate::NE,
+                                    sail::ComparisonKind::LessThan if operand_type.is_signed() => {
+                                        inkwell::IntPredicate::SLT
+                                    }
+                                    sail::ComparisonKind::LessThan => inkwell::IntPredicate::ULT,
+                                    sail::ComparisonKind::GreaterThan
+                                        if operand_type.is_signed() =>
+                                    {
+                                        inkwell::IntPredicate::SGT
+                                    }
+                                    sail::ComparisonKind::GreaterThan => inkwell::IntPredicate::UGT,
+                                    sail::ComparisonKind::LessThanOrEqual
+                                        if operand_type.is_signed() =>
+                                    {
+                                        inkwell::IntPredicate::SLE
+                                    }
+                                    sail::ComparisonKind::LessThanOrEqual => {
+                                        inkwell::IntPredicate::ULE
+                                    }
+                                    sail::ComparisonKind::GreaterThanOrEqual
+                                        if operand_type.is_signed() =>
+                                    {
+                                        inkwell::IntPredicate::SGE
+                                    }
+                                    sail::ComparisonKind::GreaterThanOrEqual => {
+                                        inkwell::IntPredicate::UGE
+                                    }
+                                };
+
+                                comparison = builder.build_int_compare(predicate, x_int, y_int, "");
+                            } else {
+                                unreachable!(
+                                    "register with integer value should have an integer type"
+                                )
+                            }
+                        }
+                        (_, inkwell::values::BasicValueEnum::IntValue(_)) => {
+                            return Err(Error::RegisterTypeMismatch { register: *x_index })
+                        }
+                        _ => return Err(Error::RegisterTypeMismatch { register: *y_index }),
+                    }
+
+                    define_temporary(comparison.into())?;
+                }
                 sail::Instruction::MemInit {
                     destination,
                     source,

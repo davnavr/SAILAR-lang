@@ -443,6 +443,29 @@ impl Block {
         })
     }
 
+    pub fn cmp(
+        &self,
+        x: &Register,
+        y: &Register,
+        kind: instruction_set::ComparisonKind,
+    ) -> Result<&Register> {
+        if x.value_type() != y.value_type() {
+            return Err(Error::RegisterTypeMismatch {
+                register: y.index,
+                expected: x.value_type.clone(),
+                actual: y.value_type.clone(),
+            });
+        }
+
+        self.emit_raw(Instruction::Cmp {
+            x: x.index,
+            kind,
+            y: y.index,
+        });
+        
+        Ok(self.allocate_register(x.value_type.clone()))
+    }
+
     /// Emits a `mem.init` instruction, using module data as a source.
     pub fn mem_init_from_data(&self, destination: &Register, source: Rc<builder::Data>) {
         // TODO: Check that destianation of mem.init is a pointer.

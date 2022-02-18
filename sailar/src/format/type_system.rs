@@ -62,6 +62,16 @@ pub enum Int {
     SNative,
 }
 
+impl Int {
+    pub const fn is_signed(self) -> bool {
+        match self {
+            Self::Fixed(fixed_type) => fixed_type.is_signed(),
+            Self::UNative => true,
+            Self::SNative => false,
+        }
+    }
+}
+
 impl From<FixedInt> for Int {
     fn from(fixed_type: FixedInt) -> Self {
         Self::Fixed(fixed_type)
