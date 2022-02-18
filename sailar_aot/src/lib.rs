@@ -179,7 +179,7 @@ impl<'b, 'c, 'l> DataLookup<'b, 'c, 'l> {
                 );
 
                 let data_value = data_type.const_array(&buffer);
-                let constant = self.module.add_global(data_value.get_type(), None, "");
+                let constant = self.module.add_global(data_value.get_type(), Some(inkwell::AddressSpace::Const), "");
                 constant.set_initializer(&data_value);
                 *vacant.insert(constant.as_pointer_value())
             }
