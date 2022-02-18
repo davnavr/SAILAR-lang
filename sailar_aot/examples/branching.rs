@@ -12,11 +12,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .type_signatures()
             .primitive(type_system::FixedInt::S32);
 
+        let test_function_signature = builder
+            .function_signatures()
+            .insert(vec![int_type.clone()], vec![int_type.clone()]);
+
         let square = builder.definitions().functions().define(
             format::Identifier::try_from("Square")?,
-            builder
-                .function_signatures()
-                .insert(vec![int_type.clone()], vec![int_type.clone()]),
+            test_function_signature.clone(),
             builder::FunctionBody::Defined({
                 let code = builder
                     .code()
@@ -34,10 +36,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         );
 
-        //let factorial =
+        let factorial = builder.definitions().functions().define(
+            format::Identifier::try_from("Factorial")?,
+            test_function_signature,
+            builder::FunctionBody::Defined({
+                let code = builder
+                    .code()
+                    .define(vec![int_type.clone()], vec![int_type.clone()]);
+
+                let entry_block = code.entry_block();
+                //<= 0
+                //entry_block.branch_if();
+
+                code
+            }),
+        );
 
         square.is_export(true);
-
+        factorial.is_export(true);
         builder.finish()
     };
 
@@ -77,6 +93,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(9i32, unsafe { square.call(3i32) });
     assert_eq!(100i32, unsafe { square.call(10i32) });
+
+    let factorial: inkwell::execution_engine::JitFunction<TestFn> =
+        unsafe { execution_engine.get_function("Branching_Factorial") };
+
+    assert_eq!(1i32, unsafe { square.call(0i32) });
+    assert_eq!(1i32, unsafe { square.call(1i32) });
+    assert_eq!(6i32, unsafe { square.call(3i32) });
+    assert_eq!(5040i32, unsafe { square.call(7i32) });
 
     Ok(())
 }
