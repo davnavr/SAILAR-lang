@@ -52,8 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let input = &entry_block.input_registers()[0];
                     let is_le_1 = entry_block.cmp(
-                        entry_block.const_i(1i32),
                         input,
+                        entry_block.const_i(1i32),
                         ComparisonKind::LessThanOrEqual,
                     )?;
 
@@ -134,10 +134,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let factorial: inkwell::execution_engine::JitFunction<TestFn> =
         unsafe { execution_engine.get_function("Branching_Factorial")? };
 
-    assert_eq!(1i32, unsafe { square.call(0i32) });
-    assert_eq!(1i32, unsafe { square.call(1i32) });
-    assert_eq!(6i32, unsafe { square.call(3i32) });
-    assert_eq!(5040i32, unsafe { square.call(7i32) });
+    assert_eq!(1i32, unsafe { factorial.call(0i32) });
+    assert_eq!(1i32, unsafe { factorial.call(1i32) });
+    assert_eq!(6i32, unsafe { factorial.call(3i32) });
+    assert_eq!(5040i32, unsafe { factorial.call(7i32) });
 
     Ok(())
 }
