@@ -51,9 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 {
                     let input = &entry_block.input_registers()[0];
+                    let one = entry_block.const_i(1i32);
                     let is_le_1 = entry_block.cmp(
                         input,
-                        entry_block.const_i(1i32),
+                        one,
                         ComparisonKind::LessThanOrEqual,
                     )?;
 
@@ -62,17 +63,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         one_block,
                         [],
                         loop_body,
-                        [input, entry_block.const_i(0i32)],
+                        [input, entry_block.const_i(1i32)],
                     )?;
                 }
 
                 {
-                    let n_0 = &loop_body.input_registers()[0];
-                    let acc_0 = &loop_body.input_registers()[1];
-                    let acc_1 =
-                        loop_body.add_overflowing(acc_0, loop_body.mul_overflowing(acc_0, n_0)?)?;
+                    let inputs = loop_body.input_registers();
+                    let n_0 = &inputs[0];
+                    let acc_0 = &inputs[1];
+                    let acc_1 = loop_body.mul_overflowing(acc_0, n_0)?;
                     let one = loop_body.const_i(1i32);
-                    let n_1 = loop_body.sub_overflowing(one, n_0)?;
+                    let n_1 = loop_body.sub_overflowing(n_0, one)?;
 
                     loop_body.branch_if(
                         loop_body.cmp(one, n_1, ComparisonKind::Equal)?,
