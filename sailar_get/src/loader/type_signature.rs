@@ -9,7 +9,10 @@ pub struct Type<'a> {
     module: &'a loader::Module<'a>,
 }
 
-fn calculate_size<'a>(module: &'a loader::Module<'a>, source: &'a type_system::Any) -> Result<u32> {
+pub fn calculate_size<'a>(
+    module: &'a loader::Module<'a>,
+    source: &'a type_system::Any,
+) -> Result<u32> {
     use type_system::{FixedInt, Int, Primitive, Real};
 
     Ok(match source {
@@ -75,6 +78,41 @@ impl<'a> Type<'a> {
             }
         })
     }
+
+    /// Returns the underlying fixed-sized integer type if the current type signature represents an integer type, converting
+    /// pointer-sized integer types to the corresponding fixed-sized type.
+    pub fn as_fixed_int_type(&'a self) -> Option<type_system::FixedInt> {
+        Some(
+            self.declaring_module()
+                .loader()
+                .native_integer_type()
+                .ok()?
+                .convert_integer_type(type_system::Int::try_from(self).ok()?),
+        )
+    }
+}
+
+impl<'a> std::fmt::Debug for &'a Type<'a> {
+    fn fmt(&self, format: &mut std::fmt::Formatter) -> std::fmt::Result {
+        format.debug_struct("Type")
+            .field("source", &self.source)
+            .field("index", &self.index)
+            .field("size", &self.size())
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> TryFrom<&'a Type<'a>> for type_system::Int {
+    type Error = &'a type_system::Any;
+
+    fn try_from(signature: &'a Type<'a>) -> std::result::Result<Self, Self::Error> {
+        match signature.as_raw() {
+            type_system::Any::Primitive(type_system::Primitive::Int(integer_type)) => {
+                Ok(*integer_type)
+            }
+            bad => Err(bad),
+        }
+    }
 }
 
 fn compare_raw_types<'a>(
@@ -122,3 +160,9 @@ impl<'a> std::cmp::PartialEq for &'a Type<'a> {
 }
 
 impl<'a> std::cmp::Eq for &'a Type<'a> {}
+
+impl<'a> std::hash::Hash for &'a Type<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hasher::write_usize(state, *self as *const Type<'a> as usize)
+    }
+}

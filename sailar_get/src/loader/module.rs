@@ -2,6 +2,7 @@ use crate::loader::{self, cache, Error, Result};
 use sailar::{format, hashing::IntegerHashBuilder};
 use std::cell::RefCell;
 use std::collections::hash_map;
+use std::iter::{ExactSizeIterator, Iterator};
 
 pub struct Module<'a> {
     loader: &'a loader::Loader<'a>,
@@ -80,6 +81,10 @@ impl<'a> Module<'a> {
 
     pub fn full_symbol(&'a self) -> loader::ModuleSymbol<'a> {
         loader::ModuleSymbol::Borrowed(self.identifier())
+    }
+
+    pub fn source(&'a self) -> &'a format::Module {
+        &self.source
     }
 
     pub fn load_identifier_raw(
@@ -345,6 +350,50 @@ impl<'a> Module<'a> {
                 ),
                 hash_map::Entry::Occupied(occupied) => Ok(*occupied.get()),
             }
+        }
+    }
+}
+
+pub struct Functions<'a> {
+    module: &'a Module<'a>,
+    length: usize,
+    index: u32,
+}
+
+impl<'a> Iterator for Functions<'a> {
+    type Item = &'a loader::Function<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let function = self
+            .module
+            .load_function_definition_raw(format::indices::FunctionDefinition::from(self.index))
+            .ok()?;
+        self.index += 1u32;
+        self.length -= 1;
+        Some(function)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.length, Some(self.length))
+    }
+
+    fn count(self) -> usize {
+        self.length
+    }
+}
+
+impl ExactSizeIterator for Functions<'_> {
+    fn len(&self) -> usize {
+        self.length
+    }
+}
+
+impl<'a> Module<'a> {
+    pub fn iter_defined_functions(&'a self) -> Functions<'a> {
+        Functions {
+            module: self,
+            length: self.source.definitions.0.defined_functions.0.len(),
+            index: 0u32,
         }
     }
 }

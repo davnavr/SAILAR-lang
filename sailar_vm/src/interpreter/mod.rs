@@ -128,12 +128,11 @@ impl<'l> Interpreter<'l> {
             overflowed: bool,
         ) -> Result<()> {
             match behavior {
-                OverflowBehavior::Ignore => (),
+                OverflowBehavior::Ignore => Ok(()),
                 OverflowBehavior::Flag => {
                     frame.registers.define_temporary(Register::from(overflowed))
                 }
             }
-            Ok(())
         }
 
         type BasicArithmeticOperation =
@@ -150,7 +149,7 @@ impl<'l> Interpreter<'l> {
                 expected: x.value_type(),
                 actual: y.value_type(),
             })?; // TODO: Move check for equal register types into actual operation
-            frame.registers.define_temporary(result);
+            frame.registers.define_temporary(result)?;
             handle_value_overflow(frame, operation.overflow, overflowed)
         }
 
@@ -221,16 +220,20 @@ impl<'l> Interpreter<'l> {
             Instruction::BrIf {
                 condition,
                 true_branch: true_target,
+                true_inputs: true_input_indices,
                 false_branch: false_target,
-                input_registers: input_register_indices,
+                false_inputs: false_input_indices,
             } => {
                 let current = self.call_stack.current_mut()?;
-                let inputs = collect_registers_from(current, input_register_indices)?;
+                let inputs;
+                let target;
 
-                let target = if current.registers.get(*condition)?.is_truthy() {
-                    *true_target
+                if current.registers.get(*condition)?.is_truthy() {
+                    target = *true_target;
+                    inputs = collect_registers_from(current, true_input_indices)?;
                 } else {
-                    *false_target
+                    target = *false_target;
+                    inputs = collect_registers_from(current, false_input_indices)?;
                 };
 
                 self.call_stack
@@ -276,7 +279,7 @@ impl<'l> Interpreter<'l> {
                 .call_stack
                 .current_mut()?
                 .registers
-                .define_temporary(Register::from(*value)),
+                .define_temporary(Register::from(*value))?,
             Instruction::ConvI {
                 target_type,
                 operand,
@@ -287,7 +290,7 @@ impl<'l> Interpreter<'l> {
                     .registers
                     .get(*operand)?
                     .convert_to_integer(*target_type);
-                current_frame.registers.define_temporary(converted);
+                current_frame.registers.define_temporary(converted)?;
                 handle_value_overflow(current_frame, *overflow, overflowed)?;
             }
             Instruction::Cmp { x, kind, y } => {
@@ -317,7 +320,7 @@ impl<'l> Interpreter<'l> {
                         ComparisonKind::GreaterThanOrEqual => {
                             result == Ordering::Greater || result == Ordering::Equal
                         }
-                    }));
+                    }))?;
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;
@@ -337,7 +340,7 @@ impl<'l> Interpreter<'l> {
 
                     current_frame
                         .registers
-                        .define_temporary(Register::Pointer(address))
+                        .define_temporary(Register::Pointer(address))?;
                 } else {
                     return Err(ErrorKind::RegisterTypeMismatch {
                         expected: register::Type::Pointer(
@@ -408,7 +411,7 @@ impl<'l> Interpreter<'l> {
 
                 current_frame.registers.define_temporary(Register::Pointer(
                     register::PointerVal::new(address, element_size),
-                ));
+                ))?;
             }
             Instruction::Break => {
                 self.debugger_loop();

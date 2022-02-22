@@ -1,8 +1,7 @@
 [workspace]
 members = [
     "sailar",
-    "sailas",
-    "sailar_asm",
+    "sailar_aot",
     "sailar_get",
     "sailar_vm",
     "saili"

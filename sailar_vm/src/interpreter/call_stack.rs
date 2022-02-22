@@ -1,6 +1,7 @@
 use crate::interpreter::{self, debugger, ErrorKind, Result};
 use interpreter::{BlockIndex, InstructionLocation, Register};
 use sailar::format::{self, indices, instruction_set};
+use sailar_get::loader;
 use std::borrow::{Borrow as _, BorrowMut as _};
 use std::collections::{hash_map, BTreeSet, VecDeque};
 
@@ -38,18 +39,36 @@ impl TraceFrame {
 
 pub type Trace = Vec<TraceFrame>;
 
-pub(crate) struct Registers {
+pub(crate) struct Registers<'l> {
     inputs: Vec<Register>,
+    input_types: &'l [&'l loader::TypeSignature<'l>],
     temporaries: Vec<Register>,
+    temporary_types: &'l [&'l loader::TypeSignature<'l>],
 }
 
-impl Registers {
+impl<'l> Registers<'l> {
     pub fn inputs(&self) -> &[Register] {
         &self.inputs
     }
 
-    pub fn define_temporary(&mut self, temporary: Register) {
-        self.temporaries.push(temporary)
+    // TODO: Checking of register type is easier if there is a TypeSignature<'l> field in Register.
+    pub fn define_temporary(&mut self, temporary: Register) -> Result<()> {
+        match self.temporary_types.first() {
+            Some(current_type) => {
+                let expected_type = interpreter::register::Type::try_from(*current_type)?;
+                if temporary.value_type() == expected_type {
+                    self.temporaries.push(temporary);
+                    self.temporary_types = &self.temporary_types[1..];
+                    Ok(())
+                } else {
+                    Err(ErrorKind::RegisterTypeMismatch {
+                        expected: expected_type,
+                        actual: temporary.value_type(),
+                    })
+                }
+            }
+            None => Err(ErrorKind::TooManyTemporaryRegistersDefined),
+        }
     }
 
     pub fn append_temporaries(&mut self, temporaries: &mut Vec<Register>) {
@@ -77,13 +96,8 @@ impl Registers {
     }
 }
 
-// pub enum Code<'l> {
-//     Defined(&'l format::Code),
-//     //External(&'l )
-// }
-
 pub(super) struct InstructionPointer<'l> {
-    code: &'l format::Code,
+    code: &'l loader::Code<'l>,
     block_index: BlockIndex,
     previous_block: Option<BlockIndex>,
     instructions: &'l [instruction_set::Instruction],
@@ -95,21 +109,24 @@ pub(super) struct InstructionPointer<'l> {
 static BREAK: &instruction_set::Instruction = &instruction_set::Instruction::Break;
 
 impl<'l> InstructionPointer<'l> {
-    fn new(code: &'l format::Code) -> Self {
+    fn new(code: &'l loader::Code<'l>) -> Self {
         Self {
             code,
             block_index: BlockIndex::entry(),
             previous_block: None,
-            instructions: &code.entry_block.instructions,
+            instructions: code.entry_block().raw_instructions(),
             breakpoints: VecDeque::new(),
             last_breakpoint_hit: None,
         }
     }
 
-    pub fn current_block(&self) -> &'l format::CodeBlock {
+    pub fn current_block(&self) -> &'l loader::CodeBlock<'l> {
         match self.block_index {
-            BlockIndex(None) => &self.code.entry_block,
-            BlockIndex(Some(other_index)) => &self.code.blocks[other_index],
+            BlockIndex(None) => self.code.entry_block(),
+            BlockIndex(Some(other_index)) => self
+                .code
+                .load_block(format::indices::CodeBlock::try_from(other_index + 1).unwrap())
+                .unwrap(),
         }
     }
 
@@ -117,7 +134,7 @@ impl<'l> InstructionPointer<'l> {
         unsafe {
             self.instructions
                 .as_ptr()
-                .offset_from(self.current_block().instructions.0.as_ptr()) as usize
+                .offset_from(self.current_block().raw_instructions().as_ptr()) as usize
         }
     }
 
@@ -131,13 +148,19 @@ impl<'l> InstructionPointer<'l> {
     fn jump(&mut self, target: BlockIndex) -> Result<()> {
         match target
             .0
-            .map(|index| self.code.blocks.get(index))
-            .unwrap_or(Some(&self.code.entry_block))
+            .map(|index| {
+                Some(
+                    self.code
+                        .load_block(format::indices::CodeBlock::try_from(index + 1).unwrap())
+                        .unwrap(),
+                )
+            })
+            .unwrap_or_else(|| Some(self.code.entry_block()))
         {
             Some(block) => {
                 self.previous_block = Some(self.block_index);
                 self.block_index = target;
-                self.instructions = &block.instructions;
+                self.instructions = block.raw_instructions();
                 Ok(())
             }
             None => Err(ErrorKind::UndefinedBlock(target)),
@@ -182,7 +205,7 @@ pub struct Frame<'l> {
     previous: Option<Box<Frame<'l>>>,
     function: interpreter::LoadedFunction<'l>,
     pub(super) result_count: usize,
-    pub(super) registers: Registers,
+    pub(super) registers: Registers<'l>,
     code: Code<'l>,
 }
 
@@ -219,21 +242,28 @@ impl<'l> Frame<'l> {
     ///
     /// The breakpoint list must be updated afterward.
     fn jump(&mut self, target: BlockIndex, inputs: &[Register]) -> Result<()> {
+        // Replace temporary registers.
         self.registers.temporaries.clear();
 
         // Replace input registers with new inputs.
         self.registers.inputs.clear();
-        self.registers.inputs.extend_from_slice(inputs);
+        self.registers.inputs.extend_from_slice(inputs); // TODO: Type checking of input registers after jump.
 
-        self.instructions()?.jump(target)?;
+        let current_block;
 
-        let expected_input_count = self
-            .instructions()?
-            .current_block()
-            .input_register_count
-            .try_into()
-            .unwrap();
+        {
+            let instructions = self.instructions()?;
+            instructions.jump(target)?;
+            current_block = instructions.current_block();
+        }
 
+        // TODO: Use loader to check against register type information.
+        // TODO: Remove self.result_count
+
+        self.registers.input_types = current_block.input_types()?;
+        self.registers.temporary_types = current_block.temporary_types()?;
+
+        let expected_input_count = current_block.input_registers()?.len();
         if expected_input_count != inputs.len() {
             return Err(ErrorKind::InputCountMismatch {
                 expected: expected_input_count,
@@ -481,10 +511,12 @@ impl<'l> Stack<'l> {
         }
 
         let signature = function.signature()?;
+        let parameter_types = signature.parameter_types();
 
-        if signature.parameter_types().len() != arguments.len() {
+        // TODO: Check that parameter types match inputs.
+        if parameter_types.len() != arguments.len() {
             return Err(ErrorKind::InputCountMismatch {
-                expected: signature.parameter_types().len(),
+                expected: parameter_types.len(),
                 actual: arguments.len(),
             });
         }
@@ -493,16 +525,25 @@ impl<'l> Stack<'l> {
 
         match function.raw_body() {
             format::FunctionBody::Defined(code_index) => {
-                let code = function.declaring_module().load_code_source(*code_index)?;
+                let code = function.declaring_module().load_code_raw(*code_index)?;
                 let previous = self.current.take();
+
+                // NOTE: Some duplicate code with jump() function.
                 let mut frame = Box::new(Frame {
                     depth,
                     function,
                     previous,
                     result_count: signature.return_types().len(),
-                    registers: Registers {
-                        inputs,
-                        temporaries: Vec::new(),
+                    registers: {
+                        let entry_block = code.entry_block();
+                        let entry_block_temporaries = entry_block.temporary_types()?;
+                        Registers {
+                            inputs,
+                            // Loader should have already checked that parameter types and entry block input types match.
+                            input_types: parameter_types,
+                            temporaries: Vec::with_capacity(entry_block_temporaries.len()),
+                            temporary_types: entry_block_temporaries,
+                        }
                     },
                     code: Code::Defined(InstructionPointer::new(code)),
                 });
@@ -526,7 +567,9 @@ impl<'l> Stack<'l> {
                     result_count: signature.return_types().len(),
                     registers: Registers {
                         inputs,
+                        input_types: parameter_types,
                         temporaries: Vec::new(),
+                        temporary_types: &[],
                     },
                     code: Code::External(
                         external_call_handler

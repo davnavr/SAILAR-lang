@@ -1,9 +1,10 @@
 [package]
-name = "sailar_vm"
+name = "sailar_aot"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
 sailar = { path = "../sailar" }
 sailar_get = { path = "../sailar_get" }
 thiserror = "1.0.30"

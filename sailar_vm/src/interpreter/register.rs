@@ -1,10 +1,28 @@
 use sailar::format::{instruction_set::IntegerConstant, type_system};
+use sailar_get::loader;
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Type {
     Primitive(type_system::Primitive),
     Pointer(usize),
+}
+
+impl<'l> TryFrom<&'l loader::TypeSignature<'l>> for Type {
+    type Error = loader::Error;
+
+    fn try_from(signature: &'l loader::TypeSignature<'l>) -> Result<Self, Self::Error> {
+        let raw_signature = signature.as_raw();
+        match raw_signature {
+            type_system::Any::Primitive(primitive_type) => Ok(Self::Primitive(*primitive_type)),
+            type_system::Any::NativePointer(pointee_type) => Ok(Self::Pointer(
+                loader::calculate_raw_type_size(signature.declaring_module(), pointee_type)?
+                    .try_into()
+                    .unwrap(),
+            )),
+            bad => todo!("implement register type conversion for {:?}", bad),
+        }
+    }
 }
 
 impl From<type_system::Int> for Type {

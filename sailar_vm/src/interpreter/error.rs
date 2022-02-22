@@ -16,6 +16,8 @@ pub enum ErrorKind {
     UnexpectedEndOfBlock,
     #[error("undefined register {0}")]
     UndefinedRegister(format::indices::Register),
+    #[error("too many temporary registers were defined")]
+    TooManyTemporaryRegistersDefined,
     #[error("undefined block {0}")]
     UndefinedBlock(BlockIndex),
     #[error("expected {expected} input values but got {actual}")]

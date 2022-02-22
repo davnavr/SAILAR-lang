@@ -255,7 +255,11 @@ impl SwitchLookupTable {
     }
 
     #[must_use]
-    pub fn insert(&mut self, value: IntegerConstant, target: BlockIndex) -> bool {
+    pub fn insert(
+        &mut self,
+        value: IntegerConstant,
+        target: BlockIndex, /*, inputs: I*/
+    ) -> bool {
         match self.lookup.entry(value) {
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(target);
@@ -392,24 +396,27 @@ pub enum Instruction {
     ///
     /// # Requirements
     /// - Should be the last instruction in a block.
+    /// - The number of inputs should match the number of inputs accepted by the `target` block.
     Br {
         target: BlockIndex,
         input_registers: LenVec<RegisterIndex>,
     },
     /// ```txt
     /// br.if <condition> then <true> else <false>;
-    /// br.if <condition> then <true> else <false> with <input0>, <input1>, ...;
+    /// br.if <condition> then <true> with <input0>, <input1>, ... else <false> with <input2>, <input3>, ...;
     /// ```
-    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block;
-    /// otherwise, control flow is transferred to the `false` block.
+    /// If the value in the `condition` register is truthy (not equal to zero), transfers control flow to the `true` block with
+    /// the first set of inputs; otherwise, control flow is transferred to the `false` block with the other set of inputs.
     ///
     /// # Requirements
     /// - Should be the last instruction in a block.
+    /// - The number of inputs used in both blocks must match the number of inputs that each corresponding block accepts.
     BrIf {
         condition: RegisterIndex,
         true_branch: BlockIndex,
+        true_inputs: LenVec<RegisterIndex>,
         false_branch: BlockIndex,
-        input_registers: LenVec<RegisterIndex>,
+        false_inputs: LenVec<RegisterIndex>,
     },
     /// ```txt
     /// <result0>, <result1>, ... = call <function> <argument0>, <argument1>, ...;
