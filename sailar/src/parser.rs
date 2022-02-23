@@ -277,6 +277,23 @@ impl<R: Read> Input<'_, R> {
             Opcode::Nop => Ok(Instruction::Nop),
             Opcode::Ret => Ok(Instruction::Ret(self.length_encoded_indices()?)),
             Opcode::Phi => unreachable!(),
+            Opcode::Select => {
+                let condition = self.unsigned_index()?;
+                let true_registers = self.length_encoded_indices()?;
+                let mut false_registers = Vec::with_capacity(true_registers.len());
+
+                for _ in 0..true_registers.len() {
+                    false_registers.push(self.unsigned_index()?);
+                }
+
+                Ok(Instruction::Select {
+                    condition,
+                    values: instruction_set::SelectionValues {
+                        true_registers,
+                        false_registers,
+                    },
+                })
+            }
             Opcode::Switch => {
                 use instruction_set::IntegerConstant;
                 use type_system::FixedInt;

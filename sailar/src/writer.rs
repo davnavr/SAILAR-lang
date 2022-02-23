@@ -218,6 +218,14 @@ fn block_instruction<W: Write>(
     match instruction {
         Instruction::Nop | Instruction::Break => Ok(()),
         Instruction::Ret(registers) => length_encoded_indices(out, registers, size),
+        Instruction::Select { condition, values } => {
+            unsigned_index(out, *condition, size)?;
+            length_encoded_indices(out, values.true_registers(), size)?;
+            for index in values.false_registers().iter() {
+                unsigned_index(out, *index, size)?;
+            }
+            Ok(())
+        }
         Instruction::Switch {
             comparison,
             comparison_type,

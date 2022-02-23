@@ -462,7 +462,7 @@ impl Block {
             kind,
             y: y.index,
         });
-        
+
         Ok(self.allocate_register(x.value_type.clone()))
     }
 

@@ -8,6 +8,27 @@ pub use indices::{
     Register as RegisterIndex, TypeSignature as TypeIndex,
 };
 
+/// Represents two possible sets of values that could be choosed in a `select` instruction.
+#[derive(Debug, PartialEq)]
+pub struct SelectionValues {
+    pub(crate) true_registers: LenVec<RegisterIndex>,
+    pub(crate) false_registers: Vec<RegisterIndex>,
+}
+
+impl SelectionValues {
+    pub fn count(&self) -> usize {
+        self.true_registers.len()
+    }
+
+    pub fn true_registers(&self) -> &LenVec<RegisterIndex> {
+        &self.true_registers
+    }
+
+    pub fn false_registers(&self) -> &[RegisterIndex] {
+        &self.false_registers
+    }
+}
+
 /// Represents an integer constant, whose value is stored in little-endian order.
 #[derive(Clone, Copy, Debug, Eq)]
 pub enum IntegerConstant {
@@ -363,16 +384,15 @@ pub enum Instruction {
     /// # Requirements
     /// - Should be the last instruction in a block.
     Ret(LenVec<RegisterIndex>),
-    ///// ```txt
-    ///// <result0>, <result1>, ... = select <condition> then <value0>, <value1>, ... else <value2>, <value3>, ...;
-    ///// ```
-    ///// Used to select one set of values or the other depending on whether the value in the `condition` register is truthy,
-    ///// without requires blocks or branching.
-    //Select {
-    //    condition: RegisterIndex,
-    //    true_registers: LenVec<RegisterIndex>, // NOTE: Length of vectors should be the same anyway, could optimize away length.
-    //    false_registers: Vec<RegisterIndex>,
-    //},
+    /// ```txt
+    /// <result0>, <result1>, ... = select <condition> then <value0>, <value1>, ... else <value2>, <value3>, ...;
+    /// ```
+    /// Used to select one set of values or the other depending on whether the value in the `condition` register is truthy,
+    /// without requiring blocks or branching.
+    Select {
+        condition: RegisterIndex,
+        values: SelectionValues,
+    },
     /// ```txt
     /// switch <cmpty> <comparison> default <target0> or <value1> <target1> or <value2> <target2> or ...;
     /// ```
@@ -546,6 +566,7 @@ impl Instruction {
         match self {
             Instruction::Nop => Opcode::Nop,
             Instruction::Ret(_) => Opcode::Ret,
+            Instruction::Select { .. } => Opcode::Select,
             Instruction::Switch { .. } => Opcode::Switch,
             Instruction::Br { .. } => Opcode::Br,
             Instruction::BrIf { .. } => Opcode::BrIf,
@@ -585,6 +606,7 @@ impl Instruction {
             | Instruction::BrIf { .. }
             | Instruction::MemInit { .. }
             | Instruction::Break => 0,
+            Instruction::Select { values, .. } => values.count(),
             Instruction::Call(CallInstruction { function, .. }) => function_return_count(*function),
             Instruction::Add(BasicArithmeticOperation { overflow, .. })
             | Instruction::Sub(BasicArithmeticOperation { overflow, .. })
