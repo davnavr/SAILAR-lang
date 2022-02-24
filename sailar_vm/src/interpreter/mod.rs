@@ -173,6 +173,23 @@ impl<'l> Interpreter<'l> {
                     None => *entry_point_results = results,
                 }
             }
+            Instruction::Select { condition, values } => {
+                let result_indices = if self
+                    .call_stack
+                    .current_mut()?
+                    .registers
+                    .get(*condition)?
+                    .is_truthy()
+                {
+                    values.true_registers().0.as_slice()
+                } else {
+                    values.false_registers()
+                };
+
+                let current_frame = self.call_stack.current_mut()?;
+                let mut results = collect_registers_from(current_frame, result_indices)?;
+                current_frame.registers.append_temporaries(&mut results);
+            }
             Instruction::Switch {
                 comparison,
                 comparison_type,
