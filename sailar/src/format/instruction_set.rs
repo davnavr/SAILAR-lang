@@ -166,8 +166,8 @@ pub enum Opcode {
     ConvF,
     Field,
     Global,
-    MemSt,
-    MemLd,
+    Store,
+    Load,
     MemCpy,
     MemInit,
     Alloca = 253,
@@ -635,6 +635,32 @@ pub enum Instruction {
         object: RegisterIndex,
     },
     /// ```txt
+    /// store <value> in <destination>;
+    /// <success> = store <value> in aligned <destination>;
+    /// ```
+    /// Stores the value in the specified register into the memory address contained in the `destination` register.
+    ///
+    /// # Requirements
+    /// - The type of the value in the `destination` register must be a pointer type to the type of the value in the `value`
+    /// register.
+    Store {
+        destination: RegisterIndex,
+        value: RegisterIndex,
+        //alignment: ,
+    },
+    /// ```txt
+    /// <result> = load <source>;
+    /// <result>, <what value will result havae aojd aodaoma aligned> = load aligned <source>;s
+    /// ```
+    /// Copies and returns the value at the memory address specified by the `source` register.
+    ///
+    /// # Requirements
+    /// - The type of the value in the `source` register must be a pointer type.
+    Load {
+        source: RegisterIndex,
+        //alignment: ,
+    },
+    /// ```txt
     /// mem.init <count> in <destination> with <value>
     /// mem.init <destination> from <data>
     /// ```
@@ -695,6 +721,8 @@ impl Instruction {
             Instruction::BitCount(_, _) => Opcode::BitCount,
             //Instruction::Reverse(_) => Opcode::Reverse,
             Instruction::Field { .. } => Opcode::Field,
+            Instruction::Store { .. } => Opcode::Store,
+            Instruction::Load { .. } => Opcode::Load,
             Instruction::MemInit { .. } => Opcode::MemInit,
             Instruction::Alloca { .. } => Opcode::Alloca,
             Instruction::Break => Opcode::Break,
@@ -712,6 +740,7 @@ impl Instruction {
             | Instruction::Switch { .. }
             | Instruction::Br { .. }
             | Instruction::BrIf { .. }
+            | Instruction::Store { .. }
             | Instruction::MemInit { .. }
             | Instruction::Break => 0,
             Instruction::Select { values, .. } => values.count(),
@@ -737,6 +766,7 @@ impl Instruction {
             | Instruction::BitCount(_, _)
             //| Instruction::Reverse(_)
             | Instruction::Field { .. }
+            | Instruction::Load { .. }
             | Instruction::Alloca { .. } => 1,
         }
     }

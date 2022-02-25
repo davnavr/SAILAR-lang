@@ -33,6 +33,8 @@ pub enum Error {
     },
     #[error("expected matching number of registers for selection instruction")]
     SelectValueCountMismatch,
+    #[error("expected a pointer type but got {0:?}")]
+    InvalidPointerType(Rc<builder::Type>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -518,6 +520,47 @@ impl Block {
         });
 
         Ok(self.allocate_register(x.value_type.clone()))
+    }
+
+    fn expect_pointer_register(&self, address_register: &Register) -> Result<Rc<builder::Type>> {
+        if let format::type_system::Any::NativePointer(pointee_type) =
+            address_register.value_type.as_raw()
+        {
+            Ok(self.type_signatures.insert_raw(*pointee_type.clone()))
+        } else {
+            Err(Error::InvalidPointerType(
+                address_register.value_type.clone(),
+            ))
+        }
+    }
+
+    pub fn store(&self, destination: &Register, value: &Register) -> Result<()> {
+        let pointee_type = self.expect_pointer_register(destination)?;
+
+        if pointee_type != value.value_type {
+            return Err(Error::RegisterTypeMismatch {
+                register: value.index(),
+                expected: pointee_type,
+                actual: value.value_type.clone(),
+            });
+        }
+
+        self.emit_raw(Instruction::Store {
+            destination: destination.index(),
+            value: value.index(),
+        });
+
+        Ok(())
+    }
+
+    pub fn load(&self, source: &Register) -> Result<&Register> {
+        let pointee_type = self.expect_pointer_register(source)?;
+
+        self.emit_raw(Instruction::Load {
+            source: source.index(),
+        });
+
+        Ok(self.allocate_register(pointee_type))
     }
 
     /// Emits a `mem.init` instruction, using module data as a source.

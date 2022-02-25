@@ -336,6 +336,11 @@ fn block_instruction<W: Write>(
             unsigned_index(out, *field, size)?;
             unsigned_index(out, *object, size)
         }
+        Instruction::Store { destination, value } => {
+            unsigned_index(out, *destination, size)?;
+            unsigned_index(out, *value, size)
+        }
+        Instruction::Load { source } => unsigned_index(out, *source, size),
         Instruction::MemInit {
             destination,
             source,

@@ -411,6 +411,13 @@ impl<R: Read> Input<'_, R> {
                 field: self.unsigned_index()?,
                 object: self.unsigned_index()?,
             }),
+            Opcode::Store => Ok(Instruction::Store {
+                destination: self.unsigned_index()?,
+                value: self.unsigned_index()?,
+            }),
+            Opcode::Load => Ok(Instruction::Load {
+                source: self.unsigned_index()?,
+            }),
             Opcode::MemInit => {
                 let destination = self.unsigned_index()?;
                 let flags = instruction_set::MemoryInitializationFlags::try_from(self.byte()?)
