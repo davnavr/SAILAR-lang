@@ -287,19 +287,20 @@ fn block_instruction<W: Write>(
             basic_arithmetic_operation(out, operation, size)
         }
         // Instruction::Div(operation) => division_operation(out, operation, size),
-        // Instruction::And(operation)
-        // | Instruction::Or(operation)
-        // | Instruction::Xor(operation)
-        // | Instruction::ShL(instruction_set::BitwiseShiftOperation(operation))
-        // | Instruction::ShR(instruction_set::BitwiseShiftOperation(operation))
-        // | Instruction::RotL(instruction_set::BitwiseShiftOperation(operation))
-        // | Instruction::RotR(instruction_set::BitwiseShiftOperation(operation)) => {
-        //     bitwise_operation(out, operation, size)
-        // }
-        // Instruction::Not(result_type, value) => {
-        //     numeric_type(out, *result_type)?;
-        //     unsigned_index(out, *value, size)
-        // }
+        Instruction::And { x, y } | Instruction::Or { x, y } | Instruction::Xor { x, y } => {
+            unsigned_index(out, *x, size)?;
+            unsigned_index(out, *y, size)
+        }
+        Instruction::Rotate {
+            direction,
+            value,
+            amount,
+        } => {
+            write(out, *direction as u8)?;
+            unsigned_index(out, *value, size)?;
+            unsigned_index(out, *amount, size)
+        }
+        Instruction::Not(value) => unsigned_index(out, *value, size),
         Instruction::ConstI(constant) => {
             write(out, constant.value_type().tag() as u8)?;
             match constant {
@@ -326,6 +327,10 @@ fn block_instruction<W: Write>(
             unsigned_index(out, *x, size)?;
             write(out, *kind as u8)?;
             unsigned_index(out, *y, size)
+        }
+        Instruction::BitCount(kind, value) => {
+            write(out, *kind as u8)?;
+            unsigned_index(out, *value, size)
         }
         Instruction::Field { field, object } => {
             unsigned_index(out, *field, size)?;

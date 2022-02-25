@@ -137,16 +137,15 @@ pub enum Opcode {
     Rem,
     Mod,
     DivRem,
+    // TODO: Have one opcode for integer shifts and rotate
     ShL,
     ShR,
-    RotL,
-    RotR,
+    Rotate,
+    ReservedReservedReservedReserved,
     ConstI,
     ConstF,
     Cmp,
-    PopCnt,
-    Clz,
-    Ctz,
+    BitCount,
     Reverse,
     Function,
     ConvI,
@@ -209,6 +208,35 @@ impl From<ArithmeticFlags> for OverflowBehavior {
             Self::Flag
         } else {
             Self::Ignore
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum BitCountType {
+    Population,
+    LeadingZeroes,
+    TrailingZeroes,
+    LeadingOnes,
+    TrailingOnes,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum RotationDirection {
+    Left,
+    Right,
+}
+
+impl TryFrom<u8> for RotationDirection {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Left),
+            1 => Ok(Self::Right),
+            _ => Err(value),
         }
     }
 }
@@ -451,7 +479,7 @@ pub enum Instruction {
     //CallIndr
     //CallRet
     /// ```txt
-    /// <sum> = add <x> to <y>;
+    /// <sum> = add <x> <y>;
     /// <sum>, <overflowed> = add <x> to <y> ovf.flag;
     /// ```
     /// Returns the sum of the values in the `x` and `y` registers.
@@ -464,11 +492,59 @@ pub enum Instruction {
     /// the difference.
     Sub(BasicArithmeticOperation),
     /// ```txt
-    /// <product> = mul <x> by <y>;
+    /// <product> = mul <x> <y>;
     /// <product>, <overflowed> = mul <x> by <y> ovf.flag;
     /// ```
     /// Returns the product of the values in the `x` and `y` registers.
     Mul(BasicArithmeticOperation),
+    /// ```txt
+    /// <result> = and <x> <y>;
+    /// ```
+    /// Calculates the bitwise `AND` of the integers stored in the `x` and `y` registers.
+    ///
+    /// # Requirements
+    /// - Both the `x` and `y` registers must contain integers.
+    And { x: RegisterIndex, y: RegisterIndex },
+    /// ```txt
+    /// <result> = or <x> <y>;
+    /// ```
+    /// Calculates the bitwise `XOR` of the integers stored in the `x` and `y` registers.
+    ///
+    /// # Requirements
+    /// - Both the `x` and `y` registers must contain integers.
+    Or { x: RegisterIndex, y: RegisterIndex },
+    /// ```txt
+    /// <result> = not <value>;
+    /// ```
+    /// Calculates the bitwise `NOT` of the integer stored in the `value` register.
+    ///
+    /// # Requirement
+    /// - The `value` register must contain an integer.
+    Not(RegisterIndex),
+    /// ```txt
+    /// <result> = xor <x> <y>;
+    /// ```
+    /// Calculates the bitwise `XOR` of the integers stored in the `x` and `y` registers.
+    ///
+    /// # Requirements
+    /// - Both the `x` and `y` registers must contain integers.
+    Xor { x: RegisterIndex, y: RegisterIndex },
+    // TODO: Integer shifts need flags for ignoring or flagging a left shift of a non-zero bit.
+    //ShL
+    // TODO: Decide what bit to fill in right shift (zero or sign bit? specify in flag or based on type?).
+    //ShR
+    /// ```txt
+    /// <result> = rotate <value> <direction> by <amount>;
+    /// ```
+    /// Returns the integer in the `value` register rotated in the specified direction by the specified `amount`.
+    ///
+    /// # Requirements
+    /// - The `value` and `amount` register must contain an integer.
+    Rotate {
+        direction: RotationDirection,
+        value: RegisterIndex,
+        amount: RegisterIndex,
+    },
     /// ```txt
     /// <result> = const.i <ity> <value>;
     /// ```
@@ -516,6 +592,23 @@ pub enum Instruction {
         kind: ComparisonKind,
         y: RegisterIndex,
     },
+    /// ```txt
+    /// <count> = bitcount pop <value>;
+    /// <count> = bitcount pop <value>;
+    /// ```
+    /// Returns the number of bits that are set in the integer stored in the `value` register.
+    ///
+    /// # Requirements
+    /// - The `value` register must contain an integer.
+    BitCount(BitCountType, RegisterIndex),
+    ///// ```txt
+    ///// <result> = reverse <value>;
+    ///// ```
+    ///// Returns the reverse of the integer stored in the `value` register.
+    /////
+    ///// # Requirements
+    ///// - The `value` register must contain an integer.
+    //Reverse(RegisterIndex),
     /// ```txt
     /// <address> = field <field> of <ty> in <object>;
     /// ```
@@ -575,17 +668,18 @@ impl Instruction {
             Instruction::Sub(_) => Opcode::Sub,
             Instruction::Mul(_) => Opcode::Mul,
             // Instruction::Div(_) => Opcode::Div,
-            // Instruction::And(_) => Opcode::And,
-            // Instruction::Or(_) => Opcode::Or,
-            // Instruction::Not { .. } => Opcode::Not,
-            // Instruction::Xor(_) => Opcode::Xor,
+            Instruction::And { .. } => Opcode::And,
+            Instruction::Or { .. } => Opcode::Or,
+            Instruction::Not { .. } => Opcode::Not,
+            Instruction::Xor { .. } => Opcode::Xor,
             // Instruction::ShL(_) => Opcode::ShL,
             // Instruction::ShR(_) => Opcode::ShR,
-            // Instruction::RotL(_) => Opcode::RotL,
-            // Instruction::RotR(_) => Opcode::RotR,
+            Instruction::Rotate { .. } => Opcode::Rotate,
             Instruction::ConstI(_) => Opcode::ConstI,
             Instruction::ConvI { .. } => Opcode::ConvI,
             Instruction::Cmp { .. } => Opcode::Cmp,
+            Instruction::BitCount(_, _) => Opcode::BitCount,
+            //Instruction::Reverse(_) => Opcode::Reverse,
             Instruction::Field { .. } => Opcode::Field,
             Instruction::MemInit { .. } => Opcode::MemInit,
             Instruction::Alloca { .. } => Opcode::Alloca,
@@ -617,16 +711,17 @@ impl Instruction {
                 OverflowBehavior::Ignore => 1,
                 OverflowBehavior::Flag => 2,
             },
-            // Instruction::And(_)
-            // | Instruction::Or(_)
-            // | Instruction::Not { .. }
-            // | Instruction::Xor(_)
+            Instruction::And { .. }
+            | Instruction::Or { .. }
+            | Instruction::Not (_)
+            | Instruction::Xor { .. }
             // | Instruction::ShL(_)
             // | Instruction::ShR(_)
-            // | Instruction::RotL(_)
-            // | Instruction::RotR(_)
+            | Instruction::Rotate {..}
             | Instruction::ConstI(_)
             | Instruction::Cmp { .. }
+            | Instruction::BitCount(_, _)
+            //| Instruction::Reverse(_)
             | Instruction::Field { .. }
             | Instruction::Alloca { .. } => 1,
         }

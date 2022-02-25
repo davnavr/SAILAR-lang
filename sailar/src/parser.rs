@@ -42,6 +42,8 @@ pub enum Error {
     InvalidNumericType(u8),
     #[error("{0:#02X} is not a valid overflow behavior")]
     InvalidOverflowBehavior(u8),
+    #[error("{0:#02X} is not a valid rotation direction")]
+    InvalidRotationDirection(u8),
     #[error("{0:#02X} is not a valid comparison kind")]
     InvalidComparisonKind(u8),
     #[error("{0:#02X} is not a valid memory initialization flags combination")]
@@ -367,13 +369,19 @@ impl<R: Read> Input<'_, R> {
             Opcode::Sub => Ok(Instruction::Sub(self.basic_arithmetic_operation()?)),
             Opcode::Mul => Ok(Instruction::Mul(self.basic_arithmetic_operation()?)),
             // Opcode::Div => Ok(Instruction::Div(division_operation(src, size)?)),
-            // Opcode::And => Ok(Instruction::And(bitwise_operation(src, size)?)),
-            // Opcode::Or => Ok(Instruction::Or(bitwise_operation(src, size)?)),
-            // Opcode::Not => Ok(Instruction::Not(
-            //     numeric_type(src)?,
-            //     self.unsigned_index()?,
-            // )),
-            // Opcode::Xor => Ok(Instruction::Xor(bitwise_operation(src, size)?)),
+            Opcode::And => Ok(Instruction::And {
+                x: self.unsigned_index()?,
+                y: self.unsigned_index()?,
+            }),
+            Opcode::Or => Ok(Instruction::And {
+                x: self.unsigned_index()?,
+                y: self.unsigned_index()?,
+            }),
+            Opcode::Not => Ok(Instruction::Not(self.unsigned_index()?)),
+            Opcode::Xor => Ok(Instruction::And {
+                x: self.unsigned_index()?,
+                y: self.unsigned_index()?,
+            }),
             // Opcode::ShL => Ok(Instruction::ShL(bitwise_shift_operation(src, size)?)),
             // Opcode::ShR => Ok(Instruction::ShR(bitwise_shift_operation(src, size)?)),
             // Opcode::RotL => Ok(Instruction::RotL(bitwise_shift_operation(src, size)?)),
@@ -385,6 +393,12 @@ impl<R: Read> Input<'_, R> {
                 overflow: instruction_set::OverflowBehavior::try_from(self.byte()?)
                     .map_err(Error::InvalidOverflowBehavior)?,
                 operand: self.unsigned_index()?,
+            }),
+            Opcode::Rotate => Ok(Instruction::Rotate {
+                direction: instruction_set::RotationDirection::try_from(self.byte()?)
+                    .map_err(Error::InvalidRotationDirection)?,
+                value: self.unsigned_index()?,
+                amount: self.unsigned_index()?,
             }),
             Opcode::Cmp => Ok(Instruction::Cmp {
                 x: self.unsigned_index()?,
