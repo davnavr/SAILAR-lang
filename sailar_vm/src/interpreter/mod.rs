@@ -185,6 +185,17 @@ impl<'l> Interpreter<'l> {
             Ok(())
         }
 
+        fn expect_address_register(register: &Register) -> Result<register::PointerVal> {
+            if let Register::Pointer(pointer) = register {
+                Ok(*pointer)
+            } else {
+                Err(ErrorKind::RegisterTypeMismatch {
+                    expected: register::Type::Pointer(0),
+                    actual: register.value_type(),
+                })
+            }
+        }
+
         match instruction {
             Instruction::Nop => (),
             Instruction::Ret(indices) => {
@@ -388,6 +399,30 @@ impl<'l> Interpreter<'l> {
             }
             Instruction::BitCount(kind, value) => {
                 todo!("what is the return type of the bitcount instruction?")
+            }
+            Instruction::Store { destination, value } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let value_register = current_frame.registers.get(*value)?;
+                let destination_address =
+                    expect_address_register(current_frame.registers.get(*destination)?)?;
+
+                // Memory safety of a memory store is dependent on the code being executed.
+                unsafe {
+                    value_register.store_value_into(destination_address);
+                }
+            }
+            Instruction::Load { source } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let source_address =
+                    expect_address_register(current_frame.registers.get(*source)?)?;
+
+                //let pointee_type
+
+                // Memory safety of a memory load is dependent on the code being executed.
+                let result =
+                    unsafe { Register::load_value_from(source_address, todo!("pointee_type")) };
+
+                current_frame.registers.define_temporary(result)?;
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;
