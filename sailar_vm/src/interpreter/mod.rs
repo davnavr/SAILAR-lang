@@ -148,9 +148,41 @@ impl<'l> Interpreter<'l> {
             let (result, overflowed) = o(x, y).map_err(|_| ErrorKind::RegisterTypeMismatch {
                 expected: x.value_type(),
                 actual: y.value_type(),
-            })?; // TODO: Move check for equal register types into actual operation
+            })?; // TODO: Move check for equal register types into actual operation.
             frame.registers.define_temporary(result)?;
             handle_value_overflow(frame, operation.overflow, overflowed)
+        }
+
+        fn unary_bitwise_operation<'l>(
+            frame: &mut call_stack::Frame<'l>,
+            value: instruction_set::RegisterIndex,
+            operation: fn(&Register) -> std::result::Result<register::IntVal, register::Type>,
+        ) -> Result<()> {
+            let register = frame.registers.get(value)?;
+            let result = operation(register)
+                .expect("TODO: error for expected an integer type during unary bitwise operation");
+            frame.registers.define_temporary(Register::Int(result))?;
+            Ok(())
+        }
+
+        fn binary_bitwise_operation<'l>(
+            frame: &mut call_stack::Frame<'l>,
+            x: instruction_set::RegisterIndex,
+            y: instruction_set::RegisterIndex,
+            operation: fn(
+                &Register,
+                &Register,
+            ) -> std::result::Result<register::IntVal, register::Type>,
+        ) -> Result<()> {
+            let x_register = frame.registers.get(x)?;
+            let y_register = frame.registers.get(y)?;
+            let result =
+                operation(x_register, y_register).map_err(|_| ErrorKind::RegisterTypeMismatch {
+                    expected: x_register.value_type(),
+                    actual: y_register.value_type(),
+                })?; // TODO: Move check for equal register types into actual operation.
+            frame.registers.define_temporary(Register::Int(result))?;
+            Ok(())
         }
 
         match instruction {
@@ -292,6 +324,21 @@ impl<'l> Interpreter<'l> {
                 operation,
                 Register::overflowing_mul,
             )?,
+            Instruction::And { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitand)?
+            }
+            Instruction::Or { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitor)?
+            }
+            Instruction::Not(value) => {
+                unary_bitwise_operation(self.call_stack.current_mut()?, *value, Register::bitnot)?
+            }
+            Instruction::Xor { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitxor)?
+            }
+            Instruction::Rotate { .. } => {
+                todo!("rotate instruction will be merged, interpretation not yet supported")
+            }
             Instruction::ConstI(value) => self
                 .call_stack
                 .current_mut()?
@@ -338,6 +385,9 @@ impl<'l> Interpreter<'l> {
                             result == Ordering::Greater || result == Ordering::Equal
                         }
                     }))?;
+            }
+            Instruction::BitCount(kind, value) => {
+                todo!("what is the return type of the bitcount instruction?")
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;

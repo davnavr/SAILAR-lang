@@ -1,6 +1,7 @@
 use sailar::format::{instruction_set::IntegerConstant, type_system};
 use sailar_get::loader;
 use std::fmt::{Display, Formatter};
+use std::ops::{BitAnd, BitOr, BitXor, Not};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Type {
@@ -434,6 +435,87 @@ macro_rules! basic_arithmetic_operation {
 basic_arithmetic_operation!(overflowing_add);
 basic_arithmetic_operation!(overflowing_sub);
 basic_arithmetic_operation!(overflowing_mul);
+
+macro_rules! binary_bitwise_operation {
+    ($operation_name: ident) => {
+        impl Register {
+            pub fn $operation_name(&self, other: &Self) -> Result<IntVal, Type> {
+                match (self, other) {
+                    (Self::Int(x), Self::Int(y)) => match (*x, *y) {
+                        (IntVal::S8(x_value), IntVal::S8(y_value)) => {
+                            Ok(IntVal::S8(i8::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U8(x_value), IntVal::U8(y_value)) => {
+                            Ok(IntVal::U8(u8::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S16(x_value), IntVal::S16(y_value)) => {
+                            Ok(IntVal::S16(i16::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U16(x_value), IntVal::U16(y_value)) => {
+                            Ok(IntVal::U16(u16::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S32(x_value), IntVal::S32(y_value)) => {
+                            Ok(IntVal::S32(i32::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U32(x_value), IntVal::U32(y_value)) => {
+                            Ok(IntVal::U32(u32::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S64(x_value), IntVal::S64(y_value)) => {
+                            Ok(IntVal::S64(i64::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U64(x_value), IntVal::U64(y_value)) => {
+                            Ok(IntVal::U64(u64::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::SNative(x_value), IntVal::SNative(y_value)) => {
+                            Ok(IntVal::SNative(isize::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::UNative(x_value), IntVal::UNative(y_value)) => {
+                            Ok(IntVal::UNative(usize::$operation_name(x_value, y_value)))
+                        }
+                        _ => Err(self.value_type()),
+                    },
+                    (_, Self::Int(_)) => Err(self.value_type()),
+                    _ => Err(other.value_type()),
+                }
+            }
+        }
+    };
+}
+
+binary_bitwise_operation!(bitand);
+binary_bitwise_operation!(bitor);
+binary_bitwise_operation!(bitxor);
+
+macro_rules! unary_bitwise_operation {
+    ($helper_name: ident, $operation_name: ident) => {
+        impl Register {
+            pub fn $helper_name(&self) -> Result<IntVal, Type> {
+                if let Self::Int(integer_value) = self {
+                    match *integer_value {
+                        IntVal::S8(value) => Ok(IntVal::S8(i8::$operation_name(value))),
+                        IntVal::U8(value) => Ok(IntVal::U8(u8::$operation_name(value))),
+                        IntVal::S16(value) => Ok(IntVal::S16(i16::$operation_name(value))),
+                        IntVal::U16(value) => Ok(IntVal::U16(u16::$operation_name(value))),
+                        IntVal::S32(value) => Ok(IntVal::S32(i32::$operation_name(value))),
+                        IntVal::U32(value) => Ok(IntVal::U32(u32::$operation_name(value))),
+                        IntVal::S64(value) => Ok(IntVal::S64(i64::$operation_name(value))),
+                        IntVal::U64(value) => Ok(IntVal::U64(u64::$operation_name(value))),
+                        IntVal::SNative(value) => {
+                            Ok(IntVal::SNative(isize::$operation_name(value)))
+                        }
+                        IntVal::UNative(value) => {
+                            Ok(IntVal::UNative(usize::$operation_name(value)))
+                        }
+                    }
+                } else {
+                    Err(self.value_type())
+                }
+            }
+        }
+    };
+}
+
+unary_bitwise_operation!(bitnot, not);
 
 impl Register {
     pub fn compare_to(&self, other: &Self) -> Result<std::cmp::Ordering, Type> {
