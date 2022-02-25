@@ -290,10 +290,11 @@ impl<R: Read> Input<'_, R> {
 
                 Ok(Instruction::Select {
                     condition,
-                    values: instruction_set::SelectionValues {
-                        true_registers,
+                    values: instruction_set::SelectionValues::new(
+                        true_registers.0,
                         false_registers,
-                    },
+                    )
+                    .expect("parser ensures register counts are the same"),
                 })
             }
             Opcode::Switch => {

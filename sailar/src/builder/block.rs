@@ -31,6 +31,8 @@ pub enum Error {
         expected: Rc<builder::Type>,
         actual: Rc<builder::Type>,
     },
+    #[error("expected matching number of registers for selection instruction")]
+    SelectValueCountMismatch,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -220,6 +222,58 @@ impl Block {
 
         self.emit_raw(Instruction::Ret(format::LenVec(result_indices)));
         Ok(())
+    }
+
+    pub fn select<'a, T, F>(
+        &'a self,
+        condition: &'a Register,
+        true_registers: T,
+        false_registers: F,
+    ) -> Result<Vec<&'a Register>>
+    where
+        T: std::iter::IntoIterator<Item = &'a Register>,
+        F: std::iter::IntoIterator<Item = &'a Register>,
+    {
+        let mut true_values = true_registers.into_iter();
+        let mut false_values = false_registers.into_iter();
+        let mut true_indices = Vec::with_capacity({
+            let (minimum, maximum) = true_values.size_hint();
+            maximum.unwrap_or(minimum)
+        });
+        let mut false_indices = Vec::with_capacity(true_indices.capacity());
+        let mut results = Vec::with_capacity(true_indices.capacity());
+
+        loop {
+            match (true_values.next(), false_values.next()) {
+                (Some(true_value), Some(false_value)) => {
+                    true_indices.push(true_value.index());
+                    false_indices.push(false_value.index());
+
+                    if true_value.value_type != false_value.value_type {
+                        return Err(Error::RegisterTypeMismatch {
+                            register: false_value.index(),
+                            actual: false_value.value_type.clone(),
+                            expected: true_value.value_type.clone(),
+                        });
+                    }
+
+                    results.push(self.allocate_register(true_value.value_type.clone()));
+                }
+                (None, None) => {
+                    let selection_values =
+                        instruction_set::SelectionValues::new(true_indices, false_indices)
+                            .expect("selection value length should have been validated");
+
+                    self.emit_raw(Instruction::Select {
+                        condition: condition.index(),
+                        values: selection_values,
+                    });
+
+                    return Ok(results);
+                }
+                (_, _) => return Err(Error::SelectValueCountMismatch),
+            }
+        }
     }
 
     fn check_target_branch<'a, I>(

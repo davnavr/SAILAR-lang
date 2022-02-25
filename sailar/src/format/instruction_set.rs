@@ -11,11 +11,25 @@ pub use indices::{
 /// Represents two possible sets of values that could be choosed in a `select` instruction.
 #[derive(Debug, PartialEq)]
 pub struct SelectionValues {
-    pub(crate) true_registers: LenVec<RegisterIndex>,
-    pub(crate) false_registers: Vec<RegisterIndex>,
+    true_registers: LenVec<RegisterIndex>,
+    false_registers: Vec<RegisterIndex>,
 }
 
 impl SelectionValues {
+    pub fn new(
+        true_registers: Vec<RegisterIndex>,
+        false_registers: Vec<RegisterIndex>,
+    ) -> Option<Self> {
+        if true_registers.len() == false_registers.len() {
+            Some(Self {
+                true_registers: LenVec(true_registers),
+                false_registers,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn count(&self) -> usize {
         self.true_registers.len()
     }
