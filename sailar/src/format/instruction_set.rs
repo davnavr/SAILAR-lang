@@ -140,10 +140,10 @@ pub enum Opcode {
     Call,
     CallIndr,
     CallRet,
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Add, // AddI,
+    Sub, // SubI,
+    Mul, // MulI,
+    Div, // DivI,
     And,
     Or,
     Not,
@@ -151,13 +151,13 @@ pub enum Opcode {
     Rem,
     Mod,
     DivRem,
-    // TODO: Have one opcode for integer shifts and rotate
-    ShL,
-    ShR,
+    AddF,
+    SubF,
     Rotate,
-    ReservedReservedReservedReserved,
-    ConstI,
-    ConstF,
+    MulF,
+    // TODO: Just a single constant instruction
+    ConstI, // Const
+    ConstF, // DivF
     Cmp,
     BitCount,
     Reverse,
@@ -543,6 +543,7 @@ pub enum Instruction {
     /// # Requirements
     /// - Both the `x` and `y` registers must contain integers.
     Xor { x: RegisterIndex, y: RegisterIndex },
+    // TODO: One opcode for all kinds of shifts/rotations
     // TODO: Integer shifts need flags for ignoring or flagging a left shift of a non-zero bit.
     //ShL
     // TODO: Decide what bit to fill in right shift (zero or sign bit? specify in flag or based on type?).
