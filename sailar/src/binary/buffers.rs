@@ -76,17 +76,14 @@ mod tests {
     use crate::buffers;
 
     #[test]
-    fn buffer_rent_twice_test() {
+    fn buffer_rent_test() {
         let pool = buffers::BufferPool::new();
 
         {
-            let mut buffer_1 = pool.rent();
-            buffer_1.push(1);
-            let mut buffer_2 = pool.rent();
-            buffer_2.push(2);
+            let mut buffer = pool.rent();
+            buffer.push(1);
         }
 
         assert_eq!(pool.rent().len(), 0);
-        assert_eq!(pool.buffers.borrow().len(), 2);
     }
 }
