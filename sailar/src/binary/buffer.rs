@@ -65,7 +65,7 @@ impl Rented<'_> {
     }
 
     #[inline]
-    pub fn as_vec_mut(&mut self) -> &mut Vec<u8> {
+    pub fn as_mut_vec(&mut self) -> &mut Vec<u8> {
         &mut self.buffer
     }
 }
@@ -82,7 +82,7 @@ impl<'a> std::ops::Deref for Rented<'a> {
 impl<'a> std::ops::DerefMut for Rented<'a> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_vec_mut()
+        self.as_mut_vec()
     }
 }
 

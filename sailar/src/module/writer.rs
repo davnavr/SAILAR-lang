@@ -108,7 +108,7 @@ pub fn write<W: Write>(
 
     {
         let mut header_buffer = buffer_pool.rent_with_capacity(32);
-        let mut header = Wrapper::new(header_buffer.as_vec_mut(), length_size);
+        let mut header = Wrapper::new(header_buffer.as_mut_vec(), length_size);
         let name = module.name.as_bytes();
         header.write_length(name.len())?;
         header.write_all(name)?;
