@@ -45,6 +45,14 @@ impl LengthSize {
             Self::Four => u32::MAX.try_into().unwrap_or(usize::MAX),
         }
     }
+
+    pub const fn byte_count(self) -> u8 {
+        match self {
+            Self::One => 1,
+            Self::Two => 2,
+            Self::Four => 4,
+        }
+    }
 }
 
 impl From<LengthSize> for u8 {
