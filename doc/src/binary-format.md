@@ -24,7 +24,7 @@ Value|Length Integer Size (in bytes)
 `2`|`4`
 
 ## Identifiers
-TODO Figure out if arbitrary sequences of bytes are allowed or if UTF-8 is required. Identifiers are not null terminated and also cannot contain any null (`\0`) bytes.
+Identifiers are valid UTF-8 strings that are length-prefixed and not null-terminated. Valid identifiers must not have a length of zero and cannot contain any null (`\0`) code points.
 
 Offset|Name|Notes
 ---|---|---

@@ -88,7 +88,24 @@ impl Module {
     ///
     /// ```rust
     /// # use sailar::module::{FormatVersion, Module};
-    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 12, 0 ];
+    /// let contents = &[
+    ///     b'S', b'A', b'I', b'L', b'A', b'R', 0,
+    ///     // Format version
+    ///     0, 12,
+    ///     // Length size
+    ///     0,
+    ///     // Header size
+    ///     8,
+    ///     // Module name length
+    ///     4,
+    ///     // Module name
+    ///     b'T', b'e', b's', b't',
+    ///     // Module version
+    ///     2,
+    ///     1,
+    ///     0,
+    /// ];
+    ///
     /// let module = Module::from_slice(contents, None)?;
     /// assert_eq!(module.format_version(), FormatVersion::MINIMUM_SUPPORTED);
     /// # Ok::<(), sailar::module::ParseError>(())

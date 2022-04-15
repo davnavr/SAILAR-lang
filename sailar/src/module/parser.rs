@@ -1,6 +1,7 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer};
+use crate::Identifier;
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -34,12 +35,12 @@ pub enum ErrorKind {
     InvalidLengthSize(#[from] binary::InvalidLengthSize),
     #[error("the length value {0} is too large and cannot be used")]
     LengthTooLarge(u32),
-    #[error("the module header cannot be null or empty")]
-    MissingModuleHeader,
     #[error("expected size of module header but got EOF")]
     MissingHeaderSize,
     #[error("expected module header field count but got EOF")]
     MissingHeaderFieldCount,
+    #[error("the module header size cannot be empty")]
+    MissingModuleHeader,
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -175,7 +176,7 @@ pub fn parse<R: std::io::Read>(
 
         length_integer_or_else = match length_size {
             binary::LengthSize::One => |src, error| {
-                let mut buffer = 0;
+                let mut buffer = 0u8;
                 src.read_exact(std::slice::from_mut(&mut buffer))
                     .map_err(|_| src.error(error()))?;
                 Ok(usize::from(buffer))
@@ -198,10 +199,21 @@ pub fn parse<R: std::io::Read>(
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
 
-    {
-        let header_size = length_integer_or_else(&mut src, || ErrorKind::MissingHeaderSize)?;
-        let field_count = length_integer_or_else(&mut src, || ErrorKind::MissingHeaderFieldCount)?;
+    #[derive(Debug)]
+    struct Header {
+        name: Identifier,
+        version: Box<[u8]>,
     }
+
+    let header = {
+        let header_size = length_integer_or_else(&mut src, || ErrorKind::MissingHeaderSize)?;
+
+        if header_size == 0 {
+            error!(ErrorKind::MissingModuleHeader);
+        }
+
+        src.parse_buffer(&buffer_pool, header_size, |src| todo!("parse identifiers"))?
+    };
 
     Ok(crate::module::Module {
         format_version,
