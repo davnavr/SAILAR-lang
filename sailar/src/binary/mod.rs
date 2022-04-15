@@ -53,6 +53,32 @@ impl LengthSize {
             Self::Four => 4,
         }
     }
+
+    /// Updates the length size value if the specified length cannot fit it.
+    ///
+    /// # Panics
+    ///
+    /// As indices are currently limited to four bytes, this panics if the `length` is greater than [`u32::MAX`].
+    pub fn resize_to_fit(&mut self, length: usize) {
+        match self {
+            Self::One if length > u8::MAX.into() => *self = Self::Two,
+            Self::One => (),
+            Self::Two if length > u16::MAX.into() => *self = Self::Four,
+            Self::Two => (),
+            Self::Four if length <= u32::MAX.try_into().unwrap_or(usize::MAX) => (),
+            Self::Four => panic!("length value too large: {}", length),
+        }
+    }
+
+    pub fn resize_to_fit_many<T, I: std::iter::IntoIterator<Item = T>, F: FnMut(T) -> usize>(
+        &mut self,
+        items: I,
+        mut length_source: F,
+    ) {
+        for item in items.into_iter() {
+            self.resize_to_fit(length_source(item))
+        }
+    }
 }
 
 impl From<LengthSize> for u8 {

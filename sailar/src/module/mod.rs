@@ -38,6 +38,20 @@ pub use parser::{Error as ParseError, ErrorKind as ParseErrorKind, InvalidMagicE
 mod writer;
 
 impl Module {
+    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
+        let mut length_size = LengthSize::One;
+        length_size.resize_to_fit(name.len());
+        length_size.resize_to_fit_many(version.iter(), |n| *n);
+
+        Self {
+            contents: None,
+            format_version: FormatVersion::MINIMUM_SUPPORTED.clone(),
+            length_size,
+            name,
+            version,
+        }
+    }
+
     #[inline]
     pub fn format_version(&self) -> &FormatVersion {
         &self.format_version
@@ -72,6 +86,11 @@ impl Module {
         writer::write(self, destination, buffer_pool)
     }
 
+    /// Returns the binary contents of the module.
+    ///
+    /// # Examples
+    ///
+    ///
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &RawModule {
         if self.contents.is_none() {
             let mut module_buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
