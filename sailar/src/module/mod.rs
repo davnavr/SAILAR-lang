@@ -85,7 +85,7 @@ impl Module {
     /// 
     /// ```rust
     /// # use sailar::module::Module;
-    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 0, 12 ];
+    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 12, 1 ];
     /// let module = Module::from_slice(contents, None)?;
     /// assert_eq!(module.format_version(), &sailar::module::MINIMUM_SUPPORTED_FORMAT);
     /// # Ok::<(), sailar::module::ParseError>(())

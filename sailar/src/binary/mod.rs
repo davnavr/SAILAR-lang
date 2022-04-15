@@ -3,7 +3,7 @@
 pub mod buffer;
 
 /// The magic number that is the start of all SAILAR module files.
-pub static MAGIC: &[u8; 8] = b"SAILAR\0\0";
+pub static MAGIC: &[u8; 7] = b"SAILAR\0";
 
 /// Represents an array of bytes that make up a SAILAR module.
 #[derive(Clone, Debug)]
