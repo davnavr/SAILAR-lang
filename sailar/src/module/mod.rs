@@ -75,7 +75,7 @@ impl Module {
         &self.version
     }
 
-    /// Writes the bytes that make up this module to the specified destination.
+    /// Writes the bytes binary contents of the module to the specified destination.
     ///
     /// For writers such as [`std::fs::File`], consider wrapping the destination in a [`std::io::BufWriter`].
     pub fn write<W: std::io::Write>(
@@ -84,6 +84,15 @@ impl Module {
         buffer_pool: Option<&buffer::Pool>,
     ) -> std::io::Result<()> {
         writer::write(self, destination, buffer_pool)
+    }
+
+    /// Writes the binary contents of the module to a file, automatically wrapping it in a [`std::io::BufWriter`].
+    pub fn write_to_file(
+        &self,
+        destination: std::fs::File,
+        buffer_pool: Option<&buffer::Pool>,
+    ) -> std::io::Result<()> {
+        self.write(std::io::BufWriter::new(destination), buffer_pool)
     }
 
     /// Returns the binary contents of the module.
