@@ -40,7 +40,7 @@ impl Pool {
     pub(crate) fn existing_or_default(pool: Option<&Self>) -> std::borrow::Cow<'_, Self> {
         match pool {
             Some(pool) => std::borrow::Cow::Borrowed(pool),
-            None => std::borrow::Cow::Owned(Self::default())
+            None => std::borrow::Cow::Owned(Self::default()),
         }
     }
 }
@@ -81,10 +81,31 @@ pub enum RentedOrOwned<'a> {
 }
 
 impl<'a> RentedOrOwned<'a> {
-    pub fn with_capacity(capacity: usize, pool: Option<&'a mut Pool>) -> Self {
+    pub fn with_capacity(capacity: usize, pool: Option<&'a Pool>) -> Self {
         match pool {
             None => Self::Owned(Vec::with_capacity(capacity)),
             Some(pool) => Self::Rented(pool.rent_with_capacity(capacity)),
+        }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        match self {
+            Self::Rented(rented) => rented,
+            Self::Owned(owned) => owned,
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        match self {
+            Self::Rented(rented) => rented,
+            Self::Owned(owned) => &mut owned,
+        }
+    }
+
+    pub fn into_vec(self) -> Vec<u8> {
+        match self {
+            Self::Rented(rented) => rented.clone(),
+            Self::Owned(owned) => owned,
         }
     }
 }

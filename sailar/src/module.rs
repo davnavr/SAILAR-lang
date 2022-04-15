@@ -4,7 +4,7 @@ use crate::binary::{self, buffer};
 use std::cell::RefCell;
 
 /// Specifies the version of a SAILAR module file.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub struct FormatVersion {
     /// The major version number, incremented when backwards incompatible changes are made to the format.
@@ -12,14 +12,11 @@ pub struct FormatVersion {
     pub minor: u8,
 }
 
-impl FormatVersion {
-    // static
-    /// The minimum version of the format supported by this API.
-    pub const MINIMUM_SUPPORTED: Self = Self {
-        major: 0,
-        minor: 12,
-    };
-}
+/// The minimum version of the format supported by this API.
+pub static MINIMUM_SUPPORTED_VERSION: FormatVersion = FormatVersion {
+    major: 0,
+    minor: 12,
+};
 
 /// A SAILAR module.
 #[derive(Debug)]
@@ -50,10 +47,14 @@ impl Module {
     }
 
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &binary::RawModule {
-        match &self.contents {
-            Some(contents) => contents,
-            None => {}
-        }
+        self.contents.get_or_insert_with(|| {
+            let mut module_buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
+            if let Err(error) = Self::write(self, module_buffer.as_mut_slice(), buffer_pool) {
+                unreachable!("{:?}", error)
+            } else {
+                binary::RawModule::from_vec(module_buffer.into_vec())
+            }
+        })
     }
 
     //pub fn drop_raw_contents
@@ -77,14 +78,16 @@ impl std::fmt::Display for InvalidMagicError {
 
 impl std::error::Error for InvalidMagicError {}
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ParseErrorKind {
     #[error(transparent)]
     InvalidMagic(#[from] InvalidMagicError),
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("error at offset {offset:#X}, {kind}")]
 pub struct ParseError {
     offset: usize,
