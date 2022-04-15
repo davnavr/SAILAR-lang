@@ -1,7 +1,7 @@
 //! Code for interacting with SAILAR identifiers.
 
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 /// Represents a SAILAR identifier, which is a UTF-8 string that cannot be empty or contain any `null` bytes.
 ///
@@ -77,7 +77,7 @@ impl From<&Id> for Identifier {
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum InvalidIdentifier {
+pub enum InvalidError {
     #[error("identifiers cannot be empty")]
     Empty,
     #[error("identifiers cannot contain null bytes")]
@@ -85,13 +85,13 @@ pub enum InvalidIdentifier {
 }
 
 impl<'a> TryFrom<&'a str> for &'a Id {
-    type Error = InvalidIdentifier;
+    type Error = InvalidError;
 
-    fn try_from(identifier: &'a str) -> Result<&'a Id, InvalidIdentifier> {
+    fn try_from(identifier: &'a str) -> Result<&'a Id, InvalidError> {
         if identifier.is_empty() {
-            Err(InvalidIdentifier::Empty)
+            Err(InvalidError::Empty)
         } else if identifier.chars().any(|c| c == '\0') {
-            Err(InvalidIdentifier::ContainsNull)
+            Err(InvalidError::ContainsNull)
         } else {
             Ok(unsafe { std::mem::transmute::<&'a str, &'a Id>(identifier) })
         }
@@ -99,18 +99,27 @@ impl<'a> TryFrom<&'a str> for &'a Id {
 }
 
 impl TryFrom<String> for Identifier {
-    type Error = InvalidIdentifier;
+    type Error = InvalidError;
 
-    fn try_from(identifier: String) -> Result<Self, InvalidIdentifier> {
+    fn try_from(identifier: String) -> Result<Self, InvalidError> {
         <&Id>::try_from(identifier.as_str())?;
         Ok(Self(identifier))
+    }
+}
+
+impl TryFrom<&str> for Identifier {
+    type Error = InvalidError;
+
+    fn try_from(identifier: &str) -> Result<Self, InvalidError> {
+        <&Id>::try_from(identifier)?;
+        Ok(Self(identifier.to_owned()))
     }
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ParseError {
     #[error(transparent)]
-    InvalidIdentifier(#[from] InvalidIdentifier),
+    InvalidIdentifier(#[from] InvalidError),
     #[error(transparent)]
     InvalidSequence(#[from] std::str::Utf8Error),
 }
@@ -120,5 +129,13 @@ impl<'a> TryFrom<&'a [u8]> for &'a Id {
 
     fn try_from(bytes: &'a [u8]) -> Result<&'a Id, ParseError> {
         Ok(<&'a Id>::try_from(std::str::from_utf8(bytes)?)?)
+    }
+}
+
+impl TryFrom<&[u8]> for Identifier {
+    type Error = ParseError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, ParseError> {
+        <&Id>::try_from(bytes).map(Id::to_identifier)
     }
 }

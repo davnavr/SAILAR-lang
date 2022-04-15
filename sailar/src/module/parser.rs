@@ -71,7 +71,7 @@ pub type ParseResult<T> = Result<T, Error>;
 mod input {
     use super::{Error, ErrorKind, ParseResult};
     use crate::binary::{buffer, LengthSize};
-    use crate::identifier::{self, Id};
+    use crate::identifier::{self, Identifier};
 
     type LengthIntegerParser<R> = fn(&mut Wrapper<R>, fn() -> ErrorKind) -> ParseResult<usize>;
 
@@ -99,8 +99,8 @@ mod input {
             }
         }
 
-        pub fn read(&mut self, buf: &mut [u8]) -> ParseResult<usize> {
-            match self.source.read(buf) {
+        pub fn read(&mut self, buffer: &mut [u8]) -> ParseResult<usize> {
+            match self.source.read(buffer) {
                 Ok(count) => {
                     self.offset += count;
                     Ok(count)
@@ -109,10 +109,10 @@ mod input {
             }
         }
 
-        pub fn read_exact(&mut self, buf: &mut [u8]) -> ParseResult<()> {
-            match self.source.read_exact(buf) {
+        pub fn read_exact(&mut self, buffer: &mut [u8]) -> ParseResult<()> {
+            match self.source.read_exact(buffer) {
                 Ok(()) => {
-                    self.offset += buf.len();
+                    self.offset += buffer.len();
                     Ok(())
                 }
                 Err(error) => Err(self.error(ErrorKind::IO(error))),
@@ -168,7 +168,7 @@ mod input {
         pub fn parse_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
             &mut self,
             pool: &buffer::Pool,
-            length: usize,
+            length: usize, //buffer: &[u8],
             parser: P,
         ) -> ParseResult<T> {
             let mut buffer = pool.rent_with_length(length);
@@ -183,25 +183,30 @@ mod input {
             })
         }
 
-        pub fn read_identifier<'b>(
+        pub fn read_identifier<'b, B: FnOnce(usize) -> buffer::RentedOrOwned<'b>>(
             &mut self,
-            length_integer: LengthIntegerParser<R>,
-            buf: &'b mut Vec<u8>,
-        ) -> ParseResult<&'b Id> {
-            let length = length_integer(self, || {
-                identifier::ParseError::InvalidIdentifier(identifier::InvalidIdentifier::Empty)
-                    .into()
+            mut buffer_source: B,
+        ) -> ParseResult<Identifier> {
+            let length = self.read_length(|| {
+                identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into()
             })?;
 
-            buf.resize(length, 0);
-            self.read_exact(buf.as_mut_slice())?;
-            <&Id>::try_from(buf.as_slice()).map_err(|error| self.error(error.into()))
+            let buffer = buffer_source(length);
+            self.read_exact(buffer.as_mut_slice())?;
+            Identifier::try_from(buffer.as_slice()).map_err(|error| self.error(error.into()))
+        }
+
+        pub fn read_identifier_pooled<'b>(
+            &mut self,
+            pool: &'b buffer::Pool,
+        ) -> ParseResult<Identifier> {
+            self.read_identifier(|length| pool.rent_with_length(length).into())
         }
 
         /// Attempts to fill the specified buffer, returning a slice of the bytes that were read.
-        pub fn fill<'b>(&mut self, buf: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
-            let count = self.read(buf)?;
-            Ok(&mut buf[0..count])
+        pub fn fill<'b>(&mut self, buffer: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
+            let count = self.read(buffer)?;
+            Ok(&mut buffer[0..count])
         }
     }
 }
@@ -274,7 +279,9 @@ pub fn parse<R: std::io::Read>(
             error!(ErrorKind::MissingModuleHeader);
         }
 
-        src.parse_buffer(buffer_pool, header_size, |src| todo!("parse identifiers"))?
+        src.parse_buffer(buffer_pool, header_size, |src| Header {
+            name: src.read_identifier_pooled(buffer_pool)?,
+        })?
     };
 
     Ok(crate::module::Module {
