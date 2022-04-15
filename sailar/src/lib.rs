@@ -4,4 +4,5 @@ pub mod binary;
 pub mod identifier;
 pub mod module;
 
-pub use identifier::Identifier;
+pub use identifier::{Id, Identifier};
+pub use module::Module;

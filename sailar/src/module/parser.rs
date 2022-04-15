@@ -1,7 +1,7 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer};
-use crate::Identifier;
+use crate::{identifier, Id, Identifier};
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -41,6 +41,8 @@ pub enum ErrorKind {
     MissingHeaderFieldCount,
     #[error("the module header size cannot be empty")]
     MissingModuleHeader,
+    #[error("invalid identifier, {0}")]
+    InvalidIdentifier(#[from] identifier::ParseError),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -75,6 +77,8 @@ pub fn parse<R: std::io::Read>(
         source: R,
         offset: usize,
     }
+
+    type LengthIntegerParser<R> = fn(&mut Wrapper<R>, fn() -> ErrorKind) -> ParseResult<usize>;
 
     impl<R: std::io::Read> Wrapper<R> {
         fn error(&self, error: ErrorKind) -> Error {
@@ -119,6 +123,21 @@ pub fn parse<R: std::io::Read>(
             })
         }
 
+        fn read_identifier<'b>(
+            &mut self,
+            length_integer: LengthIntegerParser<R>,
+            buf: &'b mut Vec<u8>,
+        ) -> ParseResult<&'b Id> {
+            let length = length_integer(self, || {
+                identifier::ParseError::InvalidIdentifier(identifier::InvalidIdentifier::Empty)
+                    .into()
+            })?;
+
+            buf.resize(length, 0);
+            self.read_exact(buf.as_mut_slice())?;
+            <&Id>::try_from(buf.as_slice()).map_err(|error| self.error(error.into()))
+        }
+
         /// Attempts to fill the specified buffer, returning a slice of the bytes that were read.
         fn fill<'b>(&mut self, buf: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
             let count = self.read(buf)?;
@@ -151,7 +170,7 @@ pub fn parse<R: std::io::Read>(
     }
 
     let format_version;
-    let length_integer_or_else: fn(&mut Wrapper<R>, fn() -> ErrorKind) -> ParseResult<usize>;
+    let length_integer_or_else: LengthIntegerParser<R>;
 
     {
         let mut module_information = [0u8; 3];
@@ -198,6 +217,7 @@ pub fn parse<R: std::io::Read>(
     }
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
+    let buffer_pool: &buffer::Pool = &buffer_pool;
 
     #[derive(Debug)]
     struct Header {
@@ -212,7 +232,7 @@ pub fn parse<R: std::io::Read>(
             error!(ErrorKind::MissingModuleHeader);
         }
 
-        src.parse_buffer(&buffer_pool, header_size, |src| todo!("parse identifiers"))?
+        src.parse_buffer(buffer_pool, header_size, |src| todo!("parse identifiers"))?
     };
 
     Ok(crate::module::Module {

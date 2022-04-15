@@ -34,7 +34,7 @@ macro_rules! format_impls {
 format_impls!(Identifier);
 format_impls!(Id);
 
-macro_rules! deref_impls {
+macro_rules! deref_impl {
     ($implementor: ident, $target: ty) => {
         impl Deref for $implementor {
             type Target = $target;
@@ -43,17 +43,18 @@ macro_rules! deref_impls {
                 &self.0
             }
         }
-
-        impl DerefMut for $implementor {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
-            }
-        }
     };
 }
 
-deref_impls!(Identifier, String);
-deref_impls!(Id, str);
+deref_impl!(Identifier, String);
+deref_impl!(Id, str);
+
+impl Id {
+    #[inline]
+    pub fn to_identifier(&self) -> Identifier {
+        Identifier(self.0.to_string())
+    }
+}
 
 impl Identifier {
     #[inline]
@@ -68,8 +69,9 @@ impl Identifier {
 }
 
 impl From<&Id> for Identifier {
+    #[inline]
     fn from(identifier: &Id) -> Self {
-        Self(identifier.0.to_string())
+        identifier.to_identifier()
     }
 }
 
@@ -102,5 +104,21 @@ impl TryFrom<String> for Identifier {
     fn try_from(identifier: String) -> Result<Self, InvalidIdentifier> {
         <&Id>::try_from(identifier.as_str())?;
         Ok(Self(identifier))
+    }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum ParseError {
+    #[error(transparent)]
+    InvalidIdentifier(#[from] InvalidIdentifier),
+    #[error(transparent)]
+    InvalidSequence(#[from] std::str::Utf8Error),
+}
+
+impl<'a> TryFrom<&'a [u8]> for &'a Id {
+    type Error = ParseError;
+
+    fn try_from(bytes: &'a [u8]) -> Result<&'a Id, ParseError> {
+        Ok(<&'a Id>::try_from(std::str::from_utf8(bytes)?)?)
     }
 }
