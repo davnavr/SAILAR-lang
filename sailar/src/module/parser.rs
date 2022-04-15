@@ -363,7 +363,7 @@ pub fn parse<R: std::io::Read>(
         } else {
             src.read_length(|| ErrorKind::MissingTypeSignatureCount)?
         };
-        
+
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let signatures = Vec::with_capacity(count);
             todo!("parse type signatures");

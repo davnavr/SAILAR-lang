@@ -13,5 +13,5 @@ pub enum TypeCode {
     S32 = 0x14,
     S64 = 0x18,
     F32 = 0xF4,
-    F64 = 0xF8
+    F64 = 0xF8,
 }

@@ -8,7 +8,6 @@ pub struct Pool {
     buffers: RefCell<Vec<Vec<u8>>>,
 }
 
-#[derive(Debug)]
 pub struct Rented<'a> {
     pool: &'a Pool,
     buffer: Vec<u8>,
@@ -67,6 +66,14 @@ impl Rented<'_> {
     #[inline]
     pub fn as_mut_vec(&mut self) -> &mut Vec<u8> {
         &mut self.buffer
+    }
+}
+
+impl std::fmt::Debug for Rented<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Rented")
+            .field("buffer", &ByteDebug(&self.buffer))
+            .finish()
     }
 }
 
@@ -145,11 +152,7 @@ impl<'a> RentedOrOwned<'a> {
     }
 }
 
-impl From<Vec<u8>> for RentedOrOwned<'_> {
-    fn from(owned: Vec<u8>) -> Self {
-        Self::Owned(owned)
-    }
-}
+crate::enum_case_from_impl!(RentedOrOwned<'_>, Owned, Vec<u8>);
 
 impl<'a> From<Rented<'a>> for RentedOrOwned<'a> {
     fn from(rented: Rented<'a>) -> Self {
