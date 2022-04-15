@@ -90,12 +90,19 @@ impl Module {
     ///
     /// # Examples
     ///
-    ///
+    /// ```
+    /// # use sailar::{Identifier, module::Module};
+    /// let mut module = Module::new(Identifier::from_str("Testing")?, vec![1, 0, 0].into_boxed_slice());
+    /// let contents = module.raw_contents(None).bytes();
+    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &contents[0..7]);
+    /// //assert_eq!();
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &RawModule {
         if self.contents.is_none() {
             let mut module_buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
 
-            if let Err(error) = Self::write(self, module_buffer.as_mut_slice(), buffer_pool) {
+            if let Err(error) = Self::write(self, module_buffer.as_mut_vec(), buffer_pool) {
                 unreachable!("unable to write module: {:?}", error)
             }
 

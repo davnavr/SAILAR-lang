@@ -123,6 +123,20 @@ impl<'a> RentedOrOwned<'a> {
         }
     }
 
+    pub fn as_vec(&self) -> &Vec<u8> {
+        match self {
+            Self::Rented(rented) => &rented.buffer,
+            Self::Owned(owned) => owned,
+        }
+    }
+
+    pub fn as_mut_vec(&mut self) -> &mut Vec<u8> {
+        match self {
+            Self::Rented(rented) => &mut rented.buffer,
+            Self::Owned(owned) => owned,
+        }
+    }
+
     pub fn into_vec(self) -> Vec<u8> {
         match self {
             Self::Rented(rented) => rented.clone(),
@@ -146,20 +160,16 @@ impl<'a> From<Rented<'a>> for RentedOrOwned<'a> {
 impl<'a> std::ops::Deref for RentedOrOwned<'a> {
     type Target = Vec<u8>;
 
+    #[inline]
     fn deref(&self) -> &Vec<u8> {
-        match self {
-            Self::Rented(rented) => &rented.buffer,
-            Self::Owned(owned) => owned,
-        }
+        self.as_vec()
     }
 }
 
 impl<'a> std::ops::DerefMut for RentedOrOwned<'a> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Vec<u8> {
-        match self {
-            Self::Rented(rented) => &mut rented.buffer,
-            Self::Owned(owned) => owned,
-        }
+        self.as_mut_vec()
     }
 }
 
