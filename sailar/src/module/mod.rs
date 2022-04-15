@@ -92,10 +92,17 @@ impl Module {
     ///
     /// ```
     /// # use sailar::{Identifier, module::Module};
-    /// let mut module = Module::new(Identifier::from_str("Testing")?, vec![1, 0, 0].into_boxed_slice());
-    /// let contents = module.raw_contents(None).bytes();
+    /// let mut module = Module::new(Identifier::from_str("Testing")?, vec![1, 2, 3].into_boxed_slice());
+    /// let contents = module.raw_contents(None).bytes().to_vec();
     /// assert_eq!(sailar::binary::MAGIC.as_slice(), &contents[0..6]);
-    /// //assert_eq!();
+    /// let format_version = module.format_version();
+    /// assert_eq!(&[ format_version.major, format_version.minor ], &contents[6..8]);
+    /// assert_eq!(u8::from(sailar::binary::LengthSize::One), contents[8]);
+    /// assert_eq!(12, contents[9]);
+    /// assert_eq!(7u8, contents[10]); // Module name length
+    /// assert_eq!(b"Testing", &contents[11..18]); // Module name
+    /// assert_eq!(3u8, contents[18]); // Module version number count
+    /// assert_eq!(&[ 1, 2, 3 ], &contents[19..22]); // Module version numbers
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &RawModule {
@@ -137,20 +144,13 @@ impl Module {
     /// # use sailar::module::{FormatVersion, Module};
     /// let contents = &[
     ///     b'S', b'A', b'I', b'L', b'A', b'R',
-    ///     // Format version
-    ///     0, 12,
-    ///     // Length size
-    ///     0,
-    ///     // Header size
-    ///     8,
-    ///     // Module name length
-    ///     4,
-    ///     // Module name
-    ///     b'T', b'e', b's', b't',
-    ///     // Module version
-    ///     2,
-    ///     1,
-    ///     0,
+    ///     0, 12, // Format version
+    ///     0, // Length size
+    ///     8, // Header size
+    ///     4, // Module name length
+    ///     b'T', b'e', b's', b't', // Module name
+    ///     2, // Module version length
+    ///     1, 0, // Module Version
     /// ];
     ///
     /// let module = Module::from_slice(contents, None)?;
