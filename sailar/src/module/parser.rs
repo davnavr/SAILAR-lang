@@ -1,7 +1,8 @@
 //! Code for parsing SAILAR modules.
 
-use crate::binary::{self, buffer};
+use crate::binary::{self, buffer, signature::TypeCode};
 use crate::identifier::{self, Identifier};
+use crate::type_system;
 use std::fmt::{Display, Formatter};
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
@@ -56,13 +57,13 @@ pub enum ErrorKind {
     LengthTooLarge(u32),
     #[error("expected size of module header but got EOF")]
     MissingHeaderSize,
-    #[error("expected module header field count but got EOF")]
+    #[error("expected module header field count but reached end")]
     MissingHeaderFieldCount,
     #[error("the module header size cannot be empty")]
     MissingModuleHeader,
     #[error("invalid identifier, {0}")]
     InvalidIdentifier(#[from] identifier::ParseError),
-    #[error("expected module version length but got EOF")]
+    #[error("expected module version length but reached end")]
     MissingModuleVersionLength,
     #[error(transparent)]
     MissingModuleVersionNumber(#[from] MissingModuleVersionNumberError),
@@ -70,6 +71,10 @@ pub enum ErrorKind {
     MissingTypeSignatureSize,
     #[error("expected type signature count but got EOF")]
     MissingTypeSignatureCount,
+    #[error("expected type signature #{index} but reached end")]
+    MissingTypeSignature { index: usize },
+    #[error(transparent)]
+    InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -356,7 +361,7 @@ pub fn parse<R: std::io::Read>(
         })?
     };
 
-    let type_signatures = {
+    let type_signatures: Vec<type_system::Any> = {
         let byte_size = src.read_length(|| ErrorKind::MissingTypeSignatureSize)?;
         let count = if byte_size == 0 {
             0
@@ -365,8 +370,28 @@ pub fn parse<R: std::io::Read>(
         };
 
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let signatures = Vec::with_capacity(count);
-            todo!("parse type signatures");
+            let mut signatures = Vec::with_capacity(count);
+            src.read_many_to_vec(count, &mut signatures, |src, index| {
+                let mut tag_value = 0u8;
+
+                if src.read(std::slice::from_mut(&mut tag_value))? == 0 {
+                    return Err(src.error(ErrorKind::MissingTypeSignature { index }));
+                }
+
+                let tag = TypeCode::try_from(tag_value).map_err(|bad| src.error(bad.into()))?;
+                match tag {
+                    TypeCode::U8 => Ok(type_system::FixedInt::U8.into()),
+                    TypeCode::U16 => Ok(type_system::FixedInt::U16.into()),
+                    TypeCode::U32 => Ok(type_system::FixedInt::U32.into()),
+                    TypeCode::U64 => Ok(type_system::FixedInt::U64.into()),
+                    TypeCode::S8 => Ok(type_system::FixedInt::S8.into()),
+                    TypeCode::S16 => Ok(type_system::FixedInt::S16.into()),
+                    TypeCode::S32 => Ok(type_system::FixedInt::S32.into()),
+                    TypeCode::S64 => Ok(type_system::FixedInt::S64.into()),
+                    TypeCode::F32 => Ok(type_system::Real::F32.into()),
+                    TypeCode::F64 => Ok(type_system::Real::F64.into()),
+                }
+            })?;
             Ok(signatures)
         })?
     };
