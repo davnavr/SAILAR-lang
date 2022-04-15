@@ -98,7 +98,7 @@ impl<'a> RentedOrOwned<'a> {
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         match self {
             Self::Rented(rented) => rented,
-            Self::Owned(owned) => &mut owned,
+            Self::Owned(ref mut owned) => owned,
         }
     }
 

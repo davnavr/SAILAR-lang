@@ -47,14 +47,20 @@ impl Module {
     }
 
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &binary::RawModule {
-        self.contents.get_or_insert_with(|| {
+        if self.contents.is_none() {
             let mut module_buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
+
             if let Err(error) = Self::write(self, module_buffer.as_mut_slice(), buffer_pool) {
-                unreachable!("{:?}", error)
-            } else {
-                binary::RawModule::from_vec(module_buffer.into_vec())
+                unreachable!("unable to write module: {:?}", error)
             }
-        })
+
+            self.contents
+                .insert(binary::RawModule::from_vec(module_buffer.into_vec()))
+        } else if let Some(existing) = &self.contents {
+            existing
+        } else {
+            unreachable!()
+        }
     }
 
     //pub fn drop_raw_contents
