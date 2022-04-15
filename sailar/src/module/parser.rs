@@ -1,7 +1,7 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer};
-use crate::{identifier, Id, Identifier};
+use crate::identifier::{self, Identifier};
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -68,27 +68,38 @@ impl Error {
 
 pub type ParseResult<T> = Result<T, Error>;
 
-pub fn parse<R: std::io::Read>(
-    source: R,
-    buffer_pool: Option<&buffer::Pool>,
-) -> ParseResult<crate::module::Module> {
-    #[derive(Debug)]
-    struct Wrapper<R> {
-        source: R,
-        offset: usize,
-    }
+mod input {
+    use super::{Error, ErrorKind, ParseResult};
+    use crate::binary::{buffer, LengthSize};
+    use crate::identifier::{self, Id};
 
     type LengthIntegerParser<R> = fn(&mut Wrapper<R>, fn() -> ErrorKind) -> ParseResult<usize>;
 
+    pub struct Wrapper<R> {
+        source: R,
+        offset: usize,
+        length_size: LengthSize,
+        length_parser: LengthIntegerParser<R>,
+    }
+
     impl<R: std::io::Read> Wrapper<R> {
-        fn error(&self, error: ErrorKind) -> Error {
+        pub fn new(source: R) -> Self {
+            Self {
+                source,
+                offset: 0,
+                length_size: LengthSize::One,
+                length_parser: Wrapper::read_length_one,
+            }
+        }
+
+        pub fn error(&self, error: ErrorKind) -> Error {
             Error {
                 offset: self.offset,
                 kind: error,
             }
         }
 
-        fn read(&mut self, buf: &mut [u8]) -> ParseResult<usize> {
+        pub fn read(&mut self, buf: &mut [u8]) -> ParseResult<usize> {
             match self.source.read(buf) {
                 Ok(count) => {
                     self.offset += count;
@@ -98,7 +109,7 @@ pub fn parse<R: std::io::Read>(
             }
         }
 
-        fn read_exact(&mut self, buf: &mut [u8]) -> ParseResult<()> {
+        pub fn read_exact(&mut self, buf: &mut [u8]) -> ParseResult<()> {
             match self.source.read_exact(buf) {
                 Ok(()) => {
                     self.offset += buf.len();
@@ -108,7 +119,53 @@ pub fn parse<R: std::io::Read>(
             }
         }
 
-        fn parse_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
+        fn read_length_one(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+            let mut buffer = 0u8;
+            if self.read(std::slice::from_mut(&mut buffer))? == 1 {
+                Ok(usize::from(buffer))
+            } else {
+                Err(self.error(missing_error()))
+            }
+        }
+
+        fn read_length_two(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+            let mut buffer = [0u8; 2];
+            if self.read(&mut buffer)? == 2 {
+                Ok(usize::from(u16::from_le_bytes(buffer)))
+            } else {
+                Err(self.error(missing_error()))
+            }
+        }
+
+        fn read_length_four(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+            let mut buffer = [0u8; 4];
+            if self.read(&mut buffer)? == 4 {
+                let value = u32::from_le_bytes(buffer);
+                usize::try_from(value).map_err(|_| self.error(ErrorKind::LengthTooLarge(value)))
+            } else {
+                Err(self.error(missing_error()))
+            }
+        }
+
+        fn select_length_parser(size: LengthSize) -> LengthIntegerParser<R> {
+            match size {
+                LengthSize::One => Self::read_length_one,
+                LengthSize::Two => Self::read_length_two,
+                LengthSize::Four => Self::read_length_four,
+            }
+        }
+
+        #[inline]
+        pub fn read_length(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+            (self.length_parser)(self, missing_error)
+        }
+
+        pub fn set_length_size(&mut self, size: LengthSize) {
+            self.length_size = size;
+            self.length_parser = Self::select_length_parser(size);
+        }
+
+        pub fn parse_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
             &mut self,
             pool: &buffer::Pool,
             length: usize,
@@ -116,14 +173,17 @@ pub fn parse<R: std::io::Read>(
         ) -> ParseResult<T> {
             let mut buffer = pool.rent_with_length(length);
             let start_offset = self.offset;
+            let length_size = self.length_size;
             self.read_exact(&mut buffer)?;
             parser(Wrapper {
                 source: buffer.as_slice(),
                 offset: start_offset,
+                length_size,
+                length_parser: Wrapper::select_length_parser(length_size),
             })
         }
 
-        fn read_identifier<'b>(
+        pub fn read_identifier<'b>(
             &mut self,
             length_integer: LengthIntegerParser<R>,
             buf: &'b mut Vec<u8>,
@@ -139,13 +199,18 @@ pub fn parse<R: std::io::Read>(
         }
 
         /// Attempts to fill the specified buffer, returning a slice of the bytes that were read.
-        fn fill<'b>(&mut self, buf: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
+        pub fn fill<'b>(&mut self, buf: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
             let count = self.read(buf)?;
             Ok(&mut buf[0..count])
         }
     }
+}
 
-    let mut src = Wrapper { source, offset: 0 };
+pub fn parse<R: std::io::Read>(
+    source: R,
+    buffer_pool: Option<&buffer::Pool>,
+) -> ParseResult<crate::module::Module> {
+    let mut src = input::Wrapper::new(source);
 
     macro_rules! error {
         ($value: expr) => {
@@ -170,7 +235,6 @@ pub fn parse<R: std::io::Read>(
     }
 
     let format_version;
-    let length_integer_or_else: LengthIntegerParser<R>;
 
     {
         let mut module_information = [0u8; 3];
@@ -188,32 +252,10 @@ pub fn parse<R: std::io::Read>(
             minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
         };
 
-        let length_size = result!(binary::LengthSize::try_from(get_information_byte(
+        src.set_length_size(result!(binary::LengthSize::try_from(get_information_byte(
             2,
             || ErrorKind::MissingLengthSize
-        )?));
-
-        length_integer_or_else = match length_size {
-            binary::LengthSize::One => |src, error| {
-                let mut buffer = 0u8;
-                src.read_exact(std::slice::from_mut(&mut buffer))
-                    .map_err(|_| src.error(error()))?;
-                Ok(usize::from(buffer))
-            },
-            binary::LengthSize::Two => |src, error| {
-                let mut buffer = [0u8; 2];
-                src.read_exact(&mut buffer)
-                    .map_err(|_| src.error(error()))?;
-                Ok(usize::from(u16::from_le_bytes(buffer)))
-            },
-            binary::LengthSize::Four => |src, error| {
-                let mut buffer = [0u8; 4];
-                src.read_exact(&mut buffer)
-                    .map_err(|_| src.error(error()))?;
-                let value = u32::from_le_bytes(buffer);
-                usize::try_from(value).map_err(|_| src.error(ErrorKind::LengthTooLarge(value)))
-            },
-        };
+        )?)));
     }
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
@@ -226,7 +268,7 @@ pub fn parse<R: std::io::Read>(
     }
 
     let header = {
-        let header_size = length_integer_or_else(&mut src, || ErrorKind::MissingHeaderSize)?;
+        let header_size = src.read_length(|| ErrorKind::MissingHeaderSize)?;
 
         if header_size == 0 {
             error!(ErrorKind::MissingModuleHeader);
