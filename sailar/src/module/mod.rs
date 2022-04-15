@@ -129,7 +129,9 @@ impl Module {
     ///
     /// let module = Module::from_slice(contents, None)?;
     /// assert_eq!(module.format_version(), FormatVersion::MINIMUM_SUPPORTED);
-    /// # Ok::<(), sailar::module::ParseError>(())
+    /// assert_eq!(module.name(), sailar::Id::from_str("Test")?);
+    /// assert_eq!(module.version(), &[ 1, 0 ]);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
     pub fn from_slice(
