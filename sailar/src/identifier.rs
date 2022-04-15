@@ -95,6 +95,15 @@ impl Identifier {
     }
 
     #[inline]
+    pub fn as_id(&self) -> &Id {
+        unsafe {
+            // Safety: Constructors for Identifier delegates to same validation check as Id, and representations for str and Id
+            // are matching.
+            std::mem::transmute::<&str, &Id>(self.0.as_str())
+        }
+    }
+
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }

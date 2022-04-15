@@ -1,6 +1,8 @@
 //! Reading and writing of SAILAR modules.
 
 use crate::binary::buffer;
+use crate::binary::{LengthSize, RawModule};
+use crate::identifier::{Id, Identifier};
 
 /// Specifies the version of a SAILAR module file.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -22,9 +24,10 @@ impl FormatVersion {
 /// A SAILAR module.
 #[derive(Debug)]
 pub struct Module {
-    contents: Option<crate::binary::RawModule>,
+    contents: Option<RawModule>,
     format_version: FormatVersion,
-    //length_size:
+    length_size: LengthSize,
+    name: Identifier,
 }
 
 mod parser;
@@ -34,8 +37,19 @@ pub use parser::{Error as ParseError, ErrorKind as ParseErrorKind, InvalidMagicE
 mod writer;
 
 impl Module {
+    #[inline]
     pub fn format_version(&self) -> &FormatVersion {
         &self.format_version
+    }
+
+    #[inline]
+    pub fn length_size(&self) -> LengthSize {
+        self.length_size
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Id {
+        self.name.as_id()
     }
 
     /// Writes the bytes that make up this module to the specified destination.
@@ -49,10 +63,7 @@ impl Module {
         writer::write(self, destination, buffer_pool)
     }
 
-    pub fn raw_contents(
-        &mut self,
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> &crate::binary::RawModule {
+    pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &RawModule {
         if self.contents.is_none() {
             let mut module_buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
 
@@ -61,7 +72,7 @@ impl Module {
             }
 
             self.contents
-                .insert(crate::binary::RawModule::from_vec(module_buffer.into_vec()))
+                .insert(RawModule::from_vec(module_buffer.into_vec()))
         } else if let Some(existing) = &self.contents {
             existing
         } else {
@@ -75,6 +86,7 @@ impl Module {
     /// Parses a module.
     ///
     /// For sources such as [`std::fs::File`], consider wrapping the reader in a [`std::io::BufReader`].
+    #[inline]
     pub fn parse<R: std::io::Read>(
         source: R,
         buffer_pool: Option<&buffer::Pool>,
@@ -110,6 +122,7 @@ impl Module {
     /// assert_eq!(module.format_version(), FormatVersion::MINIMUM_SUPPORTED);
     /// # Ok::<(), sailar::module::ParseError>(())
     /// ```
+    #[inline]
     pub fn from_slice(
         bytes: &[u8],
         buffer_pool: Option<&buffer::Pool>,
@@ -133,6 +146,7 @@ impl Module {
 impl TryFrom<Vec<u8>> for Module {
     type Error = ParseError;
 
+    #[inline]
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         Self::from_vec(bytes, None)
     }

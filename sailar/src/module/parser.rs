@@ -92,6 +92,10 @@ mod input {
             }
         }
 
+        pub fn length_size(&self) -> LengthSize {
+            self.length_size
+        }
+
         pub fn error(&self, error: ErrorKind) -> Error {
             Error {
                 offset: self.offset,
@@ -191,7 +195,7 @@ mod input {
                 identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into()
             })?;
 
-            let buffer = buffer_source(length);
+            let mut buffer = buffer_source(length);
             self.read_exact(buffer.as_mut_slice())?;
             Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
@@ -257,10 +261,12 @@ pub fn parse<R: std::io::Read>(
             minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
         };
 
-        src.set_length_size(result!(binary::LengthSize::try_from(get_information_byte(
+        let length_size = result!(binary::LengthSize::try_from(get_information_byte(
             2,
             || ErrorKind::MissingLengthSize
-        )?)));
+        )?));
+
+        src.set_length_size(length_size);
     }
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
@@ -279,13 +285,18 @@ pub fn parse<R: std::io::Read>(
             error!(ErrorKind::MissingModuleHeader);
         }
 
-        src.parse_buffer(buffer_pool, header_size, |src| Header {
-            name: src.read_identifier_pooled(buffer_pool)?,
+        src.parse_buffer(buffer_pool, header_size, |mut src| {
+            Ok(Header {
+                name: src.read_identifier_pooled(buffer_pool)?,
+                version: { Box::default() },
+            })
         })?
     };
 
     Ok(crate::module::Module {
         format_version,
         contents: None,
+        length_size: src.length_size(),
+        name: header.name,
     })
 }
