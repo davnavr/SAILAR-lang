@@ -1,6 +1,7 @@
 //! Contains types to abstract over the binary representation of the SAILAR format.
 
 pub mod buffer;
+pub mod signature;
 
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";

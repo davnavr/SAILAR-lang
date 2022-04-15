@@ -51,10 +51,10 @@ Offset|Name|Size|Notes
 
 ## Type Signatures
 
-Offset|Name|Size|Notes
----|---|---|---
+Offset|Name|Size|Notes|Omission
+---|---|---|---|---
 `0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of the type signatures, in bytes, excluding the count.
-`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of type signatures to follow.
+`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of type signatures to follow.|Omitted when `Size` is zero
 `2L`|Signatures|`S`|A series of [type signatures](./binary-format-signatures.md#type).
 
 ## Struct

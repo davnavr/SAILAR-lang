@@ -66,6 +66,10 @@ pub enum ErrorKind {
     MissingModuleVersionLength,
     #[error(transparent)]
     MissingModuleVersionNumber(#[from] MissingModuleVersionNumberError),
+    #[error("expected byte length of type signatures but got EOF")]
+    MissingTypeSignatureSize,
+    #[error("expected type signature count but got EOF")]
+    MissingTypeSignatureCount,
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -231,10 +235,7 @@ mod input {
             Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
 
-        pub fn read_identifier_pooled<'b>(
-            &mut self,
-            pool: &'b buffer::Pool,
-        ) -> ParseResult<Identifier> {
+        pub fn read_identifier_pooled(&mut self, pool: &buffer::Pool) -> ParseResult<Identifier> {
             self.read_identifier(|length| pool.rent_with_length(length).into())
         }
 
@@ -352,6 +353,21 @@ pub fn parse<R: std::io::Read>(
                     numbers.into_boxed_slice()
                 },
             })
+        })?
+    };
+
+    let type_signatures = {
+        let byte_size = src.read_length(|| ErrorKind::MissingTypeSignatureSize)?;
+        let count = if byte_size == 0 {
+            0
+        } else {
+            src.read_length(|| ErrorKind::MissingTypeSignatureCount)?
+        };
+        
+        src.parse_buffer(buffer_pool, byte_size, |mut src| {
+            let signatures = Vec::with_capacity(count);
+            todo!("parse type signatures");
+            Ok(signatures)
         })?
     };
 
