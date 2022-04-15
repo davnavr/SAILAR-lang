@@ -26,6 +26,12 @@ impl std::error::Error for InvalidMagicError {}
 pub enum ErrorKind {
     #[error(transparent)]
     InvalidMagic(#[from] InvalidMagicError),
+    #[error("expected format version but got EOF")]
+    MissingFormatVersion,
+    #[error("expected length size value but got EOF")]
+    MissingLengthSize,
+    #[error(transparent)]
+    InvalidLengthSize(#[from] binary::InvalidLengthSize),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -77,13 +83,13 @@ pub fn parse<R: std::io::Read>(
             }
         }
 
+        /// Attempts to fill the specified buffer, returning a slice of the bytes that were read.
         fn fill<'b>(&mut self, buf: &'b mut [u8]) -> Result<&'b mut [u8], Error> {
             let count = self.read(buf)?;
             Ok(&mut buf[0..count])
         }
     }
 
-    let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
     let mut src = Wrapper { source, offset: 0 };
 
     macro_rules! error {
@@ -92,8 +98,14 @@ pub fn parse<R: std::io::Read>(
         };
     }
 
+    macro_rules! result {
+        ($value: expr) => {
+            $value.map_err(|error| src.error(error.into()))?
+        };
+    }
+
     {
-        let mut magic_buffer = buffer_pool.rent_with_length(binary::MAGIC.len());
+        let mut magic_buffer = [0u8; binary::MAGIC.len()];
         let magic = src.fill(&mut magic_buffer)?;
         if magic != binary::MAGIC {
             error!(InvalidMagicError {
@@ -102,7 +114,35 @@ pub fn parse<R: std::io::Read>(
         }
     }
 
-    todo!("implement parsing");
+    let format_version;
+    let length_size;
 
-    //# TODO: Store bytes in contents field
+    {
+        let mut module_information = [0u8; 3];
+        let parsed_module_information = src.fill(&mut module_information)?;
+
+        let get_information_byte = |index, error: fn() -> ErrorKind| {
+            parsed_module_information
+                .get(index)
+                .copied()
+                .ok_or_else(|| src.error(error()))
+        };
+
+        format_version = crate::module::FormatVersion {
+            major: get_information_byte(0, || ErrorKind::MissingFormatVersion)?,
+            minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
+        };
+
+        length_size = result!(binary::LengthSize::try_from(get_information_byte(
+            2,
+            || ErrorKind::MissingLengthSize
+        )?));
+    }
+
+    let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
+
+    Ok(crate::module::Module {
+        format_version,
+        contents: None,
+    })
 }

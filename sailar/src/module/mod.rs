@@ -11,11 +11,13 @@ pub struct FormatVersion {
     pub minor: u8,
 }
 
-/// The minimum version of the format supported by this API.
-pub static MINIMUM_SUPPORTED_FORMAT: FormatVersion = FormatVersion {
-    major: 0,
-    minor: 12,
-};
+impl FormatVersion {
+    /// The minimum version of the format supported by this API.
+    pub const MINIMUM_SUPPORTED: &'static Self = &Self {
+        major: 0,
+        minor: 12,
+    };
+}
 
 /// A SAILAR module.
 #[derive(Debug)]
@@ -80,14 +82,14 @@ impl Module {
     }
 
     /// Parses a module contained a byte slice.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
-    /// # use sailar::module::Module;
-    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 12, 1 ];
+    /// # use sailar::module::{FormatVersion, Module};
+    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 12, 0 ];
     /// let module = Module::from_slice(contents, None)?;
-    /// assert_eq!(module.format_version(), &sailar::module::MINIMUM_SUPPORTED_FORMAT);
+    /// assert_eq!(module.format_version(), FormatVersion::MINIMUM_SUPPORTED);
     /// # Ok::<(), sailar::module::ParseError>(())
     /// ```
     pub fn from_slice(
