@@ -54,9 +54,46 @@ impl Id {
     pub fn to_identifier(&self) -> Identifier {
         Identifier(self.0.to_string())
     }
+
+    pub fn from_str(identifier: &str) -> Result<&Id, InvalidError> {
+        if identifier.is_empty() {
+            Err(InvalidError::Empty)
+        } else if identifier.chars().any(|c| c == '\0') {
+            Err(InvalidError::ContainsNull)
+        } else {
+            // Safety: Representation of Id allows safe transmute here.
+            Ok(unsafe { std::mem::transmute::<&str, &Id>(identifier) })
+        }
+    }
+
+    pub fn from_byte_slice(bytes: &[u8]) -> Result<&Id, ParseError> {
+        Ok(Id::from_str(std::str::from_utf8(bytes)?)?)
+    }
 }
 
 impl Identifier {
+    #[inline]
+    pub fn from_id(identifier: &Id) -> Self {
+        identifier.to_identifier()
+    }
+
+    #[inline]
+    pub fn from_string(identifier: String) -> Result<Self, InvalidError> {
+        Id::from_str(&identifier)?;
+        Ok(Self(identifier))
+    }
+
+    #[inline]
+    fn from_str(identifier: &str) -> Result<Self, InvalidError> {
+        Id::from_str(&identifier)?;
+        Ok(Self(identifier.to_owned()))
+    }
+
+    #[inline]
+    pub fn from_byte_slice(bytes: &[u8]) -> Result<Self, ParseError> {
+        Id::from_byte_slice(bytes).map(Id::to_identifier)
+    }
+
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
@@ -71,7 +108,7 @@ impl Identifier {
 impl From<&Id> for Identifier {
     #[inline]
     fn from(identifier: &Id) -> Self {
-        identifier.to_identifier()
+        Self::from_id(identifier)
     }
 }
 
@@ -87,32 +124,27 @@ pub enum InvalidError {
 impl<'a> TryFrom<&'a str> for &'a Id {
     type Error = InvalidError;
 
+    #[inline]
     fn try_from(identifier: &'a str) -> Result<&'a Id, InvalidError> {
-        if identifier.is_empty() {
-            Err(InvalidError::Empty)
-        } else if identifier.chars().any(|c| c == '\0') {
-            Err(InvalidError::ContainsNull)
-        } else {
-            Ok(unsafe { std::mem::transmute::<&'a str, &'a Id>(identifier) })
-        }
+        Id::from_str(identifier)
     }
 }
 
 impl TryFrom<String> for Identifier {
     type Error = InvalidError;
 
+    #[inline]
     fn try_from(identifier: String) -> Result<Self, InvalidError> {
-        <&Id>::try_from(identifier.as_str())?;
-        Ok(Self(identifier))
+        Self::from_string(identifier)
     }
 }
 
 impl TryFrom<&str> for Identifier {
     type Error = InvalidError;
 
+    #[inline]
     fn try_from(identifier: &str) -> Result<Self, InvalidError> {
-        <&Id>::try_from(identifier)?;
-        Ok(Self(identifier.to_owned()))
+        Self::from_str(identifier)
     }
 }
 
@@ -127,15 +159,17 @@ pub enum ParseError {
 impl<'a> TryFrom<&'a [u8]> for &'a Id {
     type Error = ParseError;
 
+    #[inline]
     fn try_from(bytes: &'a [u8]) -> Result<&'a Id, ParseError> {
-        Ok(<&'a Id>::try_from(std::str::from_utf8(bytes)?)?)
+        Id::from_byte_slice(bytes)
     }
 }
 
 impl TryFrom<&[u8]> for Identifier {
     type Error = ParseError;
 
+    #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, ParseError> {
-        <&Id>::try_from(bytes).map(Id::to_identifier)
+        Self::from_byte_slice(bytes)
     }
 }

@@ -193,7 +193,7 @@ mod input {
 
             let buffer = buffer_source(length);
             self.read_exact(buffer.as_mut_slice())?;
-            Identifier::try_from(buffer.as_slice()).map_err(|error| self.error(error.into()))
+            Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
 
         pub fn read_identifier_pooled<'b>(
