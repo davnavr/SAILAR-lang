@@ -31,7 +31,11 @@ pub struct MissingModuleVersionNumberError {
 
 impl Display for MissingModuleVersionNumberError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "expected {}th module version number but got EOF", self.index + 1)
+        write!(
+            f,
+            "expected {}th module version number but got EOF",
+            self.index + 1
+        )
     }
 }
 
@@ -92,7 +96,7 @@ mod input {
     use crate::binary::{buffer, LengthSize};
     use crate::identifier::{self, Identifier};
 
-    type LengthIntegerParser<R> = fn(&mut Wrapper<R>, fn() -> ErrorKind) -> ParseResult<usize>;
+    type LengthIntegerParser<R> = fn(&mut Wrapper<R>) -> ParseResult<Option<usize>>;
 
     pub struct Wrapper<R> {
         source: R,
@@ -142,31 +146,33 @@ mod input {
             }
         }
 
-        fn read_length_one(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+        fn read_length_one(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = 0u8;
-            if self.read(std::slice::from_mut(&mut buffer))? == 1 {
-                Ok(usize::from(buffer))
+            Ok(if self.read(std::slice::from_mut(&mut buffer))? == 1 {
+                Some(usize::from(buffer))
             } else {
-                Err(self.error(missing_error()))
-            }
+                None
+            })
         }
 
-        fn read_length_two(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+        fn read_length_two(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = [0u8; 2];
-            if self.read(&mut buffer)? == 2 {
-                Ok(usize::from(u16::from_le_bytes(buffer)))
+            Ok(if self.read(&mut buffer)? == 2 {
+                Some(usize::from(u16::from_le_bytes(buffer)))
             } else {
-                Err(self.error(missing_error()))
-            }
+                None
+            })
         }
 
-        fn read_length_four(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
+        fn read_length_four(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = [0u8; 4];
             if self.read(&mut buffer)? == 4 {
                 let value = u32::from_le_bytes(buffer);
-                usize::try_from(value).map_err(|_| self.error(ErrorKind::LengthTooLarge(value)))
+                usize::try_from(value)
+                    .map_err(|_| self.error(ErrorKind::LengthTooLarge(value)))
+                    .map(Some)
             } else {
-                Err(self.error(missing_error()))
+                Ok(None)
             }
         }
 
@@ -178,9 +184,15 @@ mod input {
             }
         }
 
-        #[inline]
-        pub fn read_length(&mut self, missing_error: fn() -> ErrorKind) -> ParseResult<usize> {
-            (self.length_parser)(self, missing_error)
+        pub fn read_length<E: FnOnce() -> ErrorKind>(
+            &mut self,
+            missing_error: E,
+        ) -> ParseResult<usize> {
+            match (self.length_parser)(self) {
+                Ok(Some(length)) => Ok(length),
+                Ok(None) => Err(self.error(missing_error())),
+                Err(error) => Err(error),
+            }
         }
 
         pub fn set_length_size(&mut self, size: LengthSize) {
@@ -242,7 +254,7 @@ mod input {
             &mut self,
             length: usize,
             vector: &mut Vec<T>,
-            parser: P,
+            mut parser: P,
         ) -> ParseResult<()> {
             self.read_many(length, |src, index| {
                 vector.push(parser(src, index)?);
@@ -334,7 +346,9 @@ pub fn parse<R: std::io::Read>(
                 version: {
                     let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
                     let mut numbers = Vec::with_capacity(length);
-                    src.read_many_to_vec(length, &mut numbers, |src, index| src.read_length(|| MissingModuleVersionNumberError { index }.into()));
+                    src.read_many_to_vec(length, &mut numbers, |src, index| {
+                        src.read_length(|| MissingModuleVersionNumberError { index }.into())
+                    })?;
                     numbers.into_boxed_slice()
                 },
             })
