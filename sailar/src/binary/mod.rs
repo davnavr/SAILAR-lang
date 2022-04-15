@@ -37,6 +37,23 @@ pub enum LengthSize {
     Four = 2,
 }
 
+impl LengthSize {
+    pub fn maximum_length_value(self) -> usize {
+        match self {
+            Self::One => u8::MAX.into(),
+            Self::Two => u16::MAX.into(),
+            Self::Four => u32::MAX.try_into().unwrap_or(usize::MAX),
+        }
+    }
+}
+
+impl From<LengthSize> for u8 {
+    #[inline]
+    fn from(value: LengthSize) -> u8 {
+        value as u8
+    }
+}
+
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("{0:#02X} is not a valid length size value")]
 pub struct InvalidLengthSize(u8);

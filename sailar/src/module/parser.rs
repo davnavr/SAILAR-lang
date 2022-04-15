@@ -220,7 +220,7 @@ mod input {
 
         pub fn read_identifier<'b, B: FnOnce(usize) -> buffer::RentedOrOwned<'b>>(
             &mut self,
-            mut buffer_source: B,
+            buffer_source: B,
         ) -> ParseResult<Identifier> {
             let length = self.read_length(|| {
                 identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into()
