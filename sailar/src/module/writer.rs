@@ -49,6 +49,10 @@ mod output {
                 },
             }
         }
+
+        pub fn write_length(&mut self, length: usize) -> Result {
+            (self.length_writer)(self, length)
+        }
     }
 
     impl<W> std::ops::Deref for Wrapper<W> {
@@ -71,7 +75,9 @@ pub fn write<W: Write>(
     destination: W,
     buffer_pool: Option<&buffer::Pool>,
 ) -> Result {
-    let mut out = output::Wrapper::new(destination, module.length_size());
+    use output::Wrapper;
+
+    let mut out = Wrapper::new(destination, module.length_size());
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
 
     {
@@ -85,8 +91,10 @@ pub fn write<W: Write>(
     }
 
     {
-        let mut header = buffer_pool.rent_with_capacity(32);
+        let mut header_buffer = buffer_pool.rent_with_capacity(32);
+        let mut header = Wrapper::new(header_buffer.as_vec_mut(), module.length_size());
         let name = module.name.as_bytes();
+        header.write_length(name.len())?;
         header.write_all(name)?;
         out.write_all(&header)?;
     }

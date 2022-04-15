@@ -53,17 +53,36 @@ impl Pool {
     }
 }
 
+impl Rented<'_> {
+    #[inline]
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.buffer.clone()
+    }
+
+    #[inline]
+    pub fn as_vec(&self) -> &Vec<u8> {
+        &self.buffer
+    }
+
+    #[inline]
+    pub fn as_vec_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.buffer
+    }
+}
+
 impl<'a> std::ops::Deref for Rented<'a> {
     type Target = Vec<u8>;
 
+    #[inline]
     fn deref(&self) -> &Vec<u8> {
-        &self.buffer
+        self.as_vec()
     }
 }
 
 impl<'a> std::ops::DerefMut for Rented<'a> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.buffer
+        self.as_vec_mut()
     }
 }
 
@@ -73,12 +92,6 @@ impl<'a> Drop for Rented<'a> {
             .buffers
             .borrow_mut()
             .push(std::mem::take(&mut self.buffer));
-    }
-}
-
-impl Rented<'_> {
-    pub fn to_vec(&self) -> Vec<u8> {
-        self.buffer.clone()
     }
 }
 
