@@ -2,6 +2,7 @@
 
 use crate::binary::{self, buffer};
 
+/// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
 pub struct InvalidMagicError {
     actual: Vec<u8>,

@@ -12,7 +12,7 @@ pub struct FormatVersion {
 }
 
 /// The minimum version of the format supported by this API.
-pub static MINIMUM_SUPPORTED_VERSION: FormatVersion = FormatVersion {
+pub static MINIMUM_SUPPORTED_FORMAT: FormatVersion = FormatVersion {
     major: 0,
     minor: 12,
 };
@@ -37,7 +37,7 @@ impl Module {
 
     /// Writes the bytes that make up this module to the specified destination.
     ///
-    /// For writers such as [`std::io::File`], consider wrapping the destination in a [`std::io::BufWriter`].
+    /// For writers such as [`std::fs::File`], consider wrapping the destination in a [`std::io::BufWriter`].
     pub fn write<W: std::io::Write>(
         &self,
         destination: W,
@@ -71,7 +71,7 @@ impl Module {
 
     /// Parses a module.
     ///
-    /// For sources such as [`std::io::File`], consider wrapping the reader in a [`std::io::BufReader`].
+    /// For sources such as [`std::fs::File`], consider wrapping the reader in a [`std::io::BufReader`].
     pub fn parse<R: std::io::Read>(
         source: R,
         buffer_pool: Option<&buffer::Pool>,
@@ -80,6 +80,16 @@ impl Module {
     }
 
     /// Parses a module contained a byte slice.
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// # use sailar::module::Module;
+    /// let contents = &[ b'S', b'A', b'I', b'L', b'A', b'R', 0, 0, 0, 12 ];
+    /// let module = Module::from_slice(contents, None)?;
+    /// assert_eq!(module.format_version(), &sailar::module::MINIMUM_SUPPORTED_FORMAT);
+    /// # Ok::<(), sailar::module::ParseError>(())
+    /// ```
     pub fn from_slice(
         bytes: &[u8],
         buffer_pool: Option<&buffer::Pool>,
@@ -89,7 +99,7 @@ impl Module {
 
     /// Parses a module contained in the byte vector, and stores the bytes alongside the parsed [`Module`].
     ///
-    /// The byte vector can be retrieved again by calling [`raw_contents()`].
+    /// The byte vector can be retrieved again by calling [`Module::raw_contents()`].
     pub fn from_vec(
         bytes: Vec<u8>,
         buffer_pool: Option<&buffer::Pool>,
