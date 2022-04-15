@@ -28,6 +28,7 @@ impl Pool {
         }
     }
 
+    /// Rents a buffer with the specified `capacity`, meaning that it will have space reserved for at least `capacity` bytes.
     pub fn rent_with_capacity(&self, capacity: usize) -> Rented<'_> {
         let mut buffer = self.rent();
         if buffer.capacity() < capacity {
@@ -35,6 +36,13 @@ impl Pool {
             buffer.reserve(capacity);
         }
         buffer
+    }
+
+    /// Rents a buffer with the specified `length`, filling the buffer with zeroes.
+    pub fn rent_with_length(&self, length: usize) -> Rented<'_> {
+        let mut rented = self.rent_with_capacity(length);
+        rented.resize(length, 0);
+        rented
     }
 
     pub(crate) fn existing_or_default(pool: Option<&Self>) -> std::borrow::Cow<'_, Self> {

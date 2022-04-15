@@ -64,6 +64,7 @@ impl Module {
     }
 
     //pub fn drop_raw_contents
+    //pub fn take_raw_contents(&mut self) -> binary::RawModule
 }
 
 #[derive(Clone, Debug)]
@@ -120,9 +121,55 @@ impl Module {
         mut source: R,
         buffer_pool: Option<&buffer::Pool>,
     ) -> Result<Self, ParseError> {
-        let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
+        #[derive(Debug)]
+        struct Wrapper<R> {
+            source: R,
+            offset: usize,
+        }
 
-        // TODO: Read first 6 bytes and store them in a buffer.
+        impl<R: std::io::Read> Wrapper<R> {
+            fn error(&self, error: ParseErrorKind) -> ParseError {
+                ParseError {
+                    offset: self.offset,
+                    kind: error,
+                }
+            }
+
+            fn read(&mut self, buf: &mut [u8]) -> Result<usize, ParseError> {
+                match self.source.read(buf) {
+                    Ok(count) => {
+                        self.offset += count;
+                        Ok(count)
+                    }
+                    Err(error) => Err(self.error(ParseErrorKind::IO(error))),
+                }
+            }
+
+            fn fill<'b>(&mut self, buf: &'b mut [u8]) -> Result<&'b mut [u8], ParseError> {
+                let count = self.read(buf)?;
+                Ok(&mut buf[0..count])
+            }
+        }
+
+        let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
+        let mut src = Wrapper { source, offset: 0 };
+
+        macro_rules! error {
+            ($value: expr) => {
+                return Err(src.error($value.into()));
+            };
+        }
+
+        {
+            let mut magic_buffer = buffer_pool.rent_with_length(binary::MAGIC.len());
+            let magic = src.fill(&mut magic_buffer)?;
+            if magic != binary::MAGIC {
+                error!(InvalidMagicError {
+                    actual: magic.into()
+                });
+            }
+        }
+
         todo!("implement parsing");
 
         //# TODO: Store bytes in contents field
