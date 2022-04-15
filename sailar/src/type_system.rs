@@ -97,6 +97,7 @@ crate::enum_case_from_impl!(Primitive, Int, Int);
 crate::enum_case_from_impl!(Primitive, Real, Real);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum Any {
     Primitive(Primitive),
 }
@@ -112,5 +113,13 @@ impl From<FixedInt> for Any {
 impl From<Real> for Any {
     fn from(real: Real) -> Self {
         Self::Primitive(Primitive::Real(real))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn any_type_size_is_acceptable() {
+        assert!(std::mem::size_of::<super::Any>() <= 16);
     }
 }
