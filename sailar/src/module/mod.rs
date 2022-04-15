@@ -94,7 +94,7 @@ impl Module {
     /// # use sailar::{Identifier, module::Module};
     /// let mut module = Module::new(Identifier::from_str("Testing")?, vec![1, 0, 0].into_boxed_slice());
     /// let contents = module.raw_contents(None).bytes();
-    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &contents[0..7]);
+    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &contents[0..6]);
     /// //assert_eq!();
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -136,7 +136,7 @@ impl Module {
     /// ```rust
     /// # use sailar::module::{FormatVersion, Module};
     /// let contents = &[
-    ///     b'S', b'A', b'I', b'L', b'A', b'R', 0,
+    ///     b'S', b'A', b'I', b'L', b'A', b'R',
     ///     // Format version
     ///     0, 12,
     ///     // Length size

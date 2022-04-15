@@ -6,10 +6,10 @@ TODO Placeholder Text contains functions, structs, globals, code blocks, runtime
 
 Offset|Name|Size (in bytes)|Notes
 ---|---|---|---
-`0`|Magic|`5`|The magic number that all module files must begin with, which is the 6-byte long ASCII string `SAILAR\0`.
-`5`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
-`6`|Minor Format Version|`1`|The minor version of the format.
-`7`|[Length Size](#length-size)|`1`|
+`0`|Magic|`6`|The magic number that all module files must begin with, which is the ASCII string `SAILAR`.
+`6`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
+`7`|Minor Format Version|`1`|The minor version of the format.
+`8`|[Length Size](#length-size)|`1`|
 `9`|[Module Header](#module-header)|`H`|
 `9 + H`|[Type Signatures](#type-signatures)|`T`|
 `9 + H + T`|Function Signatures|`F`|
