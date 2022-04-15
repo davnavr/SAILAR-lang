@@ -24,6 +24,7 @@ impl FormatVersion {
 pub struct Module {
     contents: Option<crate::binary::RawModule>,
     format_version: FormatVersion,
+    //length_size:
 }
 
 mod parser;
