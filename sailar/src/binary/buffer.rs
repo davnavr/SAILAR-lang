@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Pool {
     // TODO: Use a collection that keeps it sorted by capacity, to allow requests of a certain capacity to return a vec that meets it.
     buffers: RefCell<Vec<Vec<u8>>>,
@@ -35,6 +35,13 @@ impl Pool {
             buffer.reserve(capacity);
         }
         buffer
+    }
+
+    pub(crate) fn existing_or_default(pool: Option<&Self>) -> std::borrow::Cow<'_, Self> {
+        match pool {
+            Some(pool) => std::borrow::Cow::Borrowed(pool),
+            None => std::borrow::Cow::Owned(Self::default())
+        }
     }
 }
 
@@ -79,6 +86,18 @@ impl<'a> RentedOrOwned<'a> {
             None => Self::Owned(Vec::with_capacity(capacity)),
             Some(pool) => Self::Rented(pool.rent_with_capacity(capacity)),
         }
+    }
+}
+
+impl From<Vec<u8>> for RentedOrOwned<'_> {
+    fn from(owned: Vec<u8>) -> Self {
+        Self::Owned(owned)
+    }
+}
+
+impl<'a> From<Rented<'a>> for RentedOrOwned<'a> {
+    fn from(rented: Rented<'a>) -> Self {
+        Self::Rented(rented)
     }
 }
 
