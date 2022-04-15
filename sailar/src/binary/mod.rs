@@ -12,6 +12,10 @@ pub struct RawModule {
 }
 
 impl RawModule {
+    pub(crate) fn from_vec(contents: Vec<u8>) -> Self {
+        Self { contents }
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.contents
     }

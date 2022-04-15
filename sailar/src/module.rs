@@ -4,12 +4,21 @@ use crate::binary::{self, buffer};
 use std::cell::RefCell;
 
 /// Specifies the version of a SAILAR module file.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct FormatVersion {
     /// The major version number, incremented when backwards incompatible changes are made to the format.
     pub major: u8,
     pub minor: u8,
+}
+
+impl FormatVersion {
+    // static
+    /// The minimum version of the format supported by this API.
+    pub const MINIMUM_SUPPORTED: Self = Self {
+        major: 0,
+        minor: 12,
+    };
 }
 
 /// A SAILAR module.
@@ -24,13 +33,31 @@ impl Module {
         &self.format_version
     }
 
-    pub fn raw_contents(&mut self, buffer_pool: Option<&mut buffer::Pool>) -> &binary::RawModule {
-        self.contents.get_or_insert_with(|| {
-            let buffer = buffer::RentedOrOwned::with_capacity(512, buffer_pool);
-
-            todo!("create the raw contents")
-        })
+    /// Writes the bytes that make up this module to the specified destination.
+    ///
+    /// For writers such as [`std::io::File`], consider wrapping the destination in a [`std::io::BufWriter`].
+    pub fn write<W: std::io::Write>(
+        &self,
+        destination: W,
+        buffer_pool: Option<&mut buffer::Pool>,
+    ) -> std::io::Result<()> {
+        let mut out = destination;
+        out.write_all(binary::MAGIC.as_slice())?;
+        out.write_all(&[self.format_version.major, self.format_version.minor])?;
+        todo!("create the raw contents");
+        out.flush()
     }
+
+    pub fn raw_contents(&mut self, buffer_pool: Option<&mut buffer::Pool>) -> &binary::RawModule {
+        match &self.contents {
+            Some(contents) => contents,
+            None => {
+                
+            }
+        }
+    }
+
+    //pub fn drop_raw_contents
 }
 
 #[derive(Clone, Debug)]
@@ -77,10 +104,54 @@ impl ParseError {
     }
 }
 
+impl Module {
+    /// Parses a module.
+    ///
+    /// For sources such as [`std::io::File`], consider wrapping the reader in a [`std::io::BufReader`].
+    pub fn parse<R: std::io::Read>(
+        mut source: R,
+        buffer_pool: Option<&mut buffer::Pool>,
+    ) -> Result<Self, ParseError> {
+        let mut owned_buffer_pool;
+        let buffer_pool = match buffer_pool {
+            Some(pool) => pool,
+            None => {
+                owned_buffer_pool = buffer::Pool::default();
+                &mut owned_buffer_pool
+            }
+        };
+
+        // TODO: Read first 6 bytes and store them in a buffer.
+        todo!("implement parsing");
+
+        //# TODO: Store bytes in contents field
+    }
+
+    /// Parses a module contained a byte slice.
+    pub fn from_slice(
+        bytes: &[u8],
+        buffer_pool: Option<&mut buffer::Pool>,
+    ) -> Result<Self, ParseError> {
+        Self::parse(bytes, buffer_pool)
+    }
+
+    /// Parses a module contained in the byte vector, and stores the bytes alongside the parsed [`Module`].
+    ///
+    /// The byte vector can be retrieved again by calling [`raw_contents()`].
+    pub fn from_vec(
+        bytes: Vec<u8>,
+        buffer_pool: Option<&mut buffer::Pool>,
+    ) -> Result<Self, ParseError> {
+        let mut module = Self::from_slice(&bytes, buffer_pool)?;
+        module.contents = Some(binary::RawModule::from_vec(bytes));
+        Ok(module)
+    }
+}
+
 impl TryFrom<Vec<u8>> for Module {
     type Error = ParseError;
 
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        todo!("implement parsing")
+        Self::from_vec(bytes, None)
     }
 }

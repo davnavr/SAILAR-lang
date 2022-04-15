@@ -4,6 +4,7 @@ use std::cell::RefCell;
 
 #[derive(Debug, Default)]
 pub struct Pool {
+    // TODO: Use a collection that keeps it sorted by capacity, to allow requests of a certain capacity to return a vec that meets it.
     buffers: RefCell<Vec<Vec<u8>>>,
 }
 
@@ -87,7 +88,7 @@ impl<'a> std::ops::Deref for RentedOrOwned<'a> {
     fn deref(&self) -> &Vec<u8> {
         match self {
             Self::Rented(rented) => &rented.buffer,
-            Self::Owned(owned) => &owned,
+            Self::Owned(owned) => owned,
         }
     }
 }
