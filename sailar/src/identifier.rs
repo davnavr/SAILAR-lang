@@ -182,3 +182,19 @@ impl TryFrom<&[u8]> for Identifier {
         Self::from_byte_slice(bytes)
     }
 }
+
+impl std::borrow::Borrow<Id> for Identifier {
+    #[inline]
+    fn borrow(&self) -> &Id {
+        self.as_id()
+    }
+}
+
+impl<'a> ToOwned for Id {
+    type Owned = Identifier;
+
+    #[inline]
+    fn to_owned(&self) -> Identifier {
+        self.to_identifier()
+    }
+}
