@@ -28,6 +28,7 @@ pub struct Module {
     format_version: FormatVersion,
     length_size: LengthSize,
     name: Identifier,
+    version: Box<[usize]>,
 }
 
 mod parser;
@@ -42,14 +43,22 @@ impl Module {
         &self.format_version
     }
 
+    /// Gets a value indicating the size of length integers in the binary format of the module.
     #[inline]
     pub fn length_size(&self) -> LengthSize {
         self.length_size
     }
 
+    /// Gets the name of the module.
     #[inline]
     pub fn name(&self) -> &Id {
         self.name.as_id()
+    }
+
+    /// Gets the numbers that specify the version of the module, used to disambiguate between modules with the same name.
+    #[inline]
+    pub fn version(&self) -> &[usize] {
+        &self.version
     }
 
     /// Writes the bytes that make up this module to the specified destination.

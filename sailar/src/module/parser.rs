@@ -2,6 +2,7 @@
 
 use crate::binary::{self, buffer};
 use crate::identifier::{self, Identifier};
+use std::fmt::{Display, Formatter};
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -9,8 +10,8 @@ pub struct InvalidMagicError {
     actual: Vec<u8>,
 }
 
-impl std::fmt::Display for InvalidMagicError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for InvalidMagicError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
             "expected magic {:?}, but got {:?}",
@@ -21,6 +22,20 @@ impl std::fmt::Display for InvalidMagicError {
 }
 
 impl std::error::Error for InvalidMagicError {}
+
+/// Used when a module version number could not be parsed since the end of the file was reached.
+#[derive(Clone, Debug)]
+pub struct MissingModuleVersionNumberError {
+    index: usize,
+}
+
+impl Display for MissingModuleVersionNumberError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "expected {}th module version number but got EOF", self.index + 1)
+    }
+}
+
+impl std::error::Error for MissingModuleVersionNumberError {}
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -43,6 +58,10 @@ pub enum ErrorKind {
     MissingModuleHeader,
     #[error("invalid identifier, {0}")]
     InvalidIdentifier(#[from] identifier::ParseError),
+    #[error("expected module version length but got EOF")]
+    MissingModuleVersionLength,
+    #[error(transparent)]
+    MissingModuleVersionNumber(#[from] MissingModuleVersionNumberError),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -207,6 +226,30 @@ mod input {
             self.read_identifier(|length| pool.rent_with_length(length).into())
         }
 
+        pub fn read_many<P: FnMut(&mut Self, usize) -> ParseResult<()>>(
+            &mut self,
+            length: usize,
+            mut parser: P,
+        ) -> ParseResult<()> {
+            for i in 0..length {
+                parser(self, i)?;
+            }
+            Ok(())
+        }
+
+        /// Runs the specified `parser` a fixed number of times, appending the parsed items to the specified `vector`.
+        pub fn read_many_to_vec<T, P: FnMut(&mut Self, usize) -> ParseResult<T>>(
+            &mut self,
+            length: usize,
+            vector: &mut Vec<T>,
+            parser: P,
+        ) -> ParseResult<()> {
+            self.read_many(length, |src, index| {
+                vector.push(parser(src, index)?);
+                Ok(())
+            })
+        }
+
         /// Attempts to fill the specified buffer, returning a slice of the bytes that were read.
         pub fn fill<'b>(&mut self, buffer: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
             let count = self.read(buffer)?;
@@ -275,7 +318,7 @@ pub fn parse<R: std::io::Read>(
     #[derive(Debug)]
     struct Header {
         name: Identifier,
-        version: Box<[u8]>,
+        version: Box<[usize]>,
     }
 
     let header = {
@@ -288,7 +331,12 @@ pub fn parse<R: std::io::Read>(
         src.parse_buffer(buffer_pool, header_size, |mut src| {
             Ok(Header {
                 name: src.read_identifier_pooled(buffer_pool)?,
-                version: { Box::default() },
+                version: {
+                    let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
+                    let mut numbers = Vec::with_capacity(length);
+                    src.read_many_to_vec(length, &mut numbers, |src, index| src.read_length(|| MissingModuleVersionNumberError { index }.into()));
+                    numbers.into_boxed_slice()
+                },
             })
         })?
     };
@@ -298,5 +346,6 @@ pub fn parse<R: std::io::Read>(
         contents: None,
         length_size: src.length_size(),
         name: header.name,
+        version: header.version,
     })
 }
