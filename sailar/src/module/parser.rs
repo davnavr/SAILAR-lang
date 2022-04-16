@@ -402,5 +402,6 @@ pub fn parse<R: std::io::Read>(
         length_size: src.length_size(),
         name: header.name,
         version: header.version,
+        symbols: Default::default(), // TODO: Build the symbols set earlier.
     })
 }

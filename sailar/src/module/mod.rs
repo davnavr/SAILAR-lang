@@ -267,13 +267,25 @@ impl Module {
     ) -> Result<Arc<function::Function>, DuplicateSymbolError> {
         let function = Arc::new(function::Function::new(symbol, signature));
 
-        if !self.symbols.insert(DefinedSymbol::Function(function)) {
-            return Err(DuplicateSymbolError {
-                definition: DefinedSymbol::Function(function),
-            });
+        match kind {
+            function::Kind::Defined(entry_block) => {
+                if !self
+                    .symbols
+                    .insert(DefinedSymbol::Function(function.clone()))
+                {
+                    return Err(DuplicateSymbolError {
+                        definition: DefinedSymbol::Function(function),
+                    });
+                }
+
+                // TODO: Add pair of function and body to a Vec.
+            }
         }
 
-        // TODO: Update length size for symbol length, signature return and argument lengths.
+        self.length_size.resize_to_fit(function.symbol().len());
+        self.length_size.resize_to_fit(function.signature().result_types().len());
+        self.length_size.resize_to_fit(function.signature().argument_types().len());
+        // TODO: For each return and argument type, also update the length_size
 
         Ok(function)
     }
