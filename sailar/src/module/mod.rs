@@ -160,6 +160,8 @@ impl Module {
     ///     b'T', b'e', b's', b't', // Module name
     ///     2, // Module version length
     ///     1, 0, // Module Version
+    ///     0, // Type signatures size
+    ///     0, // Function signatures size
     /// ];
     ///
     /// let module = Module::from_slice(contents, None)?;

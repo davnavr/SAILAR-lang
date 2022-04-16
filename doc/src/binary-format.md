@@ -2,7 +2,7 @@
 Describes the layout of SAILAR modules (`.sail` files)
 
 ## Module
-TODO Placeholder Text contains functions, structs, globals, code blocks, runtimes (name to give to htings that add to function bodies), address spaces, exception classes, etc.
+TODO Placeholder Text contains functions, structs, globals, code blocks, runtimes (name to give to things that add to function bodies), address spaces, exception classes, etc.
 
 Offset|Name|Size (in bytes)|Notes
 ---|---|---|---
@@ -10,12 +10,22 @@ Offset|Name|Size (in bytes)|Notes
 `6`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
 `7`|Minor Format Version|`1`|The minor version of the format.
 `8`|[Length Size](#length-size)|`1`|
-`9`|[Module Header](#module-header)|`H`|
-`9 + H`|[Type Signatures](#type-signatures)|`T`|
-`9 + H + T`|Function Signatures|`F`|
+`9`|[Module Header](#module-header)|?|
+|?|[Type Signatures](#type-signatures)|?|
+|?|[Function Signatures](#function-signatures)|?|
+|?|[Data](#module-data)|?|
+|?|[Code Blocks](#code)|?|Since LLVM does not support it nicely, and sharing basic blocks or even function bodies between two functions is unlikely, function bodies may simply be included inline with function definitions.
+|?|[Module Imports](#module-imports)|?|
+|?|[Module Definitions](#module-definitions)|?|
+|?|[Struct Instantiations]|?|
+|?|[Function Instantiations]|?|
+|?|[Entry Point]|?|
+|?|[Module Initializer](#module-initializer)|?|
+|?|[Namespaces](#namespaces)|?|
+|?|[Debugging Information]|?|
 
 ## Length Size
-The length size indicates the size (`L`) of unsigned integers used to denote lengths, all values not listed below are invalid.
+The length size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
 
 Value|Length Integer Size (in bytes)
 ---|---
@@ -50,6 +60,7 @@ Offset|Name|Size|Notes
 `I`|Optional Field Count|`L`|A [length integer](#length-size) indicating an additional number of fields to follow. As no optional fields are currently defined, this should be set to zero.
 
 ## Type Signatures
+All of the type signatures used in the module. Individual type signatures are referred to by [length-sized indices](#length-size) with the first type signature referred to by index `0`.
 
 Offset|Name|Size|Notes|Omission
 ---|---|---|---|---
@@ -57,11 +68,105 @@ Offset|Name|Size|Notes|Omission
 `L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of type signatures to follow.|Omitted when `Size` is zero
 `2L`|Signatures|`S`|A series of [type signatures](./binary-format-signatures.md#type).
 
-## Struct
+## Function Signatures
+All of the function signatures used in the module. Individual function signatures are referred to by [length-sized indices](#length-size) with the first function signature referred to by index `0`.
+
+Offset|Name|Size|Notes|Omission
+---|---|---|---|---
+`0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of the function signatures, in bytes, excluding the count.
+`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of function signatures to follow.|Omitted when `Size` is zero
+`2L`|Signatures|`S`|A series of [function signatures](./binary-format-signatures.md#function).
+
+## Module Data
+Modules are allowed to contain arbitrary byte arrays that can be used for storing literal strings, the initial values of global variables, etc. Data arrays can be referred to by [length-sized indices](#length-size) starting at `0`.
+
+Offset|Name|Notes|Omission
+---|---|---|---
+`0`|Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all the data arrays combined.
+`L`|Count|A [length integer](#length-size) indicating the total number `C` of data arrays to follow.|Omitted when `Total Size` is zero.
+`2L`|Contents|A series of `C` [data arrays](#module-data-arrays) one after the other.
+
+## Code
+Code in SAILAR is broken into individual sequences of instructions known as blocks. Function definitions can specify their bodies by specifying the entry block which is the block that is entered when the function is called. [Refer to the instruction set documentation](./instruction-set.md) for the rules regarding valid blocks.
+
+Offset|Notes|Omission
+---|---|---
+`0`|Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all the code blocks combined.
+`L`|Count|A [length integer](#length-size) indicating the total number of code blocks to follow.
+`2L`|Code Blocks|A series of [code blocks](#code-block).
+
+### Code Block
+Each block describes its inputs, outputs, the types of its registers, and contains its instructions.
+
+Offset|Notes|Omission|
+---|---|---
+`0`|Input Count|A [length integer](#length-size) indicating the number of inputs to this block.
+`L`|Result Count|A [length integer](#length-size) indicating the number of results returned by this block.
+`2L`|Temporary Count|A [length integer](#length-size) indicating the number of temporary registers introduced by the instructions in this block.
+`3L`|Register Types|A series of [type signature indices](#type-signatures) specifying the type of each input, result, and temporary register in that order.
+?|Instruction Size|A [length integer](#length-size) indicating the size of the total size of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
+?|Instruction Count|A [length integer](#length-size) indicating the number of instructions in this block. This must be greater than zero.
+?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
+
+### Module Data Arrays
+Offset|Name|Notes
+---|---|---
+`0`|Length|The length `L` of this data array, in bytes.
+`L`|Data|The actual data, contains `L` bytes.
+
+## Module Imports
+This structure contains all structs, functions, globals, etc. that are used by the current module.
+
+Name|Notes
+---|---
+Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module import information. If zero, all following fields are omitted.
+Function Count|
+[Function Imports]()|
+Struct Count|
+[Struct Imports]()|
+Global Count|
+[Global Imports]()|
+Exception Class Count|A [length integer](#length-size), set to zero as SAILAR's exception handling mechanism is still being defined.
+Exception Class Imports|Currently empty.
+Annotation Class Count|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
+Annotation Class Imports|Currently empty.
+
+## Module Definitions
+Contains the structs, functions, globals, etc. defined by the current module.
+
+Name|Notes
+---|---
+Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module definition information. If zero, all following fields are omitted
+Function Count|
+[Function Definitions]()|
+Struct Count|
+[Struct Definitions](#struct-definition)|
+Global Count|
+[Global Definitions]()|
+Exception Class Count|Currently empty.
+Exception Class Definitions|A [length integer](#length-size), set to zero as SAILAR's exception handling mechanism is still being defined.
+Annotation Class Count|Currently empty.
+Annotation Class Definitions|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
+
+### Struct Definition
 Represents a set of fields which form a type.
 
 Offset|Bits|Name|Notes
 ---|---|---|---
 `0`|`0`|Export|Indicates if this structure is visible to other modules.
 `0`|`1`|Name for equivalent of Rust's non-exhaustive|Indicates that all fields are visible to other modules. Can only be set if all fields are exported. This can be used to indicate that valid instances of this struct cannot be made as all fields are not known.
-`0`|`2..7`|Reserved|Must not be set.
+`0`|`2..7`|Reserved|These bits must not be set.
+
+## Module Initializer
+The module initializer is a function that takes no arguments and returns no values that is called before execution of any entry point function begins. It allows modules to initialize global variables and other global state before execution of other code. In order to prevent ambiguity regarding the execution of module initializers, the module initializer function is not allowed to make calls to any imported functions or write to or read values from any imported globals.
+
+## Namespaces
+Namespaces allow compilers to organize and attach human readable names to the structs, globals, and functions of a module.
+
+## Debugging Information
+Modules can optionally contain debugging information.
+
+Offset|Name|Notes
+---|---|---
+`0`|Size|A [length integer](#length-size) indicating the size of the following debugging information in bytes.
+`L`|Debugging Information|The debugging information, [whose format is documented here](./debug-format.md).

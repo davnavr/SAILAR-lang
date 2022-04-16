@@ -3,15 +3,25 @@
 ## Type
 Denotes a type of a field, global, return value, argument, etc.
 
-First Byte|Description
----|---
-`0x01`|An unsigned 8-bit integer
-`0x02`|An unsigned 16-bit integer
-`0x04`|An unsigned 32-bit integer
-`0x08`|A signed 64-bit integer
-`0x11`|A signed 8-bit integer
-`0x12`|A signed 16-bit integer
-`0x14`|A signed 32-bit integer
-`0x18`|A signed 64-bit integer
-`0xF4`|32-bit floating-point
-`0xF8`|64-bit floating-point
+First Byte|Assembly Name|Description
+---|---|---
+`0x01`|`u8`|An unsigned 8-bit integer
+`0x02`|`u16`|An unsigned 16-bit integer
+`0x04`|`u32`|An unsigned 32-bit integer
+`0x08`|`u64`|A signed 64-bit integer
+`0x11`|`s8`|A signed 8-bit integer
+`0x12`|`s16`|A signed 16-bit integer
+`0x14`|`s32`|A signed 32-bit integer
+`0x18`|`s64`|A signed 64-bit integer
+`0xF4`|`f32`|32-bit floating-point
+`0xF8`|`f64`|64-bit floating-point
+
+## Function
+Specifies the return values and argument types of a function.
+
+Offset|Size|Name|Notes
+---|---|---|---
+`0`|`L`|Return Type Count|Specifies the number `R` of values returned by the function.
+`L`|`L * R`|Return Types|An array of indices specifying the return types of the function.
+`L * (R + 1)`|`L`|Argument Count|Specifies the number `A` of argument types.
+`L * (R + 2)`|`L * A`|Argument Types|An array of indices specifying the return types of the function.
