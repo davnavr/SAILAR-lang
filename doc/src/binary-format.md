@@ -17,9 +17,9 @@ Offset|Name|Size (in bytes)|Notes
 |?|[Code Blocks](#code)|?|Since LLVM does not support it nicely, and sharing basic blocks or even function bodies between two functions is unlikely, function bodies may simply be included inline with function definitions.
 |?|[Module Imports](#module-imports)|?|
 |?|[Module Definitions](#module-definitions)|?|
-|?|[Struct Instantiations]|?|
-|?|[Function Instantiations]|?|
-|?|[Entry Point]|?|
+|?|[Struct Instantiations](#struct-instantiations)|?|
+|?|[Function Instantiations](#function-instantiations)|?|
+|?|[Entry Point](#entry-point)|?|
 |?|[Module Initializer](#module-initializer)|?|
 |?|[Namespaces](#namespaces)|?|
 |?|[Debugging Information]|?|
@@ -156,6 +156,37 @@ Offset|Bits|Name|Notes
 `0`|`0`|Export|Indicates if this structure is visible to other modules.
 `0`|`1`|Name for equivalent of Rust's non-exhaustive|Indicates that all fields are visible to other modules. Can only be set if all fields are exported. This can be used to indicate that valid instances of this struct cannot be made as all fields are not known.
 `0`|`2..7`|Reserved|These bits must not be set.
+
+## Struct Instantiations
+Allows referring to struct definitions and imports, while also allowing generic structs in the future.
+
+Offset|Name|Notes
+---|---|---
+`0`|Total Size|
+`L`|Count|
+`2L`|
+
+Offset|Name|Notes
+---|---|---
+`0`|Struct Index|A [length integer](#length-size) used to refer to a struct import or definition, where `0` refers to the first struct import, and `x` refers to the first struct definition, where `x` is the total number of struct imports.
+`L`|Reserved|A reserved [length integer](#length-size), must be set to zero.
+
+## Function Instantiations
+Allows referring to function definitions and imports, while also allowing generic functions in the future.
+
+Offset|Name|Notes
+---|---|---
+`0`|Total Size|
+`L`|Count|
+`2L`|
+
+Offset|Name|Notes
+---|---|---
+`0`|Function Index|A [length integer](#length-size) used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
+`L`|Reserved|A reserved [length integer](#length-size), must be set to zero.
+
+## Entry Point
+The entry point function is the function that is executed when a SAILAR application is run.
 
 ## Module Initializer
 The module initializer is a function that takes no arguments and returns no values that is called before execution of any entry point function begins. It allows modules to initialize global variables and other global state before execution of other code. In order to prevent ambiguity regarding the execution of module initializers, the module initializer function is not allowed to make calls to any imported functions or write to or read values from any imported globals.
