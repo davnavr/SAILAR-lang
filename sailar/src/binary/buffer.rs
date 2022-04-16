@@ -71,9 +71,7 @@ impl Rented<'_> {
 
 impl std::fmt::Debug for Rented<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("Rented")
-            .field("buffer", &ByteDebug(&self.buffer))
-            .finish()
+        f.debug_struct("Rented").field("buffer", &ByteDebug(&self.buffer)).finish()
     }
 }
 
@@ -95,10 +93,7 @@ impl<'a> std::ops::DerefMut for Rented<'a> {
 
 impl<'a> Drop for Rented<'a> {
     fn drop(&mut self) {
-        self.pool
-            .buffers
-            .borrow_mut()
-            .push(std::mem::take(&mut self.buffer));
+        self.pool.buffers.borrow_mut().push(std::mem::take(&mut self.buffer));
     }
 }
 

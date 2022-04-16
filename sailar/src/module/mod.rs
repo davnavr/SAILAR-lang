@@ -18,10 +18,7 @@ pub struct FormatVersion {
 
 impl FormatVersion {
     /// The minimum version of the format supported by this API.
-    pub const MINIMUM_SUPPORTED: &'static Self = &Self {
-        major: 0,
-        minor: 12,
-    };
+    pub const MINIMUM_SUPPORTED: &'static Self = &Self { major: 0, minor: 12 };
 }
 
 /// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
@@ -111,20 +108,12 @@ impl Module {
     /// Writes the bytes binary contents of the module to the specified destination.
     ///
     /// For writers such as [`std::fs::File`], consider wrapping the destination in a [`std::io::BufWriter`].
-    pub fn write<W: std::io::Write>(
-        &self,
-        destination: W,
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> std::io::Result<()> {
+    pub fn write<W: std::io::Write>(&self, destination: W, buffer_pool: Option<&buffer::Pool>) -> std::io::Result<()> {
         writer::write(self, destination, buffer_pool)
     }
 
     /// Writes the binary contents of the module to a file, automatically wrapping it in a [`std::io::BufWriter`].
-    pub fn write_to_file(
-        &self,
-        destination: std::fs::File,
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> std::io::Result<()> {
+    pub fn write_to_file(&self, destination: std::fs::File, buffer_pool: Option<&buffer::Pool>) -> std::io::Result<()> {
         self.write(std::io::BufWriter::new(destination), buffer_pool)
     }
 
@@ -155,8 +144,7 @@ impl Module {
                 unreachable!("unable to write module: {:?}", error)
             }
 
-            self.contents
-                .insert(RawModule::from_vec(module_buffer.into_vec()))
+            self.contents.insert(RawModule::from_vec(module_buffer.into_vec()))
         } else if let Some(existing) = &self.contents {
             existing
         } else {
@@ -171,10 +159,7 @@ impl Module {
     ///
     /// For sources such as [`std::fs::File`], consider wrapping the reader in a [`std::io::BufReader`].
     #[inline]
-    pub fn parse<R: std::io::Read>(
-        source: R,
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> Result<Self, ParseError> {
+    pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         parser::parse(source, buffer_pool)
     }
 
@@ -204,20 +189,14 @@ impl Module {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn from_slice(
-        bytes: &[u8],
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> Result<Self, ParseError> {
+    pub fn from_slice(bytes: &[u8], buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         Self::parse(bytes, buffer_pool)
     }
 
     /// Parses a module contained in the byte vector, and stores the bytes alongside the parsed [`Module`].
     ///
     /// The byte vector can be retrieved again by calling [`Module::raw_contents()`].
-    pub fn from_vec(
-        bytes: Vec<u8>,
-        buffer_pool: Option<&buffer::Pool>,
-    ) -> Result<Self, ParseError> {
+    pub fn from_vec(bytes: Vec<u8>, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         let mut module = Self::from_slice(&bytes, buffer_pool)?;
         module.contents = Some(crate::binary::RawModule::from_vec(bytes));
         Ok(module)
@@ -269,10 +248,7 @@ impl Module {
 
         match kind {
             function::Kind::Defined(entry_block) => {
-                if !self
-                    .symbols
-                    .insert(DefinedSymbol::Function(function.clone()))
-                {
+                if !self.symbols.insert(DefinedSymbol::Function(function.clone())) {
                     return Err(DuplicateSymbolError {
                         definition: DefinedSymbol::Function(function),
                     });

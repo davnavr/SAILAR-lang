@@ -54,11 +54,7 @@ mod output {
             (self.length_writer)(self, length)
         }
 
-        pub fn write_many<
-            T,
-            I: std::iter::IntoIterator<Item = T>,
-            O: FnMut(&mut Self, T) -> Result,
-        >(
+        pub fn write_many<T, I: std::iter::IntoIterator<Item = T>, O: FnMut(&mut Self, T) -> Result>(
             &mut self,
             items: I,
             mut writer: O,
@@ -85,11 +81,7 @@ mod output {
     }
 }
 
-pub fn write<W: Write>(
-    module: &crate::module::Module,
-    destination: W,
-    buffer_pool: Option<&buffer::Pool>,
-) -> Result {
+pub fn write<W: Write>(module: &crate::module::Module, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
     use output::Wrapper;
 
     let length_size = module.length_size;
@@ -99,11 +91,7 @@ pub fn write<W: Write>(
     {
         out.write_all(binary::MAGIC.as_slice())?;
         let format_version = &module.format_version;
-        out.write_all(&[
-            format_version.major,
-            format_version.minor,
-            length_size.into(),
-        ])?;
+        out.write_all(&[format_version.major, format_version.minor, length_size.into()])?;
     }
 
     {
@@ -113,9 +101,7 @@ pub fn write<W: Write>(
         header.write_length(name.len())?;
         header.write_all(name)?;
         header.write_length(module.version.len() * usize::from(length_size.byte_count()))?;
-        header.write_many(module.version.iter(), |numbers, version| {
-            numbers.write_length(*version)
-        })?;
+        header.write_many(module.version.iter(), |numbers, version| numbers.write_length(*version))?;
 
         out.write_length(header.len())?;
         out.write_all(&header)?;

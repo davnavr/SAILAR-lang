@@ -32,11 +32,7 @@ pub struct MissingModuleVersionNumberError {
 
 impl Display for MissingModuleVersionNumberError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "expected {}th module version number but got EOF",
-            self.index + 1
-        )
+        write!(f, "expected {}th module version number but got EOF", self.index + 1)
     }
 }
 
@@ -193,10 +189,7 @@ mod input {
             }
         }
 
-        pub fn read_length<E: FnOnce() -> ErrorKind>(
-            &mut self,
-            missing_error: E,
-        ) -> ParseResult<usize> {
+        pub fn read_length<E: FnOnce() -> ErrorKind>(&mut self, missing_error: E) -> ParseResult<usize> {
             match (self.length_parser)(self) {
                 Ok(Some(length)) => Ok(length),
                 Ok(None) => Err(self.error(missing_error())),
@@ -231,9 +224,8 @@ mod input {
             &mut self,
             buffer_source: B,
         ) -> ParseResult<Identifier> {
-            let length = self.read_length(|| {
-                identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into()
-            })?;
+            let length =
+                self.read_length(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
 
             let mut buffer = buffer_source(length);
             self.read_exact(buffer.as_mut_slice())?;
@@ -276,10 +268,7 @@ mod input {
     }
 }
 
-pub fn parse<R: std::io::Read>(
-    source: R,
-    buffer_pool: Option<&buffer::Pool>,
-) -> ParseResult<crate::module::Module> {
+pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<crate::module::Module> {
     let mut src = input::Wrapper::new(source);
 
     macro_rules! error {
@@ -298,9 +287,7 @@ pub fn parse<R: std::io::Read>(
         let mut magic_buffer = [0u8; binary::MAGIC.len()];
         let magic = src.fill(&mut magic_buffer)?;
         if magic != binary::MAGIC {
-            error!(InvalidMagicError {
-                actual: magic.into()
-            });
+            error!(InvalidMagicError { actual: magic.into() });
         }
     }
 
@@ -322,10 +309,9 @@ pub fn parse<R: std::io::Read>(
             minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
         };
 
-        let length_size = result!(binary::LengthSize::try_from(get_information_byte(
-            2,
-            || ErrorKind::MissingLengthSize
-        )?));
+        let length_size = result!(binary::LengthSize::try_from(get_information_byte(2, || {
+            ErrorKind::MissingLengthSize
+        })?));
 
         src.set_length_size(length_size);
     }
