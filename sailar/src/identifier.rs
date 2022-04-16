@@ -85,7 +85,7 @@ impl Identifier {
 
     #[inline]
     pub fn from_str(identifier: &str) -> Result<Self, InvalidError> {
-        Id::from_str(&identifier)?;
+        Id::from_str(identifier)?;
         Ok(Self(identifier.to_owned()))
     }
 
