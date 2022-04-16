@@ -2,6 +2,15 @@
 
 use crate::instruction_set::Instruction;
 
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ValidationError {
+    #[error("code blocks must not be empty")]
+    EmptyBlock,
+}
+
+pub type ValidationResult<T> = Result<T, ValidationError>;
+
 /// Allows the building of SAILAR code blocks.
 #[derive(Debug)]
 pub struct Builder<'b> {
@@ -17,7 +26,20 @@ impl<'b> Builder<'b> {
         self.instructions.push(Instruction::Break);
     }
 
-    //pub fn emit_ret(self) -> Block
+    fn validate(self) -> ValidationResult<Block> {
+        if self.instructions.is_empty() {
+            return Err(ValidationError::EmptyBlock);
+        }
+
+        Ok(Block {
+            instructions: self.instructions.clone().into_boxed_slice(),
+        })
+    }
+
+    pub fn emit_ret<V: Into<Box<[()]>>>(self, values: V) -> ValidationResult<Block> {
+        self.instructions.push(Instruction::Ret(values.into()));
+        self.validate()
+    }
 }
 
 #[derive(Debug)]
@@ -42,12 +64,15 @@ impl BuilderCache {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum ValidationError {
-    #[error("code blocks must not be empty")]
-    EmptyBlock,
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[repr(transparent)]
+pub struct Block {
+    instructions: Box<[Instruction]>,
 }
 
-#[derive(Clone, Debug)]
-pub struct Block {}
+impl Block {
+    #[inline]
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+}

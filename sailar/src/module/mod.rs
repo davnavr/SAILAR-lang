@@ -4,6 +4,7 @@ use crate::binary::buffer;
 use crate::binary::{LengthSize, RawModule};
 use crate::function;
 use crate::identifier::{Id, Identifier};
+use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
 /// Specifies the version of a SAILAR module file.
@@ -23,6 +24,34 @@ impl FormatVersion {
     };
 }
 
+/// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
+#[derive(Debug)]
+enum DefinedSymbol {
+    Function(Arc<function::Function>),
+}
+
+impl DefinedSymbol {
+    fn as_id(&self) -> &Id {
+        match self {
+            Self::Function(function) => function.symbol(),
+        }
+    }
+}
+
+impl std::cmp::PartialEq for DefinedSymbol {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_id() == other.as_id()
+    }
+}
+
+impl std::cmp::Eq for DefinedSymbol {}
+
+impl std::hash::Hash for DefinedSymbol {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(self.as_id(), state)
+    }
+}
+
 /// A SAILAR module.
 #[derive(Debug)]
 pub struct Module {
@@ -31,6 +60,7 @@ pub struct Module {
     length_size: LengthSize,
     name: Identifier,
     version: Box<[usize]>,
+    symbols: FxHashSet<DefinedSymbol>,
 }
 
 mod parser;
@@ -51,6 +81,7 @@ impl Module {
             length_size,
             name,
             version,
+            symbols: FxHashSet::default(),
         }
     }
 
@@ -193,10 +224,24 @@ impl Module {
     }
 
     /// Adds a function definition or import to this module.
-    pub fn add_function(&mut self, symbol: Identifier, signature: Arc<function::Signature>, kind: function::Kind) -> Arc<function::Function> {
-        // TODO: Add the function and the symbol to some sort of lookup
+    pub fn add_function(
+        &mut self,
+        symbol: Identifier,
+        signature: Arc<function::Signature>,
+        kind: function::Kind,
+    ) -> Arc<function::Function> {
+        let function = Arc::new(function::Function::new(symbol, signature));
+
+        if !self.symbols.insert(DefinedSymbol::Function(function)) {
+            panic!("TODO: Error for duplicate symbol")
+        }
+
+        // TODO: Update length size for symbol length, signature return and argument lengths.
+
         // TODO: Add the function and the kind to some sort of lookup/Vec that keeps track of which functions have been defined.
         // Result<Arc<function::Function>, DuplicateSymbolError>
+
+        function
     }
 }
 

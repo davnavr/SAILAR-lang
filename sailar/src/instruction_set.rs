@@ -5,4 +5,5 @@
 pub enum Instruction {
     Nop,
     Break,
+    Ret(Box<[()]>),
 }

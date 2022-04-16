@@ -1,7 +1,7 @@
 //! Manipulation of SAILAR function definitions and function imports.
 
-use crate::{Id, Identifier};
 use crate::type_system::Any;
+use crate::{Id, Identifier};
 use std::sync::Arc;
 
 /// Represents a SAILAR function signature.
@@ -38,10 +38,7 @@ pub struct Function {
 
 impl Function {
     pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>) -> Self {
-        Self {
-            symbol,
-            signature,
-        }
+        Self { symbol, signature }
     }
 
     #[inline]
