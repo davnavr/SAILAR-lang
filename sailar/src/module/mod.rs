@@ -189,6 +189,9 @@ impl Module {
         module.contents = Some(crate::binary::RawModule::from_vec(bytes));
         Ok(module)
     }
+
+    /// Adds a function definition or import to this module.
+    pub fn add_function(&mut self, symbol: Identifier) {}
 }
 
 impl TryFrom<Vec<u8>> for Module {
