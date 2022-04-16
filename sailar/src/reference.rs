@@ -1,18 +1,18 @@
-//! Helper types for operating with references.
+//! Helper types for operating with references and smart pointers.
 
 use std::sync::Arc;
 
 /// A smart pointer type that allows for single ownership or multiple ownership with thread-safe reference counting.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum Ref<T>
-where
-    T: ?Sized,
-{
+/// 'Orc' stands for 'Optionally (and atomically) Reference Counted'.
+///
+/// This attempts to avoid any overhead associated with `Arc<T>` where it is not necessary.
+#[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Orc<T: ?Sized> {
     Arc(Arc<T>),
     Box(Box<T>),
 }
 
-impl<T> Ref<T> {
+impl<T> Orc<T> {
     pub fn into_arc(this: Self) -> Arc<T> {
         match this {
             Self::Arc(arc) => arc,
@@ -21,28 +21,28 @@ impl<T> Ref<T> {
     }
 }
 
-impl<T: ?Sized> From<Box<T>> for Ref<T> {
+impl<T: ?Sized> From<Box<T>> for Orc<T> {
     #[inline]
     fn from(boxed: Box<T>) -> Self {
         Self::Box(boxed)
     }
 }
 
-impl<T: ?Sized> From<Arc<T>> for Ref<T> {
+impl<T: ?Sized> From<Arc<T>> for Orc<T> {
     #[inline]
     fn from(arc: Arc<T>) -> Self {
         Self::Arc(arc)
     }
 }
 
-impl<T> From<Ref<T>> for Arc<T> {
+impl<T> From<Orc<T>> for Arc<T> {
     #[inline]
-    fn from(reference: Ref<T>) -> Self {
-        Ref::into_arc(reference)
+    fn from(reference: Orc<T>) -> Self {
+        Orc::into_arc(reference)
     }
 }
 
-impl<T: ?Sized> std::ops::Deref for Ref<T> {
+impl<T: ?Sized> std::ops::Deref for Orc<T> {
     type Target = T;
 
     fn deref(&self) -> &T {

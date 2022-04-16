@@ -1,7 +1,8 @@
 //! Manipulation of SAILAR function definitions and function imports.
 
+use crate::{Id, Identifier};
+use crate::reference::Orc;
 use crate::type_system::Any;
-use crate::reference::Ref;
 
 /// Represents a SAILAR function signature.
 #[derive(Clone, Default, Debug, Eq, Hash, PartialEq)]
@@ -29,21 +30,34 @@ impl Signature {
     }
 }
 
-// TODO: Only allow function instances to be made by calling a function in Module.
-//pub fn add_function(&self, symbol, signature, some_argument: enum { ImportedModule, Body })
 #[derive(Debug)]
 pub struct Function {
-    signature: Ref<Signature>,
+    symbol: Identifier,
+    signature: Orc<Signature>,
 }
 
 impl Function {
+    pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>) -> Self {
+        Self {
+            symbol,
+            signature,
+        }
+    }
+
+    #[inline]
+    pub fn symbol(&self) -> &Id {
+        self.symbol.as_id()
+    }
+
     #[inline]
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
 }
 
+#[derive(Debug)]
 pub enum Kind {
-    //Import(Ref),
-    Defined(Ref<crate::block::Block>),
+    //Import(Orc<crate::module::Name>),
+    /// Indicates that a function is a function definition, with the specified entry block.
+    Defined(Orc<crate::block::Block>),
 }

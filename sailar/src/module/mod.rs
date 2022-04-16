@@ -2,7 +2,9 @@
 
 use crate::binary::buffer;
 use crate::binary::{LengthSize, RawModule};
+use crate::function;
 use crate::identifier::{Id, Identifier};
+use std::sync::Arc;
 
 /// Specifies the version of a SAILAR module file.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -191,7 +193,11 @@ impl Module {
     }
 
     /// Adds a function definition or import to this module.
-    pub fn add_function(&mut self, symbol: Identifier) {}
+    pub fn add_function(&mut self, symbol: Identifier, signature: Arc<function::Signature>, kind: function::Kind) -> Arc<function::Function> {
+        // TODO: Add the function and the symbol to some sort of lookup
+        // TODO: Add the function and the kind to some sort of lookup/Vec that keeps track of which functions have been defined.
+        // Result<Arc<function::Function>, DuplicateSymbolError>
+    }
 }
 
 impl TryFrom<Vec<u8>> for Module {
