@@ -2,11 +2,17 @@
 
 use crate::binary::buffer;
 use crate::binary::{LengthSize, RawModule};
-use crate::block;
 use crate::function;
 use crate::identifier::{Id, Identifier};
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub enum Export {
+    Yes,
+    No,
+}
 
 /// Specifies the version of a SAILAR module file.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -51,19 +57,19 @@ impl std::hash::Hash for DefinedSymbol {
 }
 
 #[derive(Debug)]
-pub struct FunctionDefinition {
+pub struct DefinedFunction {
     function: Arc<function::Function>,
-    entry_block: Arc<block::Block>,
+    entry_block: function::Definition,
 }
 
-impl FunctionDefinition {
+impl DefinedFunction {
     #[inline]
     pub fn function(&self) -> &Arc<function::Function> {
         &self.function
     }
 
     #[inline]
-    pub fn entry_block(&self) -> &Arc<block::Block> {
+    pub fn definition(&self) -> &function::Definition {
         &self.entry_block
     }
 }
@@ -77,7 +83,7 @@ pub struct Module {
     name: Identifier,
     version: Box<[usize]>,
     symbols: FxHashSet<DefinedSymbol>,
-    function_definitions: Vec<FunctionDefinition>,
+    function_definitions: Vec<DefinedFunction>,
 }
 
 mod parser;
@@ -271,7 +277,7 @@ impl Module {
                     return Err(DuplicateSymbolError(DefinedSymbol::Function(function)));
                 }
 
-                self.function_definitions.push(FunctionDefinition {
+                self.function_definitions.push(DefinedFunction {
                     function: function.clone(),
                     entry_block,
                 });
@@ -287,7 +293,7 @@ impl Module {
     }
 
     #[inline]
-    pub fn function_definitions(&self) -> &[FunctionDefinition] {
+    pub fn function_definitions(&self) -> &[DefinedFunction] {
         &self.function_definitions
     }
 }

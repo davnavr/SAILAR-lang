@@ -1,5 +1,7 @@
 //! Manipulation of SAILAR function definitions and function imports.
 
+use crate::block;
+use crate::module::Export;
 use crate::type_system::Any;
 use crate::{Id, Identifier};
 use std::sync::Arc;
@@ -53,8 +55,32 @@ impl Function {
 }
 
 #[derive(Debug)]
+pub struct Definition {
+    entry_block: Arc<block::Block>,
+    export: Export,
+}
+
+impl Definition {
+    pub fn new(entry_block: Arc<block::Block>, export: Export) -> Self {
+        Self {
+            entry_block, export
+        }
+    }
+
+    #[inline]
+    pub fn entry_block(&self) -> &Arc<block::Block> {
+        &self.entry_block
+    }
+
+    #[inline]
+    pub fn is_export(&self) -> Export {
+        self.export
+    }
+}
+
+#[derive(Debug)]
 pub enum Kind {
     //Import(Arc<crate::module::Name>),
     /// Indicates that a function is a function definition, with the specified entry block.
-    Defined(Arc<crate::block::Block>),
+    Defined(Definition),
 }

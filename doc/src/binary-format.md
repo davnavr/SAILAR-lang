@@ -14,7 +14,7 @@ Offset|Name|Size (in bytes)|Notes
 |?|[Type Signatures](#type-signatures)|?|
 |?|[Function Signatures](#function-signatures)|?|
 |?|[Data](#module-data)|?|
-|?|[Code Blocks](#code)|?|Since LLVM does not support it nicely, and sharing basic blocks or even function bodies between two functions is unlikely, function bodies may simply be included inline with function definitions.
+|?|[Code Blocks](#code)|?|
 |?|[Module Imports](#module-imports)|?|
 |?|[Module Definitions](#module-definitions)|?|
 |?|[Struct Instantiations](#struct-instantiations)|?|
@@ -117,6 +117,8 @@ Offset|Name|Notes
 ## Module Imports
 This structure contains all structs, functions, globals, etc. that are used by the current module.
 
+TODO: Have this be a list of module imports instead, with each ModuleImport struct containing functions, structs, globals, etc.
+
 Name|Notes
 ---|---
 Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module import information. If zero, all following fields are omitted.
@@ -138,7 +140,7 @@ Name|Notes
 ---|---
 Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module definition information. If zero, all following fields are omitted
 Function Count|
-[Function Definitions]()|
+[Function Definitions](#function-definition)|
 Struct Count|
 [Struct Definitions](#struct-definition)|
 Global Count|
@@ -147,6 +149,13 @@ Exception Class Count|Currently empty.
 Exception Class Definitions|A [length integer](#length-size), set to zero as SAILAR's exception handling mechanism is still being defined.
 Annotation Class Count|Currently empty.
 Annotation Class Definitions|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
+
+### Function Definition
+
+Offset|Bits|Name|Notes
+---|---|---|---
+`0`|`0`|Export|Indicates if this structure is visible to other modules.
+
 
 ### Struct Definition
 Represents a set of fields which form a type.
