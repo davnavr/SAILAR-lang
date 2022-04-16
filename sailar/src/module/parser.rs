@@ -389,5 +389,6 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         name: header.name,
         version: header.version,
         symbols: Default::default(), // TODO: Build the symbols set earlier.
+        function_definitions: Default::default(), // TODO: Build the function definitions list earlier.
     })
 }

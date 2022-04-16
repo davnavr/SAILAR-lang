@@ -49,6 +49,12 @@ impl std::hash::Hash for DefinedSymbol {
     }
 }
 
+#[derive(Debug)]
+struct FunctionDefinition {
+    function: Arc<function::Function>,
+    entry_block: Arc<crate::block::Block>,
+}
+
 /// A SAILAR module.
 #[derive(Debug)]
 pub struct Module {
@@ -58,6 +64,7 @@ pub struct Module {
     name: Identifier,
     version: Box<[usize]>,
     symbols: FxHashSet<DefinedSymbol>,
+    function_definitions: Vec<FunctionDefinition>,
 }
 
 mod parser;
@@ -79,6 +86,7 @@ impl Module {
             name,
             version,
             symbols: FxHashSet::default(),
+            function_definitions: Vec::new(),
         }
     }
 
@@ -213,14 +221,12 @@ impl TryFrom<Vec<u8>> for Module {
 }
 
 #[derive(Clone, Debug)]
-pub struct DuplicateSymbolError {
-    definition: DefinedSymbol,
-}
+pub struct DuplicateSymbolError(DefinedSymbol);
 
 impl DuplicateSymbolError {
     #[inline]
     pub fn symbol(&self) -> &Id {
-        self.definition.as_id()
+        self.0.as_id()
     }
 }
 
@@ -249,12 +255,13 @@ impl Module {
         match kind {
             function::Kind::Defined(entry_block) => {
                 if !self.symbols.insert(DefinedSymbol::Function(function.clone())) {
-                    return Err(DuplicateSymbolError {
-                        definition: DefinedSymbol::Function(function),
-                    });
+                    return Err(DuplicateSymbolError(DefinedSymbol::Function(function)));
                 }
 
-                // TODO: Add pair of function and body to a Vec.
+                self.function_definitions.push(FunctionDefinition {
+                    function: function.clone(),
+                    entry_block
+                });
             }
         }
 
