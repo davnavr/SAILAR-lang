@@ -2,6 +2,7 @@
 
 use crate::binary::buffer;
 use crate::binary::{LengthSize, RawModule};
+use crate::block;
 use crate::function;
 use crate::identifier::{Id, Identifier};
 use rustc_hash::FxHashSet;
@@ -50,9 +51,21 @@ impl std::hash::Hash for DefinedSymbol {
 }
 
 #[derive(Debug)]
-struct FunctionDefinition {
+pub struct FunctionDefinition {
     function: Arc<function::Function>,
-    entry_block: Arc<crate::block::Block>,
+    entry_block: Arc<block::Block>,
+}
+
+impl FunctionDefinition {
+    #[inline]
+    pub fn function(&self) -> &Arc<function::Function> {
+        &self.function
+    }
+
+    #[inline]
+    pub fn entry_block(&self) -> &Arc<block::Block> {
+        &self.entry_block
+    }
 }
 
 /// A SAILAR module.
@@ -260,7 +273,7 @@ impl Module {
 
                 self.function_definitions.push(FunctionDefinition {
                     function: function.clone(),
-                    entry_block
+                    entry_block,
                 });
             }
         }
@@ -271,5 +284,10 @@ impl Module {
         // TODO: For each return and argument type, also update the length_size
 
         Ok(function)
+    }
+
+    #[inline]
+    pub fn function_definitions(&self) -> &[FunctionDefinition] {
+        &self.function_definitions
     }
 }

@@ -64,6 +64,13 @@ impl BuilderCache {
     }
 }
 
+impl std::default::Default for BuilderCache {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[repr(transparent)]
 pub struct Block {
