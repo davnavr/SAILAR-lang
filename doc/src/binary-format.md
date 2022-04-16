@@ -159,11 +159,15 @@ Describes a function defined in the current module. When generics are supported,
 
 Offset|Bits|Name|Notes
 ---|---|---|---
-`0`|`0`|Export|Indicates if this structure is visible to other modules.
-`0`|`1..7`|Reserved|These bits must not be set.
+`0`|`0`|Export|If set, indicates if this structure is visible to other modules.
+`0`|`1`|Foreign|If set, indicates that the body of this function is defined elsewhere. Typically used when dealing with foreign function interface bindings.
+`0`|`2..7`|Reserved|These bits must not be set.
 `1`||Signature|A [length integer index](#length-size) that indicates the [function's signature](#function-signatures).
 `1 + L`||[Symbol](#symbols)
-Figure out how to indicate body kind
+?||[Function Body](#function-body)
+
+### Function Body
+If the `Foreign` bit is not set, then the function body is defined in this module:
 
 ### Struct Definition
 Represents a set of fields which form a type.

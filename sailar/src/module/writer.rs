@@ -147,7 +147,8 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
             let function_definitions = module.function_definitions();
             rent_wrapped_buffer!(functions_buffer, functions);
             functions.write_many(function_definitions, |definitions, function| {
-                let flags = function.definition().is_export().flag();
+                let mut flags = function.definition().is_export().flag();
+                flags |= function.definition().body().flag();
                 definitions.write_all(std::slice::from_ref(&flags))?;
                 Ok(())
             })?;

@@ -54,22 +54,66 @@ impl Function {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ForeignBody {
+    library_name: Arc<Identifier>,
+    entry_point_name: Identifier,
+}
+
+impl ForeignBody {
+    pub fn new(library_name: Arc<Identifier>, entry_point_name: Identifier) -> Self {
+        Self {
+            library_name, entry_point_name
+        }
+    }
+
+    /// The name of the library that the function is defined in.
+    #[inline]
+    pub fn library_name(&self) -> &Arc<Identifier> {
+        &self.library_name
+    }
+
+    #[inline]
+    pub fn entry_point_name(&self) -> &Id {
+        self.entry_point_name.as_id()
+    }
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum Body {
+    /// Indicates that a function's body is defined in its module, providing the entry block that is executed.
+    Defined(Arc<block::Block>),
+    /// Indicates that a function's body is defined elsewhere, used by the foreign function interface or to call functions
+    /// defined in the runtime.
+    Foreign(Box<ForeignBody>),
+}
+
+impl Body {
+    pub(crate) fn flag(&self) -> u8 {
+        match self {
+            Self::Defined(_) => 0,
+            Self::Foreign(_) => 0b10,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Definition {
-    entry_block: Arc<block::Block>,
+    body: Body,
     export: Export,
 }
 
 impl Definition {
-    pub fn new(entry_block: Arc<block::Block>, export: Export) -> Self {
+    pub fn new(body: Body, export: Export) -> Self {
         Self {
-            entry_block, export
+            body, export
         }
     }
 
     #[inline]
-    pub fn entry_block(&self) -> &Arc<block::Block> {
-        &self.entry_block
+    pub fn body(&self) -> &Body {
+        &self.body
     }
 
     #[inline]
