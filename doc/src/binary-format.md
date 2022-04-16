@@ -41,6 +41,10 @@ Offset|Name|Notes
 `0`|Length|A non-zero [length integer](#length-size) indicating the length of the identifier, in bytes.
 `L`|Characters|
 
+## Symbols
+All definitions in a module (structs, functions, globals, etc.) have an [identifier](#identifiers) known as a symbol.
+All definitions in a module have a unique symbol, meaning that no two definitions in a module can have the same symbol.
+
 ## Module Identifier
 Identifies a module by its name and version.
 
@@ -151,11 +155,15 @@ Annotation Class Count|Currently empty.
 Annotation Class Definitions|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
 
 ### Function Definition
+Describes a function defined in the current module. When generics are supported, a field will be added that lists generic parameters.
 
 Offset|Bits|Name|Notes
 ---|---|---|---
 `0`|`0`|Export|Indicates if this structure is visible to other modules.
-
+`0`|`1..7`|Reserved|These bits must not be set.
+`1`||Signature|A [length integer index](#length-size) that indicates the [function's signature](#function-signatures).
+`1 + L`||[Symbol](#symbols)
+Figure out how to indicate body kind
 
 ### Struct Definition
 Represents a set of fields which form a type.

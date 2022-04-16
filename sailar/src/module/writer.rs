@@ -1,6 +1,7 @@
 //! Code for emitting SAILAR modules.
 
 use crate::binary::{self, buffer};
+use crate::module::{Module, Export};
 use std::io::Write;
 
 type Result = std::io::Result<()>;
@@ -94,7 +95,7 @@ mod output {
     }
 }
 
-pub fn write<W: Write>(module: &crate::module::Module, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
+pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
     use output::Wrapper;
 
     let length_size = module.length_size;
@@ -145,7 +146,11 @@ pub fn write<W: Write>(module: &crate::module::Module, destination: W, buffer_po
         {
             let function_definitions = module.function_definitions();
             rent_wrapped_buffer!(functions_buffer, functions);
-            functions.write_many(function_definitions, |definitions, f| todo!())?;
+            functions.write_many(function_definitions, |definitions, function| {
+                let flags = function.definition().is_export().flag();
+                definitions.write_all(std::slice::from_ref(&flags))?;
+                Ok(())
+            })?;
 
             definitions.write_size_and_count(function_definitions.len(), &functions)?;
         }

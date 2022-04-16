@@ -14,6 +14,16 @@ pub enum Export {
     No,
 }
 
+impl Export {
+    pub(crate) fn flag(self) -> u8 {
+        if self == Self::Yes {
+            1
+        } else {
+            0
+        }
+    }
+}
+
 /// Specifies the version of a SAILAR module file.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
