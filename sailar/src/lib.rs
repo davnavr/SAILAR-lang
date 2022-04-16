@@ -7,7 +7,6 @@ pub mod function;
 pub mod identifier;
 pub mod instruction_set;
 pub mod module;
-pub mod reference;
 pub mod type_system;
 
 pub use identifier::{Id, Identifier};

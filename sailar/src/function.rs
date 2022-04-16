@@ -1,8 +1,8 @@
 //! Manipulation of SAILAR function definitions and function imports.
 
 use crate::{Id, Identifier};
-use crate::reference::Orc;
 use crate::type_system::Any;
+use std::sync::Arc;
 
 /// Represents a SAILAR function signature.
 #[derive(Clone, Default, Debug, Eq, Hash, PartialEq)]
@@ -33,7 +33,7 @@ impl Signature {
 #[derive(Debug)]
 pub struct Function {
     symbol: Identifier,
-    signature: Orc<Signature>,
+    signature: Arc<Signature>,
 }
 
 impl Function {
@@ -57,7 +57,7 @@ impl Function {
 
 #[derive(Debug)]
 pub enum Kind {
-    //Import(Orc<crate::module::Name>),
+    //Import(Arc<crate::module::Name>),
     /// Indicates that a function is a function definition, with the specified entry block.
-    Defined(Orc<crate::block::Block>),
+    Defined(Arc<crate::block::Block>),
 }
