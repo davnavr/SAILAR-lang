@@ -25,7 +25,7 @@ impl FormatVersion {
 }
 
 /// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum DefinedSymbol {
     Function(Arc<function::Function>),
 }
@@ -222,27 +222,6 @@ impl Module {
         module.contents = Some(crate::binary::RawModule::from_vec(bytes));
         Ok(module)
     }
-
-    /// Adds a function definition or import to this module.
-    pub fn add_function(
-        &mut self,
-        symbol: Identifier,
-        signature: Arc<function::Signature>,
-        kind: function::Kind,
-    ) -> Arc<function::Function> {
-        let function = Arc::new(function::Function::new(symbol, signature));
-
-        if !self.symbols.insert(DefinedSymbol::Function(function)) {
-            panic!("TODO: Error for duplicate symbol")
-        }
-
-        // TODO: Update length size for symbol length, signature return and argument lengths.
-
-        // TODO: Add the function and the kind to some sort of lookup/Vec that keeps track of which functions have been defined.
-        // Result<Arc<function::Function>, DuplicateSymbolError>
-
-        function
-    }
 }
 
 impl TryFrom<Vec<u8>> for Module {
@@ -251,5 +230,51 @@ impl TryFrom<Vec<u8>> for Module {
     #[inline]
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         Self::from_vec(bytes, None)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DuplicateSymbolError {
+    definition: DefinedSymbol,
+}
+
+impl DuplicateSymbolError {
+    #[inline]
+    pub fn symbol(&self) -> &Id {
+        self.definition.as_id()
+    }
+}
+
+impl std::fmt::Display for DuplicateSymbolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "a definition corresponding to the symbol \"{}\" already exists",
+            self.symbol()
+        )
+    }
+}
+
+impl std::error::Error for DuplicateSymbolError {}
+
+impl Module {
+    /// Adds a function definition or import to this module.
+    pub fn add_function(
+        &mut self,
+        symbol: Identifier,
+        signature: Arc<function::Signature>,
+        kind: function::Kind,
+    ) -> Result<Arc<function::Function>, DuplicateSymbolError> {
+        let function = Arc::new(function::Function::new(symbol, signature));
+
+        if !self.symbols.insert(DefinedSymbol::Function(function)) {
+            return Err(DuplicateSymbolError {
+                definition: DefinedSymbol::Function(function),
+            });
+        }
+
+        // TODO: Update length size for symbol length, signature return and argument lengths.
+
+        Ok(function)
     }
 }
