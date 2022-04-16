@@ -50,10 +50,12 @@ mod output {
             }
         }
 
+        #[must_use]
         pub fn write_length(&mut self, length: usize) -> Result {
             (self.length_writer)(self, length)
         }
 
+        #[must_use]
         pub fn write_many<T, I: std::iter::IntoIterator<Item = T>, O: FnMut(&mut Self, T) -> Result>(
             &mut self,
             items: I,
@@ -63,6 +65,17 @@ mod output {
                 writer(self, item)?;
             }
             Ok(())
+        }
+
+        #[must_use]
+        pub fn write_size_and_count(&mut self, count: usize, buffer: &[u8]) -> Result {
+            if count > 0 {
+                self.write_length(buffer.len())?;
+                self.write_length(count)?;
+                self.destination.write_all(buffer)
+            } else {
+                self.write_length(0)
+            }
         }
     }
 
@@ -94,9 +107,21 @@ pub fn write<W: Write>(module: &crate::module::Module, destination: W, buffer_po
         out.write_all(&[format_version.major, format_version.minor, length_size.into()])?;
     }
 
+    macro_rules! rent_default_buffer {
+        () => {
+            buffer_pool.rent_with_capacity(32)
+        };
+    }
+
+    macro_rules! rent_wrapped_buffer {
+        ($buffer_name: ident, $wrapper_name: ident) => {
+            let mut $buffer_name = rent_default_buffer!();
+            let mut $wrapper_name = Wrapper::new($buffer_name.as_mut_vec(), length_size);
+        };
+    }
+
     {
-        let mut header_buffer = buffer_pool.rent_with_capacity(32);
-        let mut header = Wrapper::new(header_buffer.as_mut_vec(), length_size);
+        rent_wrapped_buffer!(header_buffer, header);
         let name = module.name.as_bytes();
         header.write_length(name.len())?;
         header.write_all(name)?;
@@ -105,6 +130,25 @@ pub fn write<W: Write>(module: &crate::module::Module, destination: W, buffer_po
 
         out.write_length(header.len())?;
         out.write_all(&header)?;
+    }
+
+    let mut type_signatures = rent_default_buffer!();
+    let mut function_signatures = rent_default_buffer!();
+    let mut data = rent_default_buffer!();
+    let mut code = rent_default_buffer!();
+    let mut imports = rent_default_buffer!();
+    let mut definitions_buffer = rent_default_buffer!();
+
+    {
+        let mut definitions = Wrapper::new(definitions_buffer.as_mut_vec(), length_size);
+
+        {
+            let function_definitions = module.function_definitions();
+            rent_wrapped_buffer!(functions_buffer, functions);
+            functions.write_many(function_definitions, |definitions, f| todo!())?;
+
+            definitions.write_size_and_count(function_definitions.len(), &functions)?;
+        }
     }
 
     out.flush()
