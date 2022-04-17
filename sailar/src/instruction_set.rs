@@ -1,5 +1,7 @@
 //! Model of the SAILAR instruction set.
 
+use crate::type_system;
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ConstantInteger {
     U8(u8),
@@ -25,11 +27,40 @@ pub enum Value {
     //Register(()),
 }
 
-/*
 pub trait TypedValue {
     fn value_type(&self) -> type_system::Any;
 }
-*/
+
+impl TypedValue for ConstantInteger {
+    fn value_type(&self) -> type_system::Any {
+        match self {
+            Self::U8(_) => type_system::FixedInt::U8.into(),
+            Self::S8(_) => type_system::FixedInt::S8.into(),
+            Self::U16(_) => type_system::FixedInt::U16.into(),
+            Self::S16(_) => type_system::FixedInt::S16.into(),
+            Self::U32(_) => type_system::FixedInt::U32.into(),
+            Self::S32(_) => type_system::FixedInt::S32.into(),
+            Self::U64(_) => type_system::FixedInt::U64.into(),
+            Self::S64(_) => type_system::FixedInt::S64.into(),
+        }
+    }
+}
+
+impl TypedValue for Constant {
+    fn value_type(&self) -> type_system::Any {
+        match self {
+            Self::Integer(integer) => integer.value_type(),
+        }
+    }
+}
+
+impl TypedValue for Value {
+    fn value_type(&self) -> type_system::Any {
+        match self {
+            Self::Constant(constant) => constant.value_type(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]

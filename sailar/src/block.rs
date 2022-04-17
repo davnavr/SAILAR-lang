@@ -1,13 +1,25 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::instruction_set::{Instruction, Value};
+use crate::instruction_set::{Instruction, TypedValue as _, Value};
 use crate::type_system;
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("expected result at index {index} to be of type {expected:?} but got {actual:?}")]
+pub struct InvalidResultTypeError {
+    index: usize,
+    expected: type_system::Any,
+    actual: type_system::Any,
+}
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ValidationError {
     #[error("code blocks must not be empty")]
     EmptyBlock,
+    #[error(transparent)]
+    InvalidResultType(#[from] InvalidResultTypeError),
+    #[error("expected {expected} results but got {actual}")]
+    ResultCountMismatch { expected: usize, actual: usize },
 }
 
 pub type ValidationResult<T> = Result<T, ValidationError>;
@@ -42,8 +54,28 @@ impl<'b> Builder<'b> {
     }
 
     pub fn emit_ret<V: Into<Box<[Value]>>>(self, values: V) -> ValidationResult<Block> {
-        self.instructions.push(Instruction::Ret(values.into()));
-        // TODO: Check that result types match return values.
+        let return_values = values.into();
+
+        for (index, (value, expected)) in return_values.iter().zip(self.result_types.iter()).enumerate() {
+            let actual = value.value_type();
+            if &actual != expected {
+                return Err(InvalidResultTypeError {
+                    index,
+                    expected: expected.clone(),
+                    actual,
+                }
+                .into());
+            }
+        }
+
+        if return_values.len() != self.result_types.len() {
+            return Err(ValidationError::ResultCountMismatch {
+                expected: self.result_types.len(),
+                actual: return_values.len(),
+            });
+        }
+
+        self.instructions.push(Instruction::Ret(return_values));
         self.finish()
     }
 }
