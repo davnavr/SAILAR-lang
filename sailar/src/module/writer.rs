@@ -1,7 +1,8 @@
 //! Code for emitting SAILAR modules.
 
 use crate::binary::{self, buffer};
-use crate::module::{Module, Export};
+use crate::function;
+use crate::module::{Export, Module};
 use std::io::Write;
 
 type Result = std::io::Result<()>;
@@ -95,6 +96,37 @@ mod output {
     }
 }
 
+mod lookup {
+    use rustc_hash::FxHashMap;
+    use std::collections::hash_map::Entry;
+
+    // TODO: Checking the references instead of doing a slow Eq operation may be faster.
+    //pub struct Key<'a, K>(&'a K);
+
+    #[derive(Debug)]
+    pub struct IndexMap<K> {
+        lookup: FxHashMap<K, usize>,
+    }
+
+    impl<K: Eq + std::hash::Hash> IndexMap<K> {
+        pub fn get_or_insert(&mut self, key: K) -> usize {
+            let next_index = self.lookup.len();
+            match self.lookup.entry(key) {
+                Entry::Occupied(occupied) => *occupied.get(),
+                Entry::Vacant(vacant) => *vacant.insert(next_index),
+            }
+        }
+    }
+
+    impl<K> Default for IndexMap<K> {
+        fn default() -> Self {
+            Self {
+                lookup: FxHashMap::default(),
+            }
+        }
+    }
+}
+
 pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
     use output::Wrapper;
 
@@ -133,11 +165,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         out.write_all(&header)?;
     }
 
-    let mut type_signatures = rent_default_buffer!();
-    let mut function_signatures = rent_default_buffer!();
-    let mut data = rent_default_buffer!();
-    let mut code = rent_default_buffer!();
-    let mut imports = rent_default_buffer!();
+    let mut function_signature_lookup = lookup::IndexMap::<&function::Signature>::default();
     let mut definitions_buffer = rent_default_buffer!();
 
     {
@@ -146,11 +174,12 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         {
             let function_definitions = module.function_definitions();
             rent_wrapped_buffer!(functions_buffer, functions);
-            functions.write_many(function_definitions, |definitions, function| {
-                let mut flags = function.definition().is_export().flag();
-                flags |= function.definition().body().flag();
-                definitions.write_all(std::slice::from_ref(&flags))?;
-                Ok(())
+            functions.write_many(function_definitions, |def, current| {
+                let mut flags = current.definition().is_export().flag();
+                flags |= current.definition().body().flag();
+                def.write_all(std::slice::from_ref(&flags))?;
+                def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
+                todo!("write other things")
             })?;
 
             definitions.write_size_and_count(function_definitions.len(), &functions)?;

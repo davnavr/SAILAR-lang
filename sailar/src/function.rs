@@ -63,7 +63,8 @@ pub struct ForeignBody {
 impl ForeignBody {
     pub fn new(library_name: Arc<Identifier>, entry_point_name: Identifier) -> Self {
         Self {
-            library_name, entry_point_name
+            library_name,
+            entry_point_name,
         }
     }
 
@@ -106,9 +107,7 @@ pub struct Definition {
 
 impl Definition {
     pub fn new(body: Body, export: Export) -> Self {
-        Self {
-            body, export
-        }
+        Self { body, export }
     }
 
     #[inline]
