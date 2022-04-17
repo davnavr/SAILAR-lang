@@ -167,7 +167,14 @@ Offset|Bits|Name|Notes
 ?||[Function Body](#function-body)
 
 ### Function Body
-If the `Foreign` bit is not set, then the function body is defined in this module:
+If the `Foreign` bit is not set, then the function body is simply a [length integer index](#length-size) to a [code block](#code-block).
+
+Otherwise, the function body describes a foreign function:
+
+Name|Notes
+---|---
+Library|An [length integer index](#length-size) to an [identifier](#identifier) that specifies the name of the library that the function is defined in.
+Entry Point Name|An [identifier](#identifier) that is the name of the function defined in the `Library`.
 
 ### Struct Definition
 Represents a set of fields which form a type.

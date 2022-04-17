@@ -2,7 +2,8 @@
 
 use crate::binary::{self, buffer};
 use crate::function;
-use crate::module::{Export, Module};
+use crate::module::Module;
+use crate::type_system;
 use std::io::Write;
 
 type Result = std::io::Result<()>;
@@ -70,7 +71,7 @@ mod output {
         }
 
         #[must_use]
-        pub fn write_size_and_count(&mut self, count: usize, buffer: &[u8]) -> Result {
+        pub fn write_buffer_and_count(&mut self, count: usize, buffer: &[u8]) -> Result {
             if count > 0 {
                 self.write_length(buffer.len())?;
                 self.write_length(count)?;
@@ -116,6 +117,14 @@ mod lookup {
                 Entry::Vacant(vacant) => *vacant.insert(next_index),
             }
         }
+
+        pub fn len(&self) -> usize {
+            self.lookup.len()
+        }
+
+        pub fn into_keys(self) -> impl std::iter::ExactSizeIterator<Item = K> {
+            self.lookup.into_keys()
+        }
     }
 
     impl<K> Default for IndexMap<K> {
@@ -146,15 +155,21 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         };
     }
 
-    macro_rules! rent_wrapped_buffer {
+    macro_rules! wrap_rented_buffer {
+        ($buffer: expr) => {
+            Wrapper::new($buffer.as_mut_vec(), length_size)
+        };
+    }
+
+    macro_rules! rent_default_buffer_wrapped {
         ($buffer_name: ident, $wrapper_name: ident) => {
             let mut $buffer_name = rent_default_buffer!();
-            let mut $wrapper_name = Wrapper::new($buffer_name.as_mut_vec(), length_size);
+            let mut $wrapper_name = wrap_rented_buffer!($buffer_name);
         };
     }
 
     {
-        rent_wrapped_buffer!(header_buffer, header);
+        rent_default_buffer_wrapped!(header_buffer, header);
         let name = module.name.as_bytes();
         header.write_length(name.len())?;
         header.write_all(name)?;
@@ -165,26 +180,59 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         out.write_all(&header)?;
     }
 
+    // TODO: Could go lazy route and just emit to function signature buffer directly and increment an index counter instead of slowing down for lookups.
     let mut function_signature_lookup = lookup::IndexMap::<&function::Signature>::default();
     let mut definitions_buffer = rent_default_buffer!();
 
     {
-        let mut definitions = Wrapper::new(definitions_buffer.as_mut_vec(), length_size);
+        let mut definitions = wrap_rented_buffer!(definitions_buffer);
 
         {
             let function_definitions = module.function_definitions();
-            rent_wrapped_buffer!(functions_buffer, functions);
+            rent_default_buffer_wrapped!(functions_buffer, functions);
             functions.write_many(function_definitions, |def, current| {
+                let body = current.definition().body();
                 let mut flags = current.definition().is_export().flag();
-                flags |= current.definition().body().flag();
+                flags |= body.flag();
                 def.write_all(std::slice::from_ref(&flags))?;
                 def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
-                todo!("write other things")
+                let symbol = current.function().symbol();
+                def.write_length(symbol.len())?;
+                def.write_all(symbol.as_bytes())?;
+
+                match current.definition().body() {
+                    function::Body::Defined(defined) => todo!("create a block lookup"),
+                    function::Body::Foreign(foreign) => todo!("create an identifier lookup"),
+                }
             })?;
 
-            definitions.write_size_and_count(function_definitions.len(), &functions)?;
+            definitions.write_buffer_and_count(function_definitions.len(), &functions)?;
         }
     }
+
+    let mut type_signature_lookup = lookup::IndexMap::<&type_system::Any>::default();
+
+    let function_signature_count = function_signature_lookup.len();
+    let mut function_signature_buffer = rent_default_buffer!();
+    wrap_rented_buffer!(function_signature_buffer).write_many(function_signature_lookup.into_keys(), |sig, current| {
+        todo!("write function signature")
+    })?;
+
+    // TODO: Write identifiers
+
+    {
+        let type_signature_count = type_signature_lookup.len();
+        rent_default_buffer_wrapped!(type_signature_buffer, signatures);
+        signatures.write_many(type_signature_lookup.into_keys(), |sig, current| {
+            todo!("write type signature")
+        })?;
+
+        out.write_buffer_and_count(type_signature_count, &signatures)?;
+    }
+
+    out.write_buffer_and_count(function_signature_count, &function_signature_buffer)?;
+
+    //out.write_all(&definitions_buffer);
 
     out.flush()
 }
