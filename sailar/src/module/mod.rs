@@ -69,7 +69,7 @@ impl std::hash::Hash for DefinedSymbol {
 #[derive(Debug)]
 pub struct DefinedFunction {
     function: Arc<function::Function>,
-    entry_block: function::Definition,
+    definition: function::Definition,
 }
 
 impl DefinedFunction {
@@ -80,7 +80,7 @@ impl DefinedFunction {
 
     #[inline]
     pub fn definition(&self) -> &function::Definition {
-        &self.entry_block
+        &self.definition
     }
 }
 
@@ -282,14 +282,19 @@ impl Module {
         let function = Arc::new(function::Function::new(symbol, signature));
 
         match kind {
-            function::Kind::Defined(entry_block) => {
+            function::Kind::Defined(definition) => {
                 if !self.symbols.insert(DefinedSymbol::Function(function.clone())) {
                     return Err(DuplicateSymbolError(DefinedSymbol::Function(function)));
                 }
 
+                if let function::Body::Foreign(ref foreign) = definition.body() {
+                    self.length_size.resize_to_fit(foreign.library_name().len());
+                    self.length_size.resize_to_fit(foreign.entry_point_name().len());
+                }
+
                 self.function_definitions.push(DefinedFunction {
                     function: function.clone(),
-                    entry_block,
+                    definition,
                 });
             }
         }
