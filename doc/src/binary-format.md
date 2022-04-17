@@ -9,20 +9,21 @@ Offset|Name|Size (in bytes)|Notes
 `0`|Magic|`6`|The magic number that all module files must begin with, which is the ASCII string `SAILAR`.
 `6`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
 `7`|Minor Format Version|`1`|The minor version of the format.
-`8`|[Length Size](#length-size)|`1`|
-`9`|[Module Header](#module-header)|?|
-|?|[Type Signatures](#type-signatures)|?|
-|?|[Function Signatures](#function-signatures)|?|
-|?|[Data](#module-data)|?|
-|?|[Code Blocks](#code)|?|
-|?|[Module Imports](#module-imports)|?|
-|?|[Module Definitions](#module-definitions)|?|
-|?|[Struct Instantiations](#struct-instantiations)|?|
-|?|[Function Instantiations](#function-instantiations)|?|
-|?|[Entry Point](#entry-point)|?|
-|?|[Module Initializer](#module-initializer)|?|
-|?|[Namespaces](#namespaces)|?|
-|?|[Debugging Information]|?|
+`8`|[Length Size](#length-size)|`1`
+`9`|[Module Header](#module-header)|?
+|?|[Module Identifiers](#module-identifiers)|?
+|?|[Type Signatures](#type-signatures)|?
+|?|[Function Signatures](#function-signatures)|?
+|?|[Data](#module-data)|?
+|?|[Code Blocks](#code)|?
+|?|[Module Imports](#module-imports)|?
+|?|[Module Definitions](#module-definitions)|?
+|?|[Struct Instantiations](#struct-instantiations)|?
+|?|[Function Instantiations](#function-instantiations)|?
+|?|[Entry Point](#entry-point)|?
+|?|[Module Initializer](#module-initializer)|?
+|?|[Namespaces](#namespaces)|?
+|?|[Debugging Information]|?
 
 ## Length Size
 The length size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
@@ -50,7 +51,7 @@ Identifies a module by its name and version.
 
 Offset|Name|Size (in bytes)|Notes
 ---|---|---|---
-`0`|Name|`L + N`|An [identifier](#Identifier) containing `N` characters that is the name of the module.
+`0`|Name|`L + N`|An [identifier](#identifier) containing `N` characters that is the name of the module.
 `L + N`|Version Number Count|`L`|The number `V` of version numbers to follow.
 `2L + N`|Version Numbers|`L * V`|An array of [length integers](#length-size) specifying the version of the module.
 
@@ -62,6 +63,15 @@ Offset|Name|Size|Notes
 `0`|Size|`L`|A non-zero [length integer](#length-size) indicating the total length of the values of each field to follow, in bytes.
 `L`|[Identifier](#module-identifier)|`I = 2L + N + V * L`|Specifies a name containing `N` characters and `V` version numbers for the module.
 `I`|Optional Field Count|`L`|A [length integer](#length-size) indicating an additional number of fields to follow. As no optional fields are currently defined, this should be set to zero.
+
+## Module Identifiers
+Provides a way to use duplicated [identifiers](#identifier) without having to copy and paste their contents all over the module. Individual identifiers are referred to by [length-sized indices](#length-size) starting at `0`.
+
+Offset|Name|Size|Notes|Omission
+---|---|---|---|---
+`0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of all of the identifiers, in bytes.
+`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of identifiers to follow.|Omitted when `Size` is zero
+`2L`|Signatures|`S`|A series of [identifiers](#identifier).
 
 ## Type Signatures
 All of the type signatures used in the module. Individual type signatures are referred to by [length-sized indices](#length-size) with the first type signature referred to by index `0`.

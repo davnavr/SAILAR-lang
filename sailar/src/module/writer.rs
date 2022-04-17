@@ -2,6 +2,7 @@
 
 use crate::binary::{self, buffer};
 use crate::function;
+use crate::identifier::Id;
 use crate::module::Module;
 use crate::type_system;
 use std::io::Write;
@@ -11,6 +12,7 @@ type Result = std::io::Result<()>;
 mod output {
     use super::Result;
     use crate::binary::LengthSize;
+    use crate::identifier::Id;
     use std::io::Write;
 
     type LengthIntegerWriter<W> = fn(&mut Wrapper<W>, usize) -> Result;
@@ -56,6 +58,12 @@ mod output {
         #[must_use]
         pub fn write_length(&mut self, length: usize) -> Result {
             (self.length_writer)(self, length)
+        }
+
+        #[must_use]
+        pub fn write_identifier(&mut self, identifier: &Id) -> Result {
+            self.write_length(identifier.len())?;
+            self.destination.write_all(identifier.as_bytes())
         }
 
         #[must_use]
@@ -170,9 +178,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     {
         rent_default_buffer_wrapped!(header_buffer, header);
-        let name = module.name.as_bytes();
-        header.write_length(name.len())?;
-        header.write_all(name)?;
+        header.write_identifier(module.name.as_id())?;
         header.write_length(module.version.len() * usize::from(length_size.byte_count()))?;
         header.write_many(module.version.iter(), |numbers, version| numbers.write_length(*version))?;
 
@@ -181,6 +187,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     }
 
     // TODO: Could go lazy route and just emit to function signature buffer directly and increment an index counter instead of slowing down for lookups.
+    let mut identifier_lookup = lookup::IndexMap::<&Id>::default();
     let mut function_signature_lookup = lookup::IndexMap::<&function::Signature>::default();
     let mut definitions_buffer = rent_default_buffer!();
 
@@ -196,13 +203,14 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
                 flags |= body.flag();
                 def.write_all(std::slice::from_ref(&flags))?;
                 def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
-                let symbol = current.function().symbol();
-                def.write_length(symbol.len())?;
-                def.write_all(symbol.as_bytes())?;
+                def.write_identifier(current.function().symbol())?;
 
                 match current.definition().body() {
                     function::Body::Defined(defined) => todo!("create a block lookup"),
-                    function::Body::Foreign(foreign) => todo!("create an identifier lookup"),
+                    function::Body::Foreign(foreign) => {
+                        def.write_length(identifier_lookup.get_or_insert(foreign.library_name().as_id()))?;
+                        def.write_identifier(foreign.entry_point_name())
+                    },
                 }
             })?;
 
@@ -218,7 +226,12 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         todo!("write function signature")
     })?;
 
-    // TODO: Write identifiers
+    {
+        let identifier_count = identifier_lookup.len();
+        rent_default_buffer_wrapped!(identifier_buffer, identifiers);
+        identifiers.write_many(identifier_lookup.into_keys(), |ids, i| ids.write_identifier(i))?;
+        out.write_buffer_and_count(identifier_count, &identifiers)?;
+    }
 
     {
         let type_signature_count = type_signature_lookup.len();
