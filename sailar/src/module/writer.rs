@@ -1,6 +1,7 @@
 //! Code for emitting SAILAR modules.
 
 use crate::binary::{self, buffer};
+use crate::block;
 use crate::function;
 use crate::identifier::Id;
 use crate::module::Module;
@@ -188,6 +189,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     // TODO: Could go lazy route and just emit to function signature buffer directly and increment an index counter instead of slowing down for lookups.
     let mut identifier_lookup = lookup::IndexMap::<&Id>::default();
+    let mut code_block_lookup = lookup::IndexMap::<&block::Block>::default();
     let mut function_signature_lookup = lookup::IndexMap::<&function::Signature>::default();
     let mut definitions_buffer = rent_default_buffer!();
 
@@ -206,11 +208,11 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
                 def.write_identifier(current.function().symbol())?;
 
                 match current.definition().body() {
-                    function::Body::Defined(defined) => todo!("create a block lookup"),
+                    function::Body::Defined(defined) => def.write_length(code_block_lookup.get_or_insert(defined)),
                     function::Body::Foreign(foreign) => {
                         def.write_length(identifier_lookup.get_or_insert(foreign.library_name().as_id()))?;
                         def.write_identifier(foreign.entry_point_name())
-                    },
+                    }
                 }
             })?;
 
@@ -244,6 +246,18 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     }
 
     out.write_buffer_and_count(function_signature_count, &function_signature_buffer)?;
+
+    // TODO: Write module data
+
+    {
+        let code_block_count = code_block_lookup.len();
+        rent_default_buffer_wrapped!(code_block_buffer, code_blocks);
+        code_blocks.write_many(code_block_lookup.into_keys(), |blocks, current| {
+            todo!("write code block")
+        })?;
+
+        out.write_buffer_and_count(code_block_count, &code_blocks)?;
+    }
 
     //out.write_all(&definitions_buffer);
 
