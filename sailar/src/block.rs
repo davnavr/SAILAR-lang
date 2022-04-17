@@ -1,6 +1,6 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::instruction_set::Instruction;
+use crate::instruction_set::{Instruction, Value};
 use crate::type_system;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -41,7 +41,7 @@ impl<'b> Builder<'b> {
         })
     }
 
-    pub fn emit_ret<V: Into<Box<[()]>>>(self, values: V) -> ValidationResult<Block> {
+    pub fn emit_ret<V: Into<Box<[Value]>>>(self, values: V) -> ValidationResult<Block> {
         self.instructions.push(Instruction::Ret(values.into()));
         // TODO: Check that result types match return values.
         self.finish()

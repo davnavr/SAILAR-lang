@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut block_cache = block::BuilderCache::new();
     let mut main_block_builder = block_cache.builder(vec![type_system::FixedInt::S32.into()].into_boxed_slice(), Box::default());
     main_block_builder.emit_nop();
-    let main_block = Arc::new(main_block_builder.emit_ret(Box::default())?);
+    let main_block = Arc::new(main_block_builder.emit_ret(vec![1.into()])?);
 
     let main_function = module.add_function(
         Identifier::from_str("main")?,
