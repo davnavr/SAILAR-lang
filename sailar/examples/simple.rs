@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut block_cache = block::BuilderCache::new();
     let mut main_block_builder = block_cache.builder(vec![type_system::FixedInt::S32.into()], []);
-    let result = main_block_builder.emit_add::<i32, i32>(1.into(), 5.into());
+    let result = main_block_builder.emit_add::<i32, i32>(1.into(), 5.into())?;
     let main_block = Arc::new(main_block_builder.emit_ret([result.into()])?);
 
     let main_function = module.add_function(

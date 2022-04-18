@@ -32,7 +32,7 @@ impl Display for ExpectedTypeError {
         f.write_str("expected ")?;
         match &self.kind {
             ExpectedTypeErrorKind::Expected(expected) => write!(f, "{:?}", expected)?,
-            ExpectedTypeErrorKind::ExpectedInteger => f.write_str("integer type")?
+            ExpectedTypeErrorKind::ExpectedInteger => f.write_str("integer type")?,
         }
         write!(f, " but got {:?}", self.actual)
     }
@@ -185,12 +185,33 @@ impl<'b> Builder<'b> {
     }
 
     /// Emit an instruction that adds two integer values and stores it in a temporary register.
-    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> Temporary<'b> {
+    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
         let x_value = x.into();
         let y_value = y.into();
+        let x_type = x_value.value_type();
+        let y_type = y_value.value_type();
 
-        // TODO: Validate operands of AddI.
-        self.define_temporary(x_value.value_type().clone())
+        match x_type {
+            type_system::Any::Primitive(type_system::Primitive::Int(_)) => (),
+            actual => {
+                return Err(ExpectedTypeError {
+                    actual,
+                    kind: ExpectedTypeErrorKind::ExpectedInteger,
+                }
+                .into())
+            }
+        }
+
+        if x_type != y_type {
+            return Err(ExpectedTypeError {
+                actual: y_type,
+                kind: ExpectedTypeErrorKind::Expected(x_type),
+            }
+            .into());
+        }
+
+        // TODO: Emit the Add.
+        Ok(self.define_temporary(x_type.clone()))
     }
 
     fn finish(self) -> ValidationResult<Block> {
