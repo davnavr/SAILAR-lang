@@ -1,7 +1,9 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::instruction_set::{Instruction, TypedValue as _, Value};
+use crate::instruction_set::{self, Instruction, TypedValue};
 use crate::type_system;
+use std::iter::IntoIterator;
+use std::marker::PhantomData;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("expected result at index {index} to be of type {expected:?} but got {actual:?}")]
@@ -24,15 +26,101 @@ pub enum ValidationError {
 
 pub type ValidationResult<T> = Result<T, ValidationError>;
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct Input {
+    index: usize,
+    value_type: type_system::Any,
+}
+
+impl TypedValue for Input {
+    #[inline]
+    fn value_type(&self) -> type_system::Any {
+        self.value_type.clone()
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Temporary<'r> {
+    index: usize,
+    value_type: type_system::Any,
+    owner: PhantomData<&'r ()>,
+}
+
+impl TypedValue for Temporary<'_> {
+    #[inline]
+    fn value_type(&self) -> type_system::Any {
+        self.value_type.clone()
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum Value<'r> {
+    Constant(instruction_set::Constant),
+    Temporary(Temporary<'r>),
+    Input(&'r Input),
+}
+
+impl Value<'_> {
+    fn into_value(self, input_count: usize) -> instruction_set::Value {
+        match self {
+            Self::Constant(constant) => instruction_set::Value::Constant(constant),
+            Self::Temporary(temporary) => instruction_set::Value::IndexedRegister(temporary.index + input_count),
+            Self::Input(input) => instruction_set::Value::IndexedRegister(input.index),
+        }
+    }
+}
+
+crate::enum_case_from_impl!(Value<'_>, Constant, instruction_set::Constant);
+
+impl TypedValue for Value<'_> {
+    fn value_type(&self) -> type_system::Any {
+        match self {
+            Self::Constant(constant) => constant.value_type(),
+            Self::Temporary(temporary) => temporary.value_type(),
+            Self::Input(input) => input.value_type(),
+        }
+    }
+}
+
+macro_rules! integer_to_value_conversion_impl {
+    ($integer_type: ty) => {
+        impl From<$integer_type> for Value<'_> {
+            fn from(value: $integer_type) -> Self {
+                Self::Constant(instruction_set::Constant::from(value))
+            }
+        }
+    };
+}
+
+integer_to_value_conversion_impl!(u8);
+integer_to_value_conversion_impl!(i8);
+integer_to_value_conversion_impl!(u16);
+integer_to_value_conversion_impl!(i16);
+integer_to_value_conversion_impl!(u32);
+integer_to_value_conversion_impl!(i32);
+integer_to_value_conversion_impl!(u64);
+integer_to_value_conversion_impl!(i64);
+
 /// Allows the building of SAILAR code blocks.
-#[derive(Debug)]
 pub struct Builder<'b> {
     result_types: Box<[type_system::Any]>,
-    input_types: Box<[type_system::Any]>,
+    input_registers: &'b Vec<Input>,
+    temporary_register_count: usize,
     instructions: &'b mut Vec<Instruction>,
+    value_buffer: &'b mut Vec<instruction_set::Value>,
 }
 
 impl<'b> Builder<'b> {
+    #[inline]
+    pub fn result_types(&self) -> &[type_system::Any] {
+        &self.result_types
+    }
+
+    #[inline]
+    pub fn input_registers(&self) -> &'b [Input] {
+        &self.input_registers
+    }
+
     pub fn emit_nop(&mut self) {
         self.instructions.push(Instruction::Nop);
     }
@@ -41,22 +129,47 @@ impl<'b> Builder<'b> {
         self.instructions.push(Instruction::Break);
     }
 
+    fn define_temporary(&mut self, value_type: type_system::Any) -> Temporary<'b> {
+        let index = self.temporary_register_count;
+        self.temporary_register_count += 1;
+        Temporary {
+            index,
+            value_type,
+            owner: PhantomData,
+        }
+    }
+
+    /// Emit an instruction that adds two integer values and stores it in a temporary register.
+    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> Temporary<'b> {
+        let x_value = x.into();
+        let y_value = y.into();
+
+        // TODO: Validate operands of AddI.
+        self.define_temporary(x_value.value_type().clone())
+    }
+
     fn finish(self) -> ValidationResult<Block> {
         if self.instructions.is_empty() {
             return Err(ValidationError::EmptyBlock);
         }
 
+        let input_types = self.input_registers().iter().map(|input| input.value_type.clone()).collect();
+
         Ok(Block {
             result_types: self.result_types,
-            input_types: self.input_types,
+            input_types,
             instructions: self.instructions.clone().into_boxed_slice(),
         })
     }
 
-    pub fn emit_ret<V: Into<Box<[Value]>>>(self, values: V) -> ValidationResult<Block> {
-        let return_values = values.into();
+    pub fn emit_ret<V: IntoIterator<Item = Value<'b>>>(self, values: V) -> ValidationResult<Block> {
+        let return_values = values.into_iter();
+        let (minimum_return_count, maximum_return_count) = return_values.size_hint();
+        self.value_buffer.clear();
+        self.value_buffer
+            .reserve(maximum_return_count.unwrap_or(minimum_return_count));
 
-        for (index, (value, expected)) in return_values.iter().zip(self.result_types.iter()).enumerate() {
+        for (index, (value, expected)) in return_values.zip(self.result_types.iter()).enumerate() {
             let actual = value.value_type();
             if &actual != expected {
                 return Err(InvalidResultTypeError {
@@ -66,40 +179,62 @@ impl<'b> Builder<'b> {
                 }
                 .into());
             }
+
+            self.value_buffer.push(value.into_value(self.input_registers.len()));
         }
 
-        if return_values.len() != self.result_types.len() {
+        if self.value_buffer.len() != self.result_types.len() {
             return Err(ValidationError::ResultCountMismatch {
                 expected: self.result_types.len(),
-                actual: return_values.len(),
+                actual: self.value_buffer.len(),
             });
         }
 
-        self.instructions.push(Instruction::Ret(return_values));
+        self.instructions
+            .push(Instruction::Ret(self.value_buffer.clone().into_boxed_slice()));
         self.finish()
     }
 }
 
 #[derive(Debug)]
 pub struct BuilderCache {
-    buffer: Vec<Instruction>,
+    instruction_buffer: Vec<Instruction>,
+    value_buffer: Vec<instruction_set::Value>,
+    input_buffer: Vec<Input>,
 }
 
 impl BuilderCache {
     pub fn new() -> Self {
-        // Builders are expected to be used to build many blocks for an application or library, so a larger initial capacity is used
-        const DEFAULT_BUILDER_CAPACITY: usize = 32;
-
         Self {
-            buffer: Vec::with_capacity(DEFAULT_BUILDER_CAPACITY),
+            instruction_buffer: Vec::with_capacity(32),
+            value_buffer: Vec::default(),
+            input_buffer: Vec::default(),
         }
     }
 
-    pub fn builder(&mut self, result_types: Box<[type_system::Any]>, input_types: Box<[type_system::Any]>) -> Builder<'_> {
+    #[must_use]
+    pub fn builder<R: Into<Box<[type_system::Any]>>, I: IntoIterator<Item = type_system::Any>>(
+        &mut self,
+        result_types: R,
+        input_types: I,
+    ) -> Builder<'_> {
+        self.instruction_buffer.clear();
+        self.value_buffer.clear();
+        self.input_buffer.clear();
+
+        for (index, input_type) in input_types.into_iter().enumerate() {
+            self.input_buffer.push(Input {
+                index,
+                value_type: input_type,
+            });
+        }
+
         Builder {
-            result_types,
-            input_types,
-            instructions: &mut self.buffer,
+            result_types: result_types.into(),
+            input_registers: &mut self.input_buffer,
+            temporary_register_count: 0,
+            instructions: &mut self.instruction_buffer,
+            value_buffer: &mut self.value_buffer,
         }
     }
 }

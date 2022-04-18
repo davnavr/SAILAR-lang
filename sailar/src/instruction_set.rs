@@ -24,11 +24,11 @@ pub enum Constant {
 #[non_exhaustive]
 pub enum Value {
     Constant(Constant),
-    //Register(()),
+    IndexedRegister(usize),
 }
 
 pub trait TypedValue {
-    fn value_type(&self) -> type_system::Any;
+    fn value_type(&self) -> type_system::Any; // Cow<'_, type_system::Any>
 }
 
 impl TypedValue for ConstantInteger {
@@ -54,20 +54,41 @@ impl TypedValue for Constant {
     }
 }
 
-impl TypedValue for Value {
-    fn value_type(&self) -> type_system::Any {
-        match self {
-            Self::Constant(constant) => constant.value_type(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Instruction {
     Nop,
     Break,
     Ret(Box<[Value]>),
+    //Select,
+    //Switch,
+    //Br,
+    //BrIf,
+    //Call,
+    //CallIndr,
+    //CallRet,
+    //AddI,
+    //SubI,
+    //MulI,
+    //DivI,
+    //RemI,
+    //ModI,
+    //DivRemI,
+    //AddF,
+    //SubF,
+    //MulF,
+    //DivF,
+    //RemF,
+    //NegF,
+    //Not
+    //And,
+    //Or,
+    //Xor,
+    //Rotate,
+    //Cmp,
+    //BitCount,
+    //Reverse,
+    //
 }
 
 macro_rules! integer_conversion_impl {

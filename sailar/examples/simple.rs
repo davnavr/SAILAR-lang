@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut module = sailar::Module::new(Identifier::from_str("Simple")?, vec![0, 1].into_boxed_slice());
 
     let mut block_cache = block::BuilderCache::new();
-    let mut main_block_builder = block_cache.builder(vec![type_system::FixedInt::S32.into()].into_boxed_slice(), Box::default());
+    let mut main_block_builder = block_cache.builder(vec![type_system::FixedInt::S32.into()], []);
     main_block_builder.emit_nop();
     let main_block = Arc::new(main_block_builder.emit_ret(vec![1.into()])?);
 
