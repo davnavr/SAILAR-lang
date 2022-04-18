@@ -54,6 +54,50 @@ impl TypedValue for Constant {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
+#[non_exhaustive]
+pub enum OverflowBehavior {
+    Ignore,
+    /// Introduces an extra temporary register after the result register containing a boolean value indicating if an overflow
+    /// occured.
+    Flag,
+    Saturate,
+}
+
+/// Describes a basic arithmetic operation on integers.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct IntegerArithmetic {
+    overflow_behavior: OverflowBehavior,
+    x: Value,
+    y: Value,
+}
+
+impl IntegerArithmetic {
+    pub fn new(overflow_behavior: OverflowBehavior, x: Value, y: Value) -> Self {
+        Self {
+            overflow_behavior,
+            x,
+            y,
+        }
+    }
+
+    #[inline]
+    pub fn overflow_behavior(&self) -> OverflowBehavior {
+        self.overflow_behavior
+    }
+
+    #[inline]
+    pub fn x_value(&self) -> &Value {
+        &self.x
+    }
+
+    #[inline]
+    pub fn y_value(&self) -> &Value {
+        &self.y
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Instruction {
@@ -67,9 +111,9 @@ pub enum Instruction {
     //Call,
     //CallIndr,
     //CallRet,
-    //AddI,
-    //SubI,
-    //MulI,
+    AddI(Box<IntegerArithmetic>),
+    SubI(Box<IntegerArithmetic>),
+    MulI(Box<IntegerArithmetic>),
     //DivI,
     //RemI,
     //ModI,

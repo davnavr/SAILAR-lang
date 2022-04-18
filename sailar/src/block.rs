@@ -190,7 +190,9 @@ impl<'b> Builder<'b> {
         }
     }
 
-    /// Emit an instruction that adds two integer values and stores it in a temporary register.
+    
+
+    /// Emit an instruction that adds two integer values and stores it in a temporary register, ignoring any overflows.
     pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
         let x_value = x.into();
         let y_value = y.into();
@@ -215,6 +217,10 @@ impl<'b> Builder<'b> {
         // TODO: Emit the Add.
         Ok(self.define_temporary(x_type.clone()))
     }
+
+    //pub fn emit_add_flagged
+
+    //pub fn emit_add_saturating
 
     fn finish(self) -> ValidationResult<Block> {
         if self.instructions.is_empty() {
