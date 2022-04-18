@@ -2,6 +2,7 @@
 
 use crate::instruction_set::{self, Instruction, TypedValue};
 use crate::type_system;
+use std::fmt::{Display, Formatter};
 use std::iter::IntoIterator;
 use std::marker::PhantomData;
 
@@ -13,6 +14,32 @@ pub struct InvalidResultTypeError {
     actual: type_system::Any,
 }
 
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum ExpectedTypeErrorKind {
+    Expected(type_system::Any),
+    ExpectedInteger,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpectedTypeError {
+    actual: type_system::Any,
+    kind: ExpectedTypeErrorKind,
+}
+
+impl Display for ExpectedTypeError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.write_str("expected ")?;
+        match &self.kind {
+            ExpectedTypeErrorKind::Expected(expected) => write!(f, "{:?}", expected)?,
+            ExpectedTypeErrorKind::ExpectedInteger => f.write_str("integer type")?
+        }
+        write!(f, " but got {:?}", self.actual)
+    }
+}
+
+impl std::error::Error for ExpectedTypeError {}
+
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ValidationError {
@@ -22,6 +49,8 @@ pub enum ValidationError {
     InvalidResultType(#[from] InvalidResultTypeError),
     #[error("expected {expected} results but got {actual}")]
     ResultCountMismatch { expected: usize, actual: usize },
+    #[error(transparent)]
+    ExpectedType(#[from] ExpectedTypeError),
 }
 
 pub type ValidationResult<T> = Result<T, ValidationError>;
@@ -39,7 +68,8 @@ impl TypedValue for Input {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+// TODO: If using &'r Temporary, remove the Clone impl.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Temporary<'r> {
     index: usize,
     value_type: type_system::Any,
@@ -72,7 +102,12 @@ impl Value<'_> {
 
 crate::enum_case_from_impl!(Value<'_>, Constant, instruction_set::Constant);
 
-//impl<'r> From<Temporary<'r>> 
+impl<'r> From<Temporary<'r>> for Value<'r> {
+    #[inline]
+    fn from(temporary: Temporary<'r>) -> Self {
+        Self::Temporary(temporary)
+    }
+}
 
 impl<'r> From<&'r Input> for Value<'r> {
     #[inline]
@@ -111,6 +146,7 @@ integer_to_value_conversion_impl!(u64);
 integer_to_value_conversion_impl!(i64);
 
 /// Allows the building of SAILAR code blocks.
+#[derive(Debug)]
 pub struct Builder<'b> {
     result_types: Box<[type_system::Any]>,
     input_registers: &'b Vec<Input>,
