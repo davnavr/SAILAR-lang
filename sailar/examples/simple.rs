@@ -10,13 +10,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut block_cache = block::BuilderCache::new();
     let mut main_block_builder = block_cache.builder(vec![type_system::FixedInt::S32.into()], []);
-    main_block_builder.emit_nop();
-    let main_block = Arc::new(main_block_builder.emit_ret(vec![1.into()])?);
+    let result = main_block_builder.emit_add::<i32, i32>(1.into(), 5.into());
+    let main_block = Arc::new(main_block_builder.emit_ret([result.into()])?);
 
     let main_function = module.add_function(
         Identifier::from_str("main")?,
         Arc::new(function::Signature::new(
-            vec![type_system::FixedInt::S32.into()].into_boxed_slice(),
+            vec![type_system::FixedInt::S32.into()],
             Box::default(),
         )),
         function::Kind::Defined(function::Definition::new(function::Body::Defined(main_block), Export::Yes)),

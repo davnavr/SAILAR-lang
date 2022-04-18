@@ -72,6 +72,15 @@ impl Value<'_> {
 
 crate::enum_case_from_impl!(Value<'_>, Constant, instruction_set::Constant);
 
+//impl<'r> From<Temporary<'r>> 
+
+impl<'r> From<&'r Input> for Value<'r> {
+    #[inline]
+    fn from(input: &'r Input) -> Self {
+        Self::Input(input)
+    }
+}
+
 impl TypedValue for Value<'_> {
     fn value_type(&self) -> type_system::Any {
         match self {
