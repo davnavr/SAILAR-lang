@@ -53,7 +53,7 @@ pub enum ValidationError {
     ExpectedType(#[from] ExpectedTypeError),
 }
 
-pub type ValidationResult<T> = Result<T, ValidationError>;
+pub type ValidationResult<T> = Result<T, Box<ValidationError>>;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Input {
@@ -155,6 +155,12 @@ pub struct Builder<'b> {
     value_buffer: &'b mut Vec<instruction_set::Value>,
 }
 
+macro_rules! fail {
+    ($error: expr) => {
+        return Err(Box::new(ValidationError::from($error)));
+    };
+}
+
 impl<'b> Builder<'b> {
     #[inline]
     pub fn result_types(&self) -> &[type_system::Any] {
@@ -193,21 +199,17 @@ impl<'b> Builder<'b> {
 
         match x_type {
             type_system::Any::Primitive(type_system::Primitive::Int(_)) => (),
-            actual => {
-                return Err(ExpectedTypeError {
-                    actual,
-                    kind: ExpectedTypeErrorKind::ExpectedInteger,
-                }
-                .into())
-            }
+            actual => fail!(ExpectedTypeError {
+                actual,
+                kind: ExpectedTypeErrorKind::ExpectedInteger,
+            }),
         }
 
         if x_type != y_type {
-            return Err(ExpectedTypeError {
+            fail!(ExpectedTypeError {
                 actual: y_type,
                 kind: ExpectedTypeErrorKind::Expected(x_type),
-            }
-            .into());
+            });
         }
 
         // TODO: Emit the Add.
@@ -216,7 +218,7 @@ impl<'b> Builder<'b> {
 
     fn finish(self) -> ValidationResult<Block> {
         if self.instructions.is_empty() {
-            return Err(ValidationError::EmptyBlock);
+            fail!(ValidationError::EmptyBlock);
         }
 
         let input_types = self.input_registers().iter().map(|input| input.value_type.clone()).collect();
@@ -238,19 +240,18 @@ impl<'b> Builder<'b> {
         for (index, (value, expected)) in return_values.zip(self.result_types.iter()).enumerate() {
             let actual = value.value_type();
             if &actual != expected {
-                return Err(InvalidResultTypeError {
+                fail!(InvalidResultTypeError {
                     index,
                     expected: expected.clone(),
                     actual,
-                }
-                .into());
+                });
             }
 
             self.value_buffer.push(value.into_value(self.input_registers.len()));
         }
 
         if self.value_buffer.len() != self.result_types.len() {
-            return Err(ValidationError::ResultCountMismatch {
+            fail!(ValidationError::ResultCountMismatch {
                 expected: self.result_types.len(),
                 actual: self.value_buffer.len(),
             });
