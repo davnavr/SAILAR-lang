@@ -129,7 +129,7 @@ pub enum ErrorKind {
     IO(#[from] std::io::Error),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 #[error("error at offset {offset:#X}, {kind}")]
 pub struct Error {
     offset: usize,
@@ -145,6 +145,23 @@ impl Error {
     /// The kind of error that occured.
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
+    }
+}
+
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        struct Offset(usize);
+
+        impl std::fmt::Debug for Offset {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                write!(f, "{:#X}", self.0)
+            }
+        }
+
+        f.debug_struct("Error")
+            .field("offset", &Offset(self.offset))
+            .field("kind", self.kind())
+            .finish()
     }
 }
 
