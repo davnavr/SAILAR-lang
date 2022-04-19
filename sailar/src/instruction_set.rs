@@ -95,6 +95,7 @@ impl IntegerArithmetic {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
 pub enum Opcode {
     Nop = 0,
     Break = 1,
@@ -107,6 +108,13 @@ pub enum Opcode {
     AddI = 8,
     SubI = 9,
     MulI = 0xA,
+}
+
+impl From<Opcode> for u8 {
+    #[inline]
+    fn from(opcode: Opcode) -> u8 {
+        opcode as u8
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

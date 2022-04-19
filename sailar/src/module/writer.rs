@@ -4,6 +4,7 @@ use crate::binary::{self, buffer};
 use crate::block;
 use crate::function;
 use crate::identifier::Id;
+use crate::instruction_set::Instruction;
 use crate::module::Module;
 use crate::type_system;
 use std::io::Write;
@@ -173,6 +174,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     macro_rules! rent_default_buffer_wrapped {
         ($buffer_name: ident, $wrapper_name: ident) => {
             let mut $buffer_name = rent_default_buffer!();
+            #[allow(unused_mut)]
             let mut $wrapper_name = wrap_rented_buffer!($buffer_name);
         };
     }
@@ -228,6 +230,32 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         todo!("write function signature")
     })?;
 
+    let code_block_count = code_block_lookup.len();
+    let mut code_block_buffer = rent_default_buffer!();
+    wrap_rented_buffer!(code_block_buffer).write_many(code_block_lookup.into_keys(), |block, current| {
+        block.write_length(current.input_types().len())?;
+        block.write_length(current.result_types().len())?;
+        block.write_length(current.temporary_types().len())?;
+
+        // TODO: Might be more efficient to emit the type of the register (1 byte) directly, and could fall back to index (1-4 bytes) if needed.
+        let register_types = current
+            .input_types()
+            .iter()
+            .chain(current.result_types())
+            .chain(current.temporary_types());
+
+        block.write_many(register_types, |indices, register_type| {
+            indices.write_length(type_signature_lookup.get_or_insert(register_type))
+        })?;
+
+        rent_default_buffer_wrapped!(instruction_buffer, instructions);
+        instructions.write_many(current.instructions().iter(), |body, instruction| match instruction {
+            Instruction::Nop | Instruction::Break => body.write_all(&[u8::from(instruction.opcode())]),
+        });
+
+        block.write_buffer_and_count(current.instructions().len(), &instructions)
+    })?;
+
     {
         let identifier_count = identifier_lookup.len();
         rent_default_buffer_wrapped!(identifier_buffer, identifiers);
@@ -249,17 +277,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     // TODO: Write module data
 
-    {
-        let code_block_count = code_block_lookup.len();
-        rent_default_buffer_wrapped!(code_block_buffer, code_blocks);
-        code_blocks.write_many(code_block_lookup.into_keys(), |blocks, current| {
-            blocks.write_length(current.input_types().len())?;
-            blocks.write_length(current.result_types().len())?;
-            todo!("write code block")
-        })?;
-
-        out.write_buffer_and_count(code_block_count, &code_blocks)?;
-    }
+    out.write_buffer_and_count(code_block_count, &code_block_buffer)?;
 
     //out.write_all(&definitions_buffer);
 

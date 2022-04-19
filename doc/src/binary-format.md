@@ -118,7 +118,7 @@ Offset|Notes|Omission|
 `L`|Result Count|A [length integer](#length-size) indicating the number of results returned by this block.
 `2L`|Temporary Count|A [length integer](#length-size) indicating the number of temporary registers introduced by the instructions in this block.
 `3L`|Register Types|A series of [type signature indices](#type-signatures) specifying the type of each input, result, and temporary register in that order.
-?|Instruction Size|A [length integer](#length-size) indicating the size of the total size of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
+?|Instruction Size|A [length integer](#length-size) indicating the size of all of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
 ?|Instruction Count|A [length integer](#length-size) indicating the number of instructions in this block. This must be greater than zero.
 ?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
 
