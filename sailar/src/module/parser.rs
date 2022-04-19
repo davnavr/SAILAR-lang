@@ -291,7 +291,7 @@ mod input {
             let length =
                 self.read_length(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
 
-            let mut buffer = Vec::with_capacity(length);
+            let mut buffer = vec![0u8; length];
             self.read_exact(buffer.as_mut_slice())?;
             Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
@@ -324,6 +324,16 @@ mod input {
         pub fn fill<'b>(&mut self, buffer: &'b mut [u8]) -> ParseResult<&'b mut [u8]> {
             let count = self.read(buffer)?;
             Ok(&mut buffer[0..count])
+        }
+    }
+
+    impl<R: std::fmt::Debug> std::fmt::Debug for Wrapper<R> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.debug_struct("Wrapper")
+                .field("source", &self.source)
+                .field("offset", &self.offset)
+                .field("length_size", &self.length_size)
+                .finish()
         }
     }
 }
@@ -413,7 +423,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut identifiers = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut identifiers, |src, index| src.read_identifier())?;
+            src.read_many_to_vec(count, &mut identifiers, |src, _| src.read_identifier())?;
             Ok(identifiers)
         })?
     };
