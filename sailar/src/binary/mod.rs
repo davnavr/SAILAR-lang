@@ -20,6 +20,17 @@ impl RawModule {
     pub fn bytes(&self) -> &[u8] {
         &self.contents
     }
+
+    /// Dumps the raw contents of this module in neatly-formatted hexadecimal.
+    pub fn hex_dump<W: std::fmt::Write>(&self, output: &mut W) -> std::fmt::Result {
+        buffer::hex_dump(&self.contents, output)
+    }
+
+    pub fn hex_dump_to_string(&self) -> String {
+        let mut output = String::new();
+        self.hex_dump(&mut output).expect("unexpected error occured while dumping contents");
+        output
+    }
 }
 
 impl std::ops::Deref for RawModule {

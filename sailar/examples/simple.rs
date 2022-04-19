@@ -23,6 +23,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!("{:?}", module);
-    println!("{:?}", module.raw_contents(None));
+    println!("{}", module.raw_contents(None).hex_dump_to_string());
     Ok(())
 }

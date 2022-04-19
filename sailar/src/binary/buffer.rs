@@ -1,6 +1,7 @@
 //! Allows the reuse of byte buffers.
 
 use std::cell::RefCell;
+use std::fmt::Write;
 
 #[derive(Clone, Debug, Default)]
 pub struct Pool {
@@ -194,7 +195,6 @@ impl<'a> From<&'a Vec<u8>> for ByteDebug<'a> {
 
 impl std::fmt::Debug for ByteDebug<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use std::fmt::Write as _;
         f.write_char('[')?;
         for (index, value) in self.0.iter().enumerate() {
             if index > 0 && index < self.0.len() - 1 {
@@ -205,6 +205,54 @@ impl std::fmt::Debug for ByteDebug<'_> {
         }
         f.write_char(']')
     }
+}
+
+pub(crate) fn hex_dump<W: std::fmt::Write>(bytes: &[u8], out: &mut W) -> std::fmt::Result {
+    //00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ........ ........
+    const HEX_LENGTH: usize = 48;
+    const ASCII_LENGTH: usize = 17;
+
+    let mut offset = 0usize;
+    let mut hex_buffer = String::with_capacity(HEX_LENGTH);
+    let mut ascii_buffer = String::with_capacity(ASCII_LENGTH);
+
+    for line in bytes.chunks(16) {
+        hex_buffer.clear();
+        ascii_buffer.clear();
+
+        for (index, value) in line.iter().copied().enumerate() {
+            if index > 0 {
+                hex_buffer.push(' ');
+            }
+
+            if index == 8 {
+                hex_buffer.push(' ');
+                ascii_buffer.push(' ');
+            }
+
+            write!(&mut hex_buffer, "{:02X}", value)?;
+
+            ascii_buffer.push(if value >= b'!' && value <= b'~' {
+                value as char
+            } else {
+                '.'
+            });
+        }
+
+        for _ in 0..(HEX_LENGTH - hex_buffer.len()) {
+            hex_buffer.push(' ');
+        }
+
+        write!(out, "{:08X} ", offset)?;
+        out.write_str(&hex_buffer)?;
+        out.write_str("  ")?;
+        out.write_str(&ascii_buffer)?;
+        out.write_char('\n')?;
+
+        offset += line.len();
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
