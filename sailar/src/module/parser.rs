@@ -1,9 +1,11 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer, signature::TypeCode};
+use crate::function;
 use crate::identifier::{self, Identifier};
 use crate::type_system;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -71,10 +73,24 @@ pub enum ErrorKind {
     MissingTypeSignatureSize,
     #[error("expected type signature count but got EOF")]
     MissingTypeSignatureCount,
-    #[error("expected type signature #{index} but reached end")]
+    #[error("expected type signature at index {index} but reached end")]
     MissingTypeSignature { index: usize },
     #[error(transparent)]
     InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
+    #[error("expected byte size of function signatures but got EOF")]
+    MissingFunctionSignatureSize,
+    #[error("expected function signature count but got EOF")]
+    MissingFunctionSignatureCount,
+    #[error("expected return type count in function signature but got EOF")]
+    MissingFunctionSignatureReturnTypeCount,
+    #[error("expected parameter count in function signature but got EOF")]
+    MissingFunctionSignatureParameterCount,
+    #[error("type signature at index {index} does not exist")]
+    TypeSignatureNotFound { index: usize },
+    #[error("expected function signature return type at index {index} but got EOF")]
+    MissingFunctionSignatureReturnType { index: usize },
+    #[error("expected function signature parameter at index {index} but got EOF")]
+    MissingFunctionSignatureParameter { index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -396,6 +412,43 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     TypeCode::F32 => Ok(type_system::Real::F32.into()),
                     TypeCode::F64 => Ok(type_system::Real::F64.into()),
                 }
+            })?;
+            Ok(signatures)
+        })?
+    };
+
+    let get_type_signature = |index: usize| {
+        type_signatures
+            .get(index)
+            .cloned()
+            .ok_or_else(|| ErrorKind::TypeSignatureNotFound { index })
+    };
+
+    let function_signatures: Vec<Arc<function::Signature>> = {
+        let (byte_size, count) = src.read_size_and_count(
+            || ErrorKind::MissingFunctionSignatureSize,
+            || ErrorKind::MissingFunctionSignatureCount,
+        )?;
+
+        src.parse_buffer(buffer_pool, byte_size, |mut src| {
+            let mut signatures = Vec::with_capacity(count);
+            src.read_many_to_vec(count, &mut signatures, |src, index| {
+                let return_type_count = src.read_length(|| ErrorKind::MissingFunctionSignatureReturnTypeCount)?;
+                let parameter_count = src.read_length(|| ErrorKind::MissingFunctionSignatureParameterCount)?;
+
+                let mut return_types = Vec::with_capacity(return_type_count);
+                src.read_many_to_vec(return_type_count, &mut return_types, |src, index| {
+                    get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureReturnType { index })?)
+                        .map_err(|error| src.error(error.into()))
+                })?;
+
+                let mut parameter_types = Vec::with_capacity(parameter_count);
+                src.read_many_to_vec(parameter_count, &mut parameter_types, |src, index| {
+                    get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureParameter { index })?)
+                        .map_err(|error| src.error(error.into()))
+                })?;
+
+                Ok(Arc::new(function::Signature::new(return_types, parameter_types)))
             })?;
             Ok(signatures)
         })?
