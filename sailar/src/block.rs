@@ -75,16 +75,14 @@ impl TypedValue for Input {
     }
 }
 
-// TODO: If using &'r Temporary, remove the Clone impl.
 /// Represents a temporary register, which contains the result of executing an instruction.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Temporary<'r> {
+#[derive(Debug, Eq, PartialEq)]
+pub struct Temporary {
     index: usize,
     value_type: type_system::Any,
-    owner: PhantomData<&'r ()>,
 }
 
-impl TypedValue for Temporary<'_> {
+impl TypedValue for Temporary {
     #[inline]
     fn value_type(&self) -> type_system::Any {
         self.value_type.clone()
@@ -94,7 +92,7 @@ impl TypedValue for Temporary<'_> {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Value<'r> {
     Constant(instruction_set::Constant),
-    Temporary(Temporary<'r>),
+    Temporary(&'r Temporary),
     Input(&'r Input),
 }
 
@@ -110,9 +108,9 @@ impl Value<'_> {
 
 crate::enum_case_from_impl!(Value<'_>, Constant, instruction_set::Constant);
 
-impl<'r> From<Temporary<'r>> for Value<'r> {
+impl<'r> From<&'r Temporary> for Value<'r> {
     #[inline]
-    fn from(temporary: Temporary<'r>) -> Self {
+    fn from(temporary: &'r Temporary) -> Self {
         Self::Temporary(temporary)
     }
 }
@@ -156,31 +154,30 @@ integer_to_value_conversion_impl!(i64);
 /// Represents the result of an integer arithmetic operation that may have overflowed.
 #[derive(Debug)]
 pub struct FlaggedOverflow<'r> {
-    result: Temporary<'r>,
-    flag: Temporary<'r>,
+    result: &'r Temporary,
+    flag: &'r Temporary,
 }
 
 impl<'r> FlaggedOverflow<'r> {
     #[inline]
-    pub fn result_register(&self) -> &Temporary<'r> {
-        &self.result
+    pub fn result_register(&self) -> &'r Temporary {
+        self.result
     }
 
     /// The register containing a value indicating if an integer overflow occured.
     #[inline]
-    pub fn flag_register(&self) -> &Temporary<'r> {
-        &self.flag
+    pub fn flag_register(&self) -> &'r Temporary {
+        self.flag
     }
 }
 
 pub type IntegerArithmeticInstruction = fn(Box<instruction_set::IntegerArithmetic>) -> Instruction;
 
 /// Allows the building of SAILAR code blocks.
-#[derive(Debug)]
 pub struct Builder<'b> {
     result_types: Box<[type_system::Any]>,
     input_registers: &'b Vec<Input>,
-    temporary_register_count: usize,
+    temporary_registers: &'b elsa::vec::FrozenVec<Box<Temporary>>,
     instructions: &'b mut Vec<Instruction>,
     value_buffer: &'b mut Vec<instruction_set::Value>,
 }
@@ -208,17 +205,15 @@ impl<'b> Builder<'b> {
         value.into_value(self.input_registers.len())
     }
 
-    fn define_temporary(&mut self, value_type: type_system::Any) -> Temporary<'b> {
-        let index = self.temporary_register_count;
-        self.temporary_register_count += 1;
-        Temporary {
+    fn define_temporary(&mut self, value_type: type_system::Any) -> &'b Temporary {
+        let index = self.temporary_registers.len();
+        self.temporary_registers.push_get(Box::new(Temporary {
             index,
             value_type,
-            owner: PhantomData,
-        }
+        }))
     }
 
-    fn define_overflow_flag(&mut self) -> Temporary<'b> {
+    fn define_overflow_flag(&mut self) -> &'b Temporary {
         self.define_temporary(type_system::Any::from(type_system::FixedInt::U8))
     }
 
@@ -228,7 +223,7 @@ impl<'b> Builder<'b> {
         x: Value<'b>,
         y: Value<'b>,
         instruction: IntegerArithmeticInstruction,
-    ) -> ValidationResult<Temporary<'b>> {
+    ) -> ValidationResult<&'b Temporary> {
         let x_type = x.value_type();
         let y_type = y.value_type();
 
@@ -271,7 +266,7 @@ impl<'b> Builder<'b> {
     }
 
     /// Emits an instruction that adds two integer values and stores the sum in a temporary register, ignoring any overflows.
-    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
+    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<&'b Temporary> {
         self.integer_arithmetic_instruction(OverflowBehavior::Ignore, x.into(), y.into(), Instruction::AddI)
     }
 
@@ -280,7 +275,7 @@ impl<'b> Builder<'b> {
     }
 
     /// Emits an instruction that adds two integer values and stores the sum in a temporary register, saturating on overflow.
-    pub fn emit_add_saturating<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
+    pub fn emit_add_saturating<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<&'b Temporary> {
         self.integer_arithmetic_instruction(OverflowBehavior::Saturate, x.into(), y.into(), Instruction::AddI)
     }
 
@@ -332,11 +327,11 @@ impl<'b> Builder<'b> {
     }
 }
 
-#[derive(Debug)]
 pub struct BuilderCache {
     instruction_buffer: Vec<Instruction>,
     value_buffer: Vec<instruction_set::Value>,
     input_buffer: Vec<Input>,
+    temporary_buffer: elsa::vec::FrozenVec<Box<Temporary>>,
 }
 
 impl BuilderCache {
@@ -345,6 +340,7 @@ impl BuilderCache {
             instruction_buffer: Vec::with_capacity(32),
             value_buffer: Vec::default(),
             input_buffer: Vec::default(),
+            temporary_buffer: elsa::vec::FrozenVec::default(),
         }
     }
 
@@ -357,6 +353,7 @@ impl BuilderCache {
         self.instruction_buffer.clear();
         self.value_buffer.clear();
         self.input_buffer.clear();
+        self.temporary_buffer.as_mut().clear();
 
         for (index, input_type) in input_types.into_iter().enumerate() {
             self.input_buffer.push(Input {
@@ -367,8 +364,8 @@ impl BuilderCache {
 
         Builder {
             result_types: result_types.into(),
-            input_registers: &mut self.input_buffer,
-            temporary_register_count: 0,
+            input_registers: &self.input_buffer,
+            temporary_registers: &self.temporary_buffer,
             instructions: &mut self.instruction_buffer,
             value_buffer: &mut self.value_buffer,
         }
