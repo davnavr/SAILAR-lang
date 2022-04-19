@@ -306,7 +306,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     out.write_buffer_and_count(function_signature_count, &function_signature_buffer)?;
 
-    // TODO: Write module data
+    out.write_length(0)?; // TODO: Write module data
 
     out.write_buffer_and_count(code_block_count, &code_block_buffer)?;
 
