@@ -1,6 +1,7 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer, signature::TypeCode};
+use crate::block;
 use crate::function;
 use crate::identifier::{self, Identifier};
 use crate::type_system;
@@ -97,10 +98,22 @@ pub enum ErrorKind {
     MissingDataSize,
     #[error("expected data array count but got EOF")]
     MissingDataCount,
-    #[error("expected byte length for data array at index {index} but got EOF")]
+    #[error("expected byte length for data array at index {index} but reached end")]
     MissingDataArrayLength { index: usize },
     #[error("expected data array of length {expected_length} bytes but actual was {actual_length}")]
     IncompleteDataArray { expected_length: usize, actual_length: usize },
+    #[error("expected byte length for code blocks but got EOF")]
+    MissingCodeSize,
+    #[error("expected code block count but got EOF")]
+    MissingCodeBlockCount,
+    #[error("expected input count for code block at index {index} but reached end")]
+    MissingBlockInputCount { index: usize },
+    #[error("expected result count for code block at index {index} but reached end")]
+    MissingBlockResultCount { index: usize },
+    #[error("expected temporary count for code block at index {index} but reached end")]
+    MissingBlockTemporaryCount { index: usize },
+    #[error("missing register type index for code block at index {block_index}")]
+    MissingCodeBlockRegisterType { block_index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -491,6 +504,36 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 Ok(Arc::<[u8]>::from(data.as_slice()))
             })?;
             Ok(arrays)
+        })?
+    };
+
+    let code_blocks: Vec<Arc<block::Block>> = {
+        let (byte_size, count) = src.read_size_and_count(|| ErrorKind::MissingCodeSize, || ErrorKind::MissingCodeBlockCount)?;
+
+        src.parse_buffer(buffer_pool, byte_size, |mut src| {
+            let mut blocks = Vec::with_capacity(count);
+            src.read_many_to_vec(count, &mut blocks, |src, block_index| {
+                let input_count = src.read_length(|| ErrorKind::MissingBlockInputCount { index: block_index })?;
+                let result_count = src.read_length(|| ErrorKind::MissingBlockResultCount { index: block_index })?;
+                let temporary_count = src.read_length(|| ErrorKind::MissingBlockTemporaryCount { index: block_index })?;
+
+                macro_rules! register_types {
+                    ($vector_name: ident, $register_count: ident) => {
+                        let mut $vector_name = Vec::with_capacity($register_count);
+                        src.read_many_to_vec($register_count, &mut $vector_name, |src, _| {
+                            get_function_signature(src.read_length(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
+                                .map_err(|error| src.error(error.into()))
+                        })?;
+                    };
+                }
+
+                register_types!(input_register_types, input_count);
+                register_types!(result_register_types, result_count);
+                register_types!(temporary_register_types, temporary_count);
+
+                Ok(Arc::new(todo!("block")))
+            })?;
+            Ok(blocks)
         })?
     };
 

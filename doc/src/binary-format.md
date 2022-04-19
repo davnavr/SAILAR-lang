@@ -100,6 +100,12 @@ Offset|Name|Notes|Omission
 `L`|Count|A [length integer](#length-size) indicating the total number `C` of data arrays to follow.|Omitted when `Total Size` is zero.
 `2L`|Contents|A series of `C` [data arrays](#module-data-arrays) one after the other.
 
+### Module Data Arrays
+Offset|Name|Notes
+---|---|---
+`0`|Length|The length `L` of this data array, in bytes.
+`L`|Data|The actual data, contains `L` bytes.
+
 ## Code
 Code in SAILAR is broken into individual sequences of instructions known as blocks. Function definitions can specify their bodies by specifying the entry block which is the block that is entered when the function is called. [Refer to the instruction set documentation](./instruction-set.md) for the rules regarding valid blocks.
 
@@ -121,12 +127,6 @@ Offset|Notes|Omission|
 ?|Instruction Size|A [length integer](#length-size) indicating the size of all of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
 ?|Instruction Count|A [length integer](#length-size) indicating the number of instructions in this block. This must be greater than zero.
 ?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
-
-### Module Data Arrays
-Offset|Name|Notes
----|---|---
-`0`|Length|The length `L` of this data array, in bytes.
-`L`|Data|The actual data, contains `L` bytes.
 
 ## Module Imports
 This structure contains all structs, functions, globals, etc. that are used by the current module.
