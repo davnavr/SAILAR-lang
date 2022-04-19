@@ -286,10 +286,16 @@ impl<'b> Builder<'b> {
         }
 
         let input_types = self.input_registers().iter().map(|input| input.value_type.clone()).collect();
+        let temporary_types = self
+            .temporary_registers
+            .iter()
+            .map(|temporary| temporary.value_type.clone())
+            .collect();
 
         Ok(Block {
             result_types: self.result_types,
             input_types,
+            temporary_types,
             instructions: self.instructions.clone().into_boxed_slice(),
         })
     }
@@ -384,6 +390,7 @@ impl std::default::Default for BuilderCache {
 pub struct Block {
     result_types: Box<[type_system::Any]>,
     input_types: Box<[type_system::Any]>,
+    temporary_types: Box<[type_system::Any]>,
     instructions: Box<[Instruction]>,
 }
 
@@ -401,5 +408,10 @@ impl Block {
     #[inline]
     pub fn input_types(&self) -> &[type_system::Any] {
         &self.input_types
+    }
+
+    #[inline]
+    pub fn temporary_types(&self) -> &[type_system::Any] {
+        &self.temporary_types
     }
 }

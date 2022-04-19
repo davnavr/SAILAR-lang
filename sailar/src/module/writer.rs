@@ -252,7 +252,11 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     {
         let code_block_count = code_block_lookup.len();
         rent_default_buffer_wrapped!(code_block_buffer, code_blocks);
-        code_blocks.write_many(code_block_lookup.into_keys(), |blocks, current| todo!("write code block"))?;
+        code_blocks.write_many(code_block_lookup.into_keys(), |blocks, current| {
+            blocks.write_length(current.input_types().len())?;
+            blocks.write_length(current.result_types().len())?;
+            todo!("write code block")
+        })?;
 
         out.write_buffer_and_count(code_block_count, &code_blocks)?;
     }

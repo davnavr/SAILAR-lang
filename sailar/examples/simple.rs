@@ -1,7 +1,7 @@
 use sailar::block;
 use sailar::function;
-use sailar::type_system;
 use sailar::module::Export;
+use sailar::type_system;
 use sailar::Identifier;
 use std::sync::Arc;
 
