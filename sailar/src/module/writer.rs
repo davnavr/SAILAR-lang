@@ -4,7 +4,7 @@ use crate::binary::{self, buffer};
 use crate::block;
 use crate::function;
 use crate::identifier::Id;
-use crate::instruction_set::Instruction;
+use crate::instruction_set::{self, Instruction};
 use crate::module::Module;
 use crate::type_system;
 use std::io::Write;
@@ -57,18 +57,15 @@ mod output {
             }
         }
 
-        #[must_use]
         pub fn write_length(&mut self, length: usize) -> Result {
             (self.length_writer)(self, length)
         }
 
-        #[must_use]
         pub fn write_identifier(&mut self, identifier: &Id) -> Result {
             self.write_length(identifier.len())?;
             self.destination.write_all(identifier.as_bytes())
         }
 
-        #[must_use]
         pub fn write_many<T, I: std::iter::IntoIterator<Item = T>, O: FnMut(&mut Self, T) -> Result>(
             &mut self,
             items: I,
@@ -80,7 +77,6 @@ mod output {
             Ok(())
         }
 
-        #[must_use]
         pub fn write_buffer_and_count(&mut self, count: usize, buffer: &[u8]) -> Result {
             if count > 0 {
                 self.write_length(buffer.len())?;
@@ -248,10 +244,32 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
             indices.write_length(type_signature_lookup.get_or_insert(register_type))
         })?;
 
+        fn write_value<W: Write>(output: &mut Wrapper<W>, value: &instruction_set::Value) -> Result {
+            output.write_all(&[value.flags().bits()])?;
+            match value {
+                instruction_set::Value::IndexedRegister(index) => output.write_length(*index),
+                instruction_set::Value::Constant(instruction_set::Constant::Integer(integer)) => match integer {
+                    instruction_set::ConstantInteger::S8(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::U8(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::S16(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::U16(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::S32(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::U32(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::S64(value) => output.write_all(&value.to_le_bytes()),
+                    instruction_set::ConstantInteger::U64(value) => output.write_all(&value.to_le_bytes()),
+                },
+            }
+        }
+
         rent_default_buffer_wrapped!(instruction_buffer, instructions);
         instructions.write_many(current.instructions().iter(), |body, instruction| match instruction {
             Instruction::Nop | Instruction::Break => body.write_all(&[u8::from(instruction.opcode())]),
-        });
+            Instruction::Ret(return_values) => {
+                body.write_length(return_values.len())?;
+                body.write_many(return_values.iter(), |values, v| write_value(values, v))
+            }
+            bad => todo!("attempt to write unsupported instruction {:?}", bad),
+        })?;
 
         block.write_buffer_and_count(current.instructions().len(), &instructions)
     })?;

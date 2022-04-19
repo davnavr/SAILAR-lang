@@ -54,6 +54,43 @@ impl TypedValue for Constant {
     }
 }
 
+bitflags::bitflags! {
+    #[repr(transparent)]
+    pub struct ValueFlags: u8 {
+        const REGISTER = 0;
+        const CONSTANT = 0b0000_0001;
+        const INTEGER = 0b0000_0010;
+        const SIGNED_INTEGER = 0b0000_0100;
+        const INTEGER_SIZE_MASK = 0b0001_1000;
+        const INTEGER_SIZE_1 = 0;
+        const INTEGER_SIZE_2 = 0b0000_1000;
+        const INTEGER_SIZE_4 = 0b0001_0000;
+        const INTEGER_SIZE_8 = 0b0001_1000;
+    }
+}
+
+impl Value {
+    pub fn flags(&self) -> ValueFlags {
+        match self {
+            Self::IndexedRegister(_) => ValueFlags::REGISTER,
+            Self::Constant(Constant::Integer(integer)) => {
+                ValueFlags::CONSTANT
+                    | ValueFlags::INTEGER
+                    | match integer {
+                        ConstantInteger::S8(_) => ValueFlags::SIGNED_INTEGER,
+                        ConstantInteger::U8(_) => ValueFlags::INTEGER_SIZE_1,
+                        ConstantInteger::S16(_) => ValueFlags::SIGNED_INTEGER | ValueFlags::INTEGER_SIZE_2,
+                        ConstantInteger::U16(_) => ValueFlags::INTEGER_SIZE_2,
+                        ConstantInteger::S32(_) => ValueFlags::SIGNED_INTEGER | ValueFlags::INTEGER_SIZE_4,
+                        ConstantInteger::U32(_) => ValueFlags::INTEGER_SIZE_4,
+                        ConstantInteger::S64(_) => ValueFlags::SIGNED_INTEGER | ValueFlags::INTEGER_SIZE_8,
+                        ConstantInteger::U64(_) => ValueFlags::INTEGER_SIZE_8,
+                    }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
 #[non_exhaustive]

@@ -7,7 +7,7 @@ Values in SAILAR binaries start with a flag byte indicating the type of value to
 
 Bit|Name|Notes
 ---|---|---
-`0`|Constant|If set, indicates that the value is a constant. Otherwise, an index integer to a register follows the flag byte.
+`0`|Constant|If set, indicates that the value is a constant. Otherwise, an index integer to a register follows the flag byte, and the remaining bits are not set.
 `1`|Integer|If set, indicates that the constant value is an integer. As no other constants currently exist, this is always set.
 
 The following flags apply for integer constants:
@@ -15,9 +15,8 @@ The following flags apply for integer constants:
 Bit|Name|Nptes
 ---|---|---
 `2`|Sign|If set, indicates that the constant integer is signed.
-`3`|Embedded|If set, indicates that the integer value is encoded in the unused bits. Otherwise, the integer value follows the flag byte, in little endian order.
-`4-5`|Size|Indicates the size of the constant integer. `0` is 1 byte, `1` is 2 bytes, `2` is 4 bytes, and `3` is 8 bytes.
-`6-7`|Unused|Contains the value of the integer if the `Embedded` flag is set.
+`3-4`|Size|Indicates the size of the constant integer. `0` is 1 byte, `1` is 2 bytes, `2` is 4 bytes, and `3` is 8 bytes.
+`5-7`|Unused|Must not be set.
 
 ## Instruction Table
 
