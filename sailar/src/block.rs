@@ -1,6 +1,6 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::instruction_set::{self, Instruction, TypedValue};
+use crate::instruction_set::{self, Instruction, OverflowBehavior, TypedValue};
 use crate::type_system;
 use std::fmt::{Display, Formatter};
 use std::iter::IntoIterator;
@@ -55,6 +55,13 @@ pub enum ValidationError {
 
 pub type ValidationResult<T> = Result<T, Box<ValidationError>>;
 
+macro_rules! fail {
+    ($error: expr) => {
+        return Err(Box::new(ValidationError::from($error)))
+    };
+}
+
+/// Represents an input register, which contains a value passed as an input to a block.
 #[derive(Debug, Eq, PartialEq)]
 pub struct Input {
     index: usize,
@@ -69,6 +76,7 @@ impl TypedValue for Input {
 }
 
 // TODO: If using &'r Temporary, remove the Clone impl.
+/// Represents a temporary register, which contains the result of executing an instruction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Temporary<'r> {
     index: usize,
@@ -145,6 +153,28 @@ integer_to_value_conversion_impl!(i32);
 integer_to_value_conversion_impl!(u64);
 integer_to_value_conversion_impl!(i64);
 
+/// Represents the result of an integer arithmetic operation that may have overflowed.
+#[derive(Debug)]
+pub struct FlaggedOverflowingResult<'r> {
+    result: Temporary<'r>,
+    flag: Temporary<'r>,
+}
+
+impl<'r> FlaggedOverflowingResult<'r> {
+    #[inline]
+    pub fn result_register(&self) -> &Temporary<'r> {
+        &self.result
+    }
+
+    /// The register containing a value indicating if an integer overflow occured.
+    #[inline]
+    pub fn flag_register(&self) -> &Temporary<'r> {
+        &self.flag
+    }
+}
+
+pub type IntegerArithmeticInstruction = fn(Box<instruction_set::IntegerArithmetic>) -> Instruction;
+
 /// Allows the building of SAILAR code blocks.
 #[derive(Debug)]
 pub struct Builder<'b> {
@@ -153,12 +183,6 @@ pub struct Builder<'b> {
     temporary_register_count: usize,
     instructions: &'b mut Vec<Instruction>,
     value_buffer: &'b mut Vec<instruction_set::Value>,
-}
-
-macro_rules! fail {
-    ($error: expr) => {
-        return Err(Box::new(ValidationError::from($error)));
-    };
 }
 
 impl<'b> Builder<'b> {
@@ -180,6 +204,10 @@ impl<'b> Builder<'b> {
         self.instructions.push(Instruction::Break);
     }
 
+    fn convert_value(&self, value: Value<'b>) -> instruction_set::Value {
+        value.into_value(self.input_registers.len())
+    }
+
     fn define_temporary(&mut self, value_type: type_system::Any) -> Temporary<'b> {
         let index = self.temporary_register_count;
         self.temporary_register_count += 1;
@@ -190,14 +218,19 @@ impl<'b> Builder<'b> {
         }
     }
 
-    
+    fn define_overflow_flag(&mut self) -> Temporary<'b> {
+        self.define_temporary(type_system::Any::from(type_system::FixedInt::U8))
+    }
 
-    /// Emit an instruction that adds two integer values and stores it in a temporary register, ignoring any overflows.
-    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
-        let x_value = x.into();
-        let y_value = y.into();
-        let x_type = x_value.value_type();
-        let y_type = y_value.value_type();
+    fn integer_arithmetic_instruction(
+        &mut self,
+        overflow_behavior: OverflowBehavior,
+        x: Value<'b>,
+        y: Value<'b>,
+        instruction: IntegerArithmeticInstruction,
+    ) -> ValidationResult<Temporary<'b>> {
+        let x_type = x.value_type();
+        let y_type = y.value_type();
 
         match x_type {
             type_system::Any::Primitive(type_system::Primitive::Int(_)) => (),
@@ -214,13 +247,41 @@ impl<'b> Builder<'b> {
             });
         }
 
-        // TODO: Emit the Add.
+        self.instructions
+            .push(instruction(Box::new(instruction_set::IntegerArithmetic::new(
+                overflow_behavior,
+                self.convert_value(x),
+                self.convert_value(y),
+            ))));
+
         Ok(self.define_temporary(x_type.clone()))
     }
 
-    //pub fn emit_add_flagged
+    fn integer_arithmetic_flagged(
+        &mut self,
+        overflow_behavior: OverflowBehavior,
+        x: Value<'b>,
+        y: Value<'b>,
+        instruction: IntegerArithmeticInstruction,
+    ) -> ValidationResult<FlaggedOverflowingResult<'b>> {
+        Ok(FlaggedOverflowingResult {
+            result: self.integer_arithmetic_instruction(overflow_behavior, x, y, instruction)?,
+            flag: self.define_overflow_flag(),
+        })
+    }
 
-    //pub fn emit_add_saturating
+    /// Emit an instruction that adds two integer values and stores it in a temporary register, ignoring any overflows.
+    pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
+        self.integer_arithmetic_instruction(OverflowBehavior::Ignore, x.into(), y.into(), Instruction::AddI)
+    }
+
+    pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<FlaggedOverflowingResult<'b>> {
+        self.integer_arithmetic_flagged(OverflowBehavior::Flag, x.into(), y.into(), Instruction::AddI)
+    }
+
+    pub fn emit_add_saturating<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
+        self.integer_arithmetic_instruction(OverflowBehavior::Saturate, x.into(), y.into(), Instruction::AddI)
+    }
 
     fn finish(self) -> ValidationResult<Block> {
         if self.instructions.is_empty() {

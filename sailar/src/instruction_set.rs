@@ -75,11 +75,7 @@ pub struct IntegerArithmetic {
 
 impl IntegerArithmetic {
     pub fn new(overflow_behavior: OverflowBehavior, x: Value, y: Value) -> Self {
-        Self {
-            overflow_behavior,
-            x,
-            y,
-        }
+        Self { overflow_behavior, x, y }
     }
 
     #[inline]
