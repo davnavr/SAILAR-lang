@@ -155,12 +155,12 @@ integer_to_value_conversion_impl!(i64);
 
 /// Represents the result of an integer arithmetic operation that may have overflowed.
 #[derive(Debug)]
-pub struct FlaggedOverflowingResult<'r> {
+pub struct FlaggedOverflow<'r> {
     result: Temporary<'r>,
     flag: Temporary<'r>,
 }
 
-impl<'r> FlaggedOverflowingResult<'r> {
+impl<'r> FlaggedOverflow<'r> {
     #[inline]
     pub fn result_register(&self) -> &Temporary<'r> {
         &self.result
@@ -263,22 +263,23 @@ impl<'b> Builder<'b> {
         x: Value<'b>,
         y: Value<'b>,
         instruction: IntegerArithmeticInstruction,
-    ) -> ValidationResult<FlaggedOverflowingResult<'b>> {
-        Ok(FlaggedOverflowingResult {
+    ) -> ValidationResult<FlaggedOverflow<'b>> {
+        Ok(FlaggedOverflow {
             result: self.integer_arithmetic_instruction(overflow_behavior, x, y, instruction)?,
             flag: self.define_overflow_flag(),
         })
     }
 
-    /// Emit an instruction that adds two integer values and stores it in a temporary register, ignoring any overflows.
+    /// Emits an instruction that adds two integer values and stores the sum in a temporary register, ignoring any overflows.
     pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
         self.integer_arithmetic_instruction(OverflowBehavior::Ignore, x.into(), y.into(), Instruction::AddI)
     }
 
-    pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<FlaggedOverflowingResult<'b>> {
+    pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<FlaggedOverflow<'b>> {
         self.integer_arithmetic_flagged(OverflowBehavior::Flag, x.into(), y.into(), Instruction::AddI)
     }
 
+    /// Emits an instruction that adds two integer values and stores the sum in a temporary register, saturating on overflow.
     pub fn emit_add_saturating<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<Temporary<'b>> {
         self.integer_arithmetic_instruction(OverflowBehavior::Saturate, x.into(), y.into(), Instruction::AddI)
     }
@@ -297,6 +298,7 @@ impl<'b> Builder<'b> {
         })
     }
 
+    /// Emits a terminating instruction that transfers control flow back to the calling function, supplying the specified return values.
     pub fn emit_ret<V: IntoIterator<Item = Value<'b>>>(self, values: V) -> ValidationResult<Block> {
         let return_values = values.into_iter();
         let (minimum_return_count, maximum_return_count) = return_values.size_hint();
