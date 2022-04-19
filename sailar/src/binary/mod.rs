@@ -28,7 +28,8 @@ impl RawModule {
 
     pub fn hex_dump_to_string(&self) -> String {
         let mut output = String::new();
-        self.hex_dump(&mut output).expect("unexpected error occured while dumping contents");
+        self.hex_dump(&mut output)
+            .expect("unexpected error occured while dumping contents");
         output
     }
 }

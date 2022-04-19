@@ -234,11 +234,7 @@ pub(crate) fn hex_dump<W: std::fmt::Write>(bytes: &[u8], out: &mut W) -> std::fm
 
             write!(&mut hex_buffer, "{:02X}", value)?;
 
-            ascii_buffer.push(if value >= b'!' && value <= b'~' {
-                value as char
-            } else {
-                '.'
-            });
+            ascii_buffer.push(if value >= b'!' && value <= b'~' { value as char } else { '.' });
         }
 
         for _ in 0..(HEX_LENGTH - hex_buffer.len()) {
