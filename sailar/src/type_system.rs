@@ -102,6 +102,41 @@ pub enum Any {
     Primitive(Primitive),
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
+#[non_exhaustive]
+pub enum Tag {
+    U8 = 1,
+    U16 = 2,
+    U32 = 4,
+    U64 = 8,
+    S8 = 0x11,
+    S16 = 0x12,
+    S32 = 0x14,
+    S64 = 0x18,
+    F32 = 0xF4,
+    F64 = 0xF8,
+}
+
+impl Any {
+    pub fn tag(&self) -> Tag {
+        match self {
+            Self::Primitive(primitive) => match primitive {
+                Primitive::Int(Int::Fixed(FixedInt::U8)) => Tag::U8,
+                Primitive::Int(Int::Fixed(FixedInt::S8)) => Tag::U8,
+                Primitive::Int(Int::Fixed(FixedInt::U16)) => Tag::U16,
+                Primitive::Int(Int::Fixed(FixedInt::S16)) => Tag::U16,
+                Primitive::Int(Int::Fixed(FixedInt::U32)) => Tag::U32,
+                Primitive::Int(Int::Fixed(FixedInt::S32)) => Tag::U32,
+                Primitive::Int(Int::Fixed(FixedInt::U64)) => Tag::U64,
+                Primitive::Int(Int::Fixed(FixedInt::S64)) => Tag::U64,
+                Primitive::Real(Real::F32) => Tag::F32,
+                Primitive::Real(Real::F64) => Tag::F64,
+            },
+        }
+    }
+}
+
 crate::enum_case_from_impl!(Any, Primitive, Primitive);
 
 impl From<FixedInt> for Any {
