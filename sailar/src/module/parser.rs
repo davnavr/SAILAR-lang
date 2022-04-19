@@ -63,7 +63,11 @@ pub enum ErrorKind {
     MissingModuleVersionLength,
     #[error(transparent)]
     MissingModuleVersionNumber(#[from] MissingModuleVersionNumberError),
-    #[error("expected byte length of type signatures but got EOF")]
+    #[error("expected byte size of identifiers but got EOF")]
+    MissingIdentifierSize,
+    #[error("expected identifier count but got EOF")]
+    MissingIdentifierCount,
+    #[error("expected byte size of type signatures but got EOF")]
     MissingTypeSignatureSize,
     #[error("expected type signature count but got EOF")]
     MissingTypeSignatureCount,
@@ -197,6 +201,19 @@ mod input {
             }
         }
 
+        pub fn read_size_and_count<S: FnOnce() -> ErrorKind, C: FnOnce() -> ErrorKind>(
+            &mut self,
+            missing_size: S,
+            missing_count: C,
+        ) -> ParseResult<(usize, usize)> {
+            let size = self.read_length(missing_size)?;
+            if size == 0 {
+                Ok((size, 0))
+            } else {
+                Ok((size, self.read_length(missing_count)?))
+            }
+        }
+
         pub fn set_length_size(&mut self, size: LengthSize) {
             self.length_size = size;
             self.length_parser = Self::select_length_parser(size);
@@ -220,28 +237,21 @@ mod input {
             })
         }
 
-        pub fn read_identifier<'b, B: FnOnce(usize) -> buffer::RentedOrOwned<'b>>(
-            &mut self,
-            buffer_source: B,
-        ) -> ParseResult<Identifier> {
+        pub fn read_identifier<'b>(&mut self) -> ParseResult<Identifier> {
             let length =
                 self.read_length(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
 
-            let mut buffer = buffer_source(length);
+            let mut buffer = Vec::with_capacity(length);
             self.read_exact(buffer.as_mut_slice())?;
             Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
 
-        pub fn read_identifier_pooled(&mut self, pool: &buffer::Pool) -> ParseResult<Identifier> {
-            self.read_identifier(|length| pool.rent_with_length(length).into())
-        }
-
         pub fn read_many<P: FnMut(&mut Self, usize) -> ParseResult<()>>(
             &mut self,
-            length: usize,
+            count: usize,
             mut parser: P,
         ) -> ParseResult<()> {
-            for i in 0..length {
+            for i in 0..count {
                 parser(self, i)?;
             }
             Ok(())
@@ -250,11 +260,11 @@ mod input {
         /// Runs the specified `parser` a fixed number of times, appending the parsed items to the specified `vector`.
         pub fn read_many_to_vec<T, P: FnMut(&mut Self, usize) -> ParseResult<T>>(
             &mut self,
-            length: usize,
+            count: usize,
             vector: &mut Vec<T>,
             mut parser: P,
         ) -> ParseResult<()> {
-            self.read_many(length, |src, index| {
+            self.read_many(count, |src, index| {
                 vector.push(parser(src, index)?);
                 Ok(())
             })
@@ -334,7 +344,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
         src.parse_buffer(buffer_pool, header_size, |mut src| {
             Ok(Header {
-                name: src.read_identifier_pooled(buffer_pool)?,
+                name: src.read_identifier()?,
                 version: {
                     let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
                     let mut numbers = Vec::with_capacity(length);
@@ -347,13 +357,22 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
+    let identifiers: Vec<Identifier> = {
+        let (byte_size, count) =
+            src.read_size_and_count(|| ErrorKind::MissingIdentifierSize, || ErrorKind::MissingIdentifierCount)?;
+
+        src.parse_buffer(buffer_pool, byte_size, |mut src| {
+            let mut identifiers = Vec::with_capacity(count);
+            src.read_many_to_vec(count, &mut identifiers, |src, index| src.read_identifier())?;
+            Ok(identifiers)
+        })?
+    };
+
     let type_signatures: Vec<type_system::Any> = {
-        let byte_size = src.read_length(|| ErrorKind::MissingTypeSignatureSize)?;
-        let count = if byte_size == 0 {
-            0
-        } else {
-            src.read_length(|| ErrorKind::MissingTypeSignatureCount)?
-        };
+        let (byte_size, count) = src.read_size_and_count(
+            || ErrorKind::MissingTypeSignatureSize,
+            || ErrorKind::MissingTypeSignatureCount,
+        )?;
 
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut signatures = Vec::with_capacity(count);
