@@ -1,8 +1,8 @@
 use sailar::block;
 use sailar::function;
-use sailar::module::Export;
 use sailar::type_system;
-use sailar::{Identifier, Module};
+use sailar::module::Export;
+use sailar::Identifier;
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -207,10 +207,7 @@ impl<'b> Builder<'b> {
 
     fn define_temporary(&mut self, value_type: type_system::Any) -> &'b Temporary {
         let index = self.temporary_registers.len();
-        self.temporary_registers.push_get(Box::new(Temporary {
-            index,
-            value_type,
-        }))
+        self.temporary_registers.push_get(Box::new(Temporary { index, value_type }))
     }
 
     fn define_overflow_flag(&mut self) -> &'b Temporary {
@@ -270,7 +267,11 @@ impl<'b> Builder<'b> {
         self.integer_arithmetic_instruction(OverflowBehavior::Ignore, x.into(), y.into(), Instruction::AddI)
     }
 
-    pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<FlaggedOverflow<'b>> {
+    pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(
+        &mut self,
+        x: X,
+        y: Y,
+    ) -> ValidationResult<FlaggedOverflow<'b>> {
         self.integer_arithmetic_flagged(OverflowBehavior::Flag, x.into(), y.into(), Instruction::AddI)
     }
 

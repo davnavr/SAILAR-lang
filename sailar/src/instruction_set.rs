@@ -94,6 +94,21 @@ impl IntegerArithmetic {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Opcode {
+    Nop = 0,
+    Break = 1,
+    Ret = 2,
+    // Select = 3,
+    // Switch = 4,
+    // Br = 5,
+    // BrIf = 6,
+    // Call = 7,
+    AddI = 8,
+    SubI = 9,
+    MulI = 0xA,
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Instruction {
@@ -129,6 +144,19 @@ pub enum Instruction {
     //BitCount,
     //Reverse,
     //
+}
+
+impl Instruction {
+    pub fn opcode(&self) -> Opcode {
+        match self {
+            Self::Nop => Opcode::Nop,
+            Self::Break => Opcode::Break,
+            Self::Ret(_) => Opcode::Ret,
+            Self::AddI(_) => Opcode::AddI,
+            Self::SubI(_) => Opcode::SubI,
+            Self::MulI(_) => Opcode::MulI,
+        }
+    }
 }
 
 macro_rules! integer_conversion_impl {
