@@ -93,6 +93,14 @@ pub enum ErrorKind {
     MissingFunctionSignatureParameter { index: usize },
     #[error("function signature at index {index} does not exist")]
     FunctionSignatureNotFound { index: usize },
+    #[error("expected total byte size for data but got EOF")]
+    MissingDataSize,
+    #[error("expected data array count but got EOF")]
+    MissingDataCount,
+    #[error("expected byte length for data array at index {index} but got EOF")]
+    MissingDataArrayLength { index: usize },
+    #[error("expected data array of length {expected_length} bytes but actual was {actual_length}")]
+    IncompleteDataArray { expected_length: usize, actual_length: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -434,7 +442,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut signatures = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut signatures, |src, index| {
+            src.read_many_to_vec(count, &mut signatures, |src, _| {
                 let return_type_count = src.read_length(|| ErrorKind::MissingFunctionSignatureReturnTypeCount)?;
                 let parameter_count = src.read_length(|| ErrorKind::MissingFunctionSignatureParameterCount)?;
 
@@ -457,11 +465,33 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     };
 
     let get_function_signature = |index| {
-        function_signatures.get(index).cloned().ok_or_else(|| ErrorKind::FunctionSignatureNotFound { index })
+        function_signatures
+            .get(index)
+            .cloned()
+            .ok_or_else(|| ErrorKind::FunctionSignatureNotFound { index })
     };
 
     let _data_arrays: Vec<Arc<[u8]>> = {
-        todo!("datas")
+        let (byte_size, count) = src.read_size_and_count(|| ErrorKind::MissingDataSize, || ErrorKind::MissingDataCount)?;
+
+        src.parse_buffer(buffer_pool, byte_size, |mut src| {
+            let mut arrays = Vec::with_capacity(count);
+            src.read_many_to_vec(count, &mut arrays, |src, index| {
+                let length = src.read_length(|| ErrorKind::MissingDataArrayLength { index })?;
+                let mut data = buffer_pool.rent_with_length(length);
+
+                let actual_length = src.read(&mut data)?;
+                if actual_length != length {
+                    return Err(src.error(ErrorKind::IncompleteDataArray {
+                        expected_length: length,
+                        actual_length,
+                    }));
+                }
+
+                Ok(Arc::<[u8]>::from(data.as_slice()))
+            })?;
+            Ok(arrays)
+        })?
     };
 
     Ok(crate::module::Module {
