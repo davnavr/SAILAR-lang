@@ -301,7 +301,7 @@ impl Module {
 
         self.length_size.resize_to_fit(function.symbol().len());
         self.length_size.resize_to_fit(function.signature().result_types().len());
-        self.length_size.resize_to_fit(function.signature().input_types().len());
+        self.length_size.resize_to_fit(function.signature().parameter_types().len());
         // TODO: For each return and argument type, also update the length_size
 
         self.contents = None;

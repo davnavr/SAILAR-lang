@@ -118,6 +118,13 @@ pub enum Tag {
     F64 = 0xF8,
 }
 
+impl From<Tag> for u8 {
+    #[inline]
+    fn from(tag: Tag) -> u8 {
+        tag as u8
+    }
+}
+
 impl Any {
     pub fn tag(&self) -> Tag {
         match self {

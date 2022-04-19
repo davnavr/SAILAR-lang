@@ -10,14 +10,14 @@ use std::sync::Arc;
 #[derive(Clone, Default, Debug, Eq, Hash, PartialEq)]
 pub struct Signature {
     result_types: Box<[Any]>,
-    input_types: Box<[Any]>,
+    parameter_types: Box<[Any]>,
 }
 
 impl Signature {
-    pub fn new<R: Into<Box<[Any]>>, I: Into<Box<[Any]>>>(result_types: R, input_types: I) -> Self {
+    pub fn new<R: Into<Box<[Any]>>, I: Into<Box<[Any]>>>(result_types: R, parameter_types: I) -> Self {
         Self {
             result_types: result_types.into(),
-            input_types: input_types.into(),
+            parameter_types: parameter_types.into(),
         }
     }
 
@@ -27,8 +27,8 @@ impl Signature {
     }
 
     #[inline]
-    pub fn input_types(&self) -> &[Any] {
-        &self.input_types
+    pub fn parameter_types(&self) -> &[Any] {
+        &self.parameter_types
     }
 }
 

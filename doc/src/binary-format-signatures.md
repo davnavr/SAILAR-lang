@@ -22,6 +22,6 @@ Specifies the return values and argument types of a function.
 Offset|Size|Name|Notes
 ---|---|---|---
 `0`|`L`|Return Type Count|Specifies the number `R` of values returned by the function.
-`L`|`L * R`|Return Types|An array of indices specifying the return types of the function.
-`L * (R + 1)`|`L`|Argument Count|Specifies the number `A` of argument types.
-`L * (R + 2)`|`L * A`|Argument Types|An array of indices specifying the return types of the function.
+`L`|`L`|Parameter Count|Specifies the number `A` of parameters.
+`2L`|`L*R`|Return Types|An array of indices specifying the return types of the function.
+`2L + L*R`|`L*A`|Parameter Types|An array of indices specifying the types of the function's parameters.

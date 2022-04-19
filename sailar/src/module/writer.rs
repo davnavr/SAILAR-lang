@@ -223,7 +223,12 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     let function_signature_count = function_signature_lookup.len();
     let mut function_signature_buffer = rent_default_buffer!();
     wrap_rented_buffer!(function_signature_buffer).write_many(function_signature_lookup.into_keys(), |sig, current| {
-        todo!("write function signature")
+        sig.write_length(current.result_types().len())?;
+        sig.write_length(current.parameter_types().len())?;
+        let all_types = current.result_types().iter().chain(current.parameter_types());
+        sig.write_many(all_types, |types, function_type| {
+            types.write_length(type_signature_lookup.get_or_insert(function_type))
+        })
     })?;
 
     let code_block_count = code_block_lookup.len();
@@ -284,8 +289,8 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     {
         let type_signature_count = type_signature_lookup.len();
         rent_default_buffer_wrapped!(type_signature_buffer, signatures);
-        signatures.write_many(type_signature_lookup.into_keys(), |sig, current| {
-            todo!("write type signature")
+        signatures.write_many(type_signature_lookup.into_keys(), |sig, current| match current {
+            type_system::Any::Primitive(_) => sig.write_all(&[u8::from(current.tag())]),
         })?;
 
         out.write_buffer_and_count(type_signature_count, &signatures)?;
