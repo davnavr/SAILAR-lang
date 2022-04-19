@@ -388,26 +388,40 @@ impl std::default::Default for BuilderCache {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Block {
-    result_types: Box<[type_system::Any]>,
     input_types: Box<[type_system::Any]>,
+    result_types: Box<[type_system::Any]>,
     temporary_types: Box<[type_system::Any]>,
     instructions: Box<[Instruction]>,
 }
 
 impl Block {
+    pub(crate) fn new_unchecked(
+        input_types: Box<[type_system::Any]>,
+        result_types: Box<[type_system::Any]>,
+        temporary_types: Box<[type_system::Any]>,
+        instructions: Box<[Instruction]>,
+    ) -> Self {
+        Self {
+            input_types,
+            result_types,
+            temporary_types,
+            instructions,
+        }
+    }
+
     #[inline]
     pub fn instructions(&self) -> &[Instruction] {
         &self.instructions
     }
 
     #[inline]
-    pub fn result_types(&self) -> &[type_system::Any] {
-        &self.result_types
+    pub fn input_types(&self) -> &[type_system::Any] {
+        &self.input_types
     }
 
     #[inline]
-    pub fn input_types(&self) -> &[type_system::Any] {
-        &self.input_types
+    pub fn result_types(&self) -> &[type_system::Any] {
+        &self.result_types
     }
 
     #[inline]

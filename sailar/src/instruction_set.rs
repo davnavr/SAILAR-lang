@@ -163,6 +163,34 @@ impl From<Opcode> for u8 {
     }
 }
 
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("{value:#02X} is not a valid opcode")]
+pub struct InvalidOpcodeError {
+    value: u8,
+}
+
+impl TryFrom<u8> for Opcode {
+    type Error = InvalidOpcodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        macro_rules! success {
+            ($opcode: ident) => {
+                Ok(Self::$opcode)
+            };
+        }
+
+        match value {
+            0 => success!(Nop),
+            1 => success!(Break),
+            2 => success!(Ret),
+            8 => success!(AddI),
+            9 => success!(SubI),
+            0xA => success!(MulI),
+            _ => Err(InvalidOpcodeError { value }),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Instruction {

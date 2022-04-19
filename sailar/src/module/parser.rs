@@ -1,7 +1,6 @@
 //! Code for parsing SAILAR modules.
 
 use crate::binary::{self, buffer, signature::TypeCode};
-use crate::block;
 use crate::function;
 use crate::identifier::{self, Identifier};
 use crate::type_system;
@@ -114,6 +113,18 @@ pub enum ErrorKind {
     MissingBlockTemporaryCount { index: usize },
     #[error("missing register type index for code block at index {block_index}")]
     MissingCodeBlockRegisterType { block_index: usize },
+    #[error("expected byte size for instruction of code block at index {block_index}, but reached end")]
+    MissingCodeBlockInstructionSize { block_index: usize },
+    #[error("expected instruction count for code block at index {block_index}, but reached end")]
+    MissingCodeBlockInstructionCount { block_index: usize },
+    #[error("at least one instruction expected in code block at index {block_index}, but block was empty")]
+    EmptyCodeBlockInstructions { block_index: usize },
+    #[error(transparent)]
+    InvalidOpcode(#[from] crate::instruction_set::InvalidOpcodeError),
+    #[error(
+        "expected opcode byte for instruction {instruction_index} in code block {block_index}, but reached end of instructions"
+    )]
+    MissingOpcode { block_index: usize, instruction_index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -122,7 +133,7 @@ pub enum ErrorKind {
 #[error("error at offset {offset:#X}, {kind}")]
 pub struct Error {
     offset: usize,
-    kind: ErrorKind,
+    kind: Box<ErrorKind>,
 }
 
 impl Error {
@@ -170,7 +181,7 @@ mod input {
         pub fn error(&self, error: ErrorKind) -> Error {
             Error {
                 offset: self.offset,
-                kind: error,
+                kind: Box::new(error),
             }
         }
 
@@ -507,7 +518,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
-    let code_blocks: Vec<Arc<block::Block>> = {
+    let code_blocks: Vec<Arc<crate::block::Block>> = {
         let (byte_size, count) = src.read_size_and_count(|| ErrorKind::MissingCodeSize, || ErrorKind::MissingCodeBlockCount)?;
 
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
@@ -521,7 +532,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     ($vector_name: ident, $register_count: ident) => {
                         let mut $vector_name = Vec::with_capacity($register_count);
                         src.read_many_to_vec($register_count, &mut $vector_name, |src, _| {
-                            get_function_signature(src.read_length(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
+                            get_type_signature(src.read_length(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
                                 .map_err(|error| src.error(error.into()))
                         })?;
                     };
@@ -531,7 +542,42 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 register_types!(result_register_types, result_count);
                 register_types!(temporary_register_types, temporary_count);
 
-                Ok(Arc::new(todo!("block")))
+                let instruction_size = src.read_length(|| ErrorKind::MissingCodeBlockInstructionSize { block_index })?;
+                let instruction_count = src.read_length(|| ErrorKind::MissingCodeBlockInstructionCount { block_index })?;
+
+                if instruction_size == 0 || instruction_count == 0 {
+                    return Err(src.error(ErrorKind::EmptyCodeBlockInstructions { block_index }));
+                }
+
+                let mut instructions = Vec::with_capacity(instruction_count);
+
+                src.parse_buffer(buffer_pool, instruction_size, |mut src| {
+                    src.read_many_to_vec(instruction_count, &mut instructions, |stream, instruction_index| {
+                        use crate::instruction_set::{Instruction, Opcode};
+
+                        let mut opcode_value = 0u8;
+                        if stream.read(std::slice::from_mut(&mut opcode_value))? == 0 {
+                            return Err(stream.error(ErrorKind::MissingOpcode {
+                                block_index,
+                                instruction_index,
+                            }));
+                        }
+
+                        let opcode = Opcode::try_from(opcode_value).map_err(|error| stream.error(error.into()))?;
+                        Ok(match opcode {
+                            Opcode::Nop => Instruction::Nop,
+                            Opcode::Break => Instruction::Break,
+                            _ => todo!("unsupported opcode {:?}", opcode),
+                        })
+                    })
+                })?;
+
+                Ok(Arc::new(crate::block::Block::new_unchecked(
+                    input_register_types.into(),
+                    result_register_types.into(),
+                    temporary_register_types.into(),
+                    instructions.into(),
+                )))
             })?;
             Ok(blocks)
         })?
