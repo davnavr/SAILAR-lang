@@ -23,5 +23,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!("{:?}", module);
+    println!("{:?}", module.raw_contents(None));
     Ok(())
 }

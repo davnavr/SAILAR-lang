@@ -267,13 +267,21 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         }
 
         rent_default_buffer_wrapped!(instruction_buffer, instructions);
-        instructions.write_many(current.instructions().iter(), |body, instruction| match instruction {
-            Instruction::Nop | Instruction::Break => body.write_all(&[u8::from(instruction.opcode())]),
-            Instruction::Ret(return_values) => {
-                body.write_length(return_values.len())?;
-                body.write_many(return_values.iter(), |values, v| write_value(values, v))
+        instructions.write_many(current.instructions().iter(), |body, instruction| {
+            body.write_all(&[u8::from(instruction.opcode())])?;
+            match instruction {
+                Instruction::Nop | Instruction::Break => Ok(()),
+                Instruction::Ret(return_values) => {
+                    body.write_length(return_values.len())?;
+                    body.write_many(return_values.iter(), |values, v| write_value(values, v))
+                }
+                Instruction::AddI(operation) | Instruction::SubI(operation) | Instruction::MulI(operation) => {
+                    body.write_all(&[u8::from(operation.overflow_behavior())])?;
+                    write_value(body, operation.x_value())?;
+                    write_value(body, operation.y_value())
+                }
+                bad => todo!("attempt to write unsupported instruction {:?}", bad),
             }
-            bad => todo!("attempt to write unsupported instruction {:?}", bad),
         })?;
 
         block.write_buffer_and_count(current.instructions().len(), &instructions)

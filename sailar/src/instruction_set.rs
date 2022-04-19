@@ -95,11 +95,20 @@ impl Value {
 #[repr(u8)]
 #[non_exhaustive]
 pub enum OverflowBehavior {
-    Ignore,
-    /// Introduces an extra temporary register after the result register containing a boolean value indicating if an overflow
-    /// occured.
-    Flag,
-    Saturate,
+    /// Allows silent overflow or underflow of the value.
+    Ignore = 0,
+    /// Indicates that an extra temporary register should be introduced after the result register containing a boolean value
+    /// indicating if an overflow or underflow occured.
+    Flag = 1,
+    /// Keeps the value at the maximum if an overflow would occur, or at the minimum if an underflow would occur.
+    Saturate = 2,
+}
+
+impl From<OverflowBehavior> for u8 {
+    #[inline]
+    fn from(behavior_value: OverflowBehavior) -> u8 {
+        behavior_value as u8
+    }
 }
 
 /// Describes a basic arithmetic operation on integers.
