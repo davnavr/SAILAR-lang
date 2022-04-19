@@ -91,6 +91,8 @@ pub enum ErrorKind {
     MissingFunctionSignatureReturnType { index: usize },
     #[error("expected function signature parameter at index {index} but got EOF")]
     MissingFunctionSignatureParameter { index: usize },
+    #[error("function signature at index {index} does not exist")]
+    FunctionSignatureNotFound { index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -417,7 +419,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
-    let get_type_signature = |index: usize| {
+    let get_type_signature = |index| {
         type_signatures
             .get(index)
             .cloned()
@@ -452,6 +454,14 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             })?;
             Ok(signatures)
         })?
+    };
+
+    let get_function_signature = |index| {
+        function_signatures.get(index).cloned().ok_or_else(|| ErrorKind::FunctionSignatureNotFound { index })
+    };
+
+    let _data_arrays: Vec<Arc<[u8]>> = {
+        todo!("datas")
     };
 
     Ok(crate::module::Module {
