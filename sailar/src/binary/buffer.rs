@@ -195,16 +195,15 @@ impl<'a> From<&'a Vec<u8>> for ByteDebug<'a> {
 impl std::fmt::Debug for ByteDebug<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use std::fmt::Write as _;
-
+        f.write_char('[')?;
         for (index, value) in self.0.iter().enumerate() {
-            if index > 0 {
-                f.write_char(' ')?;
+            if index > 0 && index < self.0.len() - 1 {
+                f.write_char(',')?;
             }
 
-            std::fmt::UpperHex::fmt(value, f)?;
+            write!(f, "{:#02X}", value)?;
         }
-
-        Ok(())
+        f.write_char(']')
     }
 }
 

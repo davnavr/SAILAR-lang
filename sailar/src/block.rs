@@ -286,11 +286,7 @@ impl<'b> Builder<'b> {
         }
 
         let input_types = self.input_registers().iter().map(|input| input.value_type.clone()).collect();
-        let temporary_types = self
-            .temporary_registers
-            .iter()
-            .map(|temporary| temporary.value_type.clone())
-            .collect();
+        let temporary_types = self.temporary_registers.iter().map(|temporary| temporary.value_type.clone()).collect();
 
         Ok(Block {
             result_types: self.result_types,

@@ -7,7 +7,7 @@ pub mod signature;
 pub const MAGIC: &[u8; 6] = b"SAILAR";
 
 /// Represents an array of bytes that make up a SAILAR module.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RawModule {
     contents: Vec<u8>,
 }
@@ -27,6 +27,12 @@ impl std::ops::Deref for RawModule {
 
     fn deref(&self) -> &[u8] {
         self.bytes()
+    }
+}
+
+impl std::fmt::Debug for RawModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "RawModule({:?})", buffer::ByteDebug::from(&self.contents))
     }
 }
 
