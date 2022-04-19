@@ -216,6 +216,8 @@ pub(crate) fn hex_dump<W: std::fmt::Write>(bytes: &[u8], out: &mut W) -> std::fm
     let mut hex_buffer = String::with_capacity(HEX_LENGTH);
     let mut ascii_buffer = String::with_capacity(ASCII_LENGTH);
 
+    out.write_str("         00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F\n")?;
+
     for line in bytes.chunks(16) {
         hex_buffer.clear();
         ascii_buffer.clear();
