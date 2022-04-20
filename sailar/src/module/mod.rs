@@ -5,6 +5,7 @@ use crate::binary::{LengthSize, RawModule};
 use crate::function;
 use crate::identifier::{Id, Identifier};
 use std::collections::hash_map;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -29,7 +30,7 @@ impl FormatVersion {
 }
 
 /// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) enum DefinedSymbol {
     Function(Arc<function::Function>),
 }
@@ -53,6 +54,16 @@ impl std::cmp::Eq for DefinedSymbol {}
 impl std::hash::Hash for DefinedSymbol {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::hash::Hash::hash(self.as_id(), state)
+    }
+}
+
+impl Debug for DefinedSymbol {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct(match self {
+            Self::Function(_) => "Function",
+        })
+        .field("symbol", &self.as_id())
+        .finish_non_exhaustive()
     }
 }
 
@@ -84,7 +95,6 @@ impl DefinedFunction {
 pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 
 /// A SAILAR module.
-#[derive(Debug)]
 pub struct Module {
     contents: Option<RawModule>,
     format_version: FormatVersion,
@@ -262,7 +272,7 @@ impl DuplicateSymbolError {
 }
 
 impl std::fmt::Display for DuplicateSymbolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
             "a definition corresponding to the symbol \"{}\" already exists",
@@ -316,5 +326,27 @@ impl Module {
     #[inline]
     pub fn function_definitions(&self) -> &[DefinedFunction] {
         &self.function_definitions
+    }
+}
+
+impl std::fmt::Debug for Module {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        struct SymbolLookupDebug<'a>(&'a SymbolLookup);
+
+        impl Debug for SymbolLookupDebug<'_> {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                f.debug_set().entries(self.0.keys()).finish()
+            }
+        }
+
+        f.debug_struct("Module")
+            .field("format_version", &self.format_version)
+            .field("length_size", &self.length_size)
+            .field("name", &self.name)
+            .field("version", &self.version)
+            .field("symbols", &SymbolLookupDebug(&self.symbols))
+            .field("function_definitions", &self.function_definitions)
+            .field("contents", &self.contents)
+            .finish_non_exhaustive()
     }
 }
