@@ -12,11 +12,12 @@ Bit|Name|Notes
 
 The following flags apply for integer constants:
 
-Bit|Name|Nptes
+Bit|Name|Notes
 ---|---|---
-`2`|Sign|If set, indicates that the constant integer is signed.
-`3-4`|Size|Indicates the size of the constant integer. `0` is 1 byte, `1` is 2 bytes, `2` is 4 bytes, and `3` is 8 bytes.
-`5-7`|Unused|Must not be set.
+`2-3`|Size|Indicates the size of the constant integer. `0` is 1 byte, `1` is 2 bytes, `2` is 4 bytes, and `3` is 8 bytes.
+`4`|Embedded|If not set, indicates that the following bytes contain the value. If set, indicates that the remaining bit contains the value.
+`5`|Value|If the value is embedded, set to indicate a value of 1, or not set to indicate a value of zero.
+`6-7`|Unused|Must not be set.
 
 ## Instruction Table
 

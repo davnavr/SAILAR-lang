@@ -639,10 +639,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             }))
                         };
 
-                        let instruction_value = |stream: Stream| {
-                            
-                            todo!("a")
-                        };
+                        let instruction_value = |stream: Stream| todo!("a");
 
                         let integer_arithmetic_operands = |stream: Stream| -> ParseResult<Box<_>> {
                             let mut overflow_behavior_value = 0u8;

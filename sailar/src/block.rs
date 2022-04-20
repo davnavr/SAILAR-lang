@@ -1,10 +1,9 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::instruction_set::{self, Instruction, OverflowBehavior, TypedValue};
+use crate::instruction_set::{self, Instruction, OverflowBehavior};
 use crate::type_system;
 use std::fmt::{Display, Formatter};
 use std::iter::IntoIterator;
-use std::marker::PhantomData;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("expected result at index {index} to be of type {expected:?} but got {actual:?}")]
@@ -68,10 +67,10 @@ pub struct Input {
     value_type: type_system::Any,
 }
 
-impl TypedValue for Input {
+impl Input {
     #[inline]
-    fn value_type(&self) -> type_system::Any {
-        self.value_type.clone()
+    fn value_type(&self) -> &type_system::Any {
+        &self.value_type
     }
 }
 
@@ -82,31 +81,116 @@ pub struct Temporary {
     value_type: type_system::Any,
 }
 
-impl TypedValue for Temporary {
+impl Temporary {
     #[inline]
-    fn value_type(&self) -> type_system::Any {
-        self.value_type.clone()
+    fn value_type(&self) -> &type_system::Any {
+        &self.value_type
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum ConstantInteger {
+    U8(u8),
+    S8(i8),
+    U16(u16),
+    S16(i16),
+    U32(u32),
+    S32(i32),
+    U64(u64),
+    S64(i64),
+}
+
+impl ConstantInteger {
+    pub fn value_type(&self) -> &'static type_system::Any {
+        macro_rules! constant_type {
+            ($name: ident) => {
+                &type_system::Any::Primitive(type_system::Primitive::Int(type_system::Int::Fixed(
+                    type_system::FixedInt::$name,
+                )))
+            };
+        }
+
+        match self {
+            Self::U8(_) => constant_type!(U8),
+            Self::S8(_) => constant_type!(S8),
+            Self::U16(_) => constant_type!(U16),
+            Self::S16(_) => constant_type!(S16),
+            Self::U32(_) => constant_type!(U32),
+            Self::S32(_) => constant_type!(S32),
+            Self::U64(_) => constant_type!(U64),
+            Self::S64(_) => constant_type!(S64),
+        }
+    }
+}
+
+impl From<&ConstantInteger> for instruction_set::ConstantInteger {
+    fn from(constant: &ConstantInteger) -> Self {
+        match constant {
+            ConstantInteger::U8(value) => Self::I8(*value),
+            ConstantInteger::S8(value) => Self::I8(*value as u8),
+            ConstantInteger::U16(value) => Self::I16(value.to_le_bytes()),
+            ConstantInteger::S16(value) => Self::I16(value.to_le_bytes()),
+            ConstantInteger::U32(value) => Self::I32(value.to_le_bytes()),
+            ConstantInteger::S32(value) => Self::I32(value.to_le_bytes()),
+            ConstantInteger::U64(value) => Self::I64(value.to_le_bytes()),
+            ConstantInteger::S64(value) => Self::I64(value.to_le_bytes()),
+        }
+    }
+}
+
+impl From<&ConstantInteger> for instruction_set::Constant {
+    #[inline]
+    fn from(constant: &ConstantInteger) -> Self {
+        Self::Integer(constant.into())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Constant {
+    Integer(ConstantInteger),
+}
+
+impl Constant {
+    pub fn value_type(&self) -> &type_system::Any {
+        match self {
+            Self::Integer(integer) => integer.value_type(),
+        }
+    }
+}
+
+impl From<&Constant> for instruction_set::Constant {
+    fn from(constant: &Constant) -> Self {
+        match constant {
+            Constant::Integer(integer) => integer.into(),
+        }
+    }
+}
+
+impl From<&Constant> for instruction_set::Value {
+    #[inline]
+    fn from(constant: &Constant) -> Self {
+        Self::Constant(constant.into())
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Value<'r> {
-    Constant(instruction_set::Constant),
+    Constant(Constant),
     Temporary(&'r Temporary),
     Input(&'r Input),
 }
 
 impl Value<'_> {
-    fn into_value(self, input_count: usize) -> instruction_set::Value {
+    fn into_value(&self, input_count: usize) -> instruction_set::Value {
         match self {
-            Self::Constant(constant) => instruction_set::Value::Constant(constant),
+            Self::Constant(constant) => constant.into(),
             Self::Temporary(temporary) => instruction_set::Value::IndexedRegister(temporary.index + input_count),
             Self::Input(input) => instruction_set::Value::IndexedRegister(input.index),
         }
     }
 }
 
-crate::enum_case_from_impl!(Value<'_>, Constant, instruction_set::Constant);
+crate::enum_case_from_impl!(Value<'_>, Constant, Constant);
 
 impl<'r> From<&'r Temporary> for Value<'r> {
     #[inline]
@@ -122,8 +206,8 @@ impl<'r> From<&'r Input> for Value<'r> {
     }
 }
 
-impl TypedValue for Value<'_> {
-    fn value_type(&self) -> type_system::Any {
+impl Value<'_> {
+    fn value_type(&self) -> &type_system::Any {
         match self {
             Self::Constant(constant) => constant.value_type(),
             Self::Temporary(temporary) => temporary.value_type(),
@@ -132,24 +216,39 @@ impl TypedValue for Value<'_> {
     }
 }
 
-macro_rules! integer_to_value_conversion_impl {
-    ($integer_type: ty) => {
-        impl From<$integer_type> for Value<'_> {
+macro_rules! integer_conversion_impls {
+    ($constant_case_name: ident, $integer_type: ty) => {
+        impl From<$integer_type> for ConstantInteger {
+            #[inline]
             fn from(value: $integer_type) -> Self {
-                Self::Constant(instruction_set::Constant::from(value))
+                Self::$constant_case_name(value)
+            }
+        }
+
+        impl From<$integer_type> for Constant {
+            #[inline]
+            fn from(value: $integer_type) -> Self {
+                Self::Integer(ConstantInteger::from(value))
+            }
+        }
+
+        impl From<$integer_type> for Value<'_> {
+            #[inline]
+            fn from(value: $integer_type) -> Self {
+                Self::Constant(Constant::from(value))
             }
         }
     };
 }
 
-integer_to_value_conversion_impl!(u8);
-integer_to_value_conversion_impl!(i8);
-integer_to_value_conversion_impl!(u16);
-integer_to_value_conversion_impl!(i16);
-integer_to_value_conversion_impl!(u32);
-integer_to_value_conversion_impl!(i32);
-integer_to_value_conversion_impl!(u64);
-integer_to_value_conversion_impl!(i64);
+integer_conversion_impls!(U8, u8);
+integer_conversion_impls!(S8, i8);
+integer_conversion_impls!(U16, u16);
+integer_conversion_impls!(S16, i16);
+integer_conversion_impls!(U32, u32);
+integer_conversion_impls!(S32, i32);
+integer_conversion_impls!(U64, u64);
+integer_conversion_impls!(S64, i64);
 
 /// Represents the result of an integer arithmetic operation that may have overflowed.
 #[derive(Debug)]
@@ -221,21 +320,21 @@ impl<'b> Builder<'b> {
         y: Value<'b>,
         instruction: IntegerArithmeticInstruction,
     ) -> ValidationResult<&'b Temporary> {
-        let x_type = x.value_type();
+        let x_type = x.value_type().clone();
         let y_type = y.value_type();
 
         match x_type {
             type_system::Any::Primitive(type_system::Primitive::Int(_)) => (),
             actual => fail!(ExpectedTypeError {
-                actual,
+                actual: actual.clone(),
                 kind: ExpectedTypeErrorKind::ExpectedInteger,
             }),
         }
 
-        if x_type != y_type {
+        if &x_type != y_type {
             fail!(ExpectedTypeError {
-                actual: y_type,
-                kind: ExpectedTypeErrorKind::Expected(x_type),
+                actual: y_type.clone(),
+                kind: ExpectedTypeErrorKind::Expected(x_type.clone()),
             });
         }
 
@@ -310,11 +409,11 @@ impl<'b> Builder<'b> {
 
         for (index, (value, expected)) in return_values.zip(self.result_types.iter()).enumerate() {
             let actual = value.value_type();
-            if &actual != expected {
+            if actual != expected {
                 fail!(InvalidResultTypeError {
                     index,
                     expected: expected.clone(),
-                    actual,
+                    actual: actual.clone(),
                 });
             }
 

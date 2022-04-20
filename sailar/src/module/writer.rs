@@ -254,14 +254,16 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
             match value {
                 instruction_set::Value::IndexedRegister(index) => output.write_length(*index),
                 instruction_set::Value::Constant(instruction_set::Constant::Integer(integer)) => match integer {
-                    instruction_set::ConstantInteger::S8(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::U8(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::S16(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::U16(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::S32(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::U32(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::S64(value) => output.write_all(&value.to_le_bytes()),
-                    instruction_set::ConstantInteger::U64(value) => output.write_all(&value.to_le_bytes()),
+                    _ => todo!("if flags indicate not embedded, then write the value")
+                    // // TODO: Check for 0 or 1 values.
+                    // instruction_set::ConstantInteger::S8(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::U8(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::S16(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::U16(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::S32(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::U32(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::S64(value) => output.write_all(&value.to_le_bytes()),
+                    // instruction_set::ConstantInteger::U64(value) => output.write_all(&value.to_le_bytes()),
                 },
             }
         }
