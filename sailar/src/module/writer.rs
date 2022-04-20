@@ -163,12 +163,6 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         out.write_all(&[format_version.major, format_version.minor, length_size.into()])?;
     }
 
-    macro_rules! rent_default_buffer {
-        () => {
-            buffer_pool.rent_with_capacity(32)
-        };
-    }
-
     macro_rules! wrap_rented_buffer {
         ($buffer: expr) => {
             Wrapper::new($buffer.as_mut_vec(), length_size)
@@ -177,7 +171,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     macro_rules! rent_default_buffer_wrapped {
         ($buffer_name: ident, $wrapper_name: ident) => {
-            let mut $buffer_name = rent_default_buffer!();
+            let mut $buffer_name = buffer_pool.rent();
             #[allow(unused_mut)]
             let mut $wrapper_name = wrap_rented_buffer!($buffer_name);
         };
@@ -197,7 +191,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     let mut identifier_lookup = lookup::IndexMap::<&Id>::default();
     let mut code_block_lookup = lookup::IndexMap::<&block::Block>::default();
     let mut function_signature_lookup = lookup::IndexMap::<&function::Signature>::default();
-    let mut definitions_buffer = rent_default_buffer!();
+    let mut definitions_buffer = buffer_pool.rent();
 
     {
         let mut definitions = wrap_rented_buffer!(definitions_buffer);
@@ -232,7 +226,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     let mut type_signature_lookup = lookup::IndexMap::<&type_system::Any>::default();
 
     let function_signature_count = function_signature_lookup.len();
-    let mut function_signature_buffer = rent_default_buffer!();
+    let mut function_signature_buffer = buffer_pool.rent();
     wrap_rented_buffer!(function_signature_buffer).write_many(function_signature_lookup.into_keys(), |sig, current| {
         sig.write_length(current.result_types().len())?;
         sig.write_length(current.parameter_types().len())?;
@@ -243,7 +237,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     })?;
 
     let code_block_count = code_block_lookup.len();
-    let mut code_block_buffer = rent_default_buffer!();
+    let mut code_block_buffer = buffer_pool.rent();
     wrap_rented_buffer!(code_block_buffer).write_many(code_block_lookup.into_keys(), |block, current| {
         block.write_length(current.input_types().len())?;
         block.write_length(current.result_types().len())?;
