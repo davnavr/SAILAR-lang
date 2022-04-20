@@ -350,7 +350,7 @@ impl std::cmp::PartialEq for Module {
                 }
             }
 
-            return true;
+            true
         };
 
         self.format_version() == other.format_version()

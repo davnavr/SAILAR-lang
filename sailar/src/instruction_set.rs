@@ -1,6 +1,6 @@
 //! Model of the SAILAR instruction set.
 
-use std::fmt::{Debug, Formatter, Write as _};
+use std::fmt::{Debug, Formatter};
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.

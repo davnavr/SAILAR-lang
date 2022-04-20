@@ -837,7 +837,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         fn add_symbol(&mut self, symbol: crate::module::DefinedSymbol) -> Result<(), ErrorKind> {
             match self.lookup.entry(symbol) {
                 hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().as_id().to_identifier())),
-                hash_map::Entry::Vacant(vacant) => Ok(*vacant.insert(())),
+                hash_map::Entry::Vacant(vacant) => {
+                    vacant.insert(());
+                    Ok(())
+                },
             }
         }
     }
@@ -921,6 +924,6 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         name: header.name,
         version: header.version,
         symbols: symbol_lookup.lookup,
-        function_definitions: function_definitions.into(),
+        function_definitions,
     })
 }

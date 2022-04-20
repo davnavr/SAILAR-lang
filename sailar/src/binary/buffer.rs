@@ -68,7 +68,7 @@ impl Debug for Pool {
 
         impl Debug for BuffersDebug<'_> {
             fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-                f.debug_list().entries(self.0.iter().map(|buffer| CapacityDebug(buffer))).finish()
+                f.debug_list().entries(self.0.iter().map(CapacityDebug)).finish()
             }
         }
 
