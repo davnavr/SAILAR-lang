@@ -54,6 +54,8 @@ pub enum InvalidInstructionKind {
     MissingRegisterIndex,
     #[error("only constant integers are currently supported")]
     UnknownConstantKind,
+    #[error("missing return value count for instruction")]
+    MissingReturnCount,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -647,6 +649,16 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             }))
                         };
 
+                        let read_length = |stream: Stream, error: fn() -> InvalidInstructionKind| {
+                            stream.read_length(|| {
+                                ErrorKind::InvalidInstruction(InvalidInstructionError {
+                                    block_index,
+                                    instruction_index,
+                                    kind: error(),
+                                })
+                            })
+                        };
+
                         let instruction_value = |stream: Stream| -> ParseResult<instruction_set::Value> {
                             let mut flag_value = 0u8;
                             if stream.read(std::slice::from_mut(&mut flag_value))? == 0 {
@@ -702,12 +714,8 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                                     _ => unreachable!("unsupported integer constant size"),
                                 })
                             } else {
-                                Ok(instruction_set::Value::IndexedRegister(stream.read_length(|| {
-                                    ErrorKind::InvalidInstruction(InvalidInstructionError {
-                                        block_index,
-                                        instruction_index,
-                                        kind: InvalidInstructionKind::MissingRegisterIndex,
-                                    })
+                                Ok(instruction_set::Value::IndexedRegister(read_length(stream, || {
+                                    InvalidInstructionKind::MissingRegisterIndex
                                 })?))
                             }
                         };
@@ -729,6 +737,13 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         Ok(match opcode {
                             Opcode::Nop => Instruction::Nop,
                             Opcode::Break => Instruction::Break,
+                            Opcode::Ret => {
+                                let return_count = read_length(stream, || InvalidInstructionKind::MissingReturnCount)?;
+                                let mut return_values = Vec::with_capacity(return_count);
+                                stream
+                                    .read_many_to_vec(return_count, &mut return_values, |stream, _| instruction_value(stream))?;
+                                Instruction::Ret(return_values.into_boxed_slice())
+                            }
                             Opcode::AddI => Instruction::AddI(integer_arithmetic_operands(stream)?),
                             _ => todo!("unsupported opcode {:?} at offset {:#X}", opcode, stream.offset() - 1),
                         })
