@@ -181,7 +181,7 @@ pub enum Value<'r> {
 }
 
 impl Value<'_> {
-    fn into_value(&self, input_count: usize) -> instruction_set::Value {
+    fn to_value(&self, input_count: usize) -> instruction_set::Value {
         match self {
             Self::Constant(constant) => constant.into(),
             Self::Temporary(temporary) => instruction_set::Value::IndexedRegister(temporary.index + input_count),
@@ -289,7 +289,7 @@ impl<'b> Builder<'b> {
 
     #[inline]
     pub fn input_registers(&self) -> &'b [Input] {
-        &self.input_registers
+        self.input_registers
     }
 
     pub fn emit_nop(&mut self) {
@@ -301,7 +301,7 @@ impl<'b> Builder<'b> {
     }
 
     fn convert_value(&self, value: Value<'b>) -> instruction_set::Value {
-        value.into_value(self.input_registers.len())
+        value.to_value(self.input_registers.len())
     }
 
     fn define_temporary(&mut self, value_type: type_system::Any) -> &'b Temporary {
@@ -326,7 +326,7 @@ impl<'b> Builder<'b> {
         match x_type {
             type_system::Any::Primitive(type_system::Primitive::Int(_)) => (),
             actual => fail!(ExpectedTypeError {
-                actual: actual.clone(),
+                actual,
                 kind: ExpectedTypeErrorKind::ExpectedInteger,
             }),
         }
@@ -334,7 +334,7 @@ impl<'b> Builder<'b> {
         if &x_type != y_type {
             fail!(ExpectedTypeError {
                 actual: y_type.clone(),
-                kind: ExpectedTypeErrorKind::Expected(x_type.clone()),
+                kind: ExpectedTypeErrorKind::Expected(x_type),
             });
         }
 
@@ -345,7 +345,7 @@ impl<'b> Builder<'b> {
                 self.convert_value(y),
             ))));
 
-        Ok(self.define_temporary(x_type.clone()))
+        Ok(self.define_temporary(x_type))
     }
 
     fn integer_arithmetic_flagged(
@@ -417,7 +417,7 @@ impl<'b> Builder<'b> {
                 });
             }
 
-            self.value_buffer.push(value.into_value(self.input_registers.len()));
+            self.value_buffer.push(value.to_value(self.input_registers.len()));
         }
 
         if self.value_buffer.len() != self.result_types.len() {

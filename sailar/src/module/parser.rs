@@ -343,7 +343,7 @@ mod input {
             })
         }
 
-        pub fn read_identifier<'b>(&mut self) -> ParseResult<Identifier> {
+        pub fn read_identifier(&mut self) -> ParseResult<Identifier> {
             let length =
                 self.read_length(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
 
@@ -521,7 +521,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         type_signatures
             .get(index)
             .cloned()
-            .ok_or_else(|| ErrorKind::TypeSignatureNotFound { index })
+            .ok_or(ErrorKind::TypeSignatureNotFound { index })
     };
 
     let function_signatures: Vec<Arc<function::Signature>> = {
@@ -539,13 +539,13 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 let mut return_types = Vec::with_capacity(return_type_count);
                 src.read_many_to_vec(return_type_count, &mut return_types, |src, index| {
                     get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureReturnType { index })?)
-                        .map_err(|error| src.error(error.into()))
+                        .map_err(|error| src.error(error))
                 })?;
 
                 let mut parameter_types = Vec::with_capacity(parameter_count);
                 src.read_many_to_vec(parameter_count, &mut parameter_types, |src, index| {
                     get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureParameter { index })?)
-                        .map_err(|error| src.error(error.into()))
+                        .map_err(|error| src.error(error))
                 })?;
 
                 Ok(Arc::new(function::Signature::new(return_types, parameter_types)))
@@ -558,7 +558,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         function_signatures
             .get(index)
             .cloned()
-            .ok_or_else(|| ErrorKind::FunctionSignatureNotFound { index })
+            .ok_or(ErrorKind::FunctionSignatureNotFound { index })
     };
 
     let _data_arrays: Vec<Arc<[u8]>> = {
