@@ -250,20 +250,16 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         })?;
 
         fn write_value<W: Write>(output: &mut Wrapper<W>, value: &instruction_set::Value) -> Result {
-            output.write_all(&[value.flags().bits()])?;
+            let flags = value.flags();
+            output.write_all(&[flags.bits()])?;
             match value {
                 instruction_set::Value::IndexedRegister(index) => output.write_length(*index),
                 instruction_set::Value::Constant(instruction_set::Constant::Integer(integer)) => match integer {
-                    _ => todo!("if flags indicate not embedded, then write the value")
-                    // // TODO: Check for 0 or 1 values.
-                    // instruction_set::ConstantInteger::S8(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::U8(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::S16(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::U16(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::S32(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::U32(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::S64(value) => output.write_all(&value.to_le_bytes()),
-                    // instruction_set::ConstantInteger::U64(value) => output.write_all(&value.to_le_bytes()),
+                    _ if flags.contains(instruction_set::ValueFlags::INTEGER_EMBEDDED) => Ok(()),
+                    instruction_set::ConstantInteger::I8(byte) => output.write_all(&[*byte]),
+                    instruction_set::ConstantInteger::I16(ref bytes) => output.write_all(bytes),
+                    instruction_set::ConstantInteger::I32(ref bytes) => output.write_all(bytes),
+                    instruction_set::ConstantInteger::I64(ref bytes) => output.write_all(bytes),
                 },
             }
         }

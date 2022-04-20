@@ -299,7 +299,7 @@ mod tests {
             INTEGER_EMBEDDED,
             INTEGER_EMBEDDED_ONE
         );
-        
+
         assert_flags_eq!(0i16, CONSTANT, INTEGER, INTEGER_SIZE_2, INTEGER_EMBEDDED);
         assert_flags_eq!(10u32, CONSTANT, INTEGER, INTEGER_SIZE_4);
         assert_flags_eq!(42u64, CONSTANT, INTEGER, INTEGER_SIZE_8);
