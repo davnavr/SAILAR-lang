@@ -862,7 +862,11 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     Ok(crate::module::DefinedFunction::new(symbol, signature, export, body))
                 })?;
                 
-                todo!("parse")
+                definitions.read_length(|| todo!())?; // TODO: Parse struct definitions.
+                definitions.read_length(|| todo!())?; // TODO: Parse global definitions.
+                definitions.read_length(|| todo!())?; // TODO: Parse ec definitions.
+                definitions.read_length(|| todo!())?; // TODO: Parse annotations definitions.
+                Ok(())
             })?;
         }
     }
