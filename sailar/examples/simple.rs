@@ -22,13 +22,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )),
             function::Kind::Defined(function::Definition::new(function::Body::Defined(main_block), Export::Yes)),
         )?;
-
-        println!("{:?}", module);
     }
 
     let contents = module.raw_contents(None);
     println!("{}", contents.hex_dump_to_string());
-    let parsed_module = sailar::Module::from_slice(&contents, None);
-    println!("{:?}", parsed_module);
+
+    let parsed_module = sailar::Module::from_slice(&contents, None)?;
+    assert_eq!(module, parsed_module);
+
     Ok(())
 }

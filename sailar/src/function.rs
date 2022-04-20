@@ -32,7 +32,7 @@ impl Signature {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Function {
     symbol: Identifier,
     signature: Arc<Signature>,
@@ -54,7 +54,7 @@ impl Function {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ForeignBody {
     library_name: Arc<Identifier>,
     entry_point_name: Identifier,
@@ -80,7 +80,7 @@ impl ForeignBody {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum Body {
     /// Indicates that a function's body is defined in its module, providing the entry block that is executed.
@@ -107,7 +107,7 @@ impl Body {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Definition {
     body: Body,
     export: Export,

@@ -67,7 +67,7 @@ impl Debug for DefinedSymbol {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DefinedFunction {
     function: Arc<function::Function>,
     definition: function::Definition,
@@ -348,5 +348,38 @@ impl std::fmt::Debug for Module {
             .field("function_definitions", &self.function_definitions)
             .field("contents", &self.contents)
             .finish_non_exhaustive()
+    }
+}
+
+impl std::cmp::PartialEq for Module {
+    /// Checks that the contents of two modules are roughly equivalent.
+    fn eq(&self, other: &Self) -> bool {
+        let compare_symbols = || {
+            if self.symbols.len() != other.symbols.len() {
+                return false;
+            }
+
+            for definition in self.symbols.keys() {
+                match other.symbols.get_key_value(definition) {
+                    Some((other_symbol, _)) => {
+                        match (definition, other_symbol) {
+                            (DefinedSymbol::Function(defined_function), DefinedSymbol::Function(other_function)) => {
+                                if defined_function != other_function {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            return true;
+        };
+
+        self.format_version() == other.format_version()
+            && self.name() == other.name()
+            && self.version() == other.version()
+            && compare_symbols()
     }
 }
