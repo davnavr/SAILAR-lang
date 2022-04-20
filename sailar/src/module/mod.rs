@@ -213,30 +213,6 @@ impl Module {
     }
 
     /// Parses a module contained a byte slice.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use sailar::module::{FormatVersion, Module};
-    /// let contents = &[
-    ///     b'S', b'A', b'I', b'L', b'A', b'R',
-    ///     0, 12, // Format version
-    ///     0, // Length size
-    ///     8, // Header size
-    ///     4, // Module name length
-    ///     b'T', b'e', b's', b't', // Module name
-    ///     2, // Module version length
-    ///     1, 0, // Module Version
-    ///     0, // Type signatures size
-    ///     0, // Function signatures size
-    /// ];
-    ///
-    /// let module = Module::from_slice(contents, None)?;
-    /// assert_eq!(module.format_version(), FormatVersion::MINIMUM_SUPPORTED);
-    /// assert_eq!(module.name(), sailar::Id::from_str("Test")?);
-    /// assert_eq!(module.version(), &[ 1, 0 ]);
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
     #[inline]
     pub fn from_slice(bytes: &[u8], buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         Self::parse(bytes, buffer_pool)
