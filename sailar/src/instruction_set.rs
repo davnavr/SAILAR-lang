@@ -1,13 +1,26 @@
 //! Model of the SAILAR instruction set.
 
+use std::fmt::{Debug, Formatter, Write as _};
+
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub enum ConstantInteger {
     I8(u8),
     I16([u8; 2]),
     I32([u8; 4]),
     I64([u8; 8]),
+}
+
+impl Debug for ConstantInteger {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::I8(value) => write!(f, "I8({:#02X})", value),
+            Self::I16(value) => write!(f, "I16({:#04X})", u16::from_le_bytes(*value)),
+            Self::I32(value) => write!(f, "I32({:#08X})", u32::from_le_bytes(*value)),
+            Self::I64(value) => write!(f, "I64({:#016X})", u64::from_le_bytes(*value)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
