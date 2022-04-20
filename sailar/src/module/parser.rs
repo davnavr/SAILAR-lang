@@ -170,6 +170,20 @@ pub enum ErrorKind {
     MissingOpcode { block_index: usize, instruction_index: usize },
     #[error(transparent)]
     InvalidInstruction(#[from] InvalidInstructionError),
+    #[error("expected byte size of module definitions, but got EOF")]
+    MissingDefinitionSize,
+    #[error("expected function definition count, but reached end")]
+    MissingFunctionDefinitionCount,
+    #[error("expected flag byte for function definition at index {index}, but reached end")]
+    MissingFunctionDefinitionFlags { index: usize },
+    #[error("function definition at index {index} has a flag value of {value:#02X} which is invalid")]
+    InvalidFunctionDefinitionFlags { index: usize, value: u8 },
+    #[error("function definition at index {index} is missing a function signature")]
+    MissingFunctionDefinitionSignature { index: usize },
+    #[error("function definition at index {index} is missing its entry block")]
+    MissingFunctionDefinitionEntryBlock { index: usize },
+    #[error("code block at index {index} does not exist")]
+    CodeBlockNotFound { index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -393,6 +407,31 @@ mod input {
         }
     }
 
+    impl Wrapper<&[u8]> {
+        pub fn parse_slice<T, P: FnOnce(Self) -> ParseResult<T>, E: FnOnce(usize) -> ErrorKind>(
+            &mut self,
+            length: usize,
+            error: E,
+            parser: P,
+        ) -> ParseResult<T> {
+            let actual_length = self.source.len();
+            if length > actual_length {
+                let start_offset = self.offset;
+                let (contents, remaining) = self.source.split_at(length);
+                self.offset += length;
+                self.source = remaining;
+                parser(Wrapper {
+                    source: contents,
+                    offset: start_offset,
+                    length_size: self.length_size,
+                    length_parser: self.length_parser,
+                })
+            } else {
+                Err(self.error(error(actual_length)))
+            }
+        }
+    }
+
     impl<R: std::fmt::Debug> std::fmt::Debug for Wrapper<R> {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             f.debug_struct("Wrapper")
@@ -564,7 +603,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
-    let get_function_signature = |index| {
+    let get_function_signature = |index| -> Result<Arc<_>, _> {
         function_signatures
             .get(index)
             .cloned()
@@ -627,6 +666,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                 let mut instructions = Vec::with_capacity(instruction_count);
 
+                // NOTE: Since input is a slice, can avoid allocating a buffer here.
                 src.parse_buffer(buffer_pool, instruction_size, |mut src| {
                     src.read_many_to_vec(instruction_count, &mut instructions, |stream, instruction_index| {
                         use crate::instruction_set::{self, Instruction, Opcode};
@@ -761,20 +801,71 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
+    let get_code_block = |index| -> Result<Arc<crate::block::Block>, _> {
+        code_blocks.get(index).cloned().ok_or(ErrorKind::CodeBlockNotFound { index })
+    };
+
     macro_rules! ignore_length {
-        ($message: literal) => {
-            {
-                let length = src.read_length(|| todo!("missing length"))?;
-                if length != 0 {
-                    todo!($message)
-                }
+        ($message: literal) => {{
+            let length = src.read_length(|| todo!("missing length"))?;
+            if length != 0 {
+                todo!($message)
             }
-        };
+        }};
     }
 
     ignore_length!("TODO: Parse module imports");
 
-    // TODO: Parse module definitions.
+    // TODO: Could keep track of duplicate symbols somehow?
+    let mut function_definitions = Vec::<crate::module::DefinedFunction>::new();
+
+    {
+        let byte_size = src.read_length(|| ErrorKind::MissingDefinitionSize)?;
+        if byte_size > 0 {
+            src.parse_buffer(buffer_pool, byte_size, |mut definitions| {
+                let function_count = definitions.read_length(|| ErrorKind::MissingFunctionDefinitionCount)?;
+                function_definitions.reserve_exact(function_count);
+                definitions.read_many_to_vec(function_count, &mut function_definitions, |function, index| {
+                    let mut flags_value = 0u8;
+                    if function.read(std::slice::from_mut(&mut flags_value))? == 0 {
+                        return Err(function.error(ErrorKind::MissingFunctionDefinitionFlags { index }));
+                    }
+
+                    let flags = function::Flags::from_bits(flags_value).ok_or_else(|| {
+                        function.error(ErrorKind::InvalidFunctionDefinitionFlags {
+                            index,
+                            value: flags_value,
+                        })
+                    })?;
+
+                    let export = if flags.contains(function::Flags::EXPORT) {
+                        crate::module::Export::Yes
+                    } else {
+                        crate::module::Export::No
+                    };
+
+                    let signature =
+                        get_function_signature(function.read_length(|| ErrorKind::MissingFunctionDefinitionSignature { index })?)
+                            .map_err(|error| function.error(error))?;
+
+                    let symbol = function.read_identifier()?;
+
+                    let body = if flags.contains(function::Flags::FOREIGN) {
+                        
+                        todo!("parse foreign func")
+                    } else {
+                        function::Body::Defined(
+                            get_code_block(function.read_length(|| ErrorKind::MissingFunctionDefinitionEntryBlock { index })?)
+                                .map_err(|error| function.error(error))?,
+                        )
+                    };
+
+                    Ok(crate::module::DefinedFunction::new(symbol, signature, export, body))
+                })?;
+                todo!("parse")
+            })?;
+        }
+    }
 
     ignore_length!("TODO: Parse struct instantiations");
     ignore_length!("TODO: Parse function instantiations");

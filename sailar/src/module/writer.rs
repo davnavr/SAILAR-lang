@@ -77,6 +77,8 @@ mod output {
             Ok(())
         }
 
+        /// Writes a byte size, count, and the contents of a buffer to the output. If the buffer is empty, simply writes a
+        /// length integer with a value of `0`.
         pub fn write_buffer_and_count(&mut self, count: usize, buffer: &[u8]) -> Result {
             if count > 0 {
                 self.write_length(buffer.len())?;
@@ -199,9 +201,7 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
             rent_default_buffer_wrapped!(functions_buffer, functions);
             functions.write_many(function_definitions, |def, current| {
                 let body = current.definition().body();
-                let mut flags = current.definition().is_export().flag();
-                flags |= body.flag();
-                def.write_all(std::slice::from_ref(&flags))?;
+                def.write_all(&[current.definition().flags().bits()])?;
                 def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
                 def.write_identifier(current.function().symbol())?;
 
@@ -214,8 +214,14 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
                 }
             })?;
 
-            definitions.write_buffer_and_count(function_definitions.len(), &functions)?;
+            definitions.write_length(function_definitions.len())?;
+            definitions.write_all(&functions)?;
         }
+
+        definitions.write_length(0)?; // TODO: Write struct definitions
+        definitions.write_length(0)?; // TODO: Write global definitions
+        definitions.write_length(0)?; // TODO: Write exception class definitions
+        definitions.write_length(0)?; // TODO: Write annotation class definitions
     }
 
     let mut type_signature_lookup = lookup::IndexMap::<&type_system::Any>::default();
@@ -309,8 +315,8 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     out.write_all(&definitions_buffer)?;
     out.write_length(0)?; // TODO: Write struct instantiations
     out.write_length(0)?; // TODO: Write function instantiations
-    // TODO: Write entry point
-    // TODO: Write initializer
+                          // TODO: Write entry point
+                          // TODO: Write initializer
     out.write_length(0)?; // TODO: Write namespaces
     out.write_length(0)?; // TODO: Write debugging information
     out.flush()

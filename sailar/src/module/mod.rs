@@ -14,16 +14,6 @@ pub enum Export {
     No,
 }
 
-impl Export {
-    pub(crate) fn flag(self) -> u8 {
-        if self == Self::Yes {
-            1
-        } else {
-            0
-        }
-    }
-}
-
 /// Specifies the version of a SAILAR module file.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -73,6 +63,13 @@ pub struct DefinedFunction {
 }
 
 impl DefinedFunction {
+    pub(crate) fn new(symbol: Identifier, signature: Arc<function::Signature>, export: Export, body: function::Body) -> Self {
+        Self {
+            function: Arc::new(function::Function::new(symbol, signature)),
+            definition: function::Definition::new(body, export),
+        }
+    }
+
     #[inline]
     pub fn function(&self) -> &Arc<function::Function> {
         &self.function

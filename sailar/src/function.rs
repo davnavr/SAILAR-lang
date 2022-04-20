@@ -90,11 +90,19 @@ pub enum Body {
     Foreign(Box<ForeignBody>),
 }
 
+bitflags::bitflags! {
+    pub struct Flags: u8 {
+        const NONE = 0;
+        const EXPORT = 0b0000_0001;
+        const FOREIGN = 0b000_0010;
+    }
+}
+
 impl Body {
-    pub(crate) fn flag(&self) -> u8 {
+    pub fn flags(&self) -> Flags {
         match self {
-            Self::Defined(_) => 0,
-            Self::Foreign(_) => 0b10,
+            Self::Defined(_) => Flags::NONE,
+            Self::Foreign(_) => Flags::FOREIGN,
         }
     }
 }
@@ -118,6 +126,14 @@ impl Definition {
     #[inline]
     pub fn is_export(&self) -> Export {
         self.export
+    }
+
+    pub fn flags(&self) -> Flags {
+        let mut flags = self.body().flags();
+        if self.export == Export::Yes {
+            flags |= Flags::EXPORT;
+        }
+        flags
     }
 }
 
