@@ -1,7 +1,5 @@
 //! Model of the SAILAR instruction set.
 
-use crate::type_system;
-
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -268,5 +266,51 @@ impl Instruction {
             Self::SubI(_) => Opcode::SubI,
             Self::MulI(_) => Opcode::MulI,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instruction_size_is_acceptable() {
+        assert!(std::mem::size_of::<Instruction>() <= 24);
+    }
+
+    #[test]
+    fn integer_value_flags_are_correct() {
+        macro_rules! value_flags {
+            ($flag: ident) => (ValueFlags::$flag);
+            ($flag: ident, $($remaining: ident),+) => (ValueFlags::$flag | value_flags!($($remaining),+))
+        }
+
+        macro_rules! assert_flags_eq {
+            ($value: expr, $($flags: ident),+) => (
+                assert_eq!(Value::from($value).flags(), value_flags!($($flags),+))
+            )
+        }
+
+        assert_flags_eq!(
+            1i32,
+            CONSTANT,
+            INTEGER,
+            INTEGER_SIZE_4,
+            INTEGER_EMBEDDED,
+            INTEGER_EMBEDDED_ONE
+        );
+        
+        assert_flags_eq!(0i16, CONSTANT, INTEGER, INTEGER_SIZE_2, INTEGER_EMBEDDED);
+        assert_flags_eq!(10u32, CONSTANT, INTEGER, INTEGER_SIZE_4);
+        assert_flags_eq!(42u64, CONSTANT, INTEGER, INTEGER_SIZE_8);
+
+        assert_flags_eq!(
+            1u64,
+            CONSTANT,
+            INTEGER,
+            INTEGER_SIZE_8,
+            INTEGER_EMBEDDED,
+            INTEGER_EMBEDDED_ONE
+        );
     }
 }
