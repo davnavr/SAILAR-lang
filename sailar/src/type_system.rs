@@ -130,13 +130,13 @@ impl Any {
         match self {
             Self::Primitive(primitive) => match primitive {
                 Primitive::Int(Int::Fixed(FixedInt::U8)) => Tag::U8,
-                Primitive::Int(Int::Fixed(FixedInt::S8)) => Tag::U8,
+                Primitive::Int(Int::Fixed(FixedInt::S8)) => Tag::S8,
                 Primitive::Int(Int::Fixed(FixedInt::U16)) => Tag::U16,
-                Primitive::Int(Int::Fixed(FixedInt::S16)) => Tag::U16,
+                Primitive::Int(Int::Fixed(FixedInt::S16)) => Tag::S16,
                 Primitive::Int(Int::Fixed(FixedInt::U32)) => Tag::U32,
-                Primitive::Int(Int::Fixed(FixedInt::S32)) => Tag::U32,
+                Primitive::Int(Int::Fixed(FixedInt::S32)) => Tag::S32,
                 Primitive::Int(Int::Fixed(FixedInt::U64)) => Tag::U64,
-                Primitive::Int(Int::Fixed(FixedInt::S64)) => Tag::U64,
+                Primitive::Int(Int::Fixed(FixedInt::S64)) => Tag::S64,
                 Primitive::Real(Real::F32) => Tag::F32,
                 Primitive::Real(Real::F64) => Tag::F64,
             },
