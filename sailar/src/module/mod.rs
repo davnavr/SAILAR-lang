@@ -4,7 +4,7 @@ use crate::binary::buffer;
 use crate::binary::{LengthSize, RawModule};
 use crate::function;
 use crate::identifier::{Id, Identifier};
-use rustc_hash::FxHashSet;
+use std::collections::hash_map;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -30,12 +30,12 @@ impl FormatVersion {
 
 /// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
 #[derive(Clone, Debug)]
-enum DefinedSymbol {
+pub(crate) enum DefinedSymbol {
     Function(Arc<function::Function>),
 }
 
 impl DefinedSymbol {
-    fn as_id(&self) -> &Id {
+    pub(crate) fn as_id(&self) -> &Id {
         match self {
             Self::Function(function) => function.symbol(),
         }
@@ -63,9 +63,9 @@ pub struct DefinedFunction {
 }
 
 impl DefinedFunction {
-    pub(crate) fn new(symbol: Identifier, signature: Arc<function::Signature>, export: Export, body: function::Body) -> Self {
+    pub(crate) fn new(function: Arc<function::Function>, export: Export, body: function::Body) -> Self {
         Self {
-            function: Arc::new(function::Function::new(symbol, signature)),
+            function,
             definition: function::Definition::new(body, export),
         }
     }
@@ -81,6 +81,8 @@ impl DefinedFunction {
     }
 }
 
+pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
+
 /// A SAILAR module.
 #[derive(Debug)]
 pub struct Module {
@@ -89,7 +91,7 @@ pub struct Module {
     length_size: LengthSize,
     name: Identifier,
     version: Box<[usize]>,
-    symbols: FxHashSet<DefinedSymbol>,
+    symbols: SymbolLookup,
     function_definitions: Vec<DefinedFunction>,
 }
 
@@ -114,7 +116,7 @@ impl Module {
             length_size,
             name,
             version,
-            symbols: FxHashSet::default(),
+            symbols: SymbolLookup::default(),
             function_definitions: Vec::new(),
         }
     }
@@ -283,8 +285,11 @@ impl Module {
 
         match kind {
             function::Kind::Defined(definition) => {
-                if !self.symbols.insert(DefinedSymbol::Function(function.clone())) {
-                    return Err(DuplicateSymbolError(DefinedSymbol::Function(function)));
+                match self.symbols.entry(DefinedSymbol::Function(function.clone())) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(());
+                    }
+                    hash_map::Entry::Occupied(occupied) => return Err(DuplicateSymbolError(occupied.key().clone())),
                 }
 
                 if let function::Body::Foreign(ref foreign) = definition.body() {

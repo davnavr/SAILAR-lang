@@ -4,6 +4,7 @@ use crate::binary::{self, buffer, signature::TypeCode};
 use crate::function;
 use crate::identifier::{self, Identifier};
 use crate::type_system;
+use std::collections::hash_map;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
@@ -112,6 +113,8 @@ pub enum ErrorKind {
     MissingIdentifierSize,
     #[error("expected identifier count but got EOF")]
     MissingIdentifierCount,
+    #[error("identifier at index {index} does not exist")]
+    IdentifierNotFound { index: usize },
     #[error("expected byte size of type signatures but got EOF")]
     MissingTypeSignatureSize,
     #[error("expected type signature count but got EOF")]
@@ -172,6 +175,8 @@ pub enum ErrorKind {
     InvalidInstruction(#[from] InvalidInstructionError),
     #[error("expected byte size of module definitions, but got EOF")]
     MissingDefinitionSize,
+    #[error("a definition corresponding to the symbol \"{0}\" already exists")]
+    DuplicateSymbol(Identifier),
     #[error("expected function definition count, but reached end")]
     MissingFunctionDefinitionCount,
     #[error("expected flag byte for function definition at index {index}, but reached end")]
@@ -533,6 +538,13 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
+    let get_identifier = |index| -> Result<&crate::identifier::Id, _> {
+        identifiers
+            .get(index)
+            .map(Identifier::as_id)
+            .ok_or(ErrorKind::IdentifierNotFound { index })
+    };
+
     let type_signatures: Vec<type_system::Any> = {
         let (byte_size, count) = src.read_size_and_count(
             || ErrorKind::MissingTypeSignatureSize,
@@ -816,7 +828,24 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
     ignore_length!("TODO: Parse module imports");
 
-    // TODO: Could keep track of duplicate symbols somehow?
+    #[derive(Debug)]
+    struct Symbols {
+        lookup: crate::module::SymbolLookup,
+    }
+
+    impl Symbols {
+        fn add_symbol(&mut self, symbol: crate::module::DefinedSymbol) -> Result<(), ErrorKind> {
+            match self.lookup.entry(symbol) {
+                hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().as_id().to_identifier())),
+                hash_map::Entry::Vacant(vacant) => Ok(*vacant.insert(())),
+            }
+        }
+    }
+
+    let mut symbol_lookup = Symbols {
+        lookup: Default::default(),
+    };
+
     let mut function_definitions = Vec::<crate::module::DefinedFunction>::new();
 
     {
@@ -825,6 +854,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             src.parse_buffer(buffer_pool, byte_size, |mut definitions| {
                 let function_count = definitions.read_length(|| ErrorKind::MissingFunctionDefinitionCount)?;
                 function_definitions.reserve_exact(function_count);
+                symbol_lookup.lookup.reserve(function_count);
                 definitions.read_many_to_vec(function_count, &mut function_definitions, |function, index| {
                     let mut flags_value = 0u8;
                     if function.read(std::slice::from_mut(&mut flags_value))? == 0 {
@@ -850,6 +880,12 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                     let symbol = function.read_identifier()?;
 
+                    let f = Arc::new(function::Function::new(symbol, signature));
+
+                    symbol_lookup
+                        .add_symbol(crate::module::DefinedSymbol::Function(f.clone()))
+                        .map_err(|e| function.error(e))?;
+
                     let body = if flags.contains(function::Flags::FOREIGN) {
                         todo!("parse foreign func")
                     } else {
@@ -859,9 +895,9 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         )
                     };
 
-                    Ok(crate::module::DefinedFunction::new(symbol, signature, export, body))
+                    Ok(crate::module::DefinedFunction::new(f, export, body))
                 })?;
-                
+
                 definitions.read_length(|| todo!())?; // TODO: Parse struct definitions.
                 definitions.read_length(|| todo!())?; // TODO: Parse global definitions.
                 definitions.read_length(|| todo!())?; // TODO: Parse ec definitions.
@@ -884,7 +920,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         length_size: src.length_size(),
         name: header.name,
         version: header.version,
-        symbols: Default::default(),              // TODO: Build the symbols set earlier.
-        function_definitions: Default::default(), // TODO: Build the function definitions list earlier.
+        symbols: symbol_lookup.lookup,
+        function_definitions: function_definitions.into(),
     })
 }
