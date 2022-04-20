@@ -303,12 +303,15 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     }
 
     out.write_buffer_and_count(function_signature_count, &function_signature_buffer)?;
-
     out.write_length(0)?; // TODO: Write module data
-
     out.write_buffer_and_count(code_block_count, &code_block_buffer)?;
-
-    //out.write_all(&definitions_buffer);
-
+    out.write_length(0)?; // TODO: Write module imports
+    out.write_all(&definitions_buffer)?;
+    out.write_length(0)?; // TODO: Write struct instantiations
+    out.write_length(0)?; // TODO: Write function instantiations
+    // TODO: Write entry point
+    // TODO: Write initializer
+    out.write_length(0)?; // TODO: Write namespaces
+    out.write_length(0)?; // TODO: Write debugging information
     out.flush()
 }

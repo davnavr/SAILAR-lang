@@ -761,6 +761,28 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         })?
     };
 
+    macro_rules! ignore_length {
+        ($message: literal) => {
+            {
+                let length = src.read_length(|| todo!("missing length"))?;
+                if length != 0 {
+                    todo!($message)
+                }
+            }
+        };
+    }
+
+    ignore_length!("TODO: Parse module imports");
+
+    // TODO: Parse module definitions.
+
+    ignore_length!("TODO: Parse struct instantiations");
+    ignore_length!("TODO: Parse function instantiations");
+    // TODO: Parse entry point
+    // TODO: Parse initializer
+    ignore_length!("TODO: Parse namespaces");
+    ignore_length!("TODO: Parse debugging information");
+
     Ok(crate::module::Module {
         format_version,
         contents: None,
