@@ -98,7 +98,10 @@ pub struct Module {
 
 mod parser;
 
-pub use parser::{Error as ParseError, ErrorKind as ParseErrorKind, InvalidMagicError};
+pub use parser::{
+    Error as ParseError, ErrorKind as ParseErrorKind, InvalidInstructionError as ParsedInstructionError,
+    InvalidInstructionKind as ParsedInstructionErrorKind, InvalidMagicError,
+};
 
 mod writer;
 

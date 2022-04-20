@@ -26,23 +26,33 @@ pub enum Value {
 macro_rules! integer_conversion_impls {
     ($constant_case_name: ident, $integer_type: ty) => {
         impl From<$integer_type> for ConstantInteger {
+            #[inline]
             fn from(value: $integer_type) -> Self {
                 Self::$constant_case_name(value.to_le_bytes())
             }
         }
 
         impl From<$integer_type> for Constant {
+            #[inline]
             fn from(value: $integer_type) -> Self {
                 Self::Integer(ConstantInteger::from(value))
             }
         }
 
         impl From<$integer_type> for Value {
+            #[inline]
             fn from(value: $integer_type) -> Self {
                 Self::Constant(Constant::from(value))
             }
         }
     };
+}
+
+impl From<u8> for Value {
+    #[inline]
+    fn from(value: u8) -> Self {
+        Self::Constant(Constant::Integer(ConstantInteger::I8(value)))
+    }
 }
 
 integer_conversion_impls!(I16, u16);

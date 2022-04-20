@@ -46,6 +46,14 @@ pub enum InvalidInstructionKind {
     MissingOverflowBehavior,
     #[error(transparent)]
     InvalidOverflowBehavior(#[from] crate::instruction_set::InvalidOverflowBehaviorError),
+    #[error("expected value flag byte")]
+    MissingValueFlag,
+    #[error("the value flag {value:#02X} is invalid")]
+    InvalidValueFlag { value: u8 },
+    #[error("expected index to a register, but reached end")]
+    MissingRegisterIndex,
+    #[error("only constant integers are currently supported")]
+    UnknownConstantKind,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -639,7 +647,70 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             }))
                         };
 
-                        let instruction_value = |stream: Stream| todo!("a");
+                        let instruction_value = |stream: Stream| -> ParseResult<instruction_set::Value> {
+                            let mut flag_value = 0u8;
+                            if stream.read(std::slice::from_mut(&mut flag_value))? == 0 {
+                                return Err(invalid_instruction(stream, InvalidInstructionKind::MissingValueFlag));
+                            }
+
+                            let flag = instruction_set::ValueFlags::from_bits(flag_value).ok_or_else(|| {
+                                invalid_instruction(stream, InvalidInstructionKind::InvalidValueFlag { value: flag_value })
+                            })?;
+
+                            if flag.contains(instruction_set::ValueFlags::CONSTANT) {
+                                if !flag.contains(instruction_set::ValueFlags::INTEGER) {
+                                    return Err(invalid_instruction(stream, InvalidInstructionKind::UnknownConstantKind));
+                                }
+
+                                let value_embedded = flag.contains(instruction_set::ValueFlags::INTEGER_EMBEDDED);
+
+                                macro_rules! sized_integer_value {
+                                    ($size: literal, $case: ident) => {{
+                                        let mut bytes = [0u8; $size];
+                                        stream.read_exact(&mut bytes)?;
+                                        instruction_set::Value::Constant(instruction_set::Constant::Integer(
+                                            instruction_set::ConstantInteger::$case(bytes),
+                                        ))
+                                    }};
+                                }
+
+                                macro_rules! embedded_integer_value {
+                                    ($integer_type: ty) => {{
+                                        let embedded_value: $integer_type =
+                                            if flag.contains(instruction_set::ValueFlags::INTEGER_EMBEDDED_ONE) {
+                                                1
+                                            } else {
+                                                0
+                                            };
+                                        instruction_set::Value::from(embedded_value)
+                                    }};
+                                }
+
+                                Ok(match (flag & instruction_set::ValueFlags::INTEGER_SIZE_MASK).bits() >> 2 {
+                                    0 if value_embedded => embedded_integer_value!(u8),
+                                    0 => {
+                                        let mut value = 0u8;
+                                        stream.read_exact(std::slice::from_mut(&mut value))?;
+                                        instruction_set::Value::from(value)
+                                    }
+                                    1 if value_embedded => embedded_integer_value!(u16),
+                                    1 => sized_integer_value!(2, I16),
+                                    2 if value_embedded => embedded_integer_value!(u32),
+                                    2 => sized_integer_value!(4, I32),
+                                    3 if value_embedded => embedded_integer_value!(u64),
+                                    3 => sized_integer_value!(8, I64),
+                                    _ => unreachable!("unsupported integer constant size"),
+                                })
+                            } else {
+                                Ok(instruction_set::Value::IndexedRegister(stream.read_length(|| {
+                                    ErrorKind::InvalidInstruction(InvalidInstructionError {
+                                        block_index,
+                                        instruction_index,
+                                        kind: InvalidInstructionKind::MissingRegisterIndex,
+                                    })
+                                })?))
+                            }
+                        };
 
                         let integer_arithmetic_operands = |stream: Stream| -> ParseResult<Box<_>> {
                             let mut overflow_behavior_value = 0u8;
@@ -647,9 +718,11 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             let overflow_behavior = instruction_set::OverflowBehavior::try_from(overflow_behavior_value)
                                 .map_err(|error| invalid_instruction(stream, error.into()))?;
 
-                            // TODO: Parse x and y values
-
-                            todo!("a")
+                            Ok(Box::new(instruction_set::IntegerArithmetic::new(
+                                overflow_behavior,
+                                instruction_value(stream)?,
+                                instruction_value(stream)?,
+                            )))
                         };
 
                         let opcode = Opcode::try_from(opcode_value).map_err(|error| stream.error(error.into()))?;
