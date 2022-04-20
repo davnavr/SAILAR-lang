@@ -111,6 +111,25 @@ impl From<OverflowBehavior> for u8 {
     }
 }
 
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("{value:#02X} is not a valid overflow behavior value")]
+pub struct InvalidOverflowBehaviorError {
+    value: u8,
+}
+
+impl TryFrom<u8> for OverflowBehavior {
+    type Error = InvalidOverflowBehaviorError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Ignore),
+            1 => Ok(Self::Flag),
+            2 => Ok(Self::Saturate),
+            _ => Err(InvalidOverflowBehaviorError { value }),
+        }
+    }
+}
+
 /// Describes a basic arithmetic operation on integers.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct IntegerArithmetic {

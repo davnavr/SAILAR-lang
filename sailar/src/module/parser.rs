@@ -40,6 +40,39 @@ impl Display for MissingModuleVersionNumberError {
 
 impl std::error::Error for MissingModuleVersionNumberError {}
 
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum InvalidInstructionKind {
+    #[error("expected overflow behavior byte, but reached end")]
+    MissingOverflowBehavior,
+    #[error(transparent)]
+    InvalidOverflowBehavior(#[from] crate::instruction_set::InvalidOverflowBehaviorError),
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("invalid instruction at index {instruction_index} in code block {block_index}, {kind}")]
+pub struct InvalidInstructionError {
+    block_index: usize,
+    instruction_index: usize,
+    kind: InvalidInstructionKind,
+}
+
+impl InvalidInstructionError {
+    #[inline]
+    pub fn block_index(&self) -> usize {
+        self.block_index
+    }
+
+    #[inline]
+    pub fn instruction_index(&self) -> usize {
+        self.instruction_index
+    }
+
+    #[inline]
+    pub fn kind(&self) -> &InvalidInstructionKind {
+        &self.kind
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorKind {
@@ -126,6 +159,8 @@ pub enum ErrorKind {
     )]
     MissingOpcode { block_index: usize, instruction_index: usize },
     #[error(transparent)]
+    InvalidInstruction(#[from] InvalidInstructionError),
+    #[error(transparent)]
     IO(#[from] std::io::Error),
 }
 
@@ -189,6 +224,10 @@ mod input {
                 length_size: LengthSize::One,
                 length_parser: Wrapper::read_length_one,
             }
+        }
+
+        pub fn offset(&self) -> usize {
+            self.offset
         }
 
         pub fn length_size(&self) -> LengthSize {
@@ -580,7 +619,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                 src.parse_buffer(buffer_pool, instruction_size, |mut src| {
                     src.read_many_to_vec(instruction_count, &mut instructions, |stream, instruction_index| {
-                        use crate::instruction_set::{Instruction, Opcode};
+                        use crate::instruction_set::{self, Instruction, Opcode};
 
                         let mut opcode_value = 0u8;
                         if stream.read(std::slice::from_mut(&mut opcode_value))? == 0 {
@@ -590,11 +629,38 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             }));
                         }
 
+                        type Stream<'a, 'b> = &'b mut input::Wrapper<&'a [u8]>;
+
+                        let invalid_instruction = |stream: Stream, error: InvalidInstructionKind| {
+                            stream.error(ErrorKind::InvalidInstruction(InvalidInstructionError {
+                                block_index,
+                                instruction_index,
+                                kind: error,
+                            }))
+                        };
+
+                        let instruction_value = |stream: Stream| {
+                            
+                            todo!("a")
+                        };
+
+                        let integer_arithmetic_operands = |stream: Stream| -> ParseResult<Box<_>> {
+                            let mut overflow_behavior_value = 0u8;
+                            stream.read_exact(std::slice::from_mut(&mut overflow_behavior_value))?;
+                            let overflow_behavior = instruction_set::OverflowBehavior::try_from(overflow_behavior_value)
+                                .map_err(|error| invalid_instruction(stream, error.into()))?;
+
+                            // TODO: Parse x and y values
+
+                            todo!("a")
+                        };
+
                         let opcode = Opcode::try_from(opcode_value).map_err(|error| stream.error(error.into()))?;
                         Ok(match opcode {
                             Opcode::Nop => Instruction::Nop,
                             Opcode::Break => Instruction::Break,
-                            _ => todo!("unsupported opcode {:?}", opcode),
+                            Opcode::AddI => Instruction::AddI(integer_arithmetic_operands(stream)?),
+                            _ => todo!("unsupported opcode {:?} at offset {:#X}", opcode, stream.offset() - 1),
                         })
                     })
                 })?;
