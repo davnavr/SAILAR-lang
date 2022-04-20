@@ -851,7 +851,6 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     let symbol = function.read_identifier()?;
 
                     let body = if flags.contains(function::Flags::FOREIGN) {
-                        
                         todo!("parse foreign func")
                     } else {
                         function::Body::Defined(
@@ -862,6 +861,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                     Ok(crate::module::DefinedFunction::new(symbol, signature, export, body))
                 })?;
+                
                 todo!("parse")
             })?;
         }

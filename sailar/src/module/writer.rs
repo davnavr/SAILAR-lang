@@ -103,6 +103,12 @@ mod output {
             &mut self.destination
         }
     }
+
+    impl<W: std::fmt::Debug> std::fmt::Debug for Wrapper<W> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.debug_struct("Wrapper").field("destination", &self.destination).finish()
+        }
+    }
 }
 
 mod lookup {
@@ -200,7 +206,6 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
             let function_definitions = module.function_definitions();
             rent_default_buffer_wrapped!(functions_buffer, functions);
             functions.write_many(function_definitions, |def, current| {
-                let body = current.definition().body();
                 def.write_all(&[current.definition().flags().bits()])?;
                 def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
                 def.write_identifier(current.function().symbol())?;
@@ -312,7 +317,10 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
     out.write_length(0)?; // TODO: Write module data
     out.write_buffer_and_count(code_block_count, &code_block_buffer)?;
     out.write_length(0)?; // TODO: Write module imports
+
+    out.write_length(definitions_buffer.len())?;
     out.write_all(&definitions_buffer)?;
+
     out.write_length(0)?; // TODO: Write struct instantiations
     out.write_length(0)?; // TODO: Write function instantiations
                           // TODO: Write entry point
