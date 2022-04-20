@@ -1,9 +1,10 @@
 //! Allows the reuse of byte buffers.
 
 use std::cell::RefCell;
-use std::fmt::Write;
+use std::fmt::{Debug, Formatter, Write as _};
+use std::ops::{Deref, DerefMut};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Pool {
     // TODO: Use a collection that keeps it sorted by capacity, to allow requests of a certain capacity to return a vec that meets it.
     buffers: RefCell<Vec<Vec<u8>>>,
@@ -53,6 +54,28 @@ impl Pool {
     }
 }
 
+impl Debug for Pool {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        struct CapacityDebug<'a>(&'a Vec<u8>);
+
+        impl Debug for CapacityDebug<'_> {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                f.debug_struct("Buffer").field("capacity", &self.0.capacity()).finish()
+            }
+        }
+
+        struct BuffersDebug<'a>(&'a Vec<Vec<u8>>);
+
+        impl Debug for BuffersDebug<'_> {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                f.debug_list().entries(self.0.iter().map(|buffer| CapacityDebug(buffer))).finish()
+            }
+        }
+
+        f.debug_struct("Pool").field("buffers", &BuffersDebug(self.buffers.borrow().deref())).finish()
+    }
+}
+
 impl Rented<'_> {
     #[inline]
     pub fn to_vec(&self) -> Vec<u8> {
@@ -70,13 +93,13 @@ impl Rented<'_> {
     }
 }
 
-impl std::fmt::Debug for Rented<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Debug for Rented<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Rented").field("buffer", &ByteDebug(&self.buffer)).finish()
     }
 }
 
-impl<'a> std::ops::Deref for Rented<'a> {
+impl<'a> Deref for Rented<'a> {
     type Target = Vec<u8>;
 
     #[inline]
@@ -85,7 +108,7 @@ impl<'a> std::ops::Deref for Rented<'a> {
     }
 }
 
-impl<'a> std::ops::DerefMut for Rented<'a> {
+impl<'a> DerefMut for Rented<'a> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut_vec()
@@ -156,7 +179,7 @@ impl<'a> From<Rented<'a>> for RentedOrOwned<'a> {
     }
 }
 
-impl<'a> std::ops::Deref for RentedOrOwned<'a> {
+impl<'a> Deref for RentedOrOwned<'a> {
     type Target = Vec<u8>;
 
     #[inline]
@@ -165,7 +188,7 @@ impl<'a> std::ops::Deref for RentedOrOwned<'a> {
     }
 }
 
-impl<'a> std::ops::DerefMut for RentedOrOwned<'a> {
+impl<'a> DerefMut for RentedOrOwned<'a> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Vec<u8> {
         self.as_mut_vec()
@@ -193,8 +216,8 @@ impl<'a> From<&'a Vec<u8>> for ByteDebug<'a> {
     }
 }
 
-impl std::fmt::Debug for ByteDebug<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Debug for ByteDebug<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.write_char('[')?;
         for (index, value) in self.0.iter().enumerate() {
             if index > 0 && index < self.0.len() - 1 {
