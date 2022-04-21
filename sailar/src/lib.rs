@@ -10,7 +10,7 @@ pub mod module;
 pub mod type_system;
 
 pub use identifier::{Id, Identifier};
-pub use module::Module;
+pub use module::Definition as ModuleDefinition;
 
 #[macro_export]
 #[doc(hidden)]

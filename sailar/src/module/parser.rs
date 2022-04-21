@@ -448,7 +448,7 @@ mod input {
     }
 }
 
-pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<crate::module::Module> {
+pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<crate::module::Definition> {
     let mut src = input::Wrapper::new(source);
 
     macro_rules! error {
@@ -507,17 +507,14 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         }
 
         src.parse_buffer(buffer_pool, header_size, |mut src| {
-            Ok(crate::module::ModuleIdentifier::new (
-                src.read_identifier()?,
-                
-                    {let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
-                    let mut numbers = Vec::with_capacity(length);
-                    src.read_many_to_vec(length, &mut numbers, |src, index| {
-                        src.read_length(|| MissingModuleVersionNumberError { index }.into())
-                    })?;
-                    numbers.into_boxed_slice()}
-                ,
-            ))
+            Ok(crate::module::ModuleIdentifier::new(src.read_identifier()?, {
+                let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
+                let mut numbers = Vec::with_capacity(length);
+                src.read_many_to_vec(length, &mut numbers, |src, index| {
+                    src.read_length(|| MissingModuleVersionNumberError { index }.into())
+                })?;
+                numbers.into_boxed_slice()
+            }))
         })?
     };
 
@@ -830,7 +827,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     impl Symbols {
         fn add_symbol(&mut self, symbol: crate::module::DefinedSymbol) -> Result<(), ErrorKind> {
             match self.lookup.entry(symbol) {
-                hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().as_id().to_identifier())),
+                hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().symbol().to_identifier())),
                 hash_map::Entry::Vacant(vacant) => {
                     vacant.insert(());
                     Ok(())
@@ -877,7 +874,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                     let symbol = function.read_identifier()?;
 
-                    let f = Arc::new(function::Function::new(symbol, signature));
+                    let f = function::Function::new(symbol, signature);
 
                     symbol_lookup
                         .add_symbol(crate::module::DefinedSymbol::Function(f.clone()))
@@ -911,7 +908,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     ignore_length!("TODO: Parse namespaces");
     ignore_length!("TODO: Parse debugging information");
 
-    Ok(crate::module::Module {
+    Ok(crate::module::Definition {
         format_version,
         contents: None,
         length_size: src.length_size(),

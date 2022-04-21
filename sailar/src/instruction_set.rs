@@ -208,7 +208,7 @@ impl FunctionCall {
 
     #[inline]
     pub fn function(&self) -> &Arc<crate::module::FunctionInstantiation> {
-        self.function
+        &self.function
     }
 
     #[inline]

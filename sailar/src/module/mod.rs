@@ -36,7 +36,7 @@ pub(crate) enum DefinedSymbol {
 }
 
 impl DefinedSymbol {
-    pub(crate) fn as_id(&self) -> &Id {
+    pub(crate) fn symbol(&self) -> &Id {
         match self {
             Self::Function(function) => function.symbol(),
         }
@@ -45,7 +45,7 @@ impl DefinedSymbol {
 
 impl std::cmp::PartialEq for DefinedSymbol {
     fn eq(&self, other: &Self) -> bool {
-        self.as_id() == other.as_id()
+        self.symbol() == other.symbol()
     }
 }
 
@@ -53,7 +53,7 @@ impl std::cmp::Eq for DefinedSymbol {}
 
 impl std::hash::Hash for DefinedSymbol {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::hash::Hash::hash(self.as_id(), state)
+        std::hash::Hash::hash(self.symbol(), state)
     }
 }
 
@@ -62,12 +62,12 @@ impl Debug for DefinedSymbol {
         f.debug_struct(match self {
             Self::Function(_) => "Function",
         })
-        .field("symbol", &self.as_id())
+        .field("symbol", &self.symbol())
         .finish_non_exhaustive()
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct DefinedFunction {
     function: Arc<function::Function>,
     definition: function::Definition,
@@ -117,21 +117,36 @@ impl ModuleIdentifier {
     }
 }
 
-/*
-pub enum FunctionTemplateOwner {
-    Definition(Arc<Module>),
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Module {
+    Definition(Arc<ModuleIdentifier>),
     Import(Arc<Import>),
 }
 
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct FunctionTemplate {
     function: Arc<function::Function>,
-    owner: FunctionTemplateOwner
+    module: Module,
 }
 
-pub struct FunctionInstantiation {
-    template: FunctionTemplate,
+impl FunctionTemplate {
+    pub(crate) fn new(function: Arc<function::Function>, module: Module) -> Arc<Self> {
+        Arc::new(Self {
+            function, module
+        })
+    }
+
+    #[inline]
+    pub fn function(&self) -> &Arc<function::Function> {
+        &self.function
+    }
 }
-*/
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct FunctionInstantiation {
+    template: Arc<FunctionTemplate>,
+    //generic_arguments: (),
+}
 
 /// A module hash, which further disambiguates two modules with the same name and version numbers.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -186,7 +201,7 @@ impl From<ModuleIdentifier> for Import {
 pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 
 /// A SAILAR module.
-pub struct Module {
+pub struct Definition {
     contents: Option<RawModule>,
     format_version: FormatVersion,
     length_size: LengthSize,
@@ -206,7 +221,7 @@ pub use parser::{
 
 mod writer;
 
-impl From<Arc<ModuleIdentifier>> for Module {
+impl From<Arc<ModuleIdentifier>> for Definition {
     fn from(identifier: Arc<ModuleIdentifier>) -> Self {
         let mut length_size = LengthSize::One;
         length_size.resize_to_fit(identifier.name.len());
@@ -224,13 +239,13 @@ impl From<Arc<ModuleIdentifier>> for Module {
     }
 }
 
-impl From<ModuleIdentifier> for Module {
+impl From<ModuleIdentifier> for Definition {
     fn from(identifier: ModuleIdentifier) -> Self {
         Self::from(Arc::new(identifier))
     }
 }
 
-impl Module {
+impl Definition {
     pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
         Self::from(ModuleIdentifier::new(name, version))
     }
@@ -269,8 +284,8 @@ impl Module {
     /// # Examples
     ///
     /// ```
-    /// # use sailar::{Identifier, module::Module};
-    /// let mut module = Module::new(Identifier::from_str("Testing")?, vec![1, 2, 3].into_boxed_slice());
+    /// # use sailar::{Identifier, ModuleDefinition};
+    /// let mut module = ModuleDefinition::new(Identifier::from_str("Testing")?, vec![1, 2, 3].into_boxed_slice());
     /// let contents = module.raw_contents(None).bytes().to_vec();
     /// assert_eq!(sailar::binary::MAGIC.as_slice(), &contents[0..6]);
     /// let format_version = module.format_version();
@@ -326,7 +341,7 @@ impl Module {
     }
 }
 
-impl TryFrom<Vec<u8>> for Module {
+impl TryFrom<Vec<u8>> for Definition {
     type Error = ParseError;
 
     #[inline]
@@ -341,7 +356,7 @@ pub struct DuplicateSymbolError(DefinedSymbol);
 impl DuplicateSymbolError {
     #[inline]
     pub fn symbol(&self) -> &Id {
-        self.0.as_id()
+        self.0.symbol()
     }
 }
 
@@ -357,44 +372,45 @@ impl std::fmt::Display for DuplicateSymbolError {
 
 impl std::error::Error for DuplicateSymbolError {}
 
-impl Module {
-    /// Adds a function definition or import to this module.
-    pub fn add_function(
-        &mut self,
-        symbol: Identifier,
-        signature: Arc<function::Signature>,
-        kind: function::Kind,
-    ) -> Result<Arc<function::Function>, DuplicateSymbolError> {
-        let function = Arc::new(function::Function::new(symbol, signature));
+impl Definition {
+    pub fn to_module(&self) -> Module {
+        Module::Definition(self.identifier().clone())
+    }
 
-        match kind {
-            function::Kind::Definition(definition) => {
-                match self.symbols.entry(DefinedSymbol::Function(function.clone())) {
-                    hash_map::Entry::Vacant(vacant) => {
-                        vacant.insert(());
-                    }
-                    hash_map::Entry::Occupied(occupied) => return Err(DuplicateSymbolError(occupied.key().clone())),
-                }
-
-                if let function::Body::Foreign(ref foreign) = definition.body() {
-                    self.length_size.resize_to_fit(foreign.library_name().len());
-                    self.length_size.resize_to_fit(foreign.entry_point_name().len());
-                }
-
-                self.function_definitions.push(DefinedFunction {
-                    function: function.clone(),
-                    definition,
-                });
-            }
-        }
-
+    fn length_size_fit_function(&mut self, function: &function::Function) {
         self.length_size.resize_to_fit(function.symbol().len());
         self.length_size.resize_to_fit(function.signature().result_types().len());
         self.length_size.resize_to_fit(function.signature().parameter_types().len());
-        // TODO: For each return and argument type, also update the length_size
+    }
 
+    pub fn define_function(
+        &mut self,
+        symbol: Identifier,
+        signature: Arc<function::Signature>,
+        definition: function::Definition,
+    ) -> Result<Arc<FunctionTemplate>, DuplicateSymbolError> {
+        let function = function::Function::new(symbol, signature);
+
+        match self.symbols.entry(DefinedSymbol::Function(function.clone())) {
+            hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(());
+            }
+            hash_map::Entry::Occupied(occupied) => return Err(DuplicateSymbolError(occupied.key().clone())),
+        }
+
+        if let function::Body::Foreign(ref foreign) = definition.body() {
+            self.length_size.resize_to_fit(foreign.library_name().len());
+            self.length_size.resize_to_fit(foreign.entry_point_name().len());
+        }
+
+        self.function_definitions.push(DefinedFunction {
+            function: function.clone(),
+            definition,
+        });
+
+        self.length_size_fit_function(&function);
         self.contents = None;
-        Ok(function)
+        Ok(FunctionTemplate::new(function, self.to_module()))
     }
 
     #[inline]
@@ -403,7 +419,7 @@ impl Module {
     }
 }
 
-impl std::fmt::Debug for Module {
+impl std::fmt::Debug for Definition {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         struct SymbolLookupDebug<'a>(&'a SymbolLookup);
 
@@ -413,7 +429,7 @@ impl std::fmt::Debug for Module {
             }
         }
 
-        f.debug_struct("Module")
+        f.debug_struct("Definition")
             .field("format_version", &self.format_version)
             .field("length_size", &self.length_size)
             .field("identifier", &self.identifier)
@@ -424,7 +440,7 @@ impl std::fmt::Debug for Module {
     }
 }
 
-impl std::cmp::PartialEq for Module {
+impl std::cmp::PartialEq for Definition {
     /// Checks that the contents of two modules are roughly equivalent.
     fn eq(&self, other: &Self) -> bool {
         let compare_symbols = || {
@@ -451,3 +467,5 @@ impl std::cmp::PartialEq for Module {
         self.format_version == other.format_version && self.identifier == other.identifier && compare_symbols()
     }
 }
+
+impl std::cmp::Eq for Definition {}

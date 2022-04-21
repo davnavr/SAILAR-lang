@@ -32,15 +32,15 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct Function {
     symbol: Identifier,
     signature: Arc<Signature>,
 }
 
 impl Function {
-    pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>) -> Self {
-        Self { symbol, signature }
+    pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>) -> Arc<Self> {
+        Arc::new(Self { symbol, signature })
     }
 
     #[inline]
@@ -135,11 +135,4 @@ impl Definition {
         }
         flags
     }
-}
-
-#[derive(Debug)]
-pub enum Kind {
-    Import(Arc<crate::module::Import>),
-    /// Indicates that a function is a function definition, with the specified entry block.
-    Definition(Definition),
 }

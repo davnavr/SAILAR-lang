@@ -5,7 +5,6 @@ use crate::block;
 use crate::function;
 use crate::identifier::Id;
 use crate::instruction_set::{self, Instruction};
-use crate::module::Module;
 use crate::type_system;
 use std::io::Write;
 
@@ -150,7 +149,7 @@ mod lookup {
     }
 }
 
-pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
+pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
     use output::Wrapper;
 
     let length_size = module.length_size;
@@ -181,7 +180,9 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
         rent_default_buffer_wrapped!(header_buffer, header);
         header.write_identifier(module.identifier().name())?;
         header.write_length(module.identifier().version.len() * usize::from(length_size.byte_count()))?;
-        header.write_many(module.identifier().version.iter(), |numbers, version| numbers.write_length(*version))?;
+        header.write_many(module.identifier().version.iter(), |numbers, version| {
+            numbers.write_length(*version)
+        })?;
 
         out.write_length(header.len())?;
         out.write_all(&header)?;
