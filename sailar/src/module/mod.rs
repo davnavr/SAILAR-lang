@@ -71,6 +71,8 @@ impl Debug for DefinedSymbol {
 pub struct DefinedFunction {
     function: Arc<function::Function>,
     definition: function::Definition,
+    //index: usize,
+    //module: Arc<SomeModuleThing>,
 }
 
 impl DefinedFunction {
@@ -92,6 +94,42 @@ impl DefinedFunction {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ModuleIdentifier {
+    name: Identifier,
+    version: Box<[usize]>,
+}
+
+impl ModuleIdentifier {
+    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
+        Self {
+            name, version
+        }
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Id {
+        self.name.as_id()
+    }
+
+    /// Gets the numbers that specify the version of the module, used to disambiguate between modules with the same name.
+    #[inline]
+    pub fn version(&self) -> &[usize] {
+        &self.version
+    }
+}
+
+/*
+pub enum FunctionTemplate {
+    Definition,
+    Import(Arc<function::Function>, Arc<ModuleIdentifier>),
+}
+
+pub struct FunctionInstantiation {
+
+}
+*/
+
 pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 
 /// A SAILAR module.
@@ -99,10 +137,11 @@ pub struct Module {
     contents: Option<RawModule>,
     format_version: FormatVersion,
     length_size: LengthSize,
-    name: Identifier,
-    version: Box<[usize]>,
+    identifier: Arc<ModuleIdentifier>,
     symbols: SymbolLookup,
     function_definitions: Vec<DefinedFunction>,
+    //function_instantiations: Vec<Arc<>>
+    //entry_point: _,
 }
 
 mod parser;
@@ -114,21 +153,33 @@ pub use parser::{
 
 mod writer;
 
-impl Module {
-    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
+impl From<Arc<ModuleIdentifier>> for Module {
+    fn from(identifier: Arc<ModuleIdentifier>) -> Self {
         let mut length_size = LengthSize::One;
-        length_size.resize_to_fit(name.len());
-        length_size.resize_to_fit_many(version.iter(), |n| *n);
+        length_size.resize_to_fit(identifier.name.len());
+        length_size.resize_to_fit(identifier.version.len());
+        length_size.resize_to_fit_many(identifier.version.iter(), |n| *n);
 
         Self {
             contents: None,
             format_version: FormatVersion::MINIMUM_SUPPORTED.clone(),
             length_size,
-            name,
-            version,
+            identifier,
             symbols: SymbolLookup::default(),
             function_definitions: Vec::new(),
         }
+    }
+}
+
+impl From<ModuleIdentifier> for Module {
+    fn from(identifier: ModuleIdentifier) -> Self {
+        Self::from(Arc::new(identifier))
+    }
+}
+
+impl Module {
+    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
+        Self::from(ModuleIdentifier::new(name, version))
     }
 
     #[inline]
@@ -142,16 +193,10 @@ impl Module {
         self.length_size
     }
 
-    /// Gets the name of the module.
+    /// Gets the module's identifier, which distinguishes one module from another.
     #[inline]
-    pub fn name(&self) -> &Id {
-        self.name.as_id()
-    }
-
-    /// Gets the numbers that specify the version of the module, used to disambiguate between modules with the same name.
-    #[inline]
-    pub fn version(&self) -> &[usize] {
-        &self.version
+    pub fn identifier(&self) -> &Arc<ModuleIdentifier> {
+        &self.identifier
     }
 
     /// Writes the bytes binary contents of the module to the specified destination.
@@ -318,8 +363,7 @@ impl std::fmt::Debug for Module {
         f.debug_struct("Module")
             .field("format_version", &self.format_version)
             .field("length_size", &self.length_size)
-            .field("name", &self.name)
-            .field("version", &self.version)
+            .field("identifier", &self.identifier)
             .field("symbols", &SymbolLookupDebug(&self.symbols))
             .field("function_definitions", &self.function_definitions)
             .field("contents", &self.contents)
@@ -337,15 +381,13 @@ impl std::cmp::PartialEq for Module {
 
             for definition in self.symbols.keys() {
                 match other.symbols.get_key_value(definition) {
-                    Some((other_symbol, _)) => {
-                        match (definition, other_symbol) {
-                            (DefinedSymbol::Function(defined_function), DefinedSymbol::Function(other_function)) => {
-                                if defined_function != other_function {
-                                    return false;
-                                }
+                    Some((other_symbol, _)) => match (definition, other_symbol) {
+                        (DefinedSymbol::Function(defined_function), DefinedSymbol::Function(other_function)) => {
+                            if defined_function != other_function {
+                                return false;
                             }
                         }
-                    }
+                    },
                     None => return false,
                 }
             }
@@ -353,9 +395,6 @@ impl std::cmp::PartialEq for Module {
             true
         };
 
-        self.format_version() == other.format_version()
-            && self.name() == other.name()
-            && self.version() == other.version()
-            && compare_symbols()
+        self.format_version == other.format_version && self.identifier == other.identifier && compare_symbols()
     }
 }

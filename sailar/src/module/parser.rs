@@ -499,13 +499,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
     let buffer_pool: &buffer::Pool = &buffer_pool;
 
-    #[derive(Debug)]
-    struct Header {
-        name: Identifier,
-        version: Box<[usize]>,
-    }
-
-    let header = {
+    let module_identifer = {
         let header_size = src.read_length(|| ErrorKind::MissingHeaderSize)?;
 
         if header_size == 0 {
@@ -513,17 +507,17 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         }
 
         src.parse_buffer(buffer_pool, header_size, |mut src| {
-            Ok(Header {
-                name: src.read_identifier()?,
-                version: {
-                    let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
+            Ok(crate::module::ModuleIdentifier::new (
+                src.read_identifier()?,
+                
+                    {let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
                     let mut numbers = Vec::with_capacity(length);
                     src.read_many_to_vec(length, &mut numbers, |src, index| {
                         src.read_length(|| MissingModuleVersionNumberError { index }.into())
                     })?;
-                    numbers.into_boxed_slice()
-                },
-            })
+                    numbers.into_boxed_slice()}
+                ,
+            ))
         })?
     };
 
@@ -840,7 +834,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 hash_map::Entry::Vacant(vacant) => {
                     vacant.insert(());
                     Ok(())
-                },
+                }
             }
         }
     }
@@ -921,8 +915,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         format_version,
         contents: None,
         length_size: src.length_size(),
-        name: header.name,
-        version: header.version,
+        identifier: Arc::new(module_identifer),
         symbols: symbol_lookup.lookup,
         function_definitions,
     })

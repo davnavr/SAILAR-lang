@@ -72,7 +72,9 @@ impl Debug for Pool {
             }
         }
 
-        f.debug_struct("Pool").field("buffers", &BuffersDebug(self.buffers.borrow().deref())).finish()
+        f.debug_struct("Pool")
+            .field("buffers", &BuffersDebug(self.buffers.borrow().deref()))
+            .finish()
     }
 }
 

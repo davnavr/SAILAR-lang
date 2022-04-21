@@ -179,9 +179,9 @@ pub fn write<W: Write>(module: &Module, destination: W, buffer_pool: Option<&buf
 
     {
         rent_default_buffer_wrapped!(header_buffer, header);
-        header.write_identifier(module.name.as_id())?;
-        header.write_length(module.version.len() * usize::from(length_size.byte_count()))?;
-        header.write_many(module.version.iter(), |numbers, version| numbers.write_length(*version))?;
+        header.write_identifier(module.identifier().name())?;
+        header.write_length(module.identifier().version.len() * usize::from(length_size.byte_count()))?;
+        header.write_many(module.identifier().version.iter(), |numbers, version| numbers.write_length(*version))?;
 
         out.write_length(header.len())?;
         out.write_all(&header)?;
