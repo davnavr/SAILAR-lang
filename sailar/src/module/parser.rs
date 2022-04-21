@@ -916,5 +916,6 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         identifier: module_identifer,
         symbols: symbol_lookup.lookup,
         function_definitions,
+        function_imports: Default::default(),
     })
 }

@@ -71,8 +71,6 @@ impl Debug for DefinedSymbol {
 pub struct DefinedFunction {
     template: Arc<function::Template>,
     definition: function::Definition,
-    //index: usize,
-    //module: Arc<SomeModuleThing>,
 }
 
 impl DefinedFunction {
@@ -91,6 +89,18 @@ impl DefinedFunction {
     #[inline]
     pub fn definition(&self) -> &function::Definition {
         &self.definition
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct ImportedFunction {
+    template: Arc<function::Template>,
+}
+
+impl ImportedFunction {
+    #[inline]
+    pub fn template(&self) -> &Arc<function::Template> {
+        &self.template
     }
 }
 
@@ -183,6 +193,7 @@ pub struct Definition {
     identifier: Arc<ModuleIdentifier>,
     symbols: SymbolLookup,
     function_definitions: Vec<DefinedFunction>,
+    function_imports: Vec<ImportedFunction>,
     //function_instantiations: Vec<Arc<>>
     //entry_point: _,
 }
@@ -210,6 +221,7 @@ impl From<Arc<ModuleIdentifier>> for Definition {
             identifier,
             symbols: SymbolLookup::default(),
             function_definitions: Vec::new(),
+            function_imports: Vec::new(),
         }
     }
 }
@@ -390,11 +402,22 @@ impl Definition {
         Ok(template)
     }
 
-    //pub fn import_function
+    pub fn import_function(&mut self, module: Arc<Import>, symbol: Identifier, signature: Arc<function::Signature>) -> Arc<function::Template> {
+        let template = function::Template::new(symbol, signature, Module::Import(module));
+        self.function_imports.push(ImportedFunction { template: template.clone() });
+        self.length_size_fit_function(template.function());
+        self.contents = None;
+        template
+    }
 
     #[inline]
     pub fn function_definitions(&self) -> &[DefinedFunction] {
         &self.function_definitions
+    }
+
+    #[inline]
+    pub fn function_imports(&self) -> &[ImportedFunction] {
+        &self.function_imports
     }
 }
 
@@ -414,6 +437,7 @@ impl std::fmt::Debug for Definition {
             .field("identifier", &self.identifier)
             .field("symbols", &SymbolLookupDebug(&self.symbols))
             .field("function_definitions", &self.function_definitions)
+            .field("function_imports", &self.function_imports)
             .field("contents", &self.contents)
             .finish_non_exhaustive()
     }
