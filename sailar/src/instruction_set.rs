@@ -1,6 +1,7 @@
 //! Model of the SAILAR instruction set.
 
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
@@ -191,6 +192,31 @@ impl IntegerArithmetic {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FunctionCall {
+    function: Arc<crate::module::FunctionInstantiation>,
+    arguments: Box<[Value]>,
+}
+
+impl FunctionCall {
+    pub fn new<A: Into<Box<[Value]>>>(function: Arc<crate::module::FunctionInstantiation>, arguments: A) -> Self {
+        Self {
+            function,
+            arguments: arguments.into(),
+        }
+    }
+
+    #[inline]
+    pub fn function(&self) -> &Arc<crate::module::FunctionInstantiation> {
+        self.function
+    }
+
+    #[inline]
+    pub fn arguments(&self) -> &[Value] {
+        &self.arguments
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
 pub enum Opcode {
@@ -201,10 +227,10 @@ pub enum Opcode {
     // Switch = 4,
     // Br = 5,
     // BrIf = 6,
-    // Call = 7,
-    AddI = 8,
-    SubI = 9,
-    MulI = 0xA,
+    Call = 7,
+    AddI = 0xA,
+    SubI = 0xB,
+    MulI = 0xC,
 }
 
 impl From<Opcode> for u8 {
@@ -234,9 +260,9 @@ impl TryFrom<u8> for Opcode {
             0 => success!(Nop),
             1 => success!(Break),
             2 => success!(Ret),
-            8 => success!(AddI),
-            9 => success!(SubI),
-            0xA => success!(MulI),
+            0xA => success!(AddI),
+            0xB => success!(SubI),
+            0xC => success!(MulI),
             _ => Err(InvalidOpcodeError { value }),
         }
     }
@@ -252,7 +278,7 @@ pub enum Instruction {
     //Switch,
     //Br,
     //BrIf,
-    //Call,
+    Call(Box<FunctionCall>),
     //CallIndr,
     //CallRet,
     AddI(Box<IntegerArithmetic>),
@@ -285,6 +311,7 @@ impl Instruction {
             Self::Nop => Opcode::Nop,
             Self::Break => Opcode::Break,
             Self::Ret(_) => Opcode::Ret,
+            Self::Call(_) => Opcode::Call,
             Self::AddI(_) => Opcode::AddI,
             Self::SubI(_) => Opcode::SubI,
             Self::MulI(_) => Opcode::MulI,
