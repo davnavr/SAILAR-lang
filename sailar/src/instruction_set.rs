@@ -1,5 +1,6 @@
 //! Model of the SAILAR instruction set.
 
+use crate::function;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -194,12 +195,12 @@ impl IntegerArithmetic {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionCall {
-    function: Arc<crate::module::FunctionInstantiation>,
+    function: Arc<function::Instantiation>,
     arguments: Box<[Value]>,
 }
 
 impl FunctionCall {
-    pub fn new<A: Into<Box<[Value]>>>(function: Arc<crate::module::FunctionInstantiation>, arguments: A) -> Self {
+    pub fn new<A: Into<Box<[Value]>>>(function: Arc<function::Instantiation>, arguments: A) -> Self {
         Self {
             function,
             arguments: arguments.into(),
@@ -207,7 +208,7 @@ impl FunctionCall {
     }
 
     #[inline]
-    pub fn function(&self) -> &Arc<crate::module::FunctionInstantiation> {
+    pub fn function(&self) -> &Arc<function::Instantiation> {
         &self.function
     }
 

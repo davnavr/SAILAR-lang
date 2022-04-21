@@ -31,5 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parsed_module = sailar::ModuleDefinition::from_slice(&contents, Some(&pool))?;
     assert_eq!(module, parsed_module);
 
+    println!("{:?}", &parsed_module);
+
     Ok(())
 }

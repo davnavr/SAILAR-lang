@@ -202,8 +202,8 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
             rent_default_buffer_wrapped!(functions_buffer, functions);
             functions.write_many(function_definitions, |def, current| {
                 def.write_all(&[current.definition().flags().bits()])?;
-                def.write_length(function_signature_lookup.get_or_insert(current.function().signature()))?;
-                def.write_identifier(current.function().symbol())?;
+                def.write_length(function_signature_lookup.get_or_insert(current.template().function().signature()))?;
+                def.write_identifier(current.template().function().symbol())?;
 
                 match current.definition().body() {
                     function::Body::Defined(defined) => def.write_length(code_block_lookup.get_or_insert(defined)),

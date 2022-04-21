@@ -32,13 +32,13 @@ impl FormatVersion {
 /// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
 #[derive(Clone)]
 pub(crate) enum DefinedSymbol {
-    Function(Arc<function::Function>),
+    Function(Arc<function::Template>),
 }
 
 impl DefinedSymbol {
     pub(crate) fn symbol(&self) -> &Id {
         match self {
-            Self::Function(function) => function.symbol(),
+            Self::Function(function) => function.function().symbol(),
         }
     }
 }
@@ -69,23 +69,23 @@ impl Debug for DefinedSymbol {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct DefinedFunction {
-    function: Arc<function::Function>,
+    template: Arc<function::Template>,
     definition: function::Definition,
     //index: usize,
     //module: Arc<SomeModuleThing>,
 }
 
 impl DefinedFunction {
-    pub(crate) fn new(function: Arc<function::Function>, export: Export, body: function::Body) -> Self {
+    pub(crate) fn new(template: Arc<function::Template>, export: Export, body: function::Body) -> Self {
         Self {
-            function,
+            template,
             definition: function::Definition::new(body, export),
         }
     }
 
     #[inline]
-    pub fn function(&self) -> &Arc<function::Function> {
-        &self.function
+    pub fn template(&self) -> &Arc<function::Template> {
+        &self.template
     }
 
     #[inline]
@@ -121,31 +121,6 @@ impl ModuleIdentifier {
 pub enum Module {
     Definition(Arc<ModuleIdentifier>),
     Import(Arc<Import>),
-}
-
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub struct FunctionTemplate {
-    function: Arc<function::Function>,
-    module: Module,
-}
-
-impl FunctionTemplate {
-    pub(crate) fn new(function: Arc<function::Function>, module: Module) -> Arc<Self> {
-        Arc::new(Self {
-            function, module
-        })
-    }
-
-    #[inline]
-    pub fn function(&self) -> &Arc<function::Function> {
-        &self.function
-    }
-}
-
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub struct FunctionInstantiation {
-    template: Arc<FunctionTemplate>,
-    //generic_arguments: (),
 }
 
 /// A module hash, which further disambiguates two modules with the same name and version numbers.
@@ -388,10 +363,10 @@ impl Definition {
         symbol: Identifier,
         signature: Arc<function::Signature>,
         definition: function::Definition,
-    ) -> Result<Arc<FunctionTemplate>, DuplicateSymbolError> {
-        let function = function::Function::new(symbol, signature);
+    ) -> Result<Arc<function::Template>, DuplicateSymbolError> {
+        let template = function::Template::new(symbol, signature, self.to_module());
 
-        match self.symbols.entry(DefinedSymbol::Function(function.clone())) {
+        match self.symbols.entry(DefinedSymbol::Function(template.clone())) {
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(());
             }
@@ -403,15 +378,19 @@ impl Definition {
             self.length_size.resize_to_fit(foreign.entry_point_name().len());
         }
 
+        // TODO: Update length size for function instructions.
+
         self.function_definitions.push(DefinedFunction {
-            function: function.clone(),
+            template: template.clone(),
             definition,
         });
 
-        self.length_size_fit_function(&function);
+        self.length_size_fit_function(template.function());
         self.contents = None;
-        Ok(FunctionTemplate::new(function, self.to_module()))
+        Ok(template)
     }
+
+    //pub fn import_function
 
     #[inline]
     pub fn function_definitions(&self) -> &[DefinedFunction] {

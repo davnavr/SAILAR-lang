@@ -3,6 +3,7 @@
 use crate::binary::{self, buffer, signature::TypeCode};
 use crate::function;
 use crate::identifier::{self, Identifier};
+use crate::module;
 use crate::type_system;
 use std::collections::hash_map;
 use std::fmt::{Display, Formatter};
@@ -448,7 +449,7 @@ mod input {
     }
 }
 
-pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<crate::module::Definition> {
+pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<module::Definition> {
     let mut src = input::Wrapper::new(source);
 
     macro_rules! error {
@@ -484,7 +485,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 .ok_or_else(|| src.error(error()))
         };
 
-        format_version = crate::module::FormatVersion {
+        format_version = module::FormatVersion {
             major: get_information_byte(0, || ErrorKind::MissingFormatVersion)?,
             minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
         };
@@ -507,14 +508,14 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         }
 
         src.parse_buffer(buffer_pool, header_size, |mut src| {
-            Ok(crate::module::ModuleIdentifier::new(src.read_identifier()?, {
+            Ok(Arc::new(module::ModuleIdentifier::new(src.read_identifier()?, {
                 let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
                 let mut numbers = Vec::with_capacity(length);
                 src.read_many_to_vec(length, &mut numbers, |src, index| {
                     src.read_length(|| MissingModuleVersionNumberError { index }.into())
                 })?;
                 numbers.into_boxed_slice()
-            }))
+            })))
         })?
     };
 
@@ -821,11 +822,11 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
     #[derive(Debug)]
     struct Symbols {
-        lookup: crate::module::SymbolLookup,
+        lookup: module::SymbolLookup,
     }
 
     impl Symbols {
-        fn add_symbol(&mut self, symbol: crate::module::DefinedSymbol) -> Result<(), ErrorKind> {
+        fn add_symbol(&mut self, symbol: module::DefinedSymbol) -> Result<(), ErrorKind> {
             match self.lookup.entry(symbol) {
                 hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().symbol().to_identifier())),
                 hash_map::Entry::Vacant(vacant) => {
@@ -840,7 +841,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         lookup: Default::default(),
     };
 
-    let mut function_definitions = Vec::<crate::module::DefinedFunction>::new();
+    let mut function_definitions = Vec::<module::DefinedFunction>::new();
 
     {
         let byte_size = src.read_length(|| ErrorKind::MissingDefinitionSize)?;
@@ -863,9 +864,9 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     })?;
 
                     let export = if flags.contains(function::Flags::EXPORT) {
-                        crate::module::Export::Yes
+                        module::Export::Yes
                     } else {
-                        crate::module::Export::No
+                        module::Export::No
                     };
 
                     let signature =
@@ -874,10 +875,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                     let symbol = function.read_identifier()?;
 
-                    let f = function::Function::new(symbol, signature);
+                    let template = function::Template::new(symbol, signature, module::Module::Definition(module_identifer.clone()));
 
                     symbol_lookup
-                        .add_symbol(crate::module::DefinedSymbol::Function(f.clone()))
+                        .add_symbol(module::DefinedSymbol::Function(template.clone()))
                         .map_err(|e| function.error(e))?;
 
                     let body = if flags.contains(function::Flags::FOREIGN) {
@@ -889,7 +890,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         )
                     };
 
-                    Ok(crate::module::DefinedFunction::new(f, export, body))
+                    Ok(module::DefinedFunction::new(template, export, body))
                 })?;
 
                 definitions.read_length(|| todo!())?; // TODO: Parse struct definitions.
@@ -908,11 +909,11 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     ignore_length!("TODO: Parse namespaces");
     ignore_length!("TODO: Parse debugging information");
 
-    Ok(crate::module::Definition {
+    Ok(module::Definition {
         format_version,
         contents: None,
         length_size: src.length_size(),
-        identifier: Arc::new(module_identifer),
+        identifier: module_identifer,
         symbols: symbol_lookup.lookup,
         function_definitions,
     })

@@ -1,7 +1,7 @@
 //! Manipulation of SAILAR function definitions and function imports.
 
 use crate::block;
-use crate::module::Export;
+use crate::module::{Export, Module};
 use crate::type_system::Any;
 use crate::{Id, Identifier};
 use std::sync::Arc;
@@ -32,6 +32,7 @@ impl Signature {
     }
 }
 
+/// Represents a function's signature and symbol.
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub struct Function {
     symbol: Identifier,
@@ -39,10 +40,6 @@ pub struct Function {
 }
 
 impl Function {
-    pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>) -> Arc<Self> {
-        Arc::new(Self { symbol, signature })
-    }
-
     #[inline]
     pub fn symbol(&self) -> &Id {
         self.symbol.as_id()
@@ -84,7 +81,7 @@ impl ForeignBody {
 #[non_exhaustive]
 pub enum Body {
     /// Indicates that a function's body is defined in its module, providing the entry block that is executed.
-    Defined(Arc<block::Block>),
+    Defined(Arc<block::Block>), // length_size: LengthSize
     /// Indicates that a function's body is defined elsewhere, used by the foreign function interface or to call functions
     /// defined in the runtime.
     Foreign(Box<ForeignBody>),
@@ -135,4 +132,35 @@ impl Definition {
         }
         flags
     }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct Template {
+    function: Function,
+    module: Module,
+}
+
+impl Template {
+    pub(crate) fn new(symbol: Identifier, signature: Arc<Signature>, module: Module) -> Arc<Self> {
+        Arc::new(Self {
+            function: Function { symbol, signature },
+            module,
+        })
+    }
+
+    #[inline]
+    pub fn function(&self) -> &Function {
+        &self.function
+    }
+
+    #[inline]
+    pub fn module(&self) -> &Module {
+        &self.module
+    }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct Instantiation {
+    template: Arc<Template>,
+    //generic_arguments: (),
 }
