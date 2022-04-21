@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vec![type_system::FixedInt::S32.into()],
                 Box::default(),
             )),
-            function::Kind::Defined(function::Definition::new(function::Body::Defined(main_block), Export::Yes)),
+            function::Kind::Definition(function::Definition::new(function::Body::Defined(main_block), Export::Yes)),
         )?;
     }
 

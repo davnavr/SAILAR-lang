@@ -139,7 +139,7 @@ impl Definition {
 
 #[derive(Debug)]
 pub enum Kind {
-    //Import(Arc<crate::module::Name>),
+    Import(Arc<crate::module::Import>),
     /// Indicates that a function is a function definition, with the specified entry block.
-    Defined(Definition),
+    Definition(Definition),
 }

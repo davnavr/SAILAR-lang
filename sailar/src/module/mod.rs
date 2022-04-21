@@ -102,9 +102,7 @@ pub struct ModuleIdentifier {
 
 impl ModuleIdentifier {
     pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
-        Self {
-            name, version
-        }
+        Self { name, version }
     }
 
     #[inline]
@@ -120,15 +118,70 @@ impl ModuleIdentifier {
 }
 
 /*
-pub enum FunctionTemplate {
-    Definition,
-    Import(Arc<function::Function>, Arc<ModuleIdentifier>),
+pub enum FunctionTemplateOwner {
+    Definition(Arc<Module>),
+    Import(Arc<Import>),
+}
+
+pub struct FunctionTemplate {
+    function: Arc<function::Function>,
+    owner: FunctionTemplateOwner
 }
 
 pub struct FunctionInstantiation {
-
+    template: FunctionTemplate,
 }
 */
+
+/// A module hash, which further disambiguates two modules with the same name and version numbers.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Hash {
+    None,
+    SHA256(Box<[u8; 256]>),
+}
+
+/// Represents a SAILAR module that was imported.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Import {
+    identifier: Arc<ModuleIdentifier>,
+    hash: Hash,
+}
+
+impl Import {
+    pub fn from_identifier_with_hash(identifier: Arc<ModuleIdentifier>, hash: Hash) -> Self {
+        Self { identifier, hash }
+    }
+
+    pub fn new_with_hash(name: Identifier, version: Box<[usize]>, hash: Hash) -> Self {
+        Self::from_identifier_with_hash(Arc::new(ModuleIdentifier::new(name, version)), hash)
+    }
+
+    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
+        Self::new_with_hash(name, version, Hash::None)
+    }
+
+    #[inline]
+    pub fn identifier(&self) -> &Arc<ModuleIdentifier> {
+        &self.identifier
+    }
+
+    #[inline]
+    pub fn hash(&self) -> &Hash {
+        &self.hash
+    }
+}
+
+impl From<Arc<ModuleIdentifier>> for Import {
+    fn from(identifier: Arc<ModuleIdentifier>) -> Self {
+        Self::from_identifier_with_hash(identifier, Hash::None)
+    }
+}
+
+impl From<ModuleIdentifier> for Import {
+    fn from(identifier: ModuleIdentifier) -> Self {
+        Self::from(Arc::new(identifier))
+    }
+}
 
 pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 
@@ -315,7 +368,7 @@ impl Module {
         let function = Arc::new(function::Function::new(symbol, signature));
 
         match kind {
-            function::Kind::Defined(definition) => {
+            function::Kind::Definition(definition) => {
                 match self.symbols.entry(DefinedSymbol::Function(function.clone())) {
                     hash_map::Entry::Vacant(vacant) => {
                         vacant.insert(());
