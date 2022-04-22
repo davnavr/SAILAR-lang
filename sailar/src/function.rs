@@ -46,7 +46,7 @@ impl Function {
     }
 
     #[inline]
-    pub fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &Arc<Signature> {
         &self.signature
     }
 }
@@ -169,5 +169,10 @@ impl Instantiation {
     #[inline]
     pub fn template(&self) -> &Arc<Template> {
         &self.template
+    }
+
+    #[inline]
+    pub fn signature(&self) -> &Arc<Signature> {
+        self.template.function().signature()
     }
 }

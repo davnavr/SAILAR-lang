@@ -433,8 +433,6 @@ impl Definition {
             }
         }
 
-        // TODO: Update length size for function instructions.
-
         self.function_definitions.push(DefinedFunction {
             template: template.clone(),
             definition,

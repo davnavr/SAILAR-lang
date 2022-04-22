@@ -1,11 +1,13 @@
 //! Manipulation of SAILAR code blocks.
 
 use crate::binary::LengthSize;
-use crate::instruction_set::{self, Instruction, OverflowBehavior};
+use crate::function;
+use crate::instruction_set::{self, Instruction};
 use crate::type_system;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::IntoIterator;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("expected result at index {index} to be of type {expected:?} but got {actual:?}")]
@@ -52,6 +54,14 @@ pub enum ValidationError {
     ResultCountMismatch { expected: usize, actual: usize },
     #[error(transparent)]
     ExpectedType(#[from] ExpectedTypeError),
+    #[error("expected {expected} arguments but got {actual}")]
+    ArgumentCountMismatch { expected: usize, actual: usize },
+    #[error("expected argument at index {index} to be of type {expected:?}, but got {actual:?}")]
+    ArgumentTypeMismatch {
+        expected: type_system::Any,
+        actual: type_system::Any,
+        index: usize,
+    },
 }
 
 pub type ValidationResult<T> = Result<T, Box<ValidationError>>;
@@ -274,6 +284,22 @@ impl<'r> FlaggedOverflow<'r> {
 
 pub type IntegerArithmeticInstruction = fn(Box<instruction_set::IntegerArithmetic>) -> Instruction;
 
+/// Represents the results of a function call.
+pub trait FunctionCall<'r> {
+    fn append_result(&mut self, register: &'r Temporary);
+}
+
+/// Ignores the results of a function call.
+impl FunctionCall<'_> for () {
+    fn append_result(&mut self, _: &Temporary) {}
+}
+
+impl<'r> FunctionCall<'r> for Vec<&'r Temporary> {
+    fn append_result(&mut self, register: &'r Temporary) {
+        self.push(register)
+    }
+}
+
 /// Allows the building of SAILAR code blocks.
 pub struct Builder<'b> {
     length_size: LengthSize,
@@ -318,7 +344,7 @@ impl<'b> Builder<'b> {
 
     fn integer_arithmetic_instruction(
         &mut self,
-        overflow_behavior: OverflowBehavior,
+        overflow_behavior: instruction_set::OverflowBehavior,
         x: Value<'b>,
         y: Value<'b>,
         instruction: IntegerArithmeticInstruction,
@@ -353,7 +379,7 @@ impl<'b> Builder<'b> {
 
     fn integer_arithmetic_flagged(
         &mut self,
-        overflow_behavior: OverflowBehavior,
+        overflow_behavior: instruction_set::OverflowBehavior,
         x: Value<'b>,
         y: Value<'b>,
         instruction: IntegerArithmeticInstruction,
@@ -366,7 +392,12 @@ impl<'b> Builder<'b> {
 
     /// Emits an instruction that adds two integer values and stores the sum in a temporary register, ignoring any overflows.
     pub fn emit_add<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<&'b Temporary> {
-        self.integer_arithmetic_instruction(OverflowBehavior::Ignore, x.into(), y.into(), Instruction::AddI)
+        self.integer_arithmetic_instruction(
+            instruction_set::OverflowBehavior::Ignore,
+            x.into(),
+            y.into(),
+            Instruction::AddI,
+        )
     }
 
     pub fn emit_add_flagged<X: Into<Value<'b>>, Y: Into<Value<'b>>>(
@@ -374,12 +405,17 @@ impl<'b> Builder<'b> {
         x: X,
         y: Y,
     ) -> ValidationResult<FlaggedOverflow<'b>> {
-        self.integer_arithmetic_flagged(OverflowBehavior::Flag, x.into(), y.into(), Instruction::AddI)
+        self.integer_arithmetic_flagged(instruction_set::OverflowBehavior::Flag, x.into(), y.into(), Instruction::AddI)
     }
 
     /// Emits an instruction that adds two integer values and stores the sum in a temporary register, saturating on overflow.
     pub fn emit_add_saturating<X: Into<Value<'b>>, Y: Into<Value<'b>>>(&mut self, x: X, y: Y) -> ValidationResult<&'b Temporary> {
-        self.integer_arithmetic_instruction(OverflowBehavior::Saturate, x.into(), y.into(), Instruction::AddI)
+        self.integer_arithmetic_instruction(
+            instruction_set::OverflowBehavior::Saturate,
+            x.into(),
+            y.into(),
+            Instruction::AddI,
+        )
     }
 
     fn finish(mut self) -> ValidationResult<Block> {
@@ -406,7 +442,7 @@ impl<'b> Builder<'b> {
     }
 
     /// Emits a terminating instruction that transfers control flow back to the calling function, supplying the specified return values.
-    pub fn emit_ret<V: IntoIterator<Item = Value<'b>>>(self, values: V) -> ValidationResult<Block> {
+    pub fn emit_ret<V: IntoIterator<Item = Value<'b>>>(mut self, values: V) -> ValidationResult<Block> {
         let return_values = values.into_iter();
         let (minimum_return_count, maximum_return_count) = return_values.size_hint();
         self.value_buffer.clear();
@@ -426,16 +462,56 @@ impl<'b> Builder<'b> {
             self.value_buffer.push(value.to_value(self.input_registers.len()));
         }
 
-        if self.value_buffer.len() != self.result_types.len() {
+        let return_value_count = self.value_buffer.len();
+        if return_value_count != self.result_types.len() {
             fail!(ValidationError::ResultCountMismatch {
                 expected: self.result_types.len(),
                 actual: self.value_buffer.len(),
             });
         }
 
+        self.length_size.resize_to_fit(return_value_count);
+
         self.instructions
             .push(Instruction::Ret(self.value_buffer.clone().into_boxed_slice()));
         self.finish()
+    }
+
+    /// Emits a call to the specified function, providing the specified arguments.
+    pub fn emit_call<A: IntoIterator<Item = Value<'b>>, R: FunctionCall<'b>>(
+        &mut self,
+        callee: Arc<function::Instantiation>,
+        arguments: A,
+        result: &mut R,
+    ) -> ValidationResult<()> {
+        let signature = callee.signature();
+        let parameter_types = signature.parameter_types();
+        let mut actual_arguments = Vec::with_capacity(parameter_types.len());
+        for (index, (expected_argument_type, argument)) in parameter_types.iter().zip(arguments.into_iter()).enumerate() {
+            let actual_type = argument.value_type();
+            if actual_type != expected_argument_type {
+                fail!(ValidationError::ArgumentTypeMismatch {
+                    expected: expected_argument_type.clone(),
+                    actual: actual_type.clone(),
+                    index,
+                })
+            }
+
+            actual_arguments.push(argument);
+        }
+
+        if actual_arguments.len() != parameter_types.len() {
+            fail!(ValidationError::ArgumentCountMismatch {
+                expected: parameter_types.len(),
+                actual: actual_arguments.len(),
+            });
+        }
+
+        for return_type in callee.signature().result_types().iter() {
+            result.append_result(self.define_temporary(return_type.clone()))
+        }
+
+        Ok(())
     }
 }
 
