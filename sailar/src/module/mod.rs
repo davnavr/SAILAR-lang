@@ -359,7 +359,7 @@ impl Definition {
 
     /// Parses a module contained in the byte vector, and stores the bytes alongside the parsed [`Module`].
     ///
-    /// The byte vector can be retrieved again by calling [`Module::raw_contents()`].
+    /// The byte vector can be retrieved again by calling [`Definition::raw_contents()`].
     pub fn from_vec(bytes: Vec<u8>, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         let mut module = Self::from_slice(&bytes, buffer_pool)?;
         module.contents = Some(crate::binary::RawModule::from_vec(bytes));

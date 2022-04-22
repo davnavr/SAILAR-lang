@@ -159,7 +159,7 @@ impl Template {
     }
 
     /// Creates a function instance from a non-generic function template.
-    /// 
+    ///
     /// # Errors
     /// If the function template is expecting generic arguments, then an error is returned.
     pub fn instantiate_simple(self: &Arc<Self>) -> Result<Arc<Instantiation>, std::convert::Infallible> {
