@@ -29,14 +29,13 @@ impl FormatVersion {
     pub const MINIMUM_SUPPORTED: &'static Self = &Self { major: 0, minor: 12 };
 }
 
-/// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
 #[derive(Clone)]
-pub(crate) enum DefinedSymbol {
+pub enum DefinedSymbol {
     Function(Arc<function::Template>),
 }
 
 impl DefinedSymbol {
-    pub(crate) fn symbol(&self) -> &Id {
+    pub fn symbol(&self) -> &Id {
         match self {
             Self::Function(function) => function.function().symbol(),
         }
@@ -223,6 +222,7 @@ impl From<ModuleIdentifier> for Import {
     }
 }
 
+/// Used to help keep track of symbols in modules in order to avoid definitions with duplicate symbols.
 pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 
 /// A SAILAR module.

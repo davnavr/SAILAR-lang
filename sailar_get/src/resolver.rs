@@ -1,11 +1,9 @@
 //! Contains code for analyzing modules and retrieving definitions from references.
 
 use sailar::module::ModuleIdentifier;
-use std::cmp::{Eq, PartialEq};
 use std::collections::hash_map;
 use std::fmt::{Debug, Display, Formatter};
-use std::hash::{Hash, Hasher};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 
 /// The size of a pointer, in bytes.
 pub type PointerSize = std::num::NonZeroU8;
@@ -48,14 +46,14 @@ struct State {
 pub struct Resolver {
     pointer_size: PointerSize,
     //loader: Loader,
-    state: RwLock<State>,
+    state: Mutex<State>,
 }
 
 impl Resolver {
     pub fn new(pointer_size: PointerSize) -> Self {
         Self {
             pointer_size,
-            state: RwLock::new(State {
+            state: Mutex::new(State {
                 modules: Default::default(),
             }),
         }
@@ -70,7 +68,7 @@ impl Resolver {
         &self,
         module: sailar::ModuleDefinition,
     ) -> Result<Arc<crate::ResolvedModule>, ModuleAlreadyLoadedError> {
-        match self.state.write().unwrap().modules.entry(module.identifier().clone()) {
+        match self.state.lock().unwrap().modules.entry(module.identifier().clone()) {
             hash_map::Entry::Vacant(vacant) => Ok(vacant.insert(crate::ResolvedModule::from_definition(module)).clone()),
             hash_map::Entry::Occupied(occupied) => Err(ModuleAlreadyLoadedError {
                 identifier: occupied.get().identifier().clone(),
