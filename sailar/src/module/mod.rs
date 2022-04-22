@@ -234,7 +234,6 @@ pub struct Definition {
     symbols: SymbolLookup,
     function_definitions: Vec<DefinedFunction>,
     function_imports: Vec<ImportedFunction>,
-    //function_instantiations: Vec<Arc<>>
     //entry_point: _,
 }
 

@@ -4,7 +4,7 @@ use crate::binary::{self, buffer};
 use crate::block;
 use crate::function;
 use crate::identifier::Id;
-use crate::instruction_set::{self, Instruction};
+use crate::instruction_set;
 use crate::type_system;
 use std::io::Write;
 
@@ -272,7 +272,10 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
 
         rent_default_buffer_wrapped!(instruction_buffer, instructions);
         instructions.write_many(current.instructions().iter(), |body, instruction| {
+            use instruction_set::Instruction;
+
             body.write_all(&[u8::from(instruction.opcode())])?;
+
             match instruction {
                 Instruction::Nop | Instruction::Break => Ok(()),
                 Instruction::Ret(return_values) => {
