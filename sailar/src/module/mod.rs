@@ -425,9 +425,12 @@ impl Definition {
             hash_map::Entry::Occupied(occupied) => return Err(DuplicateSymbolError(occupied.key().clone())),
         }
 
-        if let function::Body::Foreign(ref foreign) = definition.body() {
-            self.length_size.resize_to_fit(foreign.library_name().len());
-            self.length_size.resize_to_fit(foreign.entry_point_name().len());
+        match definition.body() {
+            function::Body::Defined(entry_block) => self.length_size.pick_largest(entry_block.length_size()),
+            function::Body::Foreign(ref foreign) => {
+                self.length_size.resize_to_fit(foreign.library_name().len());
+                self.length_size.resize_to_fit(foreign.entry_point_name().len());
+            }
         }
 
         // TODO: Update length size for function instructions.
@@ -442,10 +445,17 @@ impl Definition {
         Ok(template)
     }
 
-    pub fn import_function(&mut self, module: Arc<Import>, symbol: Identifier, signature: Arc<function::Signature>) -> Arc<function::Template> {
+    pub fn import_function(
+        &mut self,
+        module: Arc<Import>,
+        symbol: Identifier,
+        signature: Arc<function::Signature>,
+    ) -> Arc<function::Template> {
         let template = function::Template::new(symbol, signature, Module::Import(module));
-        self.function_imports.push(ImportedFunction { template: template.clone() });
-        
+        self.function_imports.push(ImportedFunction {
+            template: template.clone(),
+        });
+
         self.length_size_fit_function(template.function());
         self.contents = None;
         template

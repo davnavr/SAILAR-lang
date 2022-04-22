@@ -1,8 +1,10 @@
 //! Manipulation of SAILAR code blocks.
 
+use crate::binary::LengthSize;
 use crate::instruction_set::{self, Instruction, OverflowBehavior};
 use crate::type_system;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::iter::IntoIterator;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -274,6 +276,7 @@ pub type IntegerArithmeticInstruction = fn(Box<instruction_set::IntegerArithmeti
 
 /// Allows the building of SAILAR code blocks.
 pub struct Builder<'b> {
+    length_size: LengthSize,
     result_types: Box<[type_system::Any]>,
     input_registers: &'b Vec<Input>,
     temporary_registers: &'b elsa::vec::FrozenVec<Box<Temporary>>,
@@ -379,19 +382,22 @@ impl<'b> Builder<'b> {
         self.integer_arithmetic_instruction(OverflowBehavior::Saturate, x.into(), y.into(), Instruction::AddI)
     }
 
-    fn finish(self) -> ValidationResult<Block> {
+    fn finish(mut self) -> ValidationResult<Block> {
         if self.instructions.is_empty() {
             fail!(ValidationError::EmptyBlock);
         }
 
         let input_types = self.input_registers().iter().map(|input| input.value_type.clone()).collect();
-        let temporary_types = self
+        let temporary_types: Box<_> = self
             .temporary_registers
             .iter()
             .map(|temporary| temporary.value_type.clone())
             .collect();
 
+        self.length_size.resize_to_fit(temporary_types.len());
+
         Ok(Block {
+            length_size: self.length_size,
             result_types: self.result_types,
             input_types,
             temporary_types,
@@ -468,8 +474,14 @@ impl BuilderCache {
             });
         }
 
+        let result_types = result_types.into();
+        let mut length_size = LengthSize::One;
+        length_size.resize_to_fit(self.input_buffer.len());
+        length_size.resize_to_fit(result_types.len());
+
         Builder {
-            result_types: result_types.into(),
+            length_size,
+            result_types,
             input_registers: &self.input_buffer,
             temporary_registers: &self.temporary_buffer,
             instructions: &mut self.instruction_buffer,
@@ -485,8 +497,9 @@ impl std::default::Default for BuilderCache {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Block {
+    length_size: LengthSize,
     input_types: Box<[type_system::Any]>,
     result_types: Box<[type_system::Any]>,
     temporary_types: Box<[type_system::Any]>,
@@ -495,17 +508,24 @@ pub struct Block {
 
 impl Block {
     pub(crate) fn new_unchecked(
+        length_size: LengthSize,
         input_types: Box<[type_system::Any]>,
         result_types: Box<[type_system::Any]>,
         temporary_types: Box<[type_system::Any]>,
         instructions: Box<[Instruction]>,
     ) -> Self {
         Self {
+            length_size,
             input_types,
             result_types,
             temporary_types,
             instructions,
         }
+    }
+
+    #[inline]
+    pub(crate) fn length_size(&self) -> LengthSize {
+        self.length_size
     }
 
     #[inline]
@@ -526,5 +546,25 @@ impl Block {
     #[inline]
     pub fn temporary_types(&self) -> &[type_system::Any] {
         &self.temporary_types
+    }
+}
+
+impl std::cmp::PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        self.input_types() == other.input_types()
+            && self.result_types() == other.result_types()
+            && self.temporary_types() == other.temporary_types()
+            && self.instructions() == other.instructions()
+    }
+}
+
+impl std::cmp::Eq for Block {}
+
+impl Hash for Block {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Hash::hash(self.input_types(), state);
+        Hash::hash(self.result_types(), state);
+        Hash::hash(self.temporary_types(), state);
+        Hash::hash(self.instructions(), state);
     }
 }

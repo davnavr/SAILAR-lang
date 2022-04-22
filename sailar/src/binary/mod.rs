@@ -48,7 +48,7 @@ impl std::fmt::Debug for RawModule {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum LengthSize {
     One = 0u8,
@@ -70,6 +70,12 @@ impl LengthSize {
             Self::One => 1,
             Self::Two => 2,
             Self::Four => 4,
+        }
+    }
+
+    pub fn pick_largest(&mut self, other: LengthSize) {
+        if other > *self {
+            *self = other;
         }
     }
 

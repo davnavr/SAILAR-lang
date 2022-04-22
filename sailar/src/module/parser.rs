@@ -795,6 +795,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 })?;
 
                 Ok(Arc::new(crate::block::Block::new_unchecked(
+                    src.length_size(),
                     input_register_types.into(),
                     result_register_types.into(),
                     temporary_register_types.into(),
@@ -875,7 +876,8 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                     let symbol = function.read_identifier()?;
 
-                    let template = function::Template::new(symbol, signature, module::Module::Definition(module_identifer.clone()));
+                    let template =
+                        function::Template::new(symbol, signature, module::Module::Definition(module_identifer.clone()));
 
                     symbol_lookup
                         .add_symbol(module::DefinedSymbol::Function(template.clone()))
