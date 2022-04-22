@@ -842,7 +842,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         lookup: Default::default(),
     };
 
-    let mut function_definitions = Vec::<module::DefinedFunction>::new();
+    let mut function_definitions = Vec::new();
 
     {
         let byte_size = src.read_length(|| ErrorKind::MissingDefinitionSize)?;
@@ -879,10 +879,6 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     let template =
                         function::Template::new(symbol, signature, module::Module::Definition(module_identifer.clone()));
 
-                    symbol_lookup
-                        .add_symbol(module::DefinedSymbol::Function(template.clone()))
-                        .map_err(|e| function.error(e))?;
-
                     let body = if flags.contains(function::Flags::FOREIGN) {
                         todo!("parse foreign func")
                     } else {
@@ -892,7 +888,13 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         )
                     };
 
-                    Ok(module::DefinedFunction::new(template, export, body))
+                    let definition = Arc::new(module::DefinedFunction::new(template, export, body));
+
+                    symbol_lookup
+                        .add_symbol(module::DefinedSymbol::Function(definition.clone()))
+                        .map_err(|e| function.error(e))?;
+
+                    Ok(definition)
                 })?;
 
                 definitions.read_length(|| todo!())?; // TODO: Parse struct definitions.

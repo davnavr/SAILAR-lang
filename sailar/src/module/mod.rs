@@ -31,7 +31,7 @@ impl FormatVersion {
 
 #[derive(Clone)]
 pub enum DefinedSymbol {
-    Function(Arc<function::Template>),
+    Function(Arc<DefinedFunction>),
 }
 
 impl DefinedSymbol {
@@ -39,6 +39,13 @@ impl DefinedSymbol {
         match self {
             Self::Function(function) => function.function().symbol(),
         }
+    }
+}
+
+impl std::borrow::Borrow<Id> for DefinedSymbol {
+    #[inline]
+    fn borrow(&self) -> &Id {
+        self.symbol()
     }
 }
 
@@ -78,6 +85,11 @@ impl DefinedFunction {
             template,
             definition: function::Definition::new(body, export),
         }
+    }
+
+    #[inline]
+    pub fn function(&self) -> &function::Function {
+        self.template.function()
     }
 
     #[inline]
@@ -232,7 +244,7 @@ pub struct Definition {
     length_size: LengthSize,
     identifier: Arc<ModuleIdentifier>,
     symbols: SymbolLookup,
-    function_definitions: Vec<DefinedFunction>,
+    function_definitions: Vec<Arc<DefinedFunction>>,
     function_imports: Vec<ImportedFunction>,
     //entry_point: _,
 }
@@ -403,6 +415,13 @@ impl Definition {
         Module::Definition(self.identifier().clone())
     }
 
+    pub fn get_defined_symbol(&self, symbol: &Id) -> Option<&DefinedSymbol> {
+        match self.symbols.get_key_value(symbol) {
+            Some((definition, _)) => Some(definition),
+            None => None,
+        }
+    }
+
     fn length_size_fit_function(&mut self, function: &function::Function) {
         self.length_size.resize_to_fit(function.symbol().len());
         self.length_size.resize_to_fit(function.signature().result_types().len());
@@ -414,17 +433,21 @@ impl Definition {
         symbol: Identifier,
         signature: Arc<function::Signature>,
         definition: function::Definition,
-    ) -> Result<Arc<function::Template>, DuplicateSymbolError> {
+    ) -> Result<Arc<DefinedFunction>, DuplicateSymbolError> {
         let template = function::Template::new(symbol, signature, self.to_module());
+        let function_definition = Arc::new(DefinedFunction {
+            template: template.clone(),
+            definition,
+        });
 
-        match self.symbols.entry(DefinedSymbol::Function(template.clone())) {
+        match self.symbols.entry(DefinedSymbol::Function(function_definition.clone())) {
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(());
             }
             hash_map::Entry::Occupied(occupied) => return Err(DuplicateSymbolError(occupied.key().clone())),
         }
 
-        match definition.body() {
+        match function_definition.definition.body() {
             function::Body::Defined(entry_block) => self.length_size.pick_largest(entry_block.length_size()),
             function::Body::Foreign(ref foreign) => {
                 self.length_size.resize_to_fit(foreign.library_name().len());
@@ -432,14 +455,11 @@ impl Definition {
             }
         }
 
-        self.function_definitions.push(DefinedFunction {
-            template: template.clone(),
-            definition,
-        });
+        self.function_definitions.push(function_definition.clone());
 
         self.length_size_fit_function(template.function());
         self.contents = None;
-        Ok(template)
+        Ok(function_definition)
     }
 
     pub fn import_function(
@@ -455,11 +475,11 @@ impl Definition {
 
         self.length_size_fit_function(template.function());
         self.contents = None;
-        template
+        template // TODO: Return an ImportedFunction instead
     }
 
     #[inline]
-    pub fn function_definitions(&self) -> &[DefinedFunction] {
+    pub fn function_definitions(&self) -> &[Arc<DefinedFunction>] {
         &self.function_definitions
     }
 

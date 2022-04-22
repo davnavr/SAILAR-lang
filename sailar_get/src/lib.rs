@@ -8,7 +8,7 @@ pub mod error;
 pub mod resolver;
 
 pub use error::SymbolNotFoundError;
-pub use loader::ModuleLoader;
-pub use module::ResolvedModule;
 pub use function::ResolvedFunction;
+pub use loader::ModuleLoader;
+pub use module::{ResolvedModule, ResolvedDefinition};
 pub use resolver::Resolver;
