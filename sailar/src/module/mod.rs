@@ -127,10 +127,41 @@ impl ModuleIdentifier {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Module {
     Definition(Arc<ModuleIdentifier>),
     Import(Arc<Import>),
+}
+
+impl Module {
+    pub fn identifier(&self) -> &Arc<ModuleIdentifier> {
+        match self {
+            Self::Definition(identifier) => identifier,
+            Self::Import(import) => import.identifier(),
+        }
+    }
+
+    pub fn hash_bytes(&self) -> &[u8] {
+        match self {
+            Self::Definition(_) => &[],
+            Self::Import(import) => import.hash().as_bytes(),
+        }
+    }
+}
+
+impl std::cmp::PartialEq for Module {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier() == other.identifier() && self.hash_bytes() == other.hash_bytes()
+    }
+}
+
+impl std::cmp::Eq for Module {}
+
+impl std::hash::Hash for Module {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(self.identifier(), state);
+        state.write(self.hash_bytes())
+    }
 }
 
 /// A module hash, which further disambiguates two modules with the same name and version numbers.
@@ -138,6 +169,15 @@ pub enum Module {
 pub enum Hash {
     None,
     SHA256(Box<[u8; 256]>),
+}
+
+impl Hash {
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::None => &[],
+            Self::SHA256(bytes) => bytes.as_slice(),
+        }
+    }
 }
 
 /// Represents a SAILAR module that was imported.
@@ -405,6 +445,7 @@ impl Definition {
     pub fn import_function(&mut self, module: Arc<Import>, symbol: Identifier, signature: Arc<function::Signature>) -> Arc<function::Template> {
         let template = function::Template::new(symbol, signature, Module::Import(module));
         self.function_imports.push(ImportedFunction { template: template.clone() });
+        
         self.length_size_fit_function(template.function());
         self.contents = None;
         template

@@ -164,3 +164,10 @@ pub struct Instantiation {
     template: Arc<Template>,
     //generic_arguments: (),
 }
+
+impl Instantiation {
+    #[inline]
+    pub fn template(&self) -> &Arc<Template> {
+        &self.template
+    }
+}
