@@ -61,4 +61,11 @@ impl ResolvedModule {
             None => Err(SymbolNotFoundError::new(symbol.to_identifier(), self.clone())),
         }
     }
+
+    pub fn get_function_instantiation(
+        self: &Arc<Self>,
+        instantiation: &Arc<sailar::function::Instantiation>,
+    ) -> Arc<crate::ResolvedFunction> {
+        todo!("")
+    }
 }
