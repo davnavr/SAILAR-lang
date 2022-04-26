@@ -1,7 +1,7 @@
 //! Reading and writing of SAILAR modules.
 
 use crate::binary::buffer;
-use crate::binary::{LengthSize, RawModule};
+use crate::binary::{VarIntSize, RawModule};
 use crate::function;
 use crate::identifier::{Id, Identifier};
 use std::collections::hash_map;
@@ -241,7 +241,7 @@ pub(crate) type SymbolLookup = rustc_hash::FxHashMap<DefinedSymbol, ()>;
 pub struct Definition {
     contents: Option<RawModule>,
     format_version: FormatVersion,
-    length_size: LengthSize,
+    integer_size: VarIntSize,
     identifier: Arc<ModuleIdentifier>,
     symbols: SymbolLookup,
     function_definitions: Vec<Arc<DefinedFunction>>,
@@ -260,15 +260,15 @@ mod writer;
 
 impl From<Arc<ModuleIdentifier>> for Definition {
     fn from(identifier: Arc<ModuleIdentifier>) -> Self {
-        let mut length_size = LengthSize::One;
-        length_size.resize_to_fit(identifier.name.len());
-        length_size.resize_to_fit(identifier.version.len());
-        length_size.resize_to_fit_many(identifier.version.iter(), |n| *n);
+        let mut integer_size = VarIntSize::One;
+        integer_size.resize_to_fit(identifier.name.len());
+        integer_size.resize_to_fit(identifier.version.len());
+        integer_size.resize_to_fit_many(identifier.version.iter(), |n| *n);
 
         Self {
             contents: None,
             format_version: FormatVersion::MINIMUM_SUPPORTED.clone(),
-            length_size,
+            integer_size,
             identifier,
             symbols: SymbolLookup::default(),
             function_definitions: Vec::new(),
@@ -293,10 +293,10 @@ impl Definition {
         &self.format_version
     }
 
-    /// Gets a value indicating the size of length integers in the binary format of the module.
+    /// Gets a value indicating the size of integers in the binary format of the module.
     #[inline]
-    pub fn length_size(&self) -> LengthSize {
-        self.length_size
+    pub fn integer_size(&self) -> VarIntSize {
+        self.integer_size
     }
 
     /// Gets the module's identifier, which distinguishes one module from another.
@@ -422,10 +422,10 @@ impl Definition {
         }
     }
 
-    fn length_size_fit_function(&mut self, function: &function::Function) {
-        self.length_size.resize_to_fit(function.symbol().len());
-        self.length_size.resize_to_fit(function.signature().result_types().len());
-        self.length_size.resize_to_fit(function.signature().parameter_types().len());
+    fn integer_size_fit_function(&mut self, function: &function::Function) {
+        self.integer_size.resize_to_fit(function.symbol().len());
+        self.integer_size.resize_to_fit(function.signature().result_types().len());
+        self.integer_size.resize_to_fit(function.signature().parameter_types().len());
     }
 
     pub fn define_function(
@@ -448,16 +448,16 @@ impl Definition {
         }
 
         match function_definition.definition.body() {
-            function::Body::Defined(entry_block) => self.length_size.pick_largest(entry_block.length_size()),
+            function::Body::Defined(entry_block) => self.integer_size.pick_largest(entry_block.integer_size()),
             function::Body::Foreign(ref foreign) => {
-                self.length_size.resize_to_fit(foreign.library_name().len());
-                self.length_size.resize_to_fit(foreign.entry_point_name().len());
+                self.integer_size.resize_to_fit(foreign.library_name().len());
+                self.integer_size.resize_to_fit(foreign.entry_point_name().len());
             }
         }
 
         self.function_definitions.push(function_definition.clone());
 
-        self.length_size_fit_function(template.function());
+        self.integer_size_fit_function(template.function());
         self.contents = None;
         Ok(function_definition)
     }
@@ -473,7 +473,7 @@ impl Definition {
             template: template.clone(),
         });
 
-        self.length_size_fit_function(template.function());
+        self.integer_size_fit_function(template.function());
         self.contents = None;
         template // TODO: Return an ImportedFunction instead
     }
@@ -501,7 +501,7 @@ impl std::fmt::Debug for Definition {
 
         f.debug_struct("Definition")
             .field("format_version", &self.format_version)
-            .field("length_size", &self.length_size)
+            .field("integer_size", &self.integer_size)
             .field("identifier", &self.identifier)
             .field("symbols", &SymbolLookupDebug(&self.symbols))
             .field("function_definitions", &self.function_definitions)

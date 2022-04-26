@@ -15,7 +15,7 @@ Offset|Name|Size (in bytes)|Notes
 `9 + H + L`|[Records](#record)|?|
 
 ## Integer Size
-The Integer size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
+The integer size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
 
 Value|Integer Size (in bytes)
 ---|---
@@ -40,11 +40,11 @@ Identifies a module by its name and version.
 
 Offset|Name|Size (in bytes)|Notes
 ---|---|---|---
-`0`|Name|`L + N`|An [identifier](#identifier) containing `N` characters that is the name of the module.
+`0`|Name|`L + N`|An [identifier](#identifiers) containing `N` characters that is the name of the module.
 `L + N`|Version Number Count|`L`|The number `V` of version numbers to follow.
-`2L + N`|Version Numbers|`L * V`|An array of [length integers](#length-size) specifying the version of the module.
+`2L + N`|Version Numbers|`L * V`|An array of [integers](#integer-size) specifying the version of the module.
 
-# Record
+## Record
 Each module in SAILAR is broken into a series of records, which describe the content of the module.
 
 Each record begins with the following fields:
@@ -55,71 +55,56 @@ Offset|Name|Size|Notes
 `1`|Content Size|`L`|A non-zero [integer](#integer-size) indicating the length `S` of the record's content, in bytes.
 `L + 1`|Content|`S`|The content of the record.
 
-# DEPRECATED BELOW
+# Record Types
 
-## Module Identifiers
-Provides a way to use duplicated [identifiers](#identifier) without having to copy and paste their contents all over the module. Individual identifiers are referred to by [length-sized indices](#length-size) starting at `0`.
+## Array Record
+Allows one or more records of the same type to be contained in a single record. To simplify the format, nested arrays are not allowed.
 
-Offset|Name|Size|Notes|Omission
----|---|---|---|---
-`0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of all of the identifiers, in bytes.
-`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of identifiers to follow.|Omitted when `Size` is zero
-`2L`|Signatures|`S`|A series of [identifiers](#identifier).
-
-## Type Signatures
-All of the type signatures used in the module. Individual type signatures are referred to by [length-sized indices](#length-size) with the first type signature referred to by index `0`.
-
-Offset|Name|Size|Notes|Omission
----|---|---|---|---
-`0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of the type signatures, in bytes, excluding the count.
-`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of type signatures to follow.|Omitted when `Size` is zero
-`2L`|Signatures|`S`|A series of [type signatures](./binary-format-signatures.md#type).
-
-## Function Signatures
-All of the function signatures used in the module. Individual function signatures are referred to by [length-sized indices](#length-size) with the first function signature referred to by index `0`.
-
-Offset|Name|Size|Notes|Omission
----|---|---|---|---
-`0`|Size|`L`|A [length integer](#length-size) indicating the size `S` of the function signatures, in bytes, excluding the count.
-`L`|Count|`L`|A [length integer](#length-size) indicating the number `C` of function signatures to follow.|Omitted when `Size` is zero
-`2L`|Signatures|`S`|A series of [function signatures](./binary-format-signatures.md#function).
-
-## Module Data
-Modules are allowed to contain arbitrary byte arrays that can be used for storing literal strings, the initial values of global variables, etc. Data arrays can be referred to by [length-sized indices](#length-size) starting at `0`.
-
-Offset|Name|Notes|Omission
+Offset|Name|Size|Notes
 ---|---|---|---
-`0`|Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all the data arrays combined.
-`L`|Count|A [length integer](#length-size) indicating the total number `C` of data arrays to follow.|Omitted when `Total Size` is zero.
-`2L`|Contents|A series of `C` [data arrays](#module-data-arrays) one after the other.
+`0`|Record Type|`1`|Indicates the type of records contained in this array. Must not be an array itself.
+`1`|Record Count|`L`|A non-zero [integer](#integer-size) indicating the number of records in the array.
+`L + 1`|Records|?|The records in the array.
 
-### Module Data Arrays
+## Identifier Record
+Provides a way to use duplicated [identifiers](#identifiers) without having to copy and paste their contents all over the module.
+Individual identifiers are referred to by [integer](#integer-size) indices starting at zero.
+
+## Type Signature Record
+Contains a single [type signature](./binary-format-signatures.md#type). Individual type signatures are referred to by
+[integer](#integer-size) indices starting at zero.
+
+## Function Signature Record
+Contains a single [function signature](./binary-format-signatures.md#function). Individual function signatures are referred to by
+[integer](#integer-size) indices starting at zero.
+
+## Data Record
+Modules are allowed to contain arbitrary byte arrays that can be used for storing literal strings, the initial values of global
+variables, etc. Individual data arrays are referred to by [integer](#integer-size) indices starting at zero.
+
 Offset|Name|Notes
 ---|---|---
 `0`|Length|The length `L` of this data array, in bytes.
 `L`|Data|The actual data, contains `L` bytes.
 
-## Code
-Code in SAILAR is broken into individual sequences of instructions known as blocks. Function definitions can specify their bodies by specifying the entry block which is the block that is entered when the function is called. [Refer to the instruction set documentation](./instruction-set.md) for the rules regarding valid blocks.
+## Code Record
+Code in SAILAR is broken into individual sequences of instructions known as blocks. Function definitions can specify their bodies
+by specifying the entry block which is the block that is entered when the function is called.
+[Refer to the instruction set documentation](./instruction-set.md) for the rules regarding valid blocks.
 
-Offset|Notes|Omission
----|---|---
-`0`|Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all the code blocks combined.
-`L`|Count|A [length integer](#length-size) indicating the total number of code blocks to follow.
-`2L`|Code Blocks|A series of [code blocks](#code-block).
-
-### Code Block
 Each block describes its inputs, outputs, the types of its registers, and contains its instructions.
 
 Offset|Notes|Omission|
 ---|---|---
-`0`|Input Count|A [length integer](#length-size) indicating the number of inputs to this block.
-`L`|Result Count|A [length integer](#length-size) indicating the number of results returned by this block.
-`2L`|Temporary Count|A [length integer](#length-size) indicating the number of temporary registers introduced by the instructions in this block.
+`0`|Input Count|A [length integer](#integer-size) indicating the number of inputs to this block.
+`L`|Result Count|A [length integer](#integer-size) indicating the number of results returned by this block.
+`2L`|Temporary Count|A [length integer](#integer-size) indicating the number of temporary registers introduced by the instructions in this block.
 `3L`|Register Types|A series of [type signature indices](#type-signatures) specifying the type of each input, result, and temporary register in that order.
-?|Instruction Size|A [length integer](#length-size) indicating the size of all of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
-?|Instruction Count|A [length integer](#length-size) indicating the number of instructions in this block. This must be greater than zero.
+?|Instruction Size|A [length integer](#integer-size) indicating the size of all of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
+?|Instruction Count|A [length integer](#integer-size) indicating the number of instructions in this block. This must be greater than zero.
 ?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
+
+# DEPRECATED BELOW
 
 ## Module Imports
 This structure contains all structs, functions, globals, etc. that are used by the current module.
@@ -128,16 +113,16 @@ TODO: Have this be a list of module imports instead, with each ModuleImport stru
 
 Name|Notes
 ---|---
-Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module import information. If zero, all following fields are omitted.
+Total Size|A [length integer](#integer-size) indicating the total size, in bytes, of all of the following module import information. If zero, all following fields are omitted.
 Function Count|
 [Function Imports]()|
 Struct Count|
 [Struct Imports]()|
 Global Count|
 [Global Imports]()|
-Exception Class Count|A [length integer](#length-size), set to zero as SAILAR's exception handling mechanism is still being defined.
+Exception Class Count|A [length integer](#integer-size), set to zero as SAILAR's exception handling mechanism is still being defined.
 Exception Class Imports|Currently empty.
-Annotation Class Count|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
+Annotation Class Count|A [length integer](#integer-size), set to zero as the semantics of annotations are still being decided.
 Annotation Class Imports|Currently empty.
 
 ## Module Definitions
@@ -145,7 +130,7 @@ Contains the structs, functions, globals, etc. defined by the current module.
 
 Name|Notes
 ---|---
-Total Size|A [length integer](#length-size) indicating the total size, in bytes, of all of the following module definition information. If zero, all following fields are omitted
+Total Size|A [length integer](#integer-size) indicating the total size, in bytes, of all of the following module definition information. If zero, all following fields are omitted
 Function Count|
 [Function Definitions](#function-definition)|
 Struct Count|
@@ -153,9 +138,9 @@ Struct Count|
 Global Count|
 [Global Definitions]()|
 Exception Class Count|Currently empty.
-Exception Class Definitions|A [length integer](#length-size), set to zero as SAILAR's exception handling mechanism is still being defined.
+Exception Class Definitions|A [length integer](#integer-size), set to zero as SAILAR's exception handling mechanism is still being defined.
 Annotation Class Count|Currently empty.
-Annotation Class Definitions|A [length integer](#length-size), set to zero as the semantics of annotations are still being decided.
+Annotation Class Definitions|A [length integer](#integer-size), set to zero as the semantics of annotations are still being decided.
 
 ### Function Definition
 Describes a function defined in the current module. When generics are supported, a field will be added that lists generic parameters.
@@ -165,18 +150,18 @@ Offset|Bits|Name|Notes
 `0`|`0`|Export|If set, indicates if this structure is visible to other modules.
 `0`|`1`|Foreign|If set, indicates that the body of this function is defined elsewhere. Typically used when dealing with foreign function interface bindings.
 `0`|`2..7`|Reserved|These bits must not be set.
-`1`||Signature|A [length integer index](#length-size) that indicates the [function's signature](#function-signatures).
+`1`||Signature|A [length integer index](#integer-size) that indicates the [function's signature](#function-signatures).
 `1 + L`||[Symbol](#symbols)
 ?||[Function Body](#function-body)
 
 ### Function Body
-If the `Foreign` bit is not set, then the function body is simply a [length integer index](#length-size) to a [code block](#code-block).
+If the `Foreign` bit is not set, then the function body is simply a [length integer index](#integer-size) to a [code block](#code-block).
 
 Otherwise, the function body describes a foreign function:
 
 Name|Notes
 ---|---
-Library|An [length integer index](#length-size) to an [identifier](#identifier) that specifies the name of the library that the function is defined in.
+Library|An [length integer index](#integer-size) to an [identifier](#identifier) that specifies the name of the library that the function is defined in.
 Entry Point Name|An [identifier](#identifier) that is the name of the function defined in the `Library`.
 
 ### Struct Definition
@@ -199,8 +184,8 @@ Offset|Name|Notes
 
 Offset|Name|Notes
 ---|---|---
-`0`|Struct Index|A [length integer](#length-size) used to refer to a struct import or definition, where `0` refers to the first struct import, and `x` refers to the first struct definition, where `x` is the total number of struct imports.
-`L`|Reserved|A reserved [length integer](#length-size), must be set to zero.
+`0`|Struct Index|A [length integer](#integer-size) used to refer to a struct import or definition, where `0` refers to the first struct import, and `x` refers to the first struct definition, where `x` is the total number of struct imports.
+`L`|Reserved|A reserved [length integer](#integer-size), must be set to zero.
 
 ## Function Instantiations
 Allows referring to function definitions and imports, while also allowing generic functions in the future.
@@ -213,8 +198,8 @@ Offset|Name|Notes
 
 Offset|Name|Notes
 ---|---|---
-`0`|Function Index|A [length integer](#length-size) used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
-`L`|Reserved|A reserved [length integer](#length-size), must be set to zero.
+`0`|Function Index|A [length integer](#integer-size) used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
+`L`|Reserved|A reserved [length integer](#integer-size), must be set to zero.
 
 ## Entry Point
 The entry point function is the function that is executed when a SAILAR application is run.
@@ -230,5 +215,5 @@ Modules can optionally contain debugging information.
 
 Offset|Name|Notes
 ---|---|---
-`0`|Size|A [length integer](#length-size) indicating the size of the following debugging information in bytes.
+`0`|Size|A [length integer](#integer-size) indicating the size of the following debugging information in bytes.
 `L`|Debugging Information|The debugging information, [whose format is documented here](./debug-format.md).

@@ -1,4 +1,4 @@
-///! Numeric types in the SAILAR binary format.
+//! Numeric types in the SAILAR binary format.
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]

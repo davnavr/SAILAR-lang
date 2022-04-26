@@ -1,6 +1,6 @@
 //! Manipulation of SAILAR code blocks.
 
-use crate::binary::LengthSize;
+use crate::binary::VarIntSize;
 use crate::function;
 use crate::instruction_set::{self, Instruction};
 use crate::type_system;
@@ -302,7 +302,7 @@ impl<'r> FunctionCall<'r> for Vec<&'r Temporary> {
 
 /// Allows the building of SAILAR code blocks.
 pub struct Builder<'b> {
-    length_size: LengthSize,
+    integer_size: VarIntSize,
     result_types: Box<[type_system::Any]>,
     input_registers: &'b Vec<Input>,
     temporary_registers: &'b elsa::vec::FrozenVec<Box<Temporary>>,
@@ -430,10 +430,10 @@ impl<'b> Builder<'b> {
             .map(|temporary| temporary.value_type.clone())
             .collect();
 
-        self.length_size.resize_to_fit(temporary_types.len());
+        self.integer_size.resize_to_fit(temporary_types.len());
 
         Ok(Block {
-            length_size: self.length_size,
+            integer_size: self.integer_size,
             result_types: self.result_types,
             input_types,
             temporary_types,
@@ -470,7 +470,7 @@ impl<'b> Builder<'b> {
             });
         }
 
-        self.length_size.resize_to_fit(return_value_count);
+        self.integer_size.resize_to_fit(return_value_count);
 
         self.instructions
             .push(Instruction::Ret(self.value_buffer.clone().into_boxed_slice()));
@@ -551,12 +551,12 @@ impl BuilderCache {
         }
 
         let result_types = result_types.into();
-        let mut length_size = LengthSize::One;
-        length_size.resize_to_fit(self.input_buffer.len());
-        length_size.resize_to_fit(result_types.len());
+        let mut integer_size = VarIntSize::One;
+        integer_size.resize_to_fit(self.input_buffer.len());
+        integer_size.resize_to_fit(result_types.len());
 
         Builder {
-            length_size,
+            integer_size,
             result_types,
             input_registers: &self.input_buffer,
             temporary_registers: &self.temporary_buffer,
@@ -575,7 +575,7 @@ impl std::default::Default for BuilderCache {
 
 #[derive(Clone, Debug)]
 pub struct Block {
-    length_size: LengthSize,
+    integer_size: VarIntSize,
     input_types: Box<[type_system::Any]>,
     result_types: Box<[type_system::Any]>,
     temporary_types: Box<[type_system::Any]>,
@@ -584,14 +584,14 @@ pub struct Block {
 
 impl Block {
     pub(crate) fn new_unchecked(
-        length_size: LengthSize,
+        integer_size: VarIntSize,
         input_types: Box<[type_system::Any]>,
         result_types: Box<[type_system::Any]>,
         temporary_types: Box<[type_system::Any]>,
         instructions: Box<[Instruction]>,
     ) -> Self {
         Self {
-            length_size,
+            integer_size,
             input_types,
             result_types,
             temporary_types,
@@ -600,8 +600,8 @@ impl Block {
     }
 
     #[inline]
-    pub(crate) fn length_size(&self) -> LengthSize {
-        self.length_size
+    pub(crate) fn integer_size(&self) -> VarIntSize {
+        self.integer_size
     }
 
     #[inline]
