@@ -284,8 +284,8 @@ impl From<ModuleIdentifier> for Definition {
 }
 
 impl Definition {
-    pub fn new(name: Identifier, version: Box<[usize]>) -> Self {
-        Self::from(ModuleIdentifier::new(name, version))
+    pub fn new<V: Into<Box<[usize]>>>(name: Identifier, version: V) -> Self {
+        Self::from(ModuleIdentifier::new(name, version.into()))
     }
 
     #[inline]

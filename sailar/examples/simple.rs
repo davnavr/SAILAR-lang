@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = sailar::binary::buffer::Pool::default();
-    let mut module = sailar::ModuleDefinition::new(Identifier::from_str("Simple")?, vec![0, 1].into_boxed_slice());
+    let mut module = sailar::ModuleDefinition::new(Identifier::from_str("Simple")?, vec![0, 1]);
 
     {
         let mut block_cache = block::BuilderCache::new();

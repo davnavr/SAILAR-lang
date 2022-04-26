@@ -36,6 +36,12 @@ pub enum RecordType {
     //DebuggingInformation = 21,
 }
 
+impl From<RecordType> for u8 {
+    fn from(value: RecordType) -> u8 {
+        value as u8
+    }
+}
+
 /// Represents an array of bytes that make up a SAILAR module.
 #[derive(Clone)]
 pub struct RawModule {
