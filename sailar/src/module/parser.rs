@@ -92,12 +92,12 @@ pub enum ErrorKind {
     InvalidMagic(#[from] InvalidMagicError),
     #[error("expected format version but got EOF")]
     MissingFormatVersion,
-    #[error("expected length size value but got EOF")]
-    MissingLengthSize,
+    #[error("expected integer size value but got EOF")]
+    MissingIntegerSize,
     #[error(transparent)]
-    InvalidLengthSize(#[from] binary::InvalidLengthSize),
+    InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("the length value {0} is too large and cannot be used")]
-    LengthTooLarge(u32),
+    IntegerTooLarge(u32),
     #[error("expected size of module header but got EOF")]
     MissingHeaderSize,
     #[error("expected module header field count but reached end")]
@@ -234,16 +234,16 @@ pub type ParseResult<T> = Result<T, Error>;
 
 mod input {
     use super::{Error, ErrorKind, ParseResult};
-    use crate::binary::{buffer, LengthSize};
+    use crate::binary::{buffer, VarIntSize};
     use crate::identifier::{self, Identifier};
 
-    type LengthIntegerParser<R> = fn(&mut Wrapper<R>) -> ParseResult<Option<usize>>;
+    type IntegerParser<R> = fn(&mut Wrapper<R>) -> ParseResult<Option<usize>>;
 
     pub struct Wrapper<R> {
         source: R,
         offset: usize,
-        length_size: LengthSize,
-        length_parser: LengthIntegerParser<R>,
+        integer_size: VarIntSize,
+        integer_parser: IntegerParser<R>,
     }
 
     impl<R: std::io::Read> Wrapper<R> {
@@ -251,8 +251,8 @@ mod input {
             Self {
                 source,
                 offset: 0,
-                length_size: LengthSize::One,
-                length_parser: Wrapper::read_length_one,
+                integer_size: VarIntSize::One,
+                integer_parser: Wrapper::read_integer_one,
             }
         }
 
@@ -260,8 +260,8 @@ mod input {
             self.offset
         }
 
-        pub fn length_size(&self) -> LengthSize {
-            self.length_size
+        pub fn integer_size(&self) -> VarIntSize {
+            self.integer_size
         }
 
         pub fn error(&self, error: ErrorKind) -> Error {
@@ -291,7 +291,7 @@ mod input {
             }
         }
 
-        fn read_length_one(&mut self) -> ParseResult<Option<usize>> {
+        fn read_integer_one(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = 0u8;
             Ok(if self.read(std::slice::from_mut(&mut buffer))? == 1 {
                 Some(usize::from(buffer))
@@ -300,7 +300,7 @@ mod input {
             })
         }
 
-        fn read_length_two(&mut self) -> ParseResult<Option<usize>> {
+        fn read_integer_two(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = [0u8; 2];
             Ok(if self.read(&mut buffer)? == 2 {
                 Some(usize::from(u16::from_le_bytes(buffer)))
@@ -309,28 +309,28 @@ mod input {
             })
         }
 
-        fn read_length_four(&mut self) -> ParseResult<Option<usize>> {
+        fn read_integer_four(&mut self) -> ParseResult<Option<usize>> {
             let mut buffer = [0u8; 4];
             if self.read(&mut buffer)? == 4 {
                 let value = u32::from_le_bytes(buffer);
                 usize::try_from(value)
-                    .map_err(|_| self.error(ErrorKind::LengthTooLarge(value)))
+                    .map_err(|_| self.error(ErrorKind::IntegerTooLarge(value)))
                     .map(Some)
             } else {
                 Ok(None)
             }
         }
 
-        fn select_length_parser(size: LengthSize) -> LengthIntegerParser<R> {
+        fn select_integer_parser(size: VarIntSize) -> IntegerParser<R> {
             match size {
-                LengthSize::One => Self::read_length_one,
-                LengthSize::Two => Self::read_length_two,
-                LengthSize::Four => Self::read_length_four,
+                VarIntSize::One => Self::read_integer_one,
+                VarIntSize::Two => Self::read_integer_two,
+                VarIntSize::Four => Self::read_integer_four,
             }
         }
 
-        pub fn read_length<E: FnOnce() -> ErrorKind>(&mut self, missing_error: E) -> ParseResult<usize> {
-            match (self.length_parser)(self) {
+        pub fn read_integer<E: FnOnce() -> ErrorKind>(&mut self, missing_error: E) -> ParseResult<usize> {
+            match (self.integer_parser)(self) {
                 Ok(Some(length)) => Ok(length),
                 Ok(None) => Err(self.error(missing_error())),
                 Err(error) => Err(error),
@@ -342,17 +342,17 @@ mod input {
             missing_size: S,
             missing_count: C,
         ) -> ParseResult<(usize, usize)> {
-            let size = self.read_length(missing_size)?;
+            let size = self.read_integer(missing_size)?;
             if size == 0 {
                 Ok((size, 0))
             } else {
-                Ok((size, self.read_length(missing_count)?))
+                Ok((size, self.read_integer(missing_count)?))
             }
         }
 
-        pub fn set_length_size(&mut self, size: LengthSize) {
-            self.length_size = size;
-            self.length_parser = Self::select_length_parser(size);
+        pub fn set_integer_size(&mut self, size: VarIntSize) {
+            self.integer_size = size;
+            self.integer_parser = Self::select_integer_parser(size);
         }
 
         pub fn parse_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
@@ -363,19 +363,19 @@ mod input {
         ) -> ParseResult<T> {
             let mut buffer = pool.rent_with_length(length);
             let start_offset = self.offset;
-            let length_size = self.length_size;
+            let integer_size = self.integer_size;
             self.read_exact(&mut buffer)?;
             parser(Wrapper {
                 source: buffer.as_slice(),
                 offset: start_offset,
-                length_size,
-                length_parser: Wrapper::select_length_parser(length_size),
+                integer_size,
+                integer_parser: Wrapper::select_integer_parser(integer_size),
             })
         }
 
         pub fn read_identifier(&mut self) -> ParseResult<Identifier> {
             let length =
-                self.read_length(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
+                self.read_integer(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
 
             let mut buffer = vec![0u8; length];
             self.read_exact(buffer.as_mut_slice())?;
@@ -429,8 +429,8 @@ mod input {
                 parser(Wrapper {
                     source: contents,
                     offset: start_offset,
-                    length_size: self.length_size,
-                    length_parser: self.length_parser,
+                    integer_size: self.integer_size,
+                    integer_parser: self.integer_parser,
                 })
             } else {
                 Err(self.error(error(actual_length)))
@@ -443,7 +443,7 @@ mod input {
             f.debug_struct("Wrapper")
                 .field("source", &self.source)
                 .field("offset", &self.offset)
-                .field("length_size", &self.length_size)
+                .field("integer_size", &self.integer_size)
                 .finish()
         }
     }
@@ -490,18 +490,18 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
         };
 
-        let length_size = result!(binary::LengthSize::try_from(get_information_byte(2, || {
-            ErrorKind::MissingLengthSize
+        let integer_size = result!(binary::VarIntSize::try_from(get_information_byte(2, || {
+            ErrorKind::MissingIntegerSize
         })?));
 
-        src.set_length_size(length_size);
+        src.set_integer_size(integer_size);
     }
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
     let buffer_pool: &buffer::Pool = &buffer_pool;
 
     let module_identifer = {
-        let header_size = src.read_length(|| ErrorKind::MissingHeaderSize)?;
+        let header_size = src.read_integer(|| ErrorKind::MissingHeaderSize)?;
 
         if header_size == 0 {
             error!(ErrorKind::MissingModuleHeader);
@@ -509,10 +509,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
         src.parse_buffer(buffer_pool, header_size, |mut src| {
             Ok(Arc::new(module::ModuleIdentifier::new(src.read_identifier()?, {
-                let length = src.read_length(|| ErrorKind::MissingModuleVersionLength)?;
+                let length = src.read_integer(|| ErrorKind::MissingModuleVersionLength)?;
                 let mut numbers = Vec::with_capacity(length);
                 src.read_many_to_vec(length, &mut numbers, |src, index| {
-                    src.read_length(|| MissingModuleVersionNumberError { index }.into())
+                    src.read_integer(|| MissingModuleVersionNumberError { index }.into())
                 })?;
                 numbers.into_boxed_slice()
             })))
@@ -586,18 +586,18 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut signatures = Vec::with_capacity(count);
             src.read_many_to_vec(count, &mut signatures, |src, _| {
-                let return_type_count = src.read_length(|| ErrorKind::MissingFunctionSignatureReturnTypeCount)?;
-                let parameter_count = src.read_length(|| ErrorKind::MissingFunctionSignatureParameterCount)?;
+                let return_type_count = src.read_integer(|| ErrorKind::MissingFunctionSignatureReturnTypeCount)?;
+                let parameter_count = src.read_integer(|| ErrorKind::MissingFunctionSignatureParameterCount)?;
 
                 let mut return_types = Vec::with_capacity(return_type_count);
                 src.read_many_to_vec(return_type_count, &mut return_types, |src, index| {
-                    get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureReturnType { index })?)
+                    get_type_signature(src.read_integer(|| ErrorKind::MissingFunctionSignatureReturnType { index })?)
                         .map_err(|error| src.error(error))
                 })?;
 
                 let mut parameter_types = Vec::with_capacity(parameter_count);
                 src.read_many_to_vec(parameter_count, &mut parameter_types, |src, index| {
-                    get_type_signature(src.read_length(|| ErrorKind::MissingFunctionSignatureParameter { index })?)
+                    get_type_signature(src.read_integer(|| ErrorKind::MissingFunctionSignatureParameter { index })?)
                         .map_err(|error| src.error(error))
                 })?;
 
@@ -620,7 +620,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut arrays = Vec::with_capacity(count);
             src.read_many_to_vec(count, &mut arrays, |src, index| {
-                let length = src.read_length(|| ErrorKind::MissingDataArrayLength { index })?;
+                let length = src.read_integer(|| ErrorKind::MissingDataArrayLength { index })?;
                 let mut data = buffer_pool.rent_with_length(length);
 
                 let actual_length = src.read(&mut data)?;
@@ -643,15 +643,15 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         src.parse_buffer(buffer_pool, byte_size, |mut src| {
             let mut blocks = Vec::with_capacity(count);
             src.read_many_to_vec(count, &mut blocks, |src, block_index| {
-                let input_count = src.read_length(|| ErrorKind::MissingBlockInputCount { index: block_index })?;
-                let result_count = src.read_length(|| ErrorKind::MissingBlockResultCount { index: block_index })?;
-                let temporary_count = src.read_length(|| ErrorKind::MissingBlockTemporaryCount { index: block_index })?;
+                let input_count = src.read_integer(|| ErrorKind::MissingBlockInputCount { index: block_index })?;
+                let result_count = src.read_integer(|| ErrorKind::MissingBlockResultCount { index: block_index })?;
+                let temporary_count = src.read_integer(|| ErrorKind::MissingBlockTemporaryCount { index: block_index })?;
 
                 macro_rules! register_types {
                     ($vector_name: ident, $register_count: ident) => {
                         let mut $vector_name = Vec::with_capacity($register_count);
                         src.read_many_to_vec($register_count, &mut $vector_name, |src, _| {
-                            get_type_signature(src.read_length(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
+                            get_type_signature(src.read_integer(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
                                 .map_err(|error| src.error(error.into()))
                         })?;
                     };
@@ -661,8 +661,8 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 register_types!(result_register_types, result_count);
                 register_types!(temporary_register_types, temporary_count);
 
-                let instruction_size = src.read_length(|| ErrorKind::MissingCodeBlockInstructionSize { block_index })?;
-                let instruction_count = src.read_length(|| ErrorKind::MissingCodeBlockInstructionCount { block_index })?;
+                let instruction_size = src.read_integer(|| ErrorKind::MissingCodeBlockInstructionSize { block_index })?;
+                let instruction_count = src.read_integer(|| ErrorKind::MissingCodeBlockInstructionCount { block_index })?;
 
                 if instruction_size == 0 || instruction_count == 0 {
                     return Err(src.error(ErrorKind::EmptyCodeBlockInstructions { block_index }));
@@ -693,8 +693,8 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             }))
                         };
 
-                        let read_length = |stream: Stream, error: fn() -> InvalidInstructionKind| {
-                            stream.read_length(|| {
+                        let read_integer = |stream: Stream, error: fn() -> InvalidInstructionKind| {
+                            stream.read_integer(|| {
                                 ErrorKind::InvalidInstruction(InvalidInstructionError {
                                     block_index,
                                     instruction_index,
@@ -758,7 +758,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                                     _ => unreachable!("unsupported integer constant size"),
                                 })
                             } else {
-                                Ok(instruction_set::Value::IndexedRegister(read_length(stream, || {
+                                Ok(instruction_set::Value::IndexedRegister(read_integer(stream, || {
                                     InvalidInstructionKind::MissingRegisterIndex
                                 })?))
                             }
@@ -782,7 +782,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                             Opcode::Nop => Instruction::Nop,
                             Opcode::Break => Instruction::Break,
                             Opcode::Ret => {
-                                let return_count = read_length(stream, || InvalidInstructionKind::MissingReturnCount)?;
+                                let return_count = read_integer(stream, || InvalidInstructionKind::MissingReturnCount)?;
                                 let mut return_values = Vec::with_capacity(return_count);
                                 stream
                                     .read_many_to_vec(return_count, &mut return_values, |stream, _| instruction_value(stream))?;
@@ -795,7 +795,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 })?;
 
                 Ok(Arc::new(crate::block::Block::new_unchecked(
-                    src.length_size(),
+                    src.integer_size(),
                     input_register_types.into(),
                     result_register_types.into(),
                     temporary_register_types.into(),
@@ -812,7 +812,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
     macro_rules! ignore_length {
         ($message: literal) => {{
-            let length = src.read_length(|| todo!("missing length"))?;
+            let length = src.read_integer(|| todo!("missing length"))?;
             if length != 0 {
                 todo!($message)
             }
@@ -845,10 +845,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     let mut function_definitions = Vec::new();
 
     {
-        let byte_size = src.read_length(|| ErrorKind::MissingDefinitionSize)?;
+        let byte_size = src.read_integer(|| ErrorKind::MissingDefinitionSize)?;
         if byte_size > 0 {
             src.parse_buffer(buffer_pool, byte_size, |mut definitions| {
-                let function_count = definitions.read_length(|| ErrorKind::MissingFunctionDefinitionCount)?;
+                let function_count = definitions.read_integer(|| ErrorKind::MissingFunctionDefinitionCount)?;
                 function_definitions.reserve_exact(function_count);
                 symbol_lookup.lookup.reserve(function_count);
                 definitions.read_many_to_vec(function_count, &mut function_definitions, |function, index| {
@@ -871,7 +871,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     };
 
                     let signature =
-                        get_function_signature(function.read_length(|| ErrorKind::MissingFunctionDefinitionSignature { index })?)
+                        get_function_signature(function.read_integer(|| ErrorKind::MissingFunctionDefinitionSignature { index })?)
                             .map_err(|error| function.error(error))?;
 
                     let symbol = function.read_identifier()?;
@@ -883,7 +883,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         todo!("parse foreign func")
                     } else {
                         function::Body::Defined(
-                            get_code_block(function.read_length(|| ErrorKind::MissingFunctionDefinitionEntryBlock { index })?)
+                            get_code_block(function.read_integer(|| ErrorKind::MissingFunctionDefinitionEntryBlock { index })?)
                                 .map_err(|error| function.error(error))?,
                         )
                     };
@@ -897,10 +897,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     Ok(definition)
                 })?;
 
-                definitions.read_length(|| todo!())?; // TODO: Parse struct definitions.
-                definitions.read_length(|| todo!())?; // TODO: Parse global definitions.
-                definitions.read_length(|| todo!())?; // TODO: Parse ec definitions.
-                definitions.read_length(|| todo!())?; // TODO: Parse annotations definitions.
+                definitions.read_integer(|| todo!())?; // TODO: Parse struct definitions.
+                definitions.read_integer(|| todo!())?; // TODO: Parse global definitions.
+                definitions.read_integer(|| todo!())?; // TODO: Parse ec definitions.
+                definitions.read_integer(|| todo!())?; // TODO: Parse annotations definitions.
                 Ok(())
             })?;
         }
@@ -916,7 +916,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     Ok(module::Definition {
         format_version,
         contents: None,
-        length_size: src.length_size(),
+        integer_size: src.integer_size(),
         identifier: module_identifer,
         symbols: symbol_lookup.lookup,
         function_definitions,
