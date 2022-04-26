@@ -870,9 +870,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                         module::Export::No
                     };
 
-                    let signature =
-                        get_function_signature(function.read_integer(|| ErrorKind::MissingFunctionDefinitionSignature { index })?)
-                            .map_err(|error| function.error(error))?;
+                    let signature = get_function_signature(
+                        function.read_integer(|| ErrorKind::MissingFunctionDefinitionSignature { index })?,
+                    )
+                    .map_err(|error| function.error(error))?;
 
                     let symbol = function.read_identifier()?;
 

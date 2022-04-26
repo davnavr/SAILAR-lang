@@ -5,7 +5,7 @@ mod num;
 pub mod buffer;
 pub mod signature;
 
-pub use num::{VarIntSize, InvalidVarIntSize};
+pub use num::{InvalidVarIntSize, VarIntSize};
 
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";

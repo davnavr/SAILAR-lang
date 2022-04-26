@@ -1,7 +1,7 @@
 //! Reading and writing of SAILAR modules.
 
 use crate::binary::buffer;
-use crate::binary::{VarIntSize, RawModule};
+use crate::binary::{RawModule, VarIntSize};
 use crate::function;
 use crate::identifier::{Id, Identifier};
 use std::collections::hash_map;
@@ -329,11 +329,10 @@ impl Definition {
     /// let format_version = module.format_version();
     /// assert_eq!(&[ format_version.major, format_version.minor ], &contents[6..8]);
     /// assert_eq!(u8::from(sailar::binary::LengthSize::One), contents[8]);
-    /// assert_eq!(12, contents[9]);
-    /// assert_eq!(7u8, contents[10]); // Module name length
-    /// assert_eq!(b"Testing", &contents[11..18]); // Module name
-    /// assert_eq!(3u8, contents[18]); // Module version number count
-    /// assert_eq!(&[ 1, 2, 3 ], &contents[19..22]); // Module version numbers
+    /// assert_eq!(7u8, contents[9]); // Module name length
+    /// assert_eq!(b"Testing", &contents[10..17]); // Module name
+    /// assert_eq!(3u8, contents[17]); // Module version number count
+    /// assert_eq!(&[ 1, 2, 3 ], &contents[18..21]); // Module version numbers
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn raw_contents(&mut self, buffer_pool: Option<&buffer::Pool>) -> &RawModule {
