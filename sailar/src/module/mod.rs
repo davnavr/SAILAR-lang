@@ -364,15 +364,15 @@ impl Definition {
 
     /// Parses a module contained a byte slice.
     #[inline]
-    pub fn from_slice(bytes: &[u8], buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
+    pub fn parse_from_slice(bytes: &[u8], buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
         Self::parse(bytes, buffer_pool)
     }
 
     /// Parses a module contained in the byte vector, and stores the bytes alongside the parsed [`Module`].
     ///
     /// The byte vector can be retrieved again by calling [`Definition::raw_contents()`].
-    pub fn from_vec(bytes: Vec<u8>, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
-        let mut module = Self::from_slice(&bytes, buffer_pool)?;
+    pub fn parse_from_vec(bytes: Vec<u8>, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
+        let mut module = Self::parse_from_slice(&bytes, buffer_pool)?;
         module.contents = Some(crate::binary::RawModule::from_vec(bytes));
         Ok(module)
     }
@@ -383,7 +383,16 @@ impl TryFrom<Vec<u8>> for Definition {
 
     #[inline]
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        Self::from_vec(bytes, None)
+        Self::parse_from_vec(bytes, None)
+    }
+}
+
+impl TryFrom<&[u8]> for Definition {
+    type Error = ParseError;
+
+    #[inline]
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        Self::parse_from_slice(bytes, None)
     }
 }
 

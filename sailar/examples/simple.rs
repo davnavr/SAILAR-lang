@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contents = module.raw_contents(Some(&pool));
     println!("{}", contents.hex_dump_to_string());
 
-    let parsed_module = sailar::ModuleDefinition::from_slice(&contents, Some(&pool))?;
+    let parsed_module = sailar::ModuleDefinition::parse_from_slice(&contents, Some(&pool))?;
     assert_eq!(module, parsed_module);
 
     println!("{:?}", &parsed_module);
