@@ -583,22 +583,6 @@ pub struct Block {
 }
 
 impl Block {
-    pub(crate) fn new_unchecked(
-        integer_size: VarIntSize,
-        input_types: Box<[type_system::Any]>,
-        result_types: Box<[type_system::Any]>,
-        temporary_types: Box<[type_system::Any]>,
-        instructions: Box<[Instruction]>,
-    ) -> Self {
-        Self {
-            integer_size,
-            input_types,
-            result_types,
-            temporary_types,
-            instructions,
-        }
-    }
-
     #[inline]
     pub(crate) fn integer_size(&self) -> VarIntSize {
         self.integer_size
