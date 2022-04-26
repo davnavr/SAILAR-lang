@@ -9,26 +9,15 @@ Offset|Name|Size (in bytes)|Notes
 `0`|Magic|`6`|The magic number that all module files must begin with, which is the ASCII string `SAILAR`.
 `6`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
 `7`|Minor Format Version|`1`|The minor version of the format.
-`8`|[Length Size](#length-size)|`1`
-`9`|[Module Header](#module-header)|?
-|?|[Module Identifiers](#module-identifiers)|?
-|?|[Type Signatures](#type-signatures)|?
-|?|[Function Signatures](#function-signatures)|?
-|?|[Data](#module-data)|?
-|?|[Code Blocks](#code)|?
-|?|[Module Imports](#module-imports)|?
-|?|[Module Definitions](#module-definitions)|?
-|?|[Struct Instantiations](#struct-instantiations)|?
-|?|[Function Instantiations](#function-instantiations)|?
-|?|[Entry Point](#entry-point)|?
-|?|[Module Initializer](#module-initializer)|?
-|?|[Namespaces](#namespaces)|?
-|?|[Debugging Information]|?
+`8`|[Integer Size](#integer-size)|`1`
+`9`|[Module Identifier](#module-identifier)|`H`|The name and version of the module.
+`9 + H`|Record Count|`L`|The number of records `R` that follow.
+`9 + H + L`|[Records](#record)|?|
 
-## Length Size
-The length size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
+## Integer Size
+The Integer size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
 
-Value|Length Integer Size (in bytes)
+Value|Integer Size (in bytes)
 ---|---
 `0`|`1`
 `1`|`2`
@@ -39,7 +28,7 @@ Identifiers are valid UTF-8 strings that are length-prefixed and not null-termin
 
 Offset|Name|Notes
 ---|---|---
-`0`|Length|A non-zero [length integer](#length-size) indicating the length of the identifier, in bytes.
+`0`|Length|A non-zero [integer](#integer-size) indicating the length of the identifier, in bytes.
 `L`|Characters|
 
 ## Symbols
@@ -55,14 +44,18 @@ Offset|Name|Size (in bytes)|Notes
 `L + N`|Version Number Count|`L`|The number `V` of version numbers to follow.
 `2L + N`|Version Numbers|`L * V`|An array of [length integers](#length-size) specifying the version of the module.
 
-## Module Header
-Contains information that describes the module.
+# Record
+Each module in SAILAR is broken into a series of records, which describe the content of the module.
+
+Each record begins with the following fields:
 
 Offset|Name|Size|Notes
 ---|---|---|---
-`0`|Size|`L`|A non-zero [length integer](#length-size) indicating the total length of the values of each field to follow, in bytes.
-`L`|[Identifier](#module-identifier)|`I = 2L + N + V * L`|Specifies a name containing `N` characters and `V` version numbers for the module.
-`I`|Optional Field Count|`L`|A [length integer](#length-size) indicating an additional number of fields to follow. As no optional fields are currently defined, this should be set to zero.
+`0`|Type|`1`|Indicates what kind of content is contained in this record.
+`1`|Content Size|`L`|A non-zero [integer](#integer-size) indicating the length `S` of the record's content, in bytes.
+`L + 1`|Content|`S`|The content of the record.
+
+# DEPRECATED BELOW
 
 ## Module Identifiers
 Provides a way to use duplicated [identifiers](#identifier) without having to copy and paste their contents all over the module. Individual identifiers are referred to by [length-sized indices](#length-size) starting at `0`.
