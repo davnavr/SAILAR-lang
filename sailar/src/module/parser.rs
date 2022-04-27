@@ -28,20 +28,6 @@ impl Display for InvalidMagicError {
 
 impl std::error::Error for InvalidMagicError {}
 
-/// Used when a module version number could not be parsed since the end of the file was reached.
-#[derive(Clone, Debug)]
-pub struct MissingModuleVersionNumberError {
-    index: usize,
-}
-
-impl Display for MissingModuleVersionNumberError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "expected {}th module version number but got EOF", self.index + 1)
-    }
-}
-
-impl std::error::Error for MissingModuleVersionNumberError {}
-
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum InvalidInstructionKind {
     #[error("expected overflow behavior byte, but reached end")]
@@ -90,106 +76,18 @@ impl InvalidInstructionError {
 pub enum ErrorKind {
     #[error(transparent)]
     InvalidMagic(#[from] InvalidMagicError),
-    #[error("expected format version but got EOF")]
-    MissingFormatVersion,
-    #[error("expected integer size value but got EOF")]
-    MissingIntegerSize,
+    #[error("expected {0} but reached end")]
+    Missing(&'static str),
     #[error(transparent)]
     InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("the length value {0} is too large and cannot be used")]
     IntegerTooLarge(u32),
-    #[error("expected size of module header but got EOF")]
-    MissingHeaderSize,
-    #[error("expected module header field count but reached end")]
-    MissingHeaderFieldCount,
-    #[error("the module header size cannot be empty")]
-    MissingModuleHeader,
     #[error("invalid identifier, {0}")]
     InvalidIdentifier(#[from] identifier::ParseError),
-    #[error("expected module version length but reached end")]
-    MissingModuleVersionLength,
     #[error(transparent)]
-    MissingModuleVersionNumber(#[from] MissingModuleVersionNumberError),
-    #[error("expected byte size of identifiers but got EOF")]
-    MissingIdentifierSize,
-    #[error("expected identifier count but got EOF")]
-    MissingIdentifierCount,
-    #[error("identifier at index {index} does not exist")]
-    IdentifierNotFound { index: usize },
-    #[error("expected byte size of type signatures but got EOF")]
-    MissingTypeSignatureSize,
-    #[error("expected type signature count but got EOF")]
-    MissingTypeSignatureCount,
-    #[error("expected type signature at index {index} but reached end")]
-    MissingTypeSignature { index: usize },
-    #[error(transparent)]
-    InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
-    #[error("expected byte size of function signatures but got EOF")]
-    MissingFunctionSignatureSize,
-    #[error("expected function signature count but got EOF")]
-    MissingFunctionSignatureCount,
-    #[error("expected return type count in function signature but got EOF")]
-    MissingFunctionSignatureReturnTypeCount,
-    #[error("expected parameter count in function signature but got EOF")]
-    MissingFunctionSignatureParameterCount,
-    #[error("type signature at index {index} does not exist")]
-    TypeSignatureNotFound { index: usize },
-    #[error("expected function signature return type at index {index} but got EOF")]
-    MissingFunctionSignatureReturnType { index: usize },
-    #[error("expected function signature parameter at index {index} but got EOF")]
-    MissingFunctionSignatureParameter { index: usize },
-    #[error("function signature at index {index} does not exist")]
-    FunctionSignatureNotFound { index: usize },
-    #[error("expected total byte size for data but got EOF")]
-    MissingDataSize,
-    #[error("expected data array count but got EOF")]
-    MissingDataCount,
-    #[error("expected byte length for data array at index {index} but reached end")]
-    MissingDataArrayLength { index: usize },
-    #[error("expected data array of length {expected_length} bytes but actual was {actual_length}")]
-    IncompleteDataArray { expected_length: usize, actual_length: usize },
-    #[error("expected byte length for code blocks but got EOF")]
-    MissingCodeSize,
-    #[error("expected code block count but got EOF")]
-    MissingCodeBlockCount,
-    #[error("expected input count for code block at index {index} but reached end")]
-    MissingBlockInputCount { index: usize },
-    #[error("expected result count for code block at index {index} but reached end")]
-    MissingBlockResultCount { index: usize },
-    #[error("expected temporary count for code block at index {index} but reached end")]
-    MissingBlockTemporaryCount { index: usize },
-    #[error("missing register type index for code block at index {block_index}")]
-    MissingCodeBlockRegisterType { block_index: usize },
-    #[error("expected byte size for instruction of code block at index {block_index}, but reached end")]
-    MissingCodeBlockInstructionSize { block_index: usize },
-    #[error("expected instruction count for code block at index {block_index}, but reached end")]
-    MissingCodeBlockInstructionCount { block_index: usize },
-    #[error("at least one instruction expected in code block at index {block_index}, but block was empty")]
-    EmptyCodeBlockInstructions { block_index: usize },
-    #[error(transparent)]
-    InvalidOpcode(#[from] crate::instruction_set::InvalidOpcodeError),
-    #[error(
-        "expected opcode byte for instruction {instruction_index} in code block {block_index}, but reached end of instructions"
-    )]
-    MissingOpcode { block_index: usize, instruction_index: usize },
-    #[error(transparent)]
-    InvalidInstruction(#[from] InvalidInstructionError),
-    #[error("expected byte size of module definitions, but got EOF")]
-    MissingDefinitionSize,
-    #[error("a definition corresponding to the symbol \"{0}\" already exists")]
-    DuplicateSymbol(Identifier),
-    #[error("expected function definition count, but reached end")]
-    MissingFunctionDefinitionCount,
-    #[error("expected flag byte for function definition at index {index}, but reached end")]
-    MissingFunctionDefinitionFlags { index: usize },
-    #[error("function definition at index {index} has a flag value of {value:#02X} which is invalid")]
-    InvalidFunctionDefinitionFlags { index: usize, value: u8 },
-    #[error("function definition at index {index} is missing a function signature")]
-    MissingFunctionDefinitionSignature { index: usize },
-    #[error("function definition at index {index} is missing its entry block")]
-    MissingFunctionDefinitionEntryBlock { index: usize },
-    #[error("code block at index {index} does not exist")]
-    CodeBlockNotFound { index: usize },
+    InvalidRecordType(#[from] binary::InvalidRecordTypeError),
+    #[error("nested array records are not allowed")]
+    NestedArrayRecord,
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -234,8 +132,7 @@ pub type ParseResult<T> = Result<T, Error>;
 
 mod input {
     use super::{Error, ErrorKind, ParseResult};
-    use crate::binary::{buffer, VarIntSize};
-    use crate::identifier::{self, Identifier};
+    use crate::binary::VarIntSize;
 
     type IntegerParser<R> = fn(&mut Wrapper<R>) -> ParseResult<Option<usize>>;
 
@@ -355,31 +252,30 @@ mod input {
             self.integer_parser = Self::select_integer_parser(size);
         }
 
-        pub fn parse_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
+        pub fn read_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
             &mut self,
-            pool: &buffer::Pool,
-            length: usize, //buffer: &[u8],
+            mut buffer: &mut [u8],
             parser: P,
         ) -> ParseResult<T> {
-            let mut buffer = pool.rent_with_length(length);
             let start_offset = self.offset;
             let integer_size = self.integer_size;
             self.read_exact(&mut buffer)?;
             parser(Wrapper {
-                source: buffer.as_slice(),
+                source: buffer,
                 offset: start_offset,
                 integer_size,
                 integer_parser: Wrapper::select_integer_parser(integer_size),
             })
         }
 
-        pub fn read_identifier(&mut self) -> ParseResult<Identifier> {
-            let length =
-                self.read_integer(|| identifier::ParseError::InvalidIdentifier(identifier::InvalidError::Empty).into())?;
+        pub fn read_identifier(&mut self) -> ParseResult<crate::Identifier> {
+            let length = self.read_integer(|| {
+                crate::identifier::ParseError::InvalidIdentifier(crate::identifier::InvalidError::Empty).into()
+            })?;
 
             let mut buffer = vec![0u8; length];
             self.read_exact(buffer.as_mut_slice())?;
-            Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
+            crate::Identifier::from_byte_slice(&buffer).map_err(|error| self.error(error.into()))
         }
 
         pub fn read_many<P: FnMut(&mut Self, usize) -> ParseResult<()>>(
@@ -448,27 +344,28 @@ mod input {
         }
     }
 }
+macro_rules! error {
+    ($src: expr, $value: expr) => {
+        return Err($src.error($value.into()))
+    };
+}
+
+macro_rules! result {
+    ($src: expr, $value: expr) => {
+        $value.map_err(|error| $src.error(error.into()))?
+    };
+}
 
 pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> ParseResult<module::Definition> {
-    let mut src = input::Wrapper::new(source);
+    use input::Wrapper;
 
-    macro_rules! error {
-        ($value: expr) => {
-            return Err(src.error($value.into()));
-        };
-    }
-
-    macro_rules! result {
-        ($value: expr) => {
-            $value.map_err(|error| src.error(error.into()))?
-        };
-    }
+    let mut src = Wrapper::new(source);
 
     {
         let mut magic_buffer = [0u8; binary::MAGIC.len()];
         let magic = src.fill(&mut magic_buffer)?;
         if magic != binary::MAGIC {
-            error!(InvalidMagicError { actual: magic.into() });
+            error!(src, InvalidMagicError { actual: magic.into() });
         }
     }
 
@@ -486,435 +383,73 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         };
 
         format_version = module::FormatVersion {
-            major: get_information_byte(0, || ErrorKind::MissingFormatVersion)?,
-            minor: get_information_byte(1, || ErrorKind::MissingFormatVersion)?,
+            major: get_information_byte(0, || ErrorKind::Missing("major format version"))?,
+            minor: get_information_byte(1, || ErrorKind::Missing("minor format version"))?,
         };
 
-        let integer_size = result!(binary::VarIntSize::try_from(get_information_byte(2, || {
-            ErrorKind::MissingIntegerSize
-        })?));
+        let integer_size = result!(
+            src,
+            binary::VarIntSize::try_from(get_information_byte(2, || { ErrorKind::Missing("integer size") })?)
+        );
 
         src.set_integer_size(integer_size);
     }
 
+    let module_identifer = Arc::new(module::ModuleIdentifier::new(src.read_identifier()?, {
+        let length = src.read_integer(|| ErrorKind::Missing("module version length"))?;
+        let mut numbers = Vec::with_capacity(length);
+        src.read_many_to_vec(length, &mut numbers, |src, _| {
+            src.read_integer(|| ErrorKind::Missing("module version number"))
+        })?;
+        numbers.into_boxed_slice()
+    }));
+
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
-    let buffer_pool: &buffer::Pool = &buffer_pool;
+    let record_count = src.read_integer(|| ErrorKind::Missing("record count"))?;
 
-    let module_identifer = {
-        let header_size = src.read_integer(|| ErrorKind::MissingHeaderSize)?;
+    let mut identifiers = Vec::default();
 
-        if header_size == 0 {
-            error!(ErrorKind::MissingModuleHeader);
-        }
+    src.read_many(record_count, |src, _| {
+        use binary::RecordType;
 
-        src.parse_buffer(buffer_pool, header_size, |mut src| {
-            Ok(Arc::new(module::ModuleIdentifier::new(src.read_identifier()?, {
-                let length = src.read_integer(|| ErrorKind::MissingModuleVersionLength)?;
-                let mut numbers = Vec::with_capacity(length);
-                src.read_many_to_vec(length, &mut numbers, |src, index| {
-                    src.read_integer(|| MissingModuleVersionNumberError { index }.into())
-                })?;
-                numbers.into_boxed_slice()
-            })))
-        })?
-    };
-
-    let identifiers: Vec<Identifier> = {
-        let (byte_size, count) =
-            src.read_size_and_count(|| ErrorKind::MissingIdentifierSize, || ErrorKind::MissingIdentifierCount)?;
-
-        src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let mut identifiers = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut identifiers, |src, _| src.read_identifier())?;
-            Ok(identifiers)
-        })?
-    };
-
-    let get_identifier = |index| -> Result<&crate::identifier::Id, _> {
-        identifiers
-            .get(index)
-            .map(Identifier::as_id)
-            .ok_or(ErrorKind::IdentifierNotFound { index })
-    };
-
-    let type_signatures: Vec<type_system::Any> = {
-        let (byte_size, count) = src.read_size_and_count(
-            || ErrorKind::MissingTypeSignatureSize,
-            || ErrorKind::MissingTypeSignatureCount,
-        )?;
-
-        src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let mut signatures = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut signatures, |src, index| {
-                let mut tag_value = 0u8;
-
-                if src.read(std::slice::from_mut(&mut tag_value))? == 0 {
-                    return Err(src.error(ErrorKind::MissingTypeSignature { index }));
-                }
-
-                let tag = TypeCode::try_from(tag_value).map_err(|bad| src.error(bad.into()))?;
-                match tag {
-                    TypeCode::U8 => Ok(type_system::FixedInt::U8.into()),
-                    TypeCode::U16 => Ok(type_system::FixedInt::U16.into()),
-                    TypeCode::U32 => Ok(type_system::FixedInt::U32.into()),
-                    TypeCode::U64 => Ok(type_system::FixedInt::U64.into()),
-                    TypeCode::S8 => Ok(type_system::FixedInt::S8.into()),
-                    TypeCode::S16 => Ok(type_system::FixedInt::S16.into()),
-                    TypeCode::S32 => Ok(type_system::FixedInt::S32.into()),
-                    TypeCode::S64 => Ok(type_system::FixedInt::S64.into()),
-                    TypeCode::F32 => Ok(type_system::Real::F32.into()),
-                    TypeCode::F64 => Ok(type_system::Real::F64.into()),
-                }
-            })?;
-            Ok(signatures)
-        })?
-    };
-
-    let get_type_signature = |index| {
-        type_signatures
-            .get(index)
-            .cloned()
-            .ok_or(ErrorKind::TypeSignatureNotFound { index })
-    };
-
-    let function_signatures: Vec<Arc<function::Signature>> = {
-        let (byte_size, count) = src.read_size_and_count(
-            || ErrorKind::MissingFunctionSignatureSize,
-            || ErrorKind::MissingFunctionSignatureCount,
-        )?;
-
-        src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let mut signatures = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut signatures, |src, _| {
-                let return_type_count = src.read_integer(|| ErrorKind::MissingFunctionSignatureReturnTypeCount)?;
-                let parameter_count = src.read_integer(|| ErrorKind::MissingFunctionSignatureParameterCount)?;
-
-                let mut return_types = Vec::with_capacity(return_type_count);
-                src.read_many_to_vec(return_type_count, &mut return_types, |src, index| {
-                    get_type_signature(src.read_integer(|| ErrorKind::MissingFunctionSignatureReturnType { index })?)
-                        .map_err(|error| src.error(error))
-                })?;
-
-                let mut parameter_types = Vec::with_capacity(parameter_count);
-                src.read_many_to_vec(parameter_count, &mut parameter_types, |src, index| {
-                    get_type_signature(src.read_integer(|| ErrorKind::MissingFunctionSignatureParameter { index })?)
-                        .map_err(|error| src.error(error))
-                })?;
-
-                Ok(Arc::new(function::Signature::new(return_types, parameter_types)))
-            })?;
-            Ok(signatures)
-        })?
-    };
-
-    let get_function_signature = |index| -> Result<Arc<_>, _> {
-        function_signatures
-            .get(index)
-            .cloned()
-            .ok_or(ErrorKind::FunctionSignatureNotFound { index })
-    };
-
-    let _data_arrays: Vec<Arc<[u8]>> = {
-        let (byte_size, count) = src.read_size_and_count(|| ErrorKind::MissingDataSize, || ErrorKind::MissingDataCount)?;
-
-        src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let mut arrays = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut arrays, |src, index| {
-                let length = src.read_integer(|| ErrorKind::MissingDataArrayLength { index })?;
-                let mut data = buffer_pool.rent_with_length(length);
-
-                let actual_length = src.read(&mut data)?;
-                if actual_length != length {
-                    return Err(src.error(ErrorKind::IncompleteDataArray {
-                        expected_length: length,
-                        actual_length,
-                    }));
-                }
-
-                Ok(Arc::<[u8]>::from(data.as_slice()))
-            })?;
-            Ok(arrays)
-        })?
-    };
-
-    let code_blocks: Vec<Arc<crate::block::Block>> = {
-        let (byte_size, count) = src.read_size_and_count(|| ErrorKind::MissingCodeSize, || ErrorKind::MissingCodeBlockCount)?;
-
-        src.parse_buffer(buffer_pool, byte_size, |mut src| {
-            let mut blocks = Vec::with_capacity(count);
-            src.read_many_to_vec(count, &mut blocks, |src, block_index| {
-                let input_count = src.read_integer(|| ErrorKind::MissingBlockInputCount { index: block_index })?;
-                let result_count = src.read_integer(|| ErrorKind::MissingBlockResultCount { index: block_index })?;
-                let temporary_count = src.read_integer(|| ErrorKind::MissingBlockTemporaryCount { index: block_index })?;
-
-                macro_rules! register_types {
-                    ($vector_name: ident, $register_count: ident) => {
-                        let mut $vector_name = Vec::with_capacity($register_count);
-                        src.read_many_to_vec($register_count, &mut $vector_name, |src, _| {
-                            get_type_signature(src.read_integer(|| ErrorKind::MissingCodeBlockRegisterType { block_index })?)
-                                .map_err(|error| src.error(error.into()))
-                        })?;
-                    };
-                }
-
-                register_types!(input_register_types, input_count);
-                register_types!(result_register_types, result_count);
-                register_types!(temporary_register_types, temporary_count);
-
-                let instruction_size = src.read_integer(|| ErrorKind::MissingCodeBlockInstructionSize { block_index })?;
-                let instruction_count = src.read_integer(|| ErrorKind::MissingCodeBlockInstructionCount { block_index })?;
-
-                if instruction_size == 0 || instruction_count == 0 {
-                    return Err(src.error(ErrorKind::EmptyCodeBlockInstructions { block_index }));
-                }
-
-                let mut instructions = Vec::with_capacity(instruction_count);
-
-                // NOTE: Since input is a slice, can avoid allocating a buffer here.
-                src.parse_buffer(buffer_pool, instruction_size, |mut src| {
-                    src.read_many_to_vec(instruction_count, &mut instructions, |stream, instruction_index| {
-                        use crate::instruction_set::{self, Instruction, Opcode};
-
-                        let mut opcode_value = 0u8;
-                        if stream.read(std::slice::from_mut(&mut opcode_value))? == 0 {
-                            return Err(stream.error(ErrorKind::MissingOpcode {
-                                block_index,
-                                instruction_index,
-                            }));
-                        }
-
-                        type Stream<'a, 'b> = &'b mut input::Wrapper<&'a [u8]>;
-
-                        let invalid_instruction = |stream: Stream, error: InvalidInstructionKind| {
-                            stream.error(ErrorKind::InvalidInstruction(InvalidInstructionError {
-                                block_index,
-                                instruction_index,
-                                kind: error,
-                            }))
-                        };
-
-                        let read_integer = |stream: Stream, error: fn() -> InvalidInstructionKind| {
-                            stream.read_integer(|| {
-                                ErrorKind::InvalidInstruction(InvalidInstructionError {
-                                    block_index,
-                                    instruction_index,
-                                    kind: error(),
-                                })
-                            })
-                        };
-
-                        let instruction_value = |stream: Stream| -> ParseResult<instruction_set::Value> {
-                            let mut flag_value = 0u8;
-                            if stream.read(std::slice::from_mut(&mut flag_value))? == 0 {
-                                return Err(invalid_instruction(stream, InvalidInstructionKind::MissingValueFlag));
-                            }
-
-                            let flag = instruction_set::ValueFlags::from_bits(flag_value).ok_or_else(|| {
-                                invalid_instruction(stream, InvalidInstructionKind::InvalidValueFlag { value: flag_value })
-                            })?;
-
-                            if flag.contains(instruction_set::ValueFlags::CONSTANT) {
-                                if !flag.contains(instruction_set::ValueFlags::INTEGER) {
-                                    return Err(invalid_instruction(stream, InvalidInstructionKind::UnknownConstantKind));
-                                }
-
-                                let value_embedded = flag.contains(instruction_set::ValueFlags::INTEGER_EMBEDDED);
-
-                                macro_rules! sized_integer_value {
-                                    ($size: literal, $case: ident) => {{
-                                        let mut bytes = [0u8; $size];
-                                        stream.read_exact(&mut bytes)?;
-                                        instruction_set::Value::Constant(instruction_set::Constant::Integer(
-                                            instruction_set::ConstantInteger::$case(bytes),
-                                        ))
-                                    }};
-                                }
-
-                                macro_rules! embedded_integer_value {
-                                    ($integer_type: ty) => {{
-                                        let embedded_value: $integer_type =
-                                            if flag.contains(instruction_set::ValueFlags::INTEGER_EMBEDDED_ONE) {
-                                                1
-                                            } else {
-                                                0
-                                            };
-                                        instruction_set::Value::from(embedded_value)
-                                    }};
-                                }
-
-                                Ok(match (flag & instruction_set::ValueFlags::INTEGER_SIZE_MASK).bits() >> 2 {
-                                    0 if value_embedded => embedded_integer_value!(u8),
-                                    0 => {
-                                        let mut value = 0u8;
-                                        stream.read_exact(std::slice::from_mut(&mut value))?;
-                                        instruction_set::Value::from(value)
-                                    }
-                                    1 if value_embedded => embedded_integer_value!(u16),
-                                    1 => sized_integer_value!(2, I16),
-                                    2 if value_embedded => embedded_integer_value!(u32),
-                                    2 => sized_integer_value!(4, I32),
-                                    3 if value_embedded => embedded_integer_value!(u64),
-                                    3 => sized_integer_value!(8, I64),
-                                    _ => unreachable!("unsupported integer constant size"),
-                                })
-                            } else {
-                                Ok(instruction_set::Value::IndexedRegister(read_integer(stream, || {
-                                    InvalidInstructionKind::MissingRegisterIndex
-                                })?))
-                            }
-                        };
-
-                        let integer_arithmetic_operands = |stream: Stream| -> ParseResult<Box<_>> {
-                            let mut overflow_behavior_value = 0u8;
-                            stream.read_exact(std::slice::from_mut(&mut overflow_behavior_value))?;
-                            let overflow_behavior = instruction_set::OverflowBehavior::try_from(overflow_behavior_value)
-                                .map_err(|error| invalid_instruction(stream, error.into()))?;
-
-                            Ok(Box::new(instruction_set::IntegerArithmetic::new(
-                                overflow_behavior,
-                                instruction_value(stream)?,
-                                instruction_value(stream)?,
-                            )))
-                        };
-
-                        let opcode = Opcode::try_from(opcode_value).map_err(|error| stream.error(error.into()))?;
-                        Ok(match opcode {
-                            Opcode::Nop => Instruction::Nop,
-                            Opcode::Break => Instruction::Break,
-                            Opcode::Ret => {
-                                let return_count = read_integer(stream, || InvalidInstructionKind::MissingReturnCount)?;
-                                let mut return_values = Vec::with_capacity(return_count);
-                                stream
-                                    .read_many_to_vec(return_count, &mut return_values, |stream, _| instruction_value(stream))?;
-                                Instruction::Ret(return_values.into_boxed_slice())
-                            }
-                            Opcode::AddI => Instruction::AddI(integer_arithmetic_operands(stream)?),
-                            _ => todo!("unsupported opcode {:?} at offset {:#X}", opcode, stream.offset() - 1),
-                        })
-                    })
-                })?;
-
-                todo!("parse block")
-            })?;
-            Ok(blocks)
-        })?
-    };
-
-    let get_code_block = |index| -> Result<Arc<crate::block::Block>, _> {
-        code_blocks.get(index).cloned().ok_or(ErrorKind::CodeBlockNotFound { index })
-    };
-
-    macro_rules! ignore_length {
-        ($message: literal) => {{
-            let length = src.read_integer(|| todo!("missing length"))?;
-            if length != 0 {
-                todo!($message)
-            }
-        }};
-    }
-
-    ignore_length!("TODO: Parse module imports");
-
-    #[derive(Debug)]
-    struct Symbols {
-        lookup: module::SymbolLookup,
-    }
-
-    impl Symbols {
-        fn add_symbol(&mut self, symbol: module::DefinedSymbol) -> Result<(), ErrorKind> {
-            match self.lookup.entry(symbol) {
-                hash_map::Entry::Occupied(occupied) => Err(ErrorKind::DuplicateSymbol(occupied.key().symbol().to_identifier())),
-                hash_map::Entry::Vacant(vacant) => {
-                    vacant.insert(());
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    let mut symbol_lookup = Symbols {
-        lookup: Default::default(),
-    };
-
-    let mut function_definitions = Vec::new();
-
-    {
-        let byte_size = src.read_integer(|| ErrorKind::MissingDefinitionSize)?;
-        if byte_size > 0 {
-            src.parse_buffer(buffer_pool, byte_size, |mut definitions| {
-                let function_count = definitions.read_integer(|| ErrorKind::MissingFunctionDefinitionCount)?;
-                function_definitions.reserve_exact(function_count);
-                symbol_lookup.lookup.reserve(function_count);
-                definitions.read_many_to_vec(function_count, &mut function_definitions, |function, index| {
-                    let mut flags_value = 0u8;
-                    if function.read(std::slice::from_mut(&mut flags_value))? == 0 {
-                        return Err(function.error(ErrorKind::MissingFunctionDefinitionFlags { index }));
-                    }
-
-                    let flags = function::Flags::from_bits(flags_value).ok_or_else(|| {
-                        function.error(ErrorKind::InvalidFunctionDefinitionFlags {
-                            index,
-                            value: flags_value,
-                        })
-                    })?;
-
-                    let export = if flags.contains(function::Flags::EXPORT) {
-                        module::Export::Yes
-                    } else {
-                        module::Export::No
-                    };
-
-                    let signature = get_function_signature(
-                        function.read_integer(|| ErrorKind::MissingFunctionDefinitionSignature { index })?,
-                    )
-                    .map_err(|error| function.error(error))?;
-
-                    let symbol = function.read_identifier()?;
-
-                    let template =
-                        function::Template::new(symbol, signature, module::Module::Definition(module_identifer.clone()));
-
-                    let body = if flags.contains(function::Flags::FOREIGN) {
-                        todo!("parse foreign func")
-                    } else {
-                        function::Body::Defined(
-                            get_code_block(function.read_integer(|| ErrorKind::MissingFunctionDefinitionEntryBlock { index })?)
-                                .map_err(|error| function.error(error))?,
-                        )
-                    };
-
-                    let definition = Arc::new(module::DefinedFunction::new(template, export, body));
-
-                    symbol_lookup
-                        .add_symbol(module::DefinedSymbol::Function(definition.clone()))
-                        .map_err(|e| function.error(e))?;
-
-                    Ok(definition)
-                })?;
-
-                definitions.read_integer(|| todo!())?; // TODO: Parse struct definitions.
-                definitions.read_integer(|| todo!())?; // TODO: Parse global definitions.
-                definitions.read_integer(|| todo!())?; // TODO: Parse ec definitions.
-                definitions.read_integer(|| todo!())?; // TODO: Parse annotations definitions.
+        let mut parse_record = |contents: &mut Wrapper<&[u8]>, record_type: RecordType| match record_type {
+            RecordType::Array => error!(contents, ErrorKind::NestedArrayRecord),
+            RecordType::Identifier => {
+                identifiers.push(contents.read_identifier()?);
                 Ok(())
-            })?;
-        }
-    }
+            }
+        };
 
-    ignore_length!("TODO: Parse struct instantiations");
-    ignore_length!("TODO: Parse function instantiations");
-    // TODO: Parse entry point
-    // TODO: Parse initializer
-    ignore_length!("TODO: Parse namespaces");
-    ignore_length!("TODO: Parse debugging information");
+        fn parse_record_type<R: std::io::Read>(src: &mut Wrapper<R>) -> ParseResult<RecordType> {
+            let mut type_byte = 0u8;
+            if src.read(std::slice::from_mut(&mut type_byte))? == 0 {
+                error!(src, ErrorKind::Missing("record type"))
+            }
+            Ok(result!(src, RecordType::try_from(type_byte)))
+        }
+
+        let record_type = parse_record_type(src)?;
+        let content_size = src.read_integer(|| ErrorKind::Missing("record content size"))?;
+        let mut contents_buffer = buffer_pool.rent_with_length(content_size);
+        src.read_buffer(&mut contents_buffer, |mut contents| match record_type {
+            RecordType::Array => {
+                let element_type = parse_record_type(&mut contents)?;
+                let element_count = contents.read_integer(|| ErrorKind::Missing("array record element count"))?;
+                contents.read_many(element_count, |mut elements, _| parse_record(&mut elements, element_type))
+            }
+            _ => parse_record(&mut contents, record_type),
+        })
+    })?;
+
+    //todo!("parse")
 
     Ok(module::Definition {
         format_version,
         contents: None,
         integer_size: src.integer_size(),
         identifier: module_identifer,
-        symbols: symbol_lookup.lookup,
-        function_definitions,
+        symbols: Default::default(), //symbol_lookup.lookup,
+        function_definitions: Default::default(),
         function_imports: Default::default(),
     })
 }

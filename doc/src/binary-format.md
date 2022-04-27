@@ -52,7 +52,7 @@ Each record begins with the following fields:
 Offset|Name|Size|Notes
 ---|---|---|---
 `0`|Type|`1`|Indicates what kind of content is contained in this record.
-`1`|Content Size|`L`|A non-zero [integer](#integer-size) indicating the length `S` of the record's content, in bytes.
+`1`|Content Size|`L`|A non-zero [integer](#integer-size) indicating the size `S` of the record's content, in bytes.
 `L + 1`|Content|`S`|The content of the record.
 
 # Record Types
