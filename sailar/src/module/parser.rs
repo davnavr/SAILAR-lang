@@ -794,13 +794,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     })
                 })?;
 
-                Ok(Arc::new(crate::block::Block::new_unchecked(
-                    src.integer_size(),
-                    input_register_types.into(),
-                    result_register_types.into(),
-                    temporary_register_types.into(),
-                    instructions.into(),
-                )))
+                todo!("parse block")
             })?;
             Ok(blocks)
         })?

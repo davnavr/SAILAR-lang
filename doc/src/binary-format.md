@@ -96,12 +96,11 @@ Each block describes its inputs, outputs, the types of its registers, and contai
 
 Offset|Notes|Omission|
 ---|---|---
-`0`|Input Count|A [length integer](#integer-size) indicating the number of inputs to this block.
-`L`|Result Count|A [length integer](#integer-size) indicating the number of results returned by this block.
-`2L`|Temporary Count|A [length integer](#integer-size) indicating the number of temporary registers introduced by the instructions in this block.
+`0`|Input Count|An [integer](#integer-size) indicating the number of inputs to this block.
+`L`|Result Count|An [integer](#integer-size) indicating the number of results returned by this block.
+`2L`|Temporary Count|An [integer](#integer-size) indicating the number of temporary registers introduced by the instructions in this block.
 `3L`|Register Types|A series of [type signature indices](#type-signatures) specifying the type of each input, result, and temporary register in that order.
-?|Instruction Size|A [length integer](#integer-size) indicating the size of all of the instructions in this block, in bytes. As empty blocks are not allowed, this must be greater than zero.
-?|Instruction Count|A [length integer](#integer-size) indicating the number of instructions in this block. This must be greater than zero.
+?|Instruction Count|An [integer](#integer-size) indicating the number of instructions in this block. This must be greater than zero.
 ?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
 
 # DEPRECATED BELOW

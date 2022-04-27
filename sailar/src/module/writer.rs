@@ -4,7 +4,6 @@ use crate::binary::{self, buffer};
 use crate::block;
 use crate::function;
 use crate::identifier::Id;
-use crate::instruction_set;
 use crate::type_system;
 use std::io::Write;
 
@@ -13,7 +12,6 @@ type Result = std::io::Result<()>;
 mod output {
     use super::Result;
     use crate::binary::{self, VarIntSize};
-    use crate::identifier::Id;
     use std::io::Write;
 
     type IntegerWriter<W> = fn(&mut Wrapper<W>, usize) -> Result;
@@ -64,7 +62,7 @@ mod output {
             (self.integer_writer)(self, length)
         }
 
-        pub fn write_identifier(&mut self, identifier: &Id) -> Result {
+        pub fn write_identifier(&mut self, identifier: &crate::Id) -> Result {
             self.write_integer(identifier.len())?;
             self.destination.write_all(identifier.as_bytes())
         }
@@ -86,7 +84,7 @@ mod output {
             pool: &binary::buffer::Pool,
             writer: impl FnOnce(&mut BufferWrapper<'_>) -> Result,
         ) -> Result {
-            let buffer = pool.rent();
+            let mut buffer = pool.rent();
             {
                 let mut wrapper = Wrapper::new(buffer.as_mut_vec(), self.integer_size);
                 writer(&mut wrapper)?;
@@ -160,10 +158,6 @@ mod lookup {
             }
         }
 
-        pub fn len(&self) -> usize {
-            self.lookup.len()
-        }
-
         pub fn into_iter(self) -> impl std::iter::ExactSizeIterator<Item = &'a K> {
             self.items.into_iter()
         }
@@ -180,10 +174,11 @@ mod lookup {
 }
 
 pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffer_pool: Option<&buffer::Pool>) -> Result {
-    use output::Wrapper;
+    use output::{BufferWrapper, Wrapper};
 
     let integer_size = module.integer_size;
     let mut out = Wrapper::new(destination, integer_size);
+    // TODO: Pool not necessary? Could reserve space for integer byte size, write the content, then update the size?
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
 
     {
@@ -221,7 +216,61 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
         },
     )?;
 
-    // TODO: Write code blocks.
+    out.write_record_array(
+        binary::RecordType::Code,
+        &buffer_pool,
+        code_block_lookup.into_iter(),
+        |contents, block| {
+            contents.write_integer(block.input_types().len())?;
+            contents.write_integer(block.result_types().len())?;
+            contents.write_integer(block.temporary_types().len())?;
+
+            contents.write_many(
+                block
+                    .input_types()
+                    .iter()
+                    .chain(block.result_types())
+                    .chain(block.temporary_types()),
+                |indices, register_type| indices.write_integer(type_signature_lookup.get_or_insert(register_type)),
+            )?;
+
+            contents.write_integer(block.instructions().len())?;
+            contents.write_many(block.instructions().iter(), |body, instruction| {
+                use crate::instruction_set::{Constant, ConstantInteger, Instruction, Value, ValueFlags};
+
+                fn write_value(body: &mut BufferWrapper, value: &Value) -> Result {
+                    let flags = value.flags();
+                    body.write_all(&[flags.bits()])?;
+                    match value {
+                        Value::IndexedRegister(index) => body.write_integer(*index),
+                        Value::Constant(Constant::Integer(integer)) => match integer {
+                            _ if flags.contains(ValueFlags::INTEGER_EMBEDDED) => Ok(()),
+                            ConstantInteger::I8(byte) => body.write_all(&[*byte]),
+                            ConstantInteger::I16(ref bytes) => body.write_all(bytes),
+                            ConstantInteger::I32(ref bytes) => body.write_all(bytes),
+                            ConstantInteger::I64(ref bytes) => body.write_all(bytes),
+                        },
+                    }
+                }
+
+                body.write_all(&[u8::from(instruction.opcode())])?;
+
+                match instruction {
+                    Instruction::Nop | Instruction::Break => Ok(()),
+                    Instruction::Ret(return_values) => {
+                        body.write_integer(return_values.len())?;
+                        body.write_many(return_values.iter(), |values, v| write_value(values, v))
+                    }
+                    Instruction::AddI(operation) | Instruction::SubI(operation) | Instruction::MulI(operation) => {
+                        body.write_all(&[u8::from(operation.overflow_behavior())])?;
+                        write_value(body, operation.x_value())?;
+                        write_value(body, operation.y_value())
+                    }
+                    Instruction::Call(call) => todo!("lookup for function instantiations"),
+                }
+            })
+        },
+    )?;
 
     out.write_record_array(
         binary::RecordType::Identifier,
