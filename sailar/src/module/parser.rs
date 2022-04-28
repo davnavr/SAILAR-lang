@@ -1,11 +1,9 @@
 //! Code for parsing SAILAR modules.
 
-use crate::binary::{self, buffer, signature::TypeCode};
-use crate::function;
-use crate::identifier::{self, Identifier};
+use crate::binary::{self, buffer};
+use crate::identifier;
 use crate::module;
-use crate::type_system;
-use std::collections::hash_map;
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
@@ -309,7 +307,7 @@ mod input {
         }
     }
 
-    impl Wrapper<&[u8]> {
+    impl<'a> Wrapper<&'a [u8]> {
         pub fn parse_slice<T, P: FnOnce(Self) -> ParseResult<T>, E: FnOnce(usize) -> ErrorKind>(
             &mut self,
             length: usize,
@@ -331,6 +329,10 @@ mod input {
             } else {
                 Err(self.error(error(actual_length)))
             }
+        }
+
+        pub fn take_remaining_bytes(&mut self) -> &'a [u8] {
+            std::mem::take(&mut self.source)
         }
     }
 
@@ -404,20 +406,26 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         numbers.into_boxed_slice()
     }));
 
-    let buffer_pool = buffer::Pool::existing_or_default(buffer_pool);
+    let buffer_pool = buffer::Pool::existing_or_default(buffer_pool); // TODO: Could just have a single buffer instead, remove buffer_pool?
     let record_count = src.read_integer(|| ErrorKind::Missing("record count"))?;
 
-    let mut identifiers = Vec::default();
+    let identifiers = RefCell::<Vec<_>>::default();
+    let data_arrays = RefCell::<Vec<Arc<[u8]>>>::default();
 
     src.read_many(record_count, |src, _| {
         use binary::RecordType;
 
         let mut parse_record = |contents: &mut Wrapper<&[u8]>, record_type: RecordType| match record_type {
-            RecordType::Array => error!(contents, ErrorKind::NestedArrayRecord),
             RecordType::Identifier => {
-                identifiers.push(contents.read_identifier()?);
+                identifiers.borrow_mut().push(contents.read_identifier()?);
                 Ok(())
             }
+            RecordType::Data => {
+                data_arrays.borrow_mut().push(contents.take_remaining_bytes().into());
+                Ok(())
+            }
+            RecordType::Array => error!(contents, ErrorKind::NestedArrayRecord),
+            bad => todo!("unsupported record type {:?}", bad),
         };
 
         fn parse_record_type<R: std::io::Read>(src: &mut Wrapper<R>) -> ParseResult<RecordType> {
@@ -435,7 +443,14 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             RecordType::Array => {
                 let element_type = parse_record_type(&mut contents)?;
                 let element_count = contents.read_integer(|| ErrorKind::Missing("array record element count"))?;
-                contents.read_many(element_count, |mut elements, _| parse_record(&mut elements, element_type))
+
+                match element_type {
+                    RecordType::Identifier => identifiers.borrow_mut().reserve(element_count),
+                    RecordType::Data => identifiers.borrow_mut().reserve(element_count),
+                    _ => ()
+                }
+
+                contents.read_many(element_count, |elements, _| parse_record(elements, element_type))
             }
             _ => parse_record(&mut contents, record_type),
         })
