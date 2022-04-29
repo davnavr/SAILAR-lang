@@ -94,11 +94,7 @@ mod output {
             self.destination.write_all(&buffer)
         }
 
-        pub fn write_record_array<
-            T,
-            I: std::iter::ExactSizeIterator<Item = T>,
-            O: FnMut(&mut BufferWrapper<'_>, T) -> Result,
-        >(
+        pub fn write_record_array<T, I: std::iter::ExactSizeIterator<Item = T>, O: FnMut(&mut BufferWrapper<'_>, T) -> Result>(
             &mut self,
             tag: binary::RecordType,
             pool: &binary::buffer::Pool,
