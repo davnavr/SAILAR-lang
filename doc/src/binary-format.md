@@ -94,7 +94,7 @@ by specifying the entry block which is the block that is entered when the functi
 
 Each block describes its inputs, outputs, the types of its registers, and contains its instructions.
 
-Offset|Notes|Omission|
+Offset|Name|Notes|
 ---|---|---
 `0`|Input Count|An [integer](#integer-size) indicating the number of inputs to this block.
 `L`|Result Count|An [integer](#integer-size) indicating the number of results returned by this block.
@@ -102,6 +102,22 @@ Offset|Notes|Omission|
 `3L`|Register Types|A series of [type signature indices](#type-signatures) specifying the type of each input, result, and temporary register in that order.
 ?|Instruction Count|An [integer](#integer-size) indicating the number of instructions in this block. This must be greater than zero.
 ?|Instructions|The instructions that make up the code block. Refer to the [instruction set reference](./instruction-set.md) for more information.
+
+## Module Import Record
+
+Describes a module containing structs, functions, globals, and other definitions used by the current module. Imported modules are
+referred to by [integer](#integer-size) indices starting at one, with an index of zero referring to the current module.
+
+Offset|Name|Size|Notes
+---|---|---|---
+`0`|[Module Identifier](#module-identifier)|`H`|The name and verion of the imported module.
+`H`|Flags|`1`|Set to `1` if a SHA-256 hash of the module to import is present, or `0` if no hash is present.
+
+The following is present depending on the value of the `Flags` field.
+
+Offset|Name|Size|Notes
+---|---|---|---
+`H + 1`|Hash|`256`|A SHA-256 hash of the imported module's contents.
 
 # DEPRECATED BELOW
 

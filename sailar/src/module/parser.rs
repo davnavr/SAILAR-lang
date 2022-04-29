@@ -91,6 +91,8 @@ pub enum ErrorKind {
     InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
     #[error("unable to find {description} corresponding to index {index}")]
     NotFound { description: &'static str, index: usize },
+    #[error("{0:#02X} is not a valid module import flags combination")]
+    InvalidModuleImportFlags(u8),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -237,19 +239,6 @@ mod input {
             }
         }
 
-        pub fn read_size_and_count<S: FnOnce() -> ErrorKind, C: FnOnce() -> ErrorKind>(
-            &mut self,
-            missing_size: S,
-            missing_count: C,
-        ) -> ParseResult<(usize, usize)> {
-            let size = self.read_integer(missing_size)?;
-            if size == 0 {
-                Ok((size, 0))
-            } else {
-                Ok((size, self.read_integer(missing_count)?))
-            }
-        }
-
         pub fn set_integer_size(&mut self, size: VarIntSize) {
             self.integer_size = size;
             self.integer_parser = Self::select_integer_parser(size);
@@ -313,29 +302,6 @@ mod input {
     }
 
     impl<'a> Wrapper<&'a [u8]> {
-        pub fn parse_slice<T, P: FnOnce(Self) -> ParseResult<T>, E: FnOnce(usize) -> ErrorKind>(
-            &mut self,
-            length: usize,
-            error: E,
-            parser: P,
-        ) -> ParseResult<T> {
-            let actual_length = self.source.len();
-            if length > actual_length {
-                let start_offset = self.offset;
-                let (contents, remaining) = self.source.split_at(length);
-                self.offset += length;
-                self.source = remaining;
-                parser(Wrapper {
-                    source: contents,
-                    offset: start_offset,
-                    integer_size: self.integer_size,
-                    integer_parser: self.integer_parser,
-                })
-            } else {
-                Err(self.error(error(actual_length)))
-            }
-        }
-
         pub fn take_remaining_bytes(&mut self) -> &'a [u8] {
             std::mem::take(&mut self.source)
         }
@@ -402,14 +368,18 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         src.set_integer_size(integer_size);
     }
 
-    let module_identifer = Arc::new(module::ModuleIdentifier::new(src.read_identifier()?, {
-        let length = src.read_integer(|| ErrorKind::Missing("module version length"))?;
-        let mut numbers = Vec::with_capacity(length);
-        src.read_many_to_vec(length, &mut numbers, |src, _| {
-            src.read_integer(|| ErrorKind::Missing("module version number"))
-        })?;
-        numbers.into_boxed_slice()
-    }));
+    fn parse_module_identifier<R: std::io::Read>(src: &mut input::Wrapper<R>) -> ParseResult<module::ModuleIdentifier> {
+        Ok(module::ModuleIdentifier::new(src.read_identifier()?, {
+            let length = src.read_integer(|| ErrorKind::Missing("module version length"))?;
+            let mut numbers = Vec::with_capacity(length);
+            src.read_many_to_vec(length, &mut numbers, |src, _| {
+                src.read_integer(|| ErrorKind::Missing("module version number"))
+            })?;
+            numbers.into_boxed_slice()
+        }))
+    }
+
+    let module_identifer = Arc::new(parse_module_identifier(&mut src)?);
 
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool); // TODO: Could just have a single buffer instead, remove buffer_pool?
     let record_count = src.read_integer(|| ErrorKind::Missing("record count"))?;
@@ -433,7 +403,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
         ) -> ParseResult<Box<[usize]>> {
             self.buffer.clear();
             self.buffer.reserve(count);
-            let result = f(&mut self.buffer)?;
+            f(&mut self.buffer)?;
             Ok(self.buffer.clone().into_boxed_slice())
         }
     }
@@ -444,6 +414,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     let data_arrays = RefCell::<Vec<Arc<[u8]>>>::default();
     let type_signatures = RefCell::<Vec<type_system::Any>>::default(); // TODO: Make a TypeSignature enum?
     let mut raw_function_signatures = RefCell::<Vec<FunctionSignature>>::default();
+    let module_imports = RefCell::<Vec<Arc<module::Import>>>::default();
 
     src.read_many(record_count, |src, _| {
         use binary::RecordType;
@@ -499,6 +470,32 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                 });
                 Ok(())
             }
+            //RecordType::Code => { }
+            RecordType::ModuleImport => {
+                let identifier = Arc::new(parse_module_identifier(contents)?);
+                let mut flags_value = 0u8;
+                if contents.read(std::slice::from_mut(&mut flags_value))? == 0 {
+                    error!(contents, ErrorKind::Missing("module import flag byte"))
+                }
+
+                let hash = match flags_value {
+                    0 => module::Hash::None,
+                    1 => {
+                        let mut hash_bytes = Box::new([0u8; 256]);
+                        if contents.read(hash_bytes.as_mut_slice())? < 256 {
+                            error!(contents, ErrorKind::Missing("module import hash"))
+                        }
+                        module::Hash::SHA256(hash_bytes)
+                    }
+                    _ => error!(contents, ErrorKind::InvalidModuleImportFlags(flags_value)),
+                };
+
+                module_imports
+                    .borrow_mut()
+                    .push(Arc::new(module::Import::from_identifier_with_hash(identifier, hash)));
+
+                Ok(())
+            }
             RecordType::Array => error!(contents, ErrorKind::NestedArrayRecord),
             bad => todo!("unsupported record type {:?}", bad),
         };
@@ -524,6 +521,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
                     RecordType::Data => data_arrays.borrow_mut().reserve(element_count),
                     RecordType::TypeSignature => type_signatures.borrow_mut().reserve(element_count),
                     RecordType::FunctionSignature => raw_function_signatures.borrow_mut().reserve(element_count),
+                    RecordType::ModuleImport => module_imports.borrow_mut().reserve(element_count),
                     _ => (),
                 }
 
@@ -544,7 +542,7 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
     // TODO: Have Vec<Option<Arc>>, so that allocation only occurs for function signatures that are used.
     let function_signatures = {
-        let mut raw_function_signatures = raw_function_signatures.get_mut().drain(..);
+        let raw_function_signatures = raw_function_signatures.get_mut().drain(..);
         let mut function_signatures = Vec::with_capacity(raw_function_signatures.len());
         let mut result_type_buffer = Vec::default();
         let mut parameter_type_buffer = Vec::default();
