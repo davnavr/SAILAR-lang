@@ -6,6 +6,12 @@ edition = "2021"
 [dependencies]
 sailar = { path = "../sailar" }
 
+[build-dependencies]
+cbindgen = "0.20.0"
+
 [lib]
 name = "SAILARCore"
 crate-type = ["staticlib", "cdylib"]
+
+[profile.release]
+panic = "abort"
