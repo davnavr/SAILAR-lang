@@ -1,0 +1,11 @@
+[package]
+name = "sailar_c"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sailar = { path = "../sailar" }
+
+[lib]
+name = "SAILARCore"
+crate-type = ["staticlib", "cdylib"]

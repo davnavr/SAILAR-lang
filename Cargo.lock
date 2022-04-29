@@ -113,12 +113,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "sailar_get"
+name = "sailar_c"
 version = "0.1.0"
 dependencies = [
- "rustc-hash",
  "sailar",
- "thiserror",
 ]
 
 [[package]]

@@ -1,6 +1,5 @@
 [workspace]
-rust-version = "1.56"
 members = [
     "sailar",
-    "sailar_get",
+    "sailar_c",
 ]
