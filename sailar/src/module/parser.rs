@@ -89,6 +89,8 @@ pub enum ErrorKind {
     NestedArrayRecord,
     #[error(transparent)]
     InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
+    #[error("unable to find {description} corresponding to index {index}")]
+    NotFound { description: &'static str, index: usize },
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -440,8 +442,8 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
     let identifiers = RefCell::<Vec<identifier::Identifier>>::default();
     let data_arrays = RefCell::<Vec<Arc<[u8]>>>::default();
-    let type_signatures = RefCell::<Vec<type_system::Any>>::default();
-    let raw_function_signatures = RefCell::<Vec<FunctionSignature>>::default();
+    let type_signatures = RefCell::<Vec<type_system::Any>>::default(); // TODO: Make a TypeSignature enum?
+    let mut raw_function_signatures = RefCell::<Vec<FunctionSignature>>::default();
 
     src.read_many(record_count, |src, _| {
         use binary::RecordType;
@@ -530,6 +532,49 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             _ => parse_record(&mut contents, record_type),
         })
     })?;
+
+    let type_signatures = type_signatures.take();
+
+    let get_type_signature = |index| -> Result<&type_system::Any, _> {
+        type_signatures.get(index).ok_or(ErrorKind::NotFound {
+            description: "type signature",
+            index,
+        })
+    };
+
+    // TODO: Have Vec<Option<Arc>>, so that allocation only occurs for function signatures that are used.
+    let function_signatures = {
+        let mut raw_function_signatures = raw_function_signatures.get_mut().drain(..);
+        let mut function_signatures = Vec::with_capacity(raw_function_signatures.len());
+        let mut result_type_buffer = Vec::default();
+        let mut parameter_type_buffer = Vec::default();
+
+        let get_function_types =
+            |indices: &[usize], buffer: &mut Vec<type_system::Any>| -> ParseResult<Box<[type_system::Any]>> {
+                buffer.clear();
+                buffer.reserve(indices.len());
+                for index in indices.iter().cloned() {
+                    buffer.push(result!(src, get_type_signature(index)).clone());
+                }
+                Ok(buffer.clone().into_boxed_slice())
+            };
+
+        for signature in raw_function_signatures {
+            function_signatures.push(Arc::new(crate::function::Signature::new(
+                get_function_types(&signature.return_types, &mut result_type_buffer)?,
+                get_function_types(&signature.parameter_types, &mut parameter_type_buffer)?,
+            )));
+        }
+
+        function_signatures
+    };
+
+    let get_function_signature = |index| -> Result<Arc<_>, _> {
+        function_signatures.get(index).cloned().ok_or(ErrorKind::NotFound {
+            description: "function signature",
+            index,
+        })
+    };
 
     //todo!("parse")
 
