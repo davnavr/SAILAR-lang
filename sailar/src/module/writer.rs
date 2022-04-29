@@ -97,13 +97,12 @@ mod output {
         pub fn write_record_array<
             T,
             I: std::iter::ExactSizeIterator<Item = T>,
-            A: std::iter::IntoIterator<IntoIter = I>,
             O: FnMut(&mut BufferWrapper<'_>, T) -> Result,
         >(
             &mut self,
             tag: binary::RecordType,
             pool: &binary::buffer::Pool,
-            items: A,
+            items: I,
             writer: O,
         ) -> Result {
             self.write_record(binary::RecordType::Array, pool, |contents| {
