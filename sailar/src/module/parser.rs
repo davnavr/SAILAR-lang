@@ -3,6 +3,7 @@
 use crate::binary::{self, buffer};
 use crate::identifier;
 use crate::module;
+use crate::type_system;
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -86,6 +87,8 @@ pub enum ErrorKind {
     InvalidRecordType(#[from] binary::InvalidRecordTypeError),
     #[error("nested array records are not allowed")]
     NestedArrayRecord,
+    #[error(transparent)]
+    InvalidTypeSignatureTag(#[from] binary::signature::InvalidTypeCode),
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -409,8 +412,36 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
     let buffer_pool = buffer::Pool::existing_or_default(buffer_pool); // TODO: Could just have a single buffer instead, remove buffer_pool?
     let record_count = src.read_integer(|| ErrorKind::Missing("record count"))?;
 
-    let identifiers = RefCell::<Vec<_>>::default();
+    #[derive(Debug)]
+    struct FunctionSignature {
+        return_types: Box<[usize]>,
+        parameter_types: Box<[usize]>,
+    }
+
+    #[derive(Debug, Default)]
+    pub struct IndexBuffer {
+        buffer: Vec<usize>,
+    }
+
+    impl IndexBuffer {
+        pub fn with_buffer<F: FnOnce(&mut Vec<usize>) -> ParseResult<()>>(
+            &mut self,
+            count: usize,
+            f: F,
+        ) -> ParseResult<Box<[usize]>> {
+            self.buffer.clear();
+            self.buffer.reserve(count);
+            let result = f(&mut self.buffer)?;
+            Ok(self.buffer.clone().into_boxed_slice())
+        }
+    }
+
+    let mut index_buffer = IndexBuffer::default();
+
+    let identifiers = RefCell::<Vec<identifier::Identifier>>::default();
     let data_arrays = RefCell::<Vec<Arc<[u8]>>>::default();
+    let type_signatures = RefCell::<Vec<type_system::Any>>::default();
+    let raw_function_signatures = RefCell::<Vec<FunctionSignature>>::default();
 
     src.read_many(record_count, |src, _| {
         use binary::RecordType;
@@ -422,6 +453,48 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
             }
             RecordType::Data => {
                 data_arrays.borrow_mut().push(contents.take_remaining_bytes().into());
+                Ok(())
+            }
+            RecordType::TypeSignature => {
+                use binary::signature::TypeCode;
+
+                let mut tag_value = 0u8;
+                if contents.read(std::slice::from_mut(&mut tag_value))? == 0 {
+                    error!(contents, ErrorKind::Missing("type signature tag"))
+                }
+
+                let tag = result!(contents, TypeCode::try_from(tag_value));
+                type_signatures.borrow_mut().push(match tag {
+                    TypeCode::U8 => type_system::FixedInt::U8.into(),
+                    TypeCode::U16 => type_system::FixedInt::U16.into(),
+                    TypeCode::U32 => type_system::FixedInt::U32.into(),
+                    TypeCode::U64 => type_system::FixedInt::U64.into(),
+                    TypeCode::S8 => type_system::FixedInt::S8.into(),
+                    TypeCode::S16 => type_system::FixedInt::S16.into(),
+                    TypeCode::S32 => type_system::FixedInt::S32.into(),
+                    TypeCode::S64 => type_system::FixedInt::S64.into(),
+                    TypeCode::F32 => type_system::Real::F32.into(),
+                    TypeCode::F64 => type_system::Real::F64.into(),
+                });
+                Ok(())
+            }
+            RecordType::FunctionSignature => {
+                let return_type_count = contents.read_integer(|| ErrorKind::Missing("function signature return type count"))?;
+                let parameter_type_count =
+                    contents.read_integer(|| ErrorKind::Missing("function signature parameter type count"))?;
+
+                raw_function_signatures.borrow_mut().push(FunctionSignature {
+                    return_types: index_buffer.with_buffer(return_type_count, |indices| {
+                        contents.read_many_to_vec(return_type_count, indices, |c, _| {
+                            c.read_integer(|| ErrorKind::Missing("function signature return type index"))
+                        })
+                    })?,
+                    parameter_types: index_buffer.with_buffer(parameter_type_count, |indices| {
+                        contents.read_many_to_vec(parameter_type_count, indices, |c, _| {
+                            c.read_integer(|| ErrorKind::Missing("function signature parameter type index"))
+                        })
+                    })?,
+                });
                 Ok(())
             }
             RecordType::Array => error!(contents, ErrorKind::NestedArrayRecord),
@@ -446,8 +519,10 @@ pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) ->
 
                 match element_type {
                     RecordType::Identifier => identifiers.borrow_mut().reserve(element_count),
-                    RecordType::Data => identifiers.borrow_mut().reserve(element_count),
-                    _ => ()
+                    RecordType::Data => data_arrays.borrow_mut().reserve(element_count),
+                    RecordType::TypeSignature => type_signatures.borrow_mut().reserve(element_count),
+                    RecordType::FunctionSignature => raw_function_signatures.borrow_mut().reserve(element_count),
+                    _ => (),
                 }
 
                 contents.read_many(element_count, |elements, _| parse_record(elements, element_type))
