@@ -166,6 +166,12 @@ impl std::cmp::PartialEq for Module {
     }
 }
 
+impl std::cmp::PartialEq<ModuleIdentifier> for Module {
+    fn eq(&self, other: &ModuleIdentifier) -> bool {
+        self.identifier().as_ref() == other && self.hash_bytes().is_empty()
+    }
+}
+
 impl std::cmp::Eq for Module {}
 
 impl std::hash::Hash for Module {
@@ -436,6 +442,7 @@ impl Definition {
         self.integer_size.resize_to_fit(function.signature().parameter_types().len());
     }
 
+    // TODO: May need to allow Option<> things in order to allow easier self-referential things, may need module writer to perform validation (it will return Result).
     pub fn define_function(
         &mut self,
         symbol: Identifier,

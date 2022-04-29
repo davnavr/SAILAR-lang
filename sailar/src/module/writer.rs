@@ -196,17 +196,24 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
     let mut code_block_lookup = lookup::IndexMap::<block::Block>::default();
     let mut function_signature_lookup = lookup::IndexMap::<function::Signature>::default();
     let mut type_signature_lookup = lookup::IndexMap::<type_system::Any>::default();
+    let mut function_definition_lookup =
+        rustc_hash::FxHashMap::with_capacity_and_hasher(module.function_definitions().len(), Default::default());
+    let mut function_instantiation_lookup = lookup::IndexMap::<function::Instantiation>::default();
 
-    out.write_integer(5)?;
+    out.write_integer(6)?;
 
+    // TODO: Could remove function definitions that are unused, simply by getting looking at all function instantiations for definitions.
     out.write_record_array(
         binary::RecordType::FunctionDefinition,
         &buffer_pool,
-        module.function_definitions(),
-        |contents, definition| {
+        module.function_definitions().iter().enumerate(),
+        |contents, (index, definition)| {
             contents.write_all(&[definition.definition().flags().bits()])?;
-            contents.write_integer(function_signature_lookup.get_or_insert(definition.template().function().signature()))?;
-            contents.write_identifier(definition.template().function().symbol())?;
+            let f = definition.template().function();
+            contents.write_integer(function_signature_lookup.get_or_insert(f.signature()))?;
+            let symbol = f.symbol();
+            contents.write_identifier(f.symbol())?;
+            function_definition_lookup.insert(symbol, index);
 
             match definition.definition().body() {
                 function::Body::Defined(defined) => contents.write_integer(code_block_lookup.get_or_insert(defined)),
@@ -268,7 +275,14 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
                         write_value(body, operation.x_value())?;
                         write_value(body, operation.y_value())
                     }
-                    Instruction::Call(call) => todo!("lookup for function instantiations"),
+                    Instruction::Call(call) => {
+                        body.write_integer(function_instantiation_lookup.get_or_insert(call.function()))?;
+                        body.write_integer(call.arguments().len())?;
+                        for argument in call.arguments().iter() {
+                            write_value(body, argument)?;
+                        }
+                        Ok(())
+                    }
                 }
             })
         },
@@ -305,6 +319,23 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
             match signature {
                 type_system::Any::Primitive(_) => Ok(()),
             }
+        },
+    )?;
+
+    out.write_record_array(
+        binary::RecordType::FunctionInstantiation,
+        &buffer_pool,
+        function_instantiation_lookup.into_iter(),
+        |contents, instantiation| {
+            contents.write_integer(if instantiation.template().module() == module.identifier().as_ref() {
+                *function_definition_lookup
+                    .get(instantiation.template().function().symbol())
+                    .expect("function definition should exist")
+            } else {
+                todo!("search for function import")
+            })?;
+
+            contents.write_integer(0)
         },
     )?;
 

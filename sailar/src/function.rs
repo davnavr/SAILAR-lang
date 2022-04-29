@@ -106,7 +106,7 @@ impl Body {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Definition {
-    body: Body,
+    body: Body, // RwLock<Body>, // TODO: Should mutation be allowed? Having a mutable Option<Body> would make parser much easier to work with.
     export: Export,
 }
 

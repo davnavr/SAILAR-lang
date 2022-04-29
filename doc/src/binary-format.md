@@ -119,26 +119,37 @@ Offset|Name|Size|Notes
 ---|---|---|---
 `H + 1`|Hash|`256`|A SHA-256 hash of the imported module's contents.
 
-# DEPRECATED BELOW
+## Function Definition Record
+Describes a function defined in the current module. When generics are supported, a field will be added that lists generic parameters.
 
-## Module Imports
-This structure contains all structs, functions, globals, etc. that are used by the current module.
+Offset|Bits|Name|Notes
+---|---|---|---
+`0`|`0`|Export|If set, indicates if this structure is visible to other modules.
+`0`|`1`|Foreign|If set, indicates that the body of this function is defined elsewhere. Typically used when dealing with foreign function interface bindings.
+`0`|`2..7`|Reserved|These bits must not be set.
+`1`||Signature|An [integer](#integer-size) that indicates the [function's signature](#function-signatures).
+`1 + L`||[Symbol](#symbols)
+?||[Function Body](#function-body)
 
-TODO: Have this be a list of module imports instead, with each ModuleImport struct containing functions, structs, globals, etc.
+### Function Body
+If the `Foreign` bit is not set, then the function body is simply a [length integer index](#integer-size) to a [code block](#code-block).
+
+Otherwise, the function body describes a foreign function:
 
 Name|Notes
 ---|---
-Total Size|A [length integer](#integer-size) indicating the total size, in bytes, of all of the following module import information. If zero, all following fields are omitted.
-Function Count|
-[Function Imports]()|
-Struct Count|
-[Struct Imports]()|
-Global Count|
-[Global Imports]()|
-Exception Class Count|A [length integer](#integer-size), set to zero as SAILAR's exception handling mechanism is still being defined.
-Exception Class Imports|Currently empty.
-Annotation Class Count|A [length integer](#integer-size), set to zero as the semantics of annotations are still being decided.
-Annotation Class Imports|Currently empty.
+Library|An [integer](#integer-size) index to an [identifier](#identifier-record) that specifies the name of the library that the function is defined in.
+Entry Point Name|An [identifier](#identifier) that is the name of the function defined in the `Library`.
+
+## Function Instantiation Record
+Allows referring to function definitions and imports, while also allowing generic functions in the future.
+
+Offset|Name|Notes
+---|---|---
+`0`|Function Index|An [integer](#integer-size) index used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
+`L`|Reserved|A reserved [integer](#integer-size), must be set to zero.
+
+# DEPRECATED BELOW
 
 ## Module Definitions
 Contains the structs, functions, globals, etc. defined by the current module.
@@ -156,28 +167,6 @@ Exception Class Count|Currently empty.
 Exception Class Definitions|A [length integer](#integer-size), set to zero as SAILAR's exception handling mechanism is still being defined.
 Annotation Class Count|Currently empty.
 Annotation Class Definitions|A [length integer](#integer-size), set to zero as the semantics of annotations are still being decided.
-
-### Function Definition
-Describes a function defined in the current module. When generics are supported, a field will be added that lists generic parameters.
-
-Offset|Bits|Name|Notes
----|---|---|---
-`0`|`0`|Export|If set, indicates if this structure is visible to other modules.
-`0`|`1`|Foreign|If set, indicates that the body of this function is defined elsewhere. Typically used when dealing with foreign function interface bindings.
-`0`|`2..7`|Reserved|These bits must not be set.
-`1`||Signature|A [length integer index](#integer-size) that indicates the [function's signature](#function-signatures).
-`1 + L`||[Symbol](#symbols)
-?||[Function Body](#function-body)
-
-### Function Body
-If the `Foreign` bit is not set, then the function body is simply a [length integer index](#integer-size) to a [code block](#code-block).
-
-Otherwise, the function body describes a foreign function:
-
-Name|Notes
----|---
-Library|An [length integer index](#integer-size) to an [identifier](#identifier) that specifies the name of the library that the function is defined in.
-Entry Point Name|An [identifier](#identifier) that is the name of the function defined in the `Library`.
 
 ### Struct Definition
 Represents a set of fields which form a type.
