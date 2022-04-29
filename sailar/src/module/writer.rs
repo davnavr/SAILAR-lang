@@ -197,6 +197,8 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
     let mut function_signature_lookup = lookup::IndexMap::<function::Signature>::default();
     let mut type_signature_lookup = lookup::IndexMap::<type_system::Any>::default();
 
+    out.write_integer(5)?;
+
     out.write_record_array(
         binary::RecordType::FunctionDefinition,
         &buffer_pool,
