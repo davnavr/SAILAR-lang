@@ -3,7 +3,7 @@
     using System.Text;
 
     public unsafe readonly ref struct Identifier {
-        readonly SAILAR.OpaqueIdentifier* identifier;
+        internal readonly SAILAR.OpaqueIdentifier* identifier;
 
         public Identifier(string contents) {
             byte[] bytes = Encoding.UTF8.GetBytes(contents);
@@ -12,9 +12,13 @@
                 identifier = SAILAR.CreateIdentifier(b, (UIntPtr)bytes.Length, in error);
             }
 
-            if (error != null) {
-                throw new NotImplementedException("a");
-            }
+            Error.HandleError(error);
+        }
+
+        public override string ToString() {
+            var length = UIntPtr.Zero;
+            var content = SAILAR.GetIdentifierContents(identifier, in length);
+            return Encoding.UTF8.GetString(content, (int)length);
         }
 
         public void Dispose() {
