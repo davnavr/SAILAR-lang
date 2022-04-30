@@ -5,25 +5,12 @@ use sailar::identifier::Identifier;
 
 crate::box_wrapper!(SAILIdentifierRef, Identifier, "identifier must not be null");
 
-/// Creates a SAILAR identifier string from a null-terminated sequence of bytes. If the bytes are not valid UTF-8, returns `null`
+/// Creates a SAILAR identifier string from a sequence of bytes. If the bytes are not valid UTF-8, returns `null`
 /// and an error that can be disposed with `SAILDisposeError`.
 ///
 /// The identifier can be disposed later with `SAILDisposeIdentifier`.
 #[no_mangle]
-pub unsafe extern "C" fn SAILCreateIdentifier(contents: *const u8, error: *mut SAILErrorRef) -> SAILIdentifierRef {
-    let length = {
-        let mut start = contents;
-        let mut index = 0usize;
-        loop {
-            if *start == 0u8 {
-                break index;
-            }
-
-            index += 1;
-            start = start.add(1);
-        }
-    };
-
+pub unsafe extern "C" fn SAILCreateIdentifier(contents: *const u8, length: usize, error: *mut SAILErrorRef) -> SAILIdentifierRef {
     let bytes = std::slice::from_raw_parts(contents, length);
     match Identifier::try_from(bytes) {
         Ok(identifier) => SAILIdentifierRef::new(identifier),
