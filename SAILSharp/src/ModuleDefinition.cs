@@ -19,7 +19,10 @@ namespace SAILSharp {
                 versionNumbersBuilder.Add((UIntPtr)number);
             }
 
-            cachedModuleVersion = versionNumbersBuilder.Capacity != versionNumbersBuilder.Count ? cachedModuleVersion = versionNumbersBuilder.ToImmutable() : versionNumbersBuilder.MoveToImmutable();
+            cachedModuleVersion =
+                versionNumbersBuilder.Capacity != versionNumbersBuilder.Count ?
+                cachedModuleVersion = versionNumbersBuilder.ToImmutable() :
+                versionNumbersBuilder.MoveToImmutable();
 
             using var moduleNameIdentifier = new Identifier(name);
             fixed (UIntPtr* versionNumbers = cachedModuleVersion.AsSpan()) {

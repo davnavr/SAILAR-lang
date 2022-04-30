@@ -1,5 +1,8 @@
 //! Error handling functions.
 
+#![allow(improper_ctypes_definitions)]
+
+#[repr(transparent)]
 pub struct SAILErrorRef(*mut dyn std::error::Error);
 
 impl SAILErrorRef {

@@ -16,6 +16,10 @@
         }
 
         public override string ToString() {
+            if (identifier is null) {
+                return string.Empty;
+            }
+
             var length = UIntPtr.Zero;
             var content = SAILAR.GetIdentifierContents(identifier, in length);
             return Encoding.UTF8.GetString(content, (int)length);

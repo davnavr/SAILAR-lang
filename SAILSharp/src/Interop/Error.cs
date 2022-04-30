@@ -4,7 +4,7 @@
 
     public static class Error {
         public unsafe static void HandleError(SAILAR.OpaqueError* error) {
-            if (error != null) {
+            if (error is not null) {
                 var message = SAILAR.GetErrorMessage(error);
                 SAILAR.DisposeError(error);
                 var length = UIntPtr.Zero;
