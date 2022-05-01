@@ -103,9 +103,8 @@ mod output {
         ) -> Result {
             self.write_record(binary::RecordType::Array, pool, |contents| {
                 contents.destination.write_all(&[u8::from(tag)])?;
-                let iterator = items.into_iter();
-                contents.write_integer(iterator.len())?;
-                contents.write_many(iterator, writer)
+                contents.write_integer(items.len())?;
+                contents.write_many(items, writer)
             })
         }
     }
@@ -263,7 +262,7 @@ pub fn write<W: Write>(module: &crate::module::Definition, destination: W, buffe
                     Instruction::Nop | Instruction::Break => Ok(()),
                     Instruction::Ret(return_values) => {
                         body.write_integer(return_values.len())?;
-                        body.write_many(return_values.iter(), |values, v| write_value(values, v))
+                        body.write_many(return_values.iter(), write_value)
                     }
                     Instruction::AddI(operation) | Instruction::SubI(operation) | Instruction::MulI(operation) => {
                         body.write_all(&[u8::from(operation.overflow_behavior())])?;

@@ -246,12 +246,12 @@ mod input {
 
         pub fn read_buffer<T, P: FnOnce(Wrapper<&[u8]>) -> ParseResult<T>>(
             &mut self,
-            mut buffer: &mut [u8],
+            buffer: &mut [u8],
             parser: P,
         ) -> ParseResult<T> {
             let start_offset = self.offset;
             let integer_size = self.integer_size;
-            self.read_exact(&mut buffer)?;
+            self.read_exact(buffer)?;
             parser(Wrapper {
                 source: buffer,
                 offset: start_offset,

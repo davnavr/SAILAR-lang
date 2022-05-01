@@ -80,13 +80,6 @@ pub struct DefinedFunction {
 }
 
 impl DefinedFunction {
-    pub(crate) fn new(template: Arc<function::Template>, export: Export, body: function::Body) -> Self {
-        Self {
-            template,
-            definition: function::Definition::new(body, export),
-        }
-    }
-
     #[inline]
     pub fn function(&self) -> &function::Function {
         self.template.function()
@@ -442,7 +435,7 @@ impl Definition {
         self.integer_size.resize_to_fit(function.signature().parameter_types().len());
     }
 
-    // TODO: May need to allow Option<> things in order to allow easier self-referential things, may need module writer to perform validation (it will return Result).
+    // TODO: May need to allow Option<> or Mutex<Option<>> things in order to allow easier self-referential things, may need module writer to perform validation (it will return Result).
     pub fn define_function(
         &mut self,
         symbol: Identifier,
