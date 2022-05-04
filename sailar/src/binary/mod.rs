@@ -11,56 +11,6 @@ pub use num::{InvalidVarIntSize, VarIntSize};
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-pub enum RecordType {
-    Array = 1,
-    Identifier = 2,
-    TypeSignature = 3,
-    FunctionSignature = 4,
-    Data = 5,
-    Code = 6,
-    ModuleImport = 7,
-    FunctionImport = 8,
-    StructureImport = 9,
-    GlobalImport = 10,
-    FunctionDefinition = 11,
-    StructureDefinition = 12,
-    GlobalDefinition = 13,
-    FunctionInstantiation = 14,
-    StructureInstantiation = 15,
-    Namespace = 16,
-    //ExceptionClassImport = 17,
-    //ExceptionClassDefinition = 18,
-    //AnnotationClassImport = 19,
-    //AnnotationClassDefinition = 20,
-    //DebuggingInformation = 21,
-}
-
-impl From<RecordType> for u8 {
-    fn from(value: RecordType) -> u8 {
-        value as u8
-    }
-}
-
-#[derive(Clone, Debug, thiserror::Error)]
-#[error("{value:#02X} is not a valid record type")]
-pub struct InvalidRecordTypeError {
-    value: u8,
-}
-
-impl TryFrom<u8> for RecordType {
-    type Error = InvalidRecordTypeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value <= 16 {
-            Ok(unsafe { std::mem::transmute::<u8, Self>(value) })
-        } else {
-            Err(InvalidRecordTypeError { value })
-        }
-    }
-}
-
 /// Represents an array of bytes that make up a SAILAR module.
 #[derive(Clone)]
 pub struct RawModule {

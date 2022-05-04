@@ -56,6 +56,8 @@ Offset|Name|Size|Notes
 
 # Record Types
 
+## Header Field Record
+
 ## Array Record
 Allows one or more records of the same type to be contained in a single record. To simplify the format, nested arrays are not allowed.
 

@@ -55,14 +55,22 @@ impl Id {
         Identifier(self.0.to_string())
     }
 
+    /// Creates a reference to an identfier from a string, without any validation checks.
+    /// # Safety
+    /// Callers should ensure that the string does not contain any interior null bytes and must not be empty.
+    pub unsafe fn from_str_unchecked(identifier: &str) -> &Id {
+        // Safety: Representation of Id allows safe transmute here.
+        std::mem::transmute::<&str, &Id>(identifier)
+    }
+
     pub fn from_str(identifier: &str) -> Result<&Id, InvalidError> {
         if identifier.is_empty() {
             Err(InvalidError::Empty)
         } else if identifier.chars().any(|c| c == '\0') {
             Err(InvalidError::ContainsNull)
         } else {
-            // Safety: Representation of Id allows safe transmute here.
-            Ok(unsafe { std::mem::transmute::<&str, &Id>(identifier) })
+            // Safety: Validation is performed above.
+            Ok(unsafe { Self::from_str_unchecked(identifier) })
         }
     }
 
