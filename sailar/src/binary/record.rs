@@ -60,7 +60,8 @@ impl TryFrom<u8> for Type {
 pub enum Array<'a> {
     HeaderField(Vec<HeaderField<'a>>),
     Identifier(Vec<&'a Id>),
-    //TypeSignature(),
+    TypeSignature(Vec<&'a signature::Type<'a>>),
+    FunctionSignature(Vec<&'a signature::Function>),
 }
 
 impl Array<'_> {
@@ -68,6 +69,8 @@ impl Array<'_> {
         match self {
             Self::HeaderField(_) => Type::HeaderField,
             Self::Identifier(_) => Type::Identifier,
+            Self::TypeSignature(_) => Type::TypeSignature,
+            Self::FunctionSignature(_) => Type::FunctionSignature,
         }
     }
 }
@@ -81,7 +84,7 @@ pub enum HeaderField<'a> {
 impl HeaderField<'_> {
     pub fn field_name(&self) -> &'static Id {
         let name = match self {
-            Self::ModuleIdentifier { .. } => "mID",
+            Self::ModuleIdentifier { .. } => "ModuleIdentifier",
         };
 
         unsafe { Id::from_str_unchecked(name) }
@@ -94,6 +97,8 @@ impl HeaderField<'_> {
 pub enum Record<'a> {
     HeaderField(HeaderField<'a>),
     Identifier(&'a Id),
+    TypeSignature(&'a signature::Type<'a>),
+    FunctionSignature(&'a signature::Function),
     Array(Array<'a>),
 }
 
@@ -102,6 +107,8 @@ impl Record<'_> {
         match self {
             Self::HeaderField(_) => Type::HeaderField,
             Self::Identifier(_) => Type::Identifier,
+            Self::TypeSignature(_) => Type::TypeSignature,
+            Self::FunctionSignature(_) => Type::FunctionSignature,
             Self::Array(_) => Type::Array,
         }
     }

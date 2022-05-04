@@ -1,7 +1,9 @@
 //! Low-level API containing types that represent the contents of a SAILAR module binary.
 
 use crate::binary;
+use crate::binary::index;
 use crate::binary::record::{self, Record};
+use crate::binary::signature;
 use crate::versioning;
 use std::io::Write;
 
@@ -60,6 +62,37 @@ impl<'a> Module<'a> {
                 }
             }
 
+            fn write_type_signature(out: &mut VecWriter, signature: &signature::Type) -> Result {
+                use signature::Type;
+                out.write_all(&[u8::from(signature.code())])?;
+                match signature {
+                    Type::U8
+                    | Type::S8
+                    | Type::U16
+                    | Type::S16
+                    | Type::U32
+                    | Type::S32
+                    | Type::U64
+                    | Type::S64
+                    | Type::UPtr
+                    | Type::SPtr => Ok(()),
+                    Type::RawPtr(None) => out.write_all(&[u8::from(signature::TypeCode::Void)]),
+                    Type::RawPtr(Some(pointee)) => write_type_signature(out, pointee),
+                    Type::FuncPtr(index) => out.write_integer(*index),
+                }
+            }
+
+            fn write_function_signature(out: &mut VecWriter, signature: &signature::Function) -> Result {
+                let return_types = signature.return_types();
+                let parameter_types = signature.parameter_types();
+                out.write_integer(return_types.len())?;
+                out.write_integer(parameter_types.len())?;
+                for index in return_types.iter().chain(parameter_types) {
+                    out.write_integer(*index)?;
+                }
+                Ok(())
+            }
+
             macro_rules! write_array_record {
                 ($items: expr, $item_writer: expr) => {{
                     out.write_integer($items.len())?;
@@ -73,11 +106,15 @@ impl<'a> Module<'a> {
             match record {
                 Record::HeaderField(field) => write_header_field(out, field),
                 Record::Identifier(identifier) => out.write_all(identifier.as_bytes()),
+                Record::TypeSignature(signature) => write_type_signature(out, signature),
+                Record::FunctionSignature(signature) => write_function_signature(out, signature),
                 Record::Array(array) => {
                     out.write_all(&[u8::from(array.item_type())])?;
                     match array {
                         record::Array::HeaderField(fields) => write_array_record!(fields, write_header_field),
                         record::Array::Identifier(identifiers) => write_array_record!(identifiers, Writer::write_identifier),
+                        record::Array::TypeSignature(signatures) => write_array_record!(signatures, write_type_signature),
+                        record::Array::FunctionSignature(signatures) => write_array_record!(signatures, write_function_signature),
                     }
                 }
             }

@@ -40,8 +40,8 @@ impl<W: Write> Writer<W> {
     }
 
     #[inline]
-    pub fn write_integer(&mut self, value: usize) -> Result {
-        (self.integer_writer)(self, value)
+    pub fn write_integer<V: Into<usize>>(&mut self, value: V) -> Result {
+        (self.integer_writer)(self, value.into())
     }
 
     pub fn write_identifier(&mut self, identifier: &crate::Id) -> Result {
