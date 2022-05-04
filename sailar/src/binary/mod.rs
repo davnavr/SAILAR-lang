@@ -4,6 +4,7 @@ mod buffer;
 mod num;
 
 pub mod module;
+pub mod record;
 pub mod signature;
 
 pub use num::{InvalidVarIntSize, VarIntSize};

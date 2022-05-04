@@ -50,4 +50,35 @@ impl TryFrom<u8> for TypeCode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Type {}
+pub struct Function {
+    return_types: Box<[usize]>,
+    parameter_types: Box<[usize]>,
+}
+
+/// Represents a type signature
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Type<'a> {
+    /// Unsigned 8-bit integer.
+    U8,
+    /// Signed 8-bit integer.
+    S8,
+    /// Unsigned 16-bit integer.
+    U16,
+    /// Signed 16-bit integer.
+    S16,
+    /// Unsigned 32-bit integer.
+    U32,
+    /// Signed 32-bit integer.
+    S32,
+    /// Unsigned 64-bit integer.
+    U64,
+    /// Signed 64-bit integer.
+    S64,
+    /// Unsigned integer with the same size as a raw pointer.
+    UPtr,
+    /// Unsigned integer with the same size as a raw pointer.
+    SPtr,
+    RawPtr(Option<&'a Type<'a>>),
+    /// Represents a pointer to a function.
+    FuncPtr()
+}
