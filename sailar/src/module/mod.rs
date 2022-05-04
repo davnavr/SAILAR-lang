@@ -234,14 +234,7 @@ pub struct Definition {
     //entry_point: _,
 }
 
-mod parser;
-
-pub use parser::{
-    Error as ParseError, ErrorKind as ParseErrorKind, InvalidInstructionError as ParsedInstructionError,
-    InvalidInstructionKind as ParsedInstructionErrorKind, InvalidMagicError,
-};
-
-mod writer;
+pub type ParseError = std::convert::Infallible;
 
 impl From<Arc<ModuleIdentifier>> for Definition {
     fn from(identifier: Arc<ModuleIdentifier>) -> Self {
@@ -293,8 +286,8 @@ impl Definition {
     /// Writes the bytes binary contents of the module to the specified destination.
     ///
     /// For writers such as [`std::fs::File`], consider wrapping the destination in a [`std::io::BufWriter`].
-    pub fn write<W: std::io::Write>(&self, destination: W, buffer_pool: Option<&buffer::Pool>) -> std::io::Result<()> {
-        writer::write(self, destination, buffer_pool)
+    pub fn write<W: std::io::Write>(&self, _destination: W, _buffer_pool: Option<&buffer::Pool>) -> std::io::Result<()> {
+        todo!("write")
     }
 
     /// Writes the binary contents of the module to a file, automatically wrapping it in a [`std::io::BufWriter`].
@@ -343,8 +336,8 @@ impl Definition {
     ///
     /// For sources such as [`std::fs::File`], consider wrapping the reader in a [`std::io::BufReader`].
     #[inline]
-    pub fn parse<R: std::io::Read>(source: R, buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
-        parser::parse(source, buffer_pool)
+    pub fn parse<R: std::io::Read>(_source: R, _buffer_pool: Option<&buffer::Pool>) -> Result<Self, ParseError> {
+        todo!("parser")
     }
 
     /// Parses a module contained a byte slice.
