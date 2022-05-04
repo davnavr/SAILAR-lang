@@ -56,16 +56,23 @@ Offset|Name|Size|Notes
 
 # Record Types
 
-## Header Field Record
-
 ## Array Record
-Allows one or more records of the same type to be contained in a single record. To simplify the format, nested arrays are not allowed.
+Allows one or more records of the same type to be contained in a single record. To simplify the format, nested arrays are not
+allowed.
 
 Offset|Name|Size|Notes
 ---|---|---|---
 `0`|Record Type|`1`|Indicates the type of records contained in this array. Must not be an array itself.
 `1`|Record Count|`L`|A non-zero [integer](#integer-size) indicating the number of records in the array.
 `L + 1`|Records|?|The records in the array.
+
+## Header Field Record
+A record that describes an aspect of the module. The content of a header field record starts with a single
+[identifier](#identifiers) called the field name, which indicates the meaning of the field's contents.
+
+Field Name|Description
+---|---
+`mID`|Indicates that a [module identifier](#module-identifier) follows the field name, indicating the name and version of the current module.
 
 ## Identifier Record
 Provides a way to use duplicated [identifiers](#identifiers) without having to copy and paste their contents all over the module.

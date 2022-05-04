@@ -1,5 +1,6 @@
 //! Low-level API containing types that represent the contents of a SAILAR module binary.
 
+use crate::binary::signature;
 use crate::binary::VarIntSize;
 use crate::{FormatVersion, Id};
 use std::io::Write;
@@ -14,13 +15,13 @@ pub enum RecordType {
     FunctionSignature = 4,
     Data = 5,
     Code = 6,
-    ModuleImport = 7,
-    FunctionImport = 8,
-    StructureImport = 9,
-    GlobalImport = 10,
-    FunctionDefinition = 11,
-    StructureDefinition = 12,
-    GlobalDefinition = 13,
+    //ModuleImport = 7,
+    //FunctionImport = 8,
+    //StructureImport = 9,
+    //GlobalImport = 10,
+    //FunctionDefinition = 11,
+    //StructureDefinition = 12,
+    //GlobalDefinition = 13,
     //FunctionInstantiation = 14,
     //StructureInstantiation = 15,
     //Namespace = 16,
@@ -47,7 +48,7 @@ impl TryFrom<u8> for RecordType {
     type Error = InvalidRecordTypeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value <= 16 {
+        if value <= RecordType::Code.into() {
             Ok(unsafe { std::mem::transmute::<u8, Self>(value) })
         } else {
             Err(InvalidRecordTypeError { value })
@@ -60,6 +61,7 @@ impl TryFrom<u8> for RecordType {
 pub enum Array<'a> {
     HeaderField(Vec<HeaderField<'a>>),
     Identifier(Vec<&'a Id>),
+    //TypeSignature(),
 }
 
 impl Array<'_> {
@@ -106,91 +108,7 @@ impl Record<'_> {
     }
 }
 
-mod writer {
-    use crate::binary::VarIntSize;
-    use std::io::{Error, ErrorKind, Write};
-
-    pub type Result = std::io::Result<()>;
-
-    pub type IntegerWriter<W> = fn(&mut Writer<W>, usize) -> Result;
-
-    macro_rules! integer_writer {
-        ($integer_type: ty) => {
-            |out: &mut Writer<W>, value: usize| match <$integer_type>::try_from(value) {
-                Ok(value) => out.write_all(&value.to_le_bytes()),
-                Err(err) => Err(Error::new(ErrorKind::InvalidInput, err)),
-            }
-        };
-    }
-
-    fn select_integer_writer<W: Write>(integer_size: VarIntSize) -> IntegerWriter<W> {
-        match integer_size {
-            VarIntSize::One => integer_writer!(u8),
-            VarIntSize::Two => integer_writer!(u16),
-            VarIntSize::Four => integer_writer!(u32),
-        }
-    }
-
-    pub struct Writer<W> {
-        destination: W,
-        integer_size: VarIntSize,
-        integer_writer: IntegerWriter<W>,
-    }
-
-    pub type VecWriter<'a> = Writer<&'a mut Vec<u8>>;
-
-    impl<W: Write> Writer<W> {
-        pub fn new(destination: W, integer_size: VarIntSize) -> Self {
-            Self {
-                destination,
-                integer_size,
-                integer_writer: select_integer_writer(integer_size),
-            }
-        }
-
-        #[inline]
-        pub fn write_integer(&mut self, value: usize) -> Result {
-            (self.integer_writer)(self, value)
-        }
-
-        pub fn write_identifier(&mut self, identifier: &crate::Id) -> Result {
-            let bytes = identifier.as_bytes();
-            self.write_integer(bytes.len())?;
-            self.write_all(bytes)
-        }
-
-        pub fn derive_from<O: Write>(&self, other: O) -> Writer<O> {
-            Writer {
-                destination: other,
-                integer_size: self.integer_size,
-                integer_writer: select_integer_writer(self.integer_size),
-            }
-        }
-    }
-
-    impl<W> std::ops::Deref for Writer<W> {
-        type Target = W;
-
-        fn deref(&self) -> &W {
-            &self.destination
-        }
-    }
-
-    impl<W> std::ops::DerefMut for Writer<W> {
-        fn deref_mut(&mut self) -> &mut W {
-            &mut self.destination
-        }
-    }
-
-    impl<W: std::fmt::Debug> std::fmt::Debug for Writer<W> {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.debug_struct("Writer")
-                .field("destination", &self.destination)
-                .field("integer_size", &self.integer_size)
-                .finish()
-        }
-    }
-}
+mod writer;
 
 /// Represents the content of a SAILAR module.
 #[derive(Clone, Debug)]
@@ -219,6 +137,7 @@ impl<'a> Module<'a> {
         &self.records
     }
 
+    /// Writes the binary contents of the SAILAR module to the specified destination.
     pub fn write_to<W: Write>(&self, destination: W) -> std::io::Result<()> {
         use writer::{Result, VecWriter, Writer};
 
@@ -267,7 +186,7 @@ impl<'a> Module<'a> {
             }
         }
 
-        let mut content_buffer = Vec::with_capacity(256);
+        let mut content_buffer = Vec::with_capacity(64);
 
         for record in self.records.iter() {
             content_buffer.clear();

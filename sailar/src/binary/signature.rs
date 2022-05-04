@@ -48,3 +48,6 @@ impl TryFrom<u8> for TypeCode {
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Type {}

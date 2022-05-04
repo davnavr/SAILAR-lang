@@ -1,8 +1,8 @@
 //! Contains types to abstract over the binary representation of the SAILAR format.
 
+mod buffer;
 mod num;
 
-pub mod buffer;
 pub mod module;
 pub mod signature;
 
