@@ -1,18 +1,11 @@
 //! Contains types for reading and writing SAILAR modules.
 
 pub mod binary;
-pub mod block;
-pub mod data;
-pub mod function;
 pub mod identifier;
-pub mod instruction_set;
-pub mod module;
 pub mod type_system;
 pub mod versioning;
 
 pub use identifier::{Id, Identifier};
-pub use module::Definition as ModuleDefinition;
-pub use versioning::Format as FormatVersion;
 
 #[macro_export]
 #[doc(hidden)]

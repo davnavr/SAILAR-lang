@@ -1,8 +1,8 @@
 //! Low-level API containing types that represent the contents of a SAILAR module binary.
 
-use crate::binary::signature;
-use crate::binary::VarIntSize;
-use crate::{FormatVersion, Id};
+use crate::binary::{self, signature};
+use crate::versioning;
+use crate::Id;
 use std::io::Write;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,16 +113,16 @@ mod writer;
 /// Represents the content of a SAILAR module.
 #[derive(Clone, Debug)]
 pub struct Module<'a> {
-    format_version: FormatVersion,
-    integer_size: VarIntSize,
+    format_version: versioning::Format,
+    integer_size: binary::VarIntSize,
     records: Vec<Record<'a>>,
 }
 
 impl<'a> Module<'a> {
     pub fn new() -> Self {
         Self {
-            format_version: FormatVersion::CURRENT.clone(),
-            integer_size: VarIntSize::One,
+            format_version: versioning::Format::CURRENT.clone(),
+            integer_size: binary::VarIntSize::One,
             records: Vec::default(),
         }
     }
