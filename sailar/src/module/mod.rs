@@ -3,7 +3,7 @@
 use crate::binary::buffer;
 use crate::binary::{RawModule, VarIntSize};
 use crate::function;
-use crate::identifier::{Id, Identifier};
+use crate::{FormatVersion, Id, Identifier};
 use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -13,20 +13,6 @@ use std::sync::Arc;
 pub enum Export {
     Yes,
     No,
-}
-
-/// Specifies the version of a SAILAR module file.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub struct FormatVersion {
-    /// The major version number, incremented when backwards incompatible changes are made to the format.
-    pub major: u8,
-    pub minor: u8,
-}
-
-impl FormatVersion {
-    /// The minimum version of the format supported by this API.
-    pub const MINIMUM_SUPPORTED: &'static Self = &Self { major: 0, minor: 12 };
 }
 
 #[derive(Clone)]

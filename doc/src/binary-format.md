@@ -10,9 +10,8 @@ Offset|Name|Size (in bytes)|Notes
 `6`|Major Format Version|`1`|The major version of the format, changes to this number are not backwards compatible.
 `7`|Minor Format Version|`1`|The minor version of the format.
 `8`|[Integer Size](#integer-size)|`1`
-`9`|[Module Identifier](#module-identifier)|`H`|The name and version of the module.
-`9 + H`|Record Count|`L`|The number of records `R` that follow.
-`9 + H + L`|[Records](#record)|?|
+`9`|Record Count|`C`|The number of records that follow.
+`9 + L`|[Records](#record)|?|
 
 ## Integer Size
 The integer size indicates the size (`L`) of unsigned integers used to denote lengths and indices, all values not listed in the table below are invalid.
