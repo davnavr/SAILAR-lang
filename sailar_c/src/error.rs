@@ -1,7 +1,7 @@
 //! Error handling functions.
 
 // Workaround since dyn makes a fat pointer
-crate::box_wrapper!(Error, Box<Box<dyn std::error::Error>>);
+crate::box_wrapper!(Error, Box<Box<dyn std::error::Error>>, pub);
 
 impl Error {
     pub(crate) unsafe fn from_error<E: std::error::Error + 'static>(error: E) -> Self {
@@ -14,7 +14,7 @@ pub unsafe extern "C" fn sailar_dispose_error(error: Error) {
     Box::from_raw(error.0);
 }
 
-crate::box_wrapper!(ErrorMessage, String);
+crate::box_wrapper!(ErrorMessage, String, pub);
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_get_error_message(error: Error) -> ErrorMessage {

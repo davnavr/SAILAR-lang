@@ -3,7 +3,7 @@
     using System.Text;
 
     public static class Error {
-        public unsafe static void HandleError(SAILAR.OpaqueError* error) {
+        public unsafe static void HandleError(OpaqueError* error) {
             if (error is not null) {
                 var message = SAILAR.GetErrorMessage(error);
                 SAILAR.DisposeError(error);

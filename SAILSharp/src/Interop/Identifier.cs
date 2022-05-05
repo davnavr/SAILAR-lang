@@ -3,11 +3,11 @@
     using System.Text;
 
     public unsafe readonly ref struct Identifier {
-        internal readonly SAILAR.OpaqueIdentifier* identifier;
+        internal readonly OpaqueIdentifier* identifier;
 
         public Identifier(string contents) {
             byte[] bytes = Encoding.UTF8.GetBytes(contents);
-            SAILAR.OpaqueError* error = null;
+            OpaqueError* error = null;
             fixed (byte* b = bytes) {
                 identifier = SAILAR.CreateIdentifier(b, (UIntPtr)bytes.Length, in error);
             }
