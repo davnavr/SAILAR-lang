@@ -102,6 +102,10 @@ impl Identifier {
         Id::from_byte_slice(bytes).map(Id::to_identifier)
     }
 
+    pub fn from_utf8(bytes: Vec<u8>) -> Result<Self, ParseError> {
+        Ok(Self::from_string(String::from_utf8(bytes).map_err(|e| e.utf8_error())?)?)
+    }
+
     #[inline]
     pub fn as_id(&self) -> &Id {
         unsafe {
@@ -188,6 +192,15 @@ impl TryFrom<&[u8]> for Identifier {
     #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, ParseError> {
         Self::from_byte_slice(bytes)
+    }
+}
+
+impl TryFrom<Vec<u8>> for Identifier {
+    type Error = ParseError;
+
+    #[inline]
+    fn try_from(bytes: Vec<u8>) -> Result<Self, ParseError> {
+        Self::from_utf8(bytes)
     }
 }
 

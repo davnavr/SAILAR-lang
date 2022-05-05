@@ -1,6 +1,7 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
-use crate::binary;
+use crate::binary::{self, record};
+use crate::identifier;
 use crate::versioning;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
@@ -52,6 +53,22 @@ pub enum ErrorKind {
     MissingRecordCount,
     #[error("the integer value {0} was too large")]
     IntegerTooLarge(u32),
+    #[error("expected record type byte")]
+    MissingRecordType,
+    #[error(transparent)]
+    InvalidRecordType(#[from] record::InvalidTypeError),
+    #[error("missing record byte size")]
+    MissingRecordSize,
+    #[error("unexpected end of record, expected {expected_size} bytes of content but got {actual_size}")]
+    UnexpectedEndOfRecord { expected_size: usize, actual_size: usize },
+    #[error(transparent)]
+    InvalidIdentifier(#[from] identifier::ParseError),
+    #[error("expected {expected_size} bytes for {name} but got {actual_size}")]
+    UnexpectedEndOfData {
+        name: &'static str,
+        expected_size: usize,
+        actual_size: usize,
+    },
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -126,9 +143,53 @@ impl<R: Read> Wrapper<R> {
         self.offset += count;
         Ok(count)
     }
+
+    fn read_to_wrapped_buffer<'b>(&mut self, buffer: &'b mut [u8]) -> Result<(usize, Wrapper<&'b [u8]>)> {
+        let count = self.read_bytes(buffer)?;
+        Ok((
+            count,
+            Wrapper {
+                source: buffer,
+                offset: self.offset,
+                previous_offset: self.offset,
+            },
+        ))
+    }
 }
 
+type BufferWrapper<'b> = Wrapper<&'b [u8]>;
+
 type IntegerReader<R> = for<'a> fn(&'a mut Wrapper<R>, fn() -> ErrorKind) -> Result<usize>;
+
+fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> {
+    match size {
+        binary::VarIntSize::One => |source, error| {
+            let mut value = 0u8;
+            if source.read_bytes(std::slice::from_mut(&mut value))? == 1 {
+                Ok(usize::from(value))
+            } else {
+                source.fail_with(error())
+            }
+        },
+        binary::VarIntSize::Two => |source, error| {
+            let mut buffer = [0u8; 2];
+            if source.read_bytes(&mut buffer)? == 2 {
+                Ok(usize::from(u16::from_le_bytes(buffer)))
+            } else {
+                source.fail_with(error())
+            }
+        },
+        binary::VarIntSize::Four => |source, error| {
+            let mut buffer = [0u8; 4];
+            if source.read_bytes(&mut buffer)? == 4 {
+                let value = u32::from_le_bytes(buffer);
+                usize::try_from(value).map_err(|_| source.wrap_error(ErrorKind::IntegerTooLarge(value)))
+            } else {
+                source.fail_with(error())
+            }
+        },
+    }
+}
 
 /// Provides a way to read the contents of a SAILAR module.
 #[derive(Debug)]
@@ -154,7 +215,7 @@ impl<R: Read> Reader<R> {
     pub fn to_record_reader(mut self) -> Result<(versioning::Format, binary::VarIntSize, RecordReader<R>)> {
         {
             let mut magic_buffer = [0u8; binary::MAGIC.len()];
-            let mut magic_length = self.source.read_bytes(&mut magic_buffer)?;
+            let magic_length = self.source.read_bytes(&mut magic_buffer)?;
             if magic_length < magic_buffer.len() {
                 return self.source.fail_with(InvalidMagicError::new(&magic_buffer[0..magic_length]));
             }
@@ -187,40 +248,13 @@ impl<R: Read> Reader<R> {
             integer_size = self.source.wrap_result(binary::VarIntSize::try_from(values[2]))?;
         }
 
-        let integer_reader: IntegerReader<R> = match integer_size {
-            binary::VarIntSize::One => |source, error| {
-                let mut value = 0u8;
-                if source.read_bytes(std::slice::from_mut(&mut value))? == 1 {
-                    Ok(usize::from(value))
-                } else {
-                    source.fail_with(error())
-                }
-            },
-            binary::VarIntSize::Two => |source, error| {
-                let mut buffer = [0u8; 2];
-                if source.read_bytes(&mut buffer)? == 2 {
-                    Ok(usize::from(u16::from_le_bytes(buffer)))
-                } else {
-                    source.fail_with(error())
-                }
-            },
-            binary::VarIntSize::Four => |source, error| {
-                let mut buffer = [0u8; 4];
-                if source.read_bytes(&mut buffer)? == 4 {
-                    let value = u32::from_le_bytes(buffer);
-                    usize::try_from(value).map_err(|_| source.wrap_error(ErrorKind::IntegerTooLarge(value)))
-                } else {
-                    source.fail_with(error())
-                }
-            },
-        };
-
+        let integer_reader = select_integer_reader(integer_size);
         let record_count = integer_reader(&mut self.source, || ErrorKind::MissingRecordCount)?;
 
         Ok((
             format_version,
             integer_size,
-            RecordReader::new(self.source, integer_reader, record_count),
+            RecordReader::new(self.source, integer_size, integer_reader, record_count),
         ))
     }
 }
@@ -236,15 +270,19 @@ impl<R: Read> From<R> for Reader<R> {
 pub struct RecordReader<R> {
     count: usize,
     source: Wrapper<R>,
+    integer_size: binary::VarIntSize,
     integer_reader: IntegerReader<R>,
     buffer: Vec<u8>,
 }
 
+pub type Record = record::Record<'static>;
+
 impl<R: Read> RecordReader<R> {
-    fn new(source: Wrapper<R>, integer_reader: IntegerReader<R>, count: usize) -> Self {
+    fn new(source: Wrapper<R>, integer_size: binary::VarIntSize, integer_reader: IntegerReader<R>, count: usize) -> Self {
         Self {
             count,
             source,
+            integer_size,
             integer_reader,
             buffer: Vec::default(),
         }
@@ -256,12 +294,68 @@ impl<R: Read> RecordReader<R> {
         self.count
     }
 
+    fn read_record(&mut self) -> Result<Record> {
+        let mut type_value = 0u8;
+        if self.source.read_bytes(std::slice::from_mut(&mut type_value))? == 0 {
+            return self.source.fail_with(ErrorKind::MissingRecordType);
+        }
+
+        let record_type = self.source.wrap_result(record::Type::try_from(type_value))?;
+        let record_size = (self.integer_reader)(&mut self.source, || ErrorKind::MissingRecordSize)?;
+
+        const STACK_BUFFER_LENGTH: usize = 512;
+        let mut stack_buffer: [u8; STACK_BUFFER_LENGTH];
+
+        let content_buffer = if record_size <= STACK_BUFFER_LENGTH {
+            stack_buffer = [0u8; STACK_BUFFER_LENGTH];
+            &mut stack_buffer[0..record_size]
+        } else {
+            self.buffer.clear();
+            self.buffer.resize(record_size, 0u8);
+            &mut self.buffer
+        };
+
+        let (actual_content_size, mut record_content) = self.source.read_to_wrapped_buffer(content_buffer)?;
+        let content_integer_reader: IntegerReader<&[u8]> = select_integer_reader(self.integer_size);
+
+        if actual_content_size != record_size {
+            return self.source.fail_with(ErrorKind::UnexpectedEndOfRecord {
+                expected_size: record_size,
+                actual_size: actual_content_size,
+            });
+        }
+
+        let read_identifier_content = |source: &mut BufferWrapper, size: usize| -> Result<identifier::Identifier> {
+            let mut buffer = vec![0u8; size];
+            let actual_size = source.read_bytes(&mut buffer)?;
+            if actual_size != buffer.len() {
+                return source.fail_with(ErrorKind::UnexpectedEndOfData {
+                    name: "identifier",
+                    actual_size,
+                    expected_size: size,
+                });
+            }
+
+            self.source.wrap_result(identifier::Identifier::from_utf8(buffer))
+        };
+
+        self.count -= 1;
+
+        Ok(match record_type {
+            record::Type::Identifier => {
+                read_identifier_content(&mut record_content, record_size)?;
+                todo!("what?")
+            }
+            _ => todo!("parse a {:?}", record_type),
+        })
+    }
+
     pub fn next_record(&mut self) -> Option<Result<Record>> {
         if self.count == 0 {
             return None;
         }
 
-        todo!("parse record")
+        Some(self.read_record())
     }
 
     /// Skips over any remaining records in the module, and checks that there are no remaining bytes in the input.
@@ -277,9 +371,7 @@ impl<R: Read> RecordReader<R> {
 
         Ok(())
     }
-}
-
-pub struct Record;
+};
 
 impl<R: Read> std::iter::Iterator for RecordReader<R> {
     type Item = Result<Record>;
