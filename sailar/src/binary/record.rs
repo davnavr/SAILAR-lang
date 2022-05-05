@@ -1,7 +1,8 @@
 //! Types that represent records in a SAILAR module binary.
 
 use crate::binary::signature;
-use crate::Id;
+use crate::{Id, Identifier};
+use std::borrow::Cow;
 
 /// Indicates what kind of content is contained in a record.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,7 +60,7 @@ impl TryFrom<u8> for Type {
 #[non_exhaustive]
 pub enum Array<'a> {
     HeaderField(Vec<HeaderField<'a>>),
-    Identifier(Vec<&'a Id>),
+    Identifier(Vec<Cow<'a, Id>>),
     TypeSignature(Vec<&'a signature::Type<'a>>),
     FunctionSignature(Vec<&'a signature::Function>),
 }
@@ -78,7 +79,7 @@ impl Array<'_> {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum HeaderField<'a> {
-    ModuleIdentifier { name: &'a Id, version: &'a [usize] },
+    ModuleIdentifier { name: Cow<'a, Id>, version: &'a [usize] },
 }
 
 impl HeaderField<'_> {
@@ -96,9 +97,9 @@ impl HeaderField<'_> {
 #[non_exhaustive]
 pub enum Record<'a> {
     HeaderField(HeaderField<'a>),
-    Identifier(&'a Id),
-    TypeSignature(&'a signature::Type<'a>),
-    FunctionSignature(&'a signature::Function),
+    Identifier(Cow<'a, Id>),
+    TypeSignature(Cow<'a, signature::Type<'a>>),
+    FunctionSignature(Cow<'a, signature::Function>),
     Array(Array<'a>),
 }
 
@@ -111,5 +112,20 @@ impl Record<'_> {
             Self::FunctionSignature(_) => Type::FunctionSignature,
             Self::Array(_) => Type::Array,
         }
+    }
+}
+
+impl From<Identifier> for Record<'_> {
+    #[inline]
+    fn from(identifier: Identifier) -> Self {
+        Self::Identifier(Cow::Owned(identifier))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn size_of_record_is_acceptable() {
+        assert!(std::mem::size_of::<crate::binary::record::Record>() < 64)
     }
 }

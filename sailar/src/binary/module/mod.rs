@@ -1,7 +1,6 @@
 //! Low-level API containing types that represent the contents of a SAILAR module binary.
 
 use crate::binary;
-use crate::binary::index;
 use crate::binary::record::{self, Record};
 use crate::binary::signature;
 use crate::versioning;
@@ -57,7 +56,7 @@ impl<'a> Module<'a> {
                 out.write_identifier(field.field_name())?;
                 match field {
                     record::HeaderField::ModuleIdentifier { name, version } => {
-                        out.write_identifier(name)?;
+                        out.write_identifier(name.as_ref())?;
                         out.write_integer(version.len())?;
                         for number in version.iter() {
                             out.write_integer(*number)?;
@@ -141,10 +140,12 @@ impl<'a> Module<'a> {
     }
 
     pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
-        let (format_version, integer_size, reader) = source.to_record_reader()?;
+        let (format_version, integer_size, mut reader) = source.to_record_reader()?;
         let mut records = Vec::with_capacity(reader.record_count());
 
-        // TODO: Read records
+        while let Some(record) = reader.next_record() {
+            records.push(record?);
+        }
 
         Ok(Self {
             format_version,

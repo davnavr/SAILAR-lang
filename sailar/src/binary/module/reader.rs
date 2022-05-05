@@ -1,6 +1,7 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
-use crate::binary::{self, record};
+use crate::binary;
+use crate::binary::record::{self, Record};
 use crate::identifier;
 use crate::versioning;
 use std::fmt::{Display, Formatter};
@@ -209,8 +210,10 @@ impl<R: Read> Reader<R> {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::binary::module::reader::{Reader};
     /// let input = "What happens if nonsense is used as input?";
-    /// let mut reader =
+    /// let reader = Reader::new(input.as_bytes());
+    /// assert!(matches!(reader.to_record_reader(), Err(_)));
     /// ```
     pub fn to_record_reader(mut self) -> Result<(versioning::Format, binary::VarIntSize, RecordReader<R>)> {
         {
@@ -275,8 +278,6 @@ pub struct RecordReader<R> {
     buffer: Vec<u8>,
 }
 
-pub type Record = record::Record<'static>;
-
 impl<R: Read> RecordReader<R> {
     fn new(source: Wrapper<R>, integer_size: binary::VarIntSize, integer_reader: IntegerReader<R>, count: usize) -> Self {
         Self {
@@ -294,7 +295,7 @@ impl<R: Read> RecordReader<R> {
         self.count
     }
 
-    fn read_record(&mut self) -> Result<Record> {
+    fn read_record<'a>(&mut self) -> Result<Record<'a>> {
         let mut type_value = 0u8;
         if self.source.read_bytes(std::slice::from_mut(&mut type_value))? == 0 {
             return self.source.fail_with(ErrorKind::MissingRecordType);
@@ -342,15 +343,12 @@ impl<R: Read> RecordReader<R> {
         self.count -= 1;
 
         Ok(match record_type {
-            record::Type::Identifier => {
-                read_identifier_content(&mut record_content, record_size)?;
-                todo!("what?")
-            }
+            record::Type::Identifier => record::Record::from(read_identifier_content(&mut record_content, record_size)?),
             _ => todo!("parse a {:?}", record_type),
         })
     }
 
-    pub fn next_record(&mut self) -> Option<Result<Record>> {
+    pub fn next_record<'a>(&mut self) -> Option<Result<Record<'a>>> {
         if self.count == 0 {
             return None;
         }
@@ -371,10 +369,10 @@ impl<R: Read> RecordReader<R> {
 
         Ok(())
     }
-};
+}
 
 impl<R: Read> std::iter::Iterator for RecordReader<R> {
-    type Item = Result<Record>;
+    type Item = Result<Record<'static>>; // TODO: Allow any lifetime for records in iterator. Maybe make a RecordIterator struct.
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_record()
