@@ -10,25 +10,25 @@ impl Error {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILARDisposeError(error: Error) {
+pub unsafe extern "C" fn sailar_dispose_error(error: Error) {
     Box::from_raw(error.0);
 }
 
 crate::box_wrapper!(ErrorMessage, String);
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILARGetErrorMessage(error: Error) -> ErrorMessage {
+pub unsafe extern "C" fn sailar_get_error_message(error: Error) -> ErrorMessage {
     ErrorMessage::new(error.into_ref().to_string())
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILARGetErrorMessageContents(message: ErrorMessage, length: *mut usize) -> *const u8 {
+pub unsafe extern "C" fn sailar_get_error_message_contents(message: ErrorMessage, length: *mut usize) -> *const u8 {
     let message = message.into_ref();
     *length = message.len();
     message.as_ptr()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILARDisposeErrorMessage(message: ErrorMessage) {
+pub unsafe extern "C" fn sailar_dispose_error_message(message: ErrorMessage) {
     message.into_box();
 }
