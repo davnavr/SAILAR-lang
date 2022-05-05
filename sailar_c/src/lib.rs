@@ -4,18 +4,17 @@
 
 pub mod error;
 pub mod identifier;
-pub mod module;
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! box_wrapper {
-    ($name: ident, $wrapped: ty, $null_message: literal) => {
+    ($name: ident, $wrapped: ty) => {
         #[repr(transparent)]
-        pub struct $name(*mut ());
+        pub struct $name(*mut std::ffi::c_void);
 
         impl $name {
             pub unsafe fn new(value: $wrapped) -> Self {
-                Self(Box::into_raw(Box::new(value)) as *mut ())
+                Self(Box::into_raw(Box::new(value)) as *mut std::ffi::c_void)
             }
 
             #[inline]
@@ -25,7 +24,7 @@ macro_rules! box_wrapper {
 
             #[inline]
             pub unsafe fn as_ref<'a>(self) -> &'a $wrapped {
-                self.as_mut().as_ref().expect($null_message)
+                self.as_mut().as_ref().expect("reference must not be null")
             }
 
             #[inline]

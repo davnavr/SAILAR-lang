@@ -1,40 +1,38 @@
 //! Error handling functions.
 
-#![allow(improper_ctypes_definitions)]
-
 #[repr(transparent)]
-pub struct SAILErrorRef(*mut dyn std::error::Error);
+pub struct Error(*mut std::ffi::c_void);
 
-impl SAILErrorRef {
-    pub unsafe fn as_ref<'a>(self) -> &'a dyn std::error::Error {
-        self.0.as_ref().expect("error must not be null")
+impl Error {
+    pub unsafe fn new<E: std::error::Error + 'static>(error: E) -> Error {
+        Error(Box::into_raw(Box::new(error)) as *mut _)
+    }
+
+    pub unsafe fn as_ref<'a>(self) -> &'a (dyn std::error::Error + 'static) {
+        std::mem::transmute::<_, *mut (dyn std::error::Error + 'static)>(self.0).as_ref().expect("error must not be null")
     }
 }
 
-pub unsafe fn from_error<E: std::error::Error + 'static>(error: E) -> SAILErrorRef {
-    SAILErrorRef(Box::into_raw(Box::new(error)))
-}
-
 #[no_mangle]
-pub unsafe extern "C" fn SAILDisposeError(error: SAILErrorRef) {
+pub unsafe extern "C" fn SAILARDisposeError(error: Error) {
     Box::from_raw(error.0);
 }
 
-crate::box_wrapper!(SAILErrorMessageRef, String, "error message must not be null");
+crate::box_wrapper!(ErrorMessage, String);
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILGetErrorMessage(error: SAILErrorRef) -> SAILErrorMessageRef {
-    SAILErrorMessageRef::new(error.as_ref().to_string())
+pub unsafe extern "C" fn SAILARGetErrorMessage(error: Error) -> ErrorMessage {
+    ErrorMessage::new(error.as_ref().to_string())
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILGetErrorMessageContents(message: SAILErrorMessageRef, length: *mut usize) -> *const u8 {
+pub unsafe extern "C" fn SAILARGetErrorMessageContents(message: ErrorMessage, length: *mut usize) -> *const u8 {
     let message = message.as_ref();
     *length = message.len();
     message.as_ptr()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn SAILDisposeErrorMessage(message: SAILErrorMessageRef) {
+pub unsafe extern "C" fn SAILARDisposeErrorMessage(message: ErrorMessage) {
     message.into_box();
 }
