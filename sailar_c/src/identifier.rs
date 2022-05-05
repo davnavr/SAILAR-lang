@@ -15,7 +15,7 @@ pub unsafe extern "C" fn SAILARCreateIdentifier(contents: *const u8, length: usi
     match Identifier::try_from(bytes) {
         Ok(identifier) => IdentifierRef::new(identifier),
         Err(e) => {
-            *error = Error::new(e);
+            *error = Error::from_error(e);
             IdentifierRef::null()
         }
     }
@@ -29,7 +29,7 @@ pub unsafe extern "C" fn SAILARDisposeIdentifier(identifier: IdentifierRef) {
 /// Returns a pointer to the contents of a SAILAR identifier, as well as the length in bytes.
 #[no_mangle]
 pub unsafe extern "C" fn SAILARGetIdentifierContents(identifier: IdentifierRef, length: *mut usize) -> *const u8 {
-    let bytes = identifier.as_ref().as_bytes();
+    let bytes = identifier.into_ref().as_bytes();
     *length = bytes.len();
     bytes.as_ptr()
 }

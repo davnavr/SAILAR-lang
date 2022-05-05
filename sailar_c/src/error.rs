@@ -1,15 +1,11 @@
 //! Error handling functions.
 
-#[repr(transparent)]
-pub struct Error(*mut std::ffi::c_void);
+// Workaround since dyn makes a fat pointer
+crate::box_wrapper!(Error, Box<Box<dyn std::error::Error>>);
 
 impl Error {
-    pub unsafe fn new<E: std::error::Error + 'static>(error: E) -> Error {
-        Error(Box::into_raw(Box::new(error)) as *mut _)
-    }
-
-    pub unsafe fn as_ref<'a>(self) -> &'a (dyn std::error::Error + 'static) {
-        std::mem::transmute::<_, *mut (dyn std::error::Error + 'static)>(self.0).as_ref().expect("error must not be null")
+    pub(crate) unsafe fn from_error<E: std::error::Error + 'static>(error: E) -> Self {
+        Self::new(Box::new(Box::new(error)))
     }
 }
 
@@ -22,12 +18,12 @@ crate::box_wrapper!(ErrorMessage, String);
 
 #[no_mangle]
 pub unsafe extern "C" fn SAILARGetErrorMessage(error: Error) -> ErrorMessage {
-    ErrorMessage::new(error.as_ref().to_string())
+    ErrorMessage::new(error.into_ref().to_string())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn SAILARGetErrorMessageContents(message: ErrorMessage, length: *mut usize) -> *const u8 {
-    let message = message.as_ref();
+    let message = message.into_ref();
     *length = message.len();
     message.as_ptr()
 }
