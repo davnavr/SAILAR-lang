@@ -50,6 +50,8 @@ pub enum ErrorKind {
     InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("expected record count")]
     MissingRecordCount,
+    #[error("the integer value {0} was too large")]
+    IntegerTooLarge(u32),
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -162,8 +164,8 @@ impl<R: Read> Reader<R> {
         let integer_size: binary::VarIntSize;
 
         {
-            let mut values = [0u8, 3];
-            let mut value_count = self.source.read_bytes(&mut values)?;
+            let mut values = [0u8; 3];
+            let value_count = self.source.read_bytes(&mut values)?;
 
             if value_count < 2 {
                 return self.source.fail_with(ErrorKind::MissingFormatVersion);
@@ -194,11 +196,32 @@ impl<R: Read> Reader<R> {
                     source.fail_with(error())
                 }
             },
+            binary::VarIntSize::Two => |source, error| {
+                let mut buffer = [0u8; 2];
+                if source.read_bytes(&mut buffer)? == 2 {
+                    Ok(usize::from(u16::from_le_bytes(buffer)))
+                } else {
+                    source.fail_with(error())
+                }
+            },
+            binary::VarIntSize::Four => |source, error| {
+                let mut buffer = [0u8; 4];
+                if source.read_bytes(&mut buffer)? == 4 {
+                    let value = u32::from_le_bytes(buffer);
+                    usize::try_from(value).map_err(|_| source.wrap_error(ErrorKind::IntegerTooLarge(value)))
+                } else {
+                    source.fail_with(error())
+                }
+            },
         };
 
         let record_count = integer_reader(&mut self.source, || ErrorKind::MissingRecordCount)?;
 
-        Ok((format_version, integer_size, RecordReader::new(self.source, integer_reader, record_count)))
+        Ok((
+            format_version,
+            integer_size,
+            RecordReader::new(self.source, integer_reader, record_count),
+        ))
     }
 }
 
