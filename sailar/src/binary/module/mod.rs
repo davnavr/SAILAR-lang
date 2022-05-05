@@ -5,9 +5,11 @@ use crate::binary::index;
 use crate::binary::record::{self, Record};
 use crate::binary::signature;
 use crate::versioning;
-use std::io::Write;
+use std::io::{Read, Write};
 
 mod writer;
+
+pub mod reader;
 
 /// Represents the content of a SAILAR module.
 #[derive(Clone, Debug)]
@@ -15,6 +17,7 @@ pub struct Module<'a> {
     format_version: versioning::Format,
     integer_size: binary::VarIntSize,
     records: Vec<Record<'a>>,
+    //records: Vec<Vec<u8>>,
 }
 
 impl<'a> Module<'a> {
@@ -27,7 +30,9 @@ impl<'a> Module<'a> {
     }
 
     pub fn add_record<R: Into<Record<'a>>>(&mut self, record: R) {
-        self.records.push(record.into());
+        let record = record.into();
+        // TODO: Conversion of record to bytes might be needed, problem is that during writing, large enough record could have byte length that exceeds max varinteger.
+        self.records.push(record);
         self.integer_size.resize_to_fit(self.records.len());
     }
 
@@ -133,5 +138,22 @@ impl<'a> Module<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
+        let (format_version, integer_size, reader) = source.to_record_reader()?;
+        let mut records = Vec::with_capacity(reader.record_count());
+
+        // TODO: Read records
+
+        Ok(Self {
+            format_version,
+            integer_size,
+            records,
+        })
+    }
+
+    pub fn read_from<R: Read>(source: R) -> reader::Result<Self> {
+        Self::from_reader(reader::Reader::new(source))
     }
 }

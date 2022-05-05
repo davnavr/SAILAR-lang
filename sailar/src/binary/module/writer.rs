@@ -1,3 +1,5 @@
+//! Contains code for writing bytes to a destination.
+
 use crate::binary::VarIntSize;
 use std::io::{Error, ErrorKind, Write};
 
