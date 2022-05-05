@@ -79,7 +79,7 @@ impl Array<'_> {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum HeaderField<'a> {
-    ModuleIdentifier { name: Cow<'a, Id>, version: &'a [usize] },
+    ModuleIdentifier { name: Cow<'a, Id>, version: Cow<'a, [usize]> },
 }
 
 impl HeaderField<'_> {
@@ -126,6 +126,6 @@ impl From<Identifier> for Record<'_> {
 mod tests {
     #[test]
     fn size_of_record_is_acceptable() {
-        assert!(std::mem::size_of::<crate::binary::record::Record>() < 64)
+        assert!(std::mem::size_of::<crate::binary::record::Record>() < 80)
     }
 }

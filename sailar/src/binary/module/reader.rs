@@ -4,6 +4,7 @@ use crate::binary;
 use crate::binary::record::{self, Record};
 use crate::identifier;
 use crate::versioning;
+use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
 
@@ -58,7 +59,7 @@ pub enum ErrorKind {
     MissingRecordType,
     #[error(transparent)]
     InvalidRecordType(#[from] record::InvalidTypeError),
-    #[error("missing record byte size")]
+    #[error("expected record byte size")]
     MissingRecordSize,
     #[error("unexpected end of record, expected {expected_size} bytes of content but got {actual_size}")]
     UnexpectedEndOfRecord { expected_size: usize, actual_size: usize },
@@ -70,6 +71,10 @@ pub enum ErrorKind {
         expected_size: usize,
         actual_size: usize,
     },
+    #[error("expected identifier byte length")]
+    MissingIdentifierLength,
+    #[error("expected element count integer for array record")]
+    MissingRecordArrayCount,
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -296,12 +301,15 @@ impl<R: Read> RecordReader<R> {
     }
 
     fn read_record<'a>(&mut self) -> Result<Record<'a>> {
-        let mut type_value = 0u8;
-        if self.source.read_bytes(std::slice::from_mut(&mut type_value))? == 0 {
-            return self.source.fail_with(ErrorKind::MissingRecordType);
+        fn read_record_type<R: Read>(source: &mut Wrapper<R>) -> Result<record::Type> {
+            let mut type_value = 0u8;
+            if source.read_bytes(std::slice::from_mut(&mut type_value))? == 0 {
+                return source.fail_with(ErrorKind::MissingRecordType);
+            }
+            source.wrap_result(record::Type::try_from(type_value))
         }
 
-        let record_type = self.source.wrap_result(record::Type::try_from(type_value))?;
+        let record_type = read_record_type(&mut self.source)?;
         let record_size = (self.integer_reader)(&mut self.source, || ErrorKind::MissingRecordSize)?;
 
         const STACK_BUFFER_LENGTH: usize = 512;
@@ -317,6 +325,7 @@ impl<R: Read> RecordReader<R> {
         };
 
         let (actual_content_size, mut record_content) = self.source.read_to_wrapped_buffer(content_buffer)?;
+        let content = &mut record_content;
         let content_integer_reader: IntegerReader<&[u8]> = select_integer_reader(self.integer_size);
 
         if actual_content_size != record_size {
@@ -326,7 +335,7 @@ impl<R: Read> RecordReader<R> {
             });
         }
 
-        let read_identifier_content = |source: &mut BufferWrapper, size: usize| -> Result<identifier::Identifier> {
+        fn read_identifier_content(source: &mut BufferWrapper, size: usize) -> Result<identifier::Identifier> {
             let mut buffer = vec![0u8; size];
             let actual_size = source.read_bytes(&mut buffer)?;
             if actual_size != buffer.len() {
@@ -337,13 +346,38 @@ impl<R: Read> RecordReader<R> {
                 });
             }
 
-            self.source.wrap_result(identifier::Identifier::from_utf8(buffer))
-        };
+            source.wrap_result(identifier::Identifier::from_utf8(buffer))
+        }
+
+        fn read_identifier<'b>(
+            source: &mut BufferWrapper<'b>,
+            integer_reader: IntegerReader<&'b [u8]>,
+        ) -> Result<identifier::Identifier> {
+            let size = integer_reader(source, || ErrorKind::MissingIdentifierLength)?;
+            read_identifier_content(source, size)
+        }
 
         self.count -= 1;
 
         Ok(match record_type {
-            record::Type::Identifier => record::Record::from(read_identifier_content(&mut record_content, record_size)?),
+            record::Type::Array => {
+                let array_type = read_record_type(content)?;
+                let array_count = content_integer_reader(content, || ErrorKind::MissingRecordArrayCount)?;
+
+                match array_type {
+                    record::Type::Identifier => {
+                        let mut identifiers = Vec::with_capacity(array_count);
+
+                        for _ in 0..array_count {
+                            identifiers.push(Cow::Owned(read_identifier(content, content_integer_reader)?));
+                        }
+
+                        record::Record::Array(record::Array::Identifier(identifiers))
+                    }
+                    _ => todo!("array of {:?}", array_type),
+                }
+            }
+            record::Type::Identifier => record::Record::from(read_identifier_content(content, record_size)?),
             _ => todo!("parse a {:?}", record_type),
         })
     }
