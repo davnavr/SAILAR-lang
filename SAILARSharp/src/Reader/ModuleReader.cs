@@ -43,7 +43,7 @@
             OpaqueError* error;
             var next = SAILAR.ReadModuleNextRecord(reader, &error);
             Error.HandleError(error);
-            return next == null ? ModuleRecord.Create(next) : null;
+            return next != null ? ModuleRecord.Create(next) : null;
         }
 
         //public void Finish()

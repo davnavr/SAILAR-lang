@@ -14,10 +14,10 @@ namespace SAILARSharp.Tests {
             var format = reader.GetModuleFormat();
             var record = reader.ReadNextRecord() as IdentifierRecord;
 
-            Assert.AreEqual(format.GetMajorFormatVersion(), 0);
-            Assert.AreEqual(format.GetMinorFormatVersion(), 12);
-            Assert.AreEqual(format.GetIntegerByteSize(), 1);
-            Assert.AreEqual(record?.ToString(), "Hello!");
+            Assert.AreEqual(0, format.GetMajorFormatVersion());
+            Assert.AreEqual(12, format.GetMinorFormatVersion());
+            Assert.AreEqual(1, format.GetIntegerByteSize());
+            Assert.AreEqual("Hello!", record?.ToString());
         }
     }
 }
