@@ -8,6 +8,7 @@
     public struct OpaqueBuffer { }
     public struct OpaqueModuleReader { }
     public struct OpaqueModuleFormat { }
+    public struct OpaqueModuleRecord { }
 
     internal static unsafe class SAILAR {
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_identifier", ExactSpelling = true)]
@@ -60,5 +61,11 @@
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_read_module_format", ExactSpelling = true)]
         public static extern OpaqueModuleFormat* ReadModuleFormat(OpaqueModuleReader* reader, OpaqueError** error);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_read_module_next_record", ExactSpelling = true)]
+        public static extern OpaqueModuleRecord* ReadModuleNextRecord(OpaqueModuleReader* reader, OpaqueError** error);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_record", ExactSpelling = true)]
+        public static extern void DisposeModuleRecord(OpaqueModuleRecord* format);
     }
 }

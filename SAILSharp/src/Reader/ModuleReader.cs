@@ -1,6 +1,5 @@
 ﻿namespace SAILSharp.Reader {
     using System;
-    using System.Diagnostics;
     using SAILSharp;
     using SAILSharp.Interop;
 
@@ -21,6 +20,8 @@
         public ModuleReader(Interop.Buffer buffer, bool readerDisposesBuffer) : this(buffer.Reference, readerDisposesBuffer) {}
 
         public ModuleReader(byte[] bytes) : this(new Interop.Buffer(bytes), true) { }
+
+        public OpaqueModuleReader* Reference => reader;
 
         /// <summary>
         /// Gets or reads the module's format version and integer size.
@@ -44,7 +45,7 @@
 
                 if (disposeMemoryBuffer) {
                     new Interop.Buffer(buffer).Dispose();
-                    buffer = default;
+                    buffer = null;
                 }
 
                 disposed = true;

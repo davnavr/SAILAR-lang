@@ -12,7 +12,7 @@ crate::box_wrapper!(IdentifierRef(pub Identifier));
 #[no_mangle]
 pub unsafe extern "C" fn sailar_create_identifier(contents: *const u8, length: usize, error: *mut Error) -> IdentifierRef {
     let bytes = std::slice::from_raw_parts(contents, length);
-    error::handle_result(Identifier::try_from(bytes), |id| IdentifierRef::new(id), error)
+    error::handle_result(Identifier::try_from(bytes), error, |id| IdentifierRef::new(id))
 }
 
 #[no_mangle]

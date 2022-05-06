@@ -48,6 +48,14 @@ impl<R: std::io::Read> ReaderState<R> {
             Self::Invalid => Err(Box::new(ReaderInvalidError)),
         }
     }
+
+    fn read_next_record(&mut self) -> Result<Option<record::Record<'static>>, Box<dyn std::error::Error>> {
+        match self {
+            Self::Records(record_reader) => record_reader.next_record().transpose().map_err(Box::from),
+            Self::Module(_) => unreachable!("expected record reader but got module reader"),
+            Self::Invalid => Err(Box::new(ReaderInvalidError)),
+        }
+    }
 }
 
 enum ReaderChoice {
@@ -71,7 +79,7 @@ pub unsafe extern "C" fn sailar_dispose_module_reader(reader: ModuleReader) {
 pub unsafe extern "C" fn sailar_read_module_format(reader: ModuleReader, error: *mut Error) -> ModuleFormat {
     macro_rules! read {
         ($state: ident) => {
-            error::handle_result($state.read_module_format(), |format| ModuleFormat::new(format), error)
+            error::handle_result($state.read_module_format(), error, |format| ModuleFormat::new(format))
         };
     }
 
@@ -102,3 +110,25 @@ pub unsafe extern "C" fn sailar_dispose_module_format(format: ModuleFormat) {
 }
 
 crate::box_wrapper!(Record(pub record::Record<'static>));
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_read_module_next_record(reader: ModuleReader, error: *mut Error) -> Record {
+    macro_rules! read {
+        ($state: ident) => {
+            error::handle_result($state.read_next_record(), error, |record| match record {
+                Some(record) => Record::new(record),
+                None => Record::null(),
+            })
+        };
+    }
+
+    match reader.into_mut() {
+        ReaderChoice::Buffer(buffer_reader) => read!(buffer_reader),
+        ReaderChoice::File(file_reader) => read!(file_reader),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_dispose_module_record(record: Record) {
+    record.into_box();
+}

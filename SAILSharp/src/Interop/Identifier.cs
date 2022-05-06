@@ -2,6 +2,7 @@
     using System;
     using System.Text;
 
+    // TODO: Make these just static methods, too easy to forget Dispose call.
     public unsafe ref struct Identifier {
         private OpaqueIdentifier* identifier;
 

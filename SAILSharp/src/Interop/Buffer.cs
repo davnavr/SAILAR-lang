@@ -1,6 +1,7 @@
 ﻿namespace SAILSharp.Interop {
     using System;
 
+    // TODO: Make these just static methods, too easy to forget Dispose call.
     public unsafe ref struct Buffer {
         private OpaqueBuffer* buffer;
 
