@@ -2,9 +2,9 @@
     using System;
     using System.Text;
 
-    public static class Error {
+    internal static class Error {
         public unsafe static void HandleError(OpaqueError* error) {
-            if (error is not null) {
+            if (error != null) {
                 var message = SAILAR.GetErrorMessage(error);
                 SAILAR.DisposeError(error);
                 var length = UIntPtr.Zero;

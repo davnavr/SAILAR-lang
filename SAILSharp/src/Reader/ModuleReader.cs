@@ -17,9 +17,7 @@
             reader = SAILAR.CreateModuleReaderFromBuffer(buffer);
         }
 
-        public ModuleReader(Interop.Buffer buffer, bool readerDisposesBuffer) : this(buffer.Reference, readerDisposesBuffer) {}
-
-        public ModuleReader(byte[] bytes) : this(new Interop.Buffer(bytes), true) { }
+        public ModuleReader(byte[] bytes) : this(Interop.Buffer.From(bytes), true) { }
 
         public OpaqueModuleReader* Reference => reader;
 
@@ -44,7 +42,7 @@
                 reader = null;
 
                 if (disposeMemoryBuffer) {
-                    new Interop.Buffer(buffer).Dispose();
+                    SAILAR.DisposeBuffer(buffer);
                     buffer = null;
                 }
 
