@@ -2,6 +2,7 @@
 
 #![allow(non_snake_case, clippy::missing_safety_doc)]
 
+pub mod buffer;
 pub mod error;
 pub mod identifier;
 pub mod reader;
@@ -9,33 +10,43 @@ pub mod reader;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! box_wrapper {
-    ($name: ident, $wrapped: ty, $getter_visibility: vis) => {
+    ($name: ident($visibility: vis $wrapped: ty)) => {
         #[repr(transparent)]
         pub struct $name(*mut std::ffi::c_void);
 
         #[allow(dead_code)]
         impl $name {
-            pub(crate) unsafe fn new(value: $wrapped) -> Self {
+            $visibility unsafe fn new(value: $wrapped) -> Self {
                 Self(Box::into_raw(Box::new(value)) as *mut std::ffi::c_void)
             }
 
             #[inline]
-            $getter_visibility unsafe fn into_mut(self) -> *mut $wrapped {
+            $visibility unsafe fn into_mut_ptr(self) -> *mut $wrapped {
                 self.0 as *mut $wrapped
             }
 
             #[inline]
-            $getter_visibility unsafe fn into_ref<'a>(self) -> &'a $wrapped {
-                self.into_mut().as_ref().expect("reference must not be null")
+            $visibility unsafe fn into_ref<'a>(self) -> &'a $wrapped {
+                self.into_mut_ptr().as_ref().expect("reference must not be null")
             }
 
             #[inline]
-            pub(crate) unsafe fn null() -> Self {
+            $visibility unsafe fn into_mut<'a>(self) -> &'a mut $wrapped {
+                self.into_mut_ptr().as_mut().expect("reference must not be null")
+            }
+
+            #[inline]
+            pub unsafe fn null() -> Self {
                 Self(std::ptr::null_mut())
             }
 
             #[inline]
-            $getter_visibility unsafe fn into_box(self) -> Box<$wrapped> {
+            pub fn is_null(&self) -> bool {
+                self.0.is_null()
+            }
+
+            #[inline]
+            $visibility unsafe fn into_box(self) -> Box<$wrapped> {
                 Box::from_raw(self.into_mut())
             }
         }

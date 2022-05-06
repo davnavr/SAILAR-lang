@@ -3,7 +3,7 @@
 use crate::error::Error;
 use sailar::identifier::Identifier;
 
-crate::box_wrapper!(IdentifierRef, Identifier, pub);
+crate::box_wrapper!(IdentifierRef(pub Identifier));
 
 /// Creates a SAILAR identifier string from a sequence of bytes. If the bytes are not valid UTF-8, returns `null`
 /// and an error that can be disposed with `sailar_dispose_error`.

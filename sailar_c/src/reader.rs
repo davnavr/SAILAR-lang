@@ -1,30 +1,26 @@
 //! Functions that provide a low-level way to read SAILAR modules, delegating to [`sailar::binary::module::reader`].
 
+use crate::buffer::Buffer;
 use crate::error::Error;
+use sailar::binary::record;
 use sailar::binary::module::reader;
 
 enum ReaderChoice {
     Buffer(reader::Reader<&'static [u8]>),
 }
 
-crate::box_wrapper!(ModuleReader, ReaderChoice, pub(self));
+crate::box_wrapper!(ModuleReader(pub(self) ReaderChoice));
 
 #[no_mangle]
-pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: *const u8, length: usize) -> ModuleReader {
-    let source = if buffer.is_null() {
-        &[]
-    } else {
-        std::slice::from_raw_parts(buffer, length)
-    };
-
-    ModuleReader::new(ReaderChoice::Buffer(reader::Reader::new(source)))
+pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: Buffer) -> ModuleReader {
+    ModuleReader::new(ReaderChoice::Buffer(reader::Reader::new(buffer.into_ref())))
 }
 
 enum RecordReaderChoice {
     Buffer(reader::RecordReader<&'static [u8]>),
 }
 
-crate::box_wrapper!(RecordReader, RecordReaderChoice, pub(self));
+crate::box_wrapper!(RecordReader(pub(self) RecordReaderChoice));
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_get_records_from_module_reader(
@@ -49,3 +45,17 @@ pub unsafe extern "C" fn sailar_get_records_from_module_reader(
         },
     }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_reader_record_count(reader: RecordReader) -> usize {
+    match reader.into_ref() {
+        RecordReaderChoice::Buffer(buffer_reader) => buffer_reader.record_count(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_dispose_record_reader(reader: RecordReader) {
+    reader.into_box();
+}
+
+crate::box_wrapper!(Record(pub record::Record<'static>));

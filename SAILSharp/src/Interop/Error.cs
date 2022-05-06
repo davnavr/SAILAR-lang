@@ -8,7 +8,7 @@
                 var message = SAILAR.GetErrorMessage(error);
                 SAILAR.DisposeError(error);
                 var length = UIntPtr.Zero;
-                var bytes = SAILAR.GetErrorMessageContents(message, in length);
+                var bytes = SAILAR.GetErrorMessageContents(message, &length);
                 throw new ErrorException(Encoding.UTF8.GetString(new ReadOnlySpan<byte>(bytes, (int)length)));
             }
         }

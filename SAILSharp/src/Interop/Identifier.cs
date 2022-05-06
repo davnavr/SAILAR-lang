@@ -2,18 +2,26 @@
     using System;
     using System.Text;
 
-    public unsafe readonly ref struct Identifier {
-        internal readonly OpaqueIdentifier* identifier;
+    public unsafe ref struct Identifier {
+        private OpaqueIdentifier* identifier;
+
+        public Identifier(OpaqueIdentifier* identifier) {
+            this.identifier = identifier;
+        }
 
         public Identifier(string contents) {
             byte[] bytes = Encoding.UTF8.GetBytes(contents);
             OpaqueError* error = null;
-            fixed (byte* b = bytes) {
-                identifier = SAILAR.CreateIdentifier(b, (UIntPtr)bytes.Length, in error);
+            fixed (byte* address = bytes) {
+                identifier = SAILAR.CreateIdentifier(address, (UIntPtr)bytes.Length, &error);
             }
 
             Error.HandleError(error);
         }
+
+        public static Identifier Null => default;
+
+        public OpaqueIdentifier* Reference => identifier;
 
         public override string ToString() {
             if (identifier is null) {
@@ -21,12 +29,15 @@
             }
 
             var length = UIntPtr.Zero;
-            var content = SAILAR.GetIdentifierContents(identifier, in length);
+            var content = SAILAR.GetIdentifierContents(identifier, &length);
             return Encoding.UTF8.GetString(content, (int)length);
         }
 
         public void Dispose() {
-            SAILAR.DisposeIdentifier(identifier);
+            if (identifier != null) {
+                SAILAR.DisposeIdentifier(identifier);
+                identifier = null;
+            }
         }
     }
 }
