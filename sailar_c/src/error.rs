@@ -4,8 +4,18 @@
 crate::box_wrapper!(Error(pub Box<dyn std::error::Error>));
 
 impl Error {
-    pub(crate) unsafe fn from_error<E: std::error::Error + 'static>(error: E) -> Self {
-        Self::new(Box::new(error))
+    pub(crate) unsafe fn from_error<E: Into<Box<dyn std::error::Error>>>(error: E) -> Self {
+        Self::new(error.into())
+    }
+}
+
+pub(crate) unsafe fn handle_result<T, U: Default, E: Into<Box<dyn std::error::Error>>, F: FnOnce(T) -> U>(result: Result<T, E>, f: F, error: *mut Error) -> U {
+    match result {
+        Ok(value) => f(value),
+        Err(e) => {
+            *error = Error::from_error(e);
+            Default::default()
+        }
     }
 }
 

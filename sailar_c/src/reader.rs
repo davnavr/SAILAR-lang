@@ -1,61 +1,104 @@
 //! Functions that provide a low-level way to read SAILAR modules, delegating to [`sailar::binary::module::reader`].
 
 use crate::buffer::Buffer;
-use crate::error::Error;
+use crate::error::{self, Error};
 use sailar::binary::record;
 use sailar::binary::module::reader;
 
+struct ActualModuleFormat {
+    format_version: sailar::versioning::Format,
+    integer_byte_size: u8,
+}
+
+crate::box_wrapper!(ModuleFormat(pub(self) ActualModuleFormat));
+
+#[derive(Debug, thiserror::Error)]
+#[error("cannot parse module format as the reader is currently positioned at the module records")]
+struct ReaderAlreadyParsedFormatError;
+
+#[derive(Debug, thiserror::Error)]
+#[error("error occured with this reader")]
+struct ReaderInvalidError;
+
+enum ReaderState<R> {
+    Invalid,
+    Module(reader::Reader<R>),
+    Records(reader::RecordReader<R>),
+}
+
+impl<R> std::default::Default for ReaderState<R> {
+    fn default() -> Self {
+        Self::Invalid
+    }
+}
+
+impl<R: std::io::Read> ReaderState<R> {
+    fn read_module_format(&mut self) -> Result<ActualModuleFormat, Box<dyn std::error::Error>> {
+        let reader = std::mem::take(self);
+        match reader {
+            Self::Module(module_reader) => {
+                let (format_version, integer_size, record_reader) = module_reader.to_record_reader()?;
+                *self = Self::Records(record_reader);
+                Ok(ActualModuleFormat {
+                    format_version,
+                    integer_byte_size: integer_size.byte_count(),
+                })
+            },
+            Self::Records(_) => Err(Box::new(ReaderAlreadyParsedFormatError)),
+            Self::Invalid => Err(Box::new(ReaderInvalidError)),
+        }
+    }
+}
+
 enum ReaderChoice {
-    Buffer(reader::Reader<&'static [u8]>),
+    Buffer(ReaderState<&'static [u8]>),
+    File(ReaderState<&'static std::fs::File>),
 }
 
 crate::box_wrapper!(ModuleReader(pub(self) ReaderChoice));
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: Buffer) -> ModuleReader {
-    ModuleReader::new(ReaderChoice::Buffer(reader::Reader::new(buffer.into_ref())))
-}
-
-enum RecordReaderChoice {
-    Buffer(reader::RecordReader<&'static [u8]>),
-}
-
-crate::box_wrapper!(RecordReader(pub(self) RecordReaderChoice));
-
-#[no_mangle]
-pub unsafe extern "C" fn sailar_get_records_from_module_reader(
-    reader: ModuleReader,
-    major_format_version: *mut u8,
-    minor_format_version: *mut u8,
-    integer_byte_size: *mut u8,
-    error: *mut Error,
-) -> RecordReader {
-    match *reader.into_box() {
-        ReaderChoice::Buffer(buffer_reader) => match buffer_reader.to_record_reader() {
-            Ok((format_version, integer_size, reader)) => {
-                *major_format_version = format_version.major;
-                *minor_format_version = format_version.minor;
-                *integer_byte_size = integer_size.byte_count();
-                RecordReader::new(RecordReaderChoice::Buffer(reader))
-            }
-            Err(e) => {
-                *error = Error::from_error(e);
-                RecordReader::null()
-            }
-        },
-    }
+    ModuleReader::new(ReaderChoice::Buffer(ReaderState::Module(reader::Reader::new(buffer.into_ref()))))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sailar_get_reader_record_count(reader: RecordReader) -> usize {
-    match reader.into_ref() {
-        RecordReaderChoice::Buffer(buffer_reader) => buffer_reader.record_count(),
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_record_reader(reader: RecordReader) {
+pub unsafe extern "C" fn sailar_dispose_module_reader(reader: ModuleReader) {
     reader.into_box();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_read_module_format(reader: ModuleReader, error: *mut Error) -> ModuleFormat {
+    macro_rules! read {
+        ($state: ident) => {
+            error::handle_result($state.read_module_format(), |format| ModuleFormat::new(format), error)
+        };
+    }
+
+    match reader.into_mut() {
+        ReaderChoice::Buffer(buffer_reader) => read!(buffer_reader),
+        ReaderChoice::File(file_reader) => read!(file_reader),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_format_major_version(format: ModuleFormat) -> u8 {
+    format.into_ref().format_version.major
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_format_minor_version(format: ModuleFormat) -> u8 {
+    format.into_ref().format_version.minor
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_format_integer_byte_size(format: ModuleFormat) -> u8 {
+    format.into_ref().integer_byte_size
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_dispose_module_format(format: ModuleFormat) {
+    format.into_box();
 }
 
 crate::box_wrapper!(Record(pub record::Record<'static>));

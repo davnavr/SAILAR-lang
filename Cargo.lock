@@ -117,6 +117,7 @@ name = "sailar_c"
 version = "0.1.0"
 dependencies = [
  "sailar",
+ "thiserror",
 ]
 
 [[package]]

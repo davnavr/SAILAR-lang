@@ -11,7 +11,7 @@
 
         public Identifier(string contents) {
             byte[] bytes = Encoding.UTF8.GetBytes(contents);
-            OpaqueError* error = null;
+            OpaqueError* error;
             fixed (byte* address = bytes) {
                 identifier = SAILAR.CreateIdentifier(address, (UIntPtr)bytes.Length, &error);
             }

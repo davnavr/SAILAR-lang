@@ -7,9 +7,9 @@
     public struct OpaqueErrorMessage { }
     public struct OpaqueBuffer { }
     public struct OpaqueModuleReader { }
-    public struct OpaqueRecordReader { }
+    public struct OpaqueModuleFormat { }
 
-    public static unsafe class SAILAR {
+    internal static unsafe class SAILAR {
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_identifier", ExactSpelling = true)]
         public static extern void DisposeIdentifier(OpaqueIdentifier* identifier);
 
@@ -43,13 +43,22 @@
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_create_module_reader_from_buffer", ExactSpelling = true)]
         public static extern OpaqueModuleReader* CreateModuleReaderFromBuffer(OpaqueBuffer* buffer);
 
-        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_records_from_module_reader", ExactSpelling = true)]
-        public static extern OpaqueRecordReader* GetRecordsFromModuleReader(OpaqueModuleReader* reader, byte* majorFormatVersion, byte* minorFormatVersion, byte* integerByteSize, OpaqueError** error);
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_reader", ExactSpelling = true)]
+        public static extern void DisposeModuleReader(OpaqueModuleReader* reader);
 
-        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_reader_record_count", ExactSpelling = true)]
-        public static extern UIntPtr GetReaderRecordCount(OpaqueRecordReader* reader);
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_format_major_version", ExactSpelling = true)]
+        public static extern byte GetModuleFormatMajorVersion(OpaqueModuleFormat* format);
 
-        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_record_reader", ExactSpelling = true)]
-        public static extern void DisposeRecordReader(OpaqueRecordReader* reader);
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_format_minor_version", ExactSpelling = true)]
+        public static extern byte GetModuleFormatMinorVersion(OpaqueModuleFormat* format);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_format_integer_byte_size", ExactSpelling = true)]
+        public static extern byte GetModuleFormatIntegerByteSize(OpaqueModuleFormat* format);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_format", ExactSpelling = true)]
+        public static extern void DisposeModuleFormat(OpaqueModuleFormat* format);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_read_module_format", ExactSpelling = true)]
+        public static extern OpaqueModuleFormat* ReadModuleFormat(OpaqueModuleReader* reader, OpaqueError** error);
     }
 }

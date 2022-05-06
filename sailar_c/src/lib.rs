@@ -36,7 +36,7 @@ macro_rules! box_wrapper {
             }
 
             #[inline]
-            pub unsafe fn null() -> Self {
+            pub const fn null() -> Self {
                 Self(std::ptr::null_mut())
             }
 
@@ -48,6 +48,14 @@ macro_rules! box_wrapper {
             #[inline]
             $visibility unsafe fn into_box(self) -> Box<$wrapped> {
                 Box::from_raw(self.into_mut())
+            }
+        }
+
+        impl std::default::Default for $name {
+            fn default() -> Self {
+                unsafe {
+                    Self::null()
+                }
             }
         }
     };

@@ -5,70 +5,42 @@
     using SAILSharp.Interop;
 
     public unsafe sealed class ModuleReader : IDisposable {
-        private OpaqueModuleReader* moduleReader;
-        private OpaqueRecordReader* recordReader = default;
+        private OpaqueModuleReader* reader;
         private OpaqueBuffer* buffer = default;
+        private ModuleFormat? format = null;
+
         private readonly bool disposeMemoryBuffer = false;
         private bool disposed = false;
-
-        private ModuleProperties moduleProperties = default;
 
         public ModuleReader(OpaqueBuffer* buffer, bool readerDisposesBuffer) {
             this.buffer = buffer;
             disposeMemoryBuffer = readerDisposesBuffer;
-            moduleReader = SAILAR.CreateModuleReaderFromBuffer(buffer);
+            reader = SAILAR.CreateModuleReaderFromBuffer(buffer);
         }
 
         public ModuleReader(Interop.Buffer buffer, bool readerDisposesBuffer) : this(buffer.Reference, readerDisposesBuffer) {}
 
         public ModuleReader(byte[] bytes) : this(new Interop.Buffer(bytes), true) { }
 
-        private bool IsRecordReaderInitialized => recordReader != null;
-
-        private OpaqueRecordReader* GetRecordReader(in byte majorFormatVersion, in byte minorFormatVersion, in byte integerByteSize) {
-            if (disposed) {
-                throw new ObjectDisposedException(null);
+        /// <summary>
+        /// Gets or reads the module's format version and integer size.
+        /// </summary>
+        /// <exception cref="ErrorException">Thrown if an error occured while reading the module format.</exception>
+        public ModuleFormat GetModuleFormat() {
+            if (format == null) {
+                OpaqueError* error;
+                format = new ModuleFormat(SAILAR.ReadModuleFormat(reader, &error));
             }
 
-            if (!IsRecordReaderInitialized) {
-                Debug.Assert(moduleReader != null);
-
-                OpaqueError* error = default;
-                fixed (byte* majorFormatVersionNumber = &majorFormatVersion, minorFormatVersionNumber = &minorFormatVersion, variableIntegerSize = &integerByteSize) {
-                    recordReader = SAILAR.GetRecordsFromModuleReader(moduleReader, majorFormatVersionNumber, minorFormatVersionNumber, variableIntegerSize, &error);
-                }
-
-                Error.HandleError(error);
-                moduleReader = null;
-            }
-
-            return recordReader;
-        }
-
-        private OpaqueRecordReader* GetRecordReader() {
-            return GetRecordReader(in moduleProperties.majorFormatVersion, in moduleProperties.minorFormatVersion, in moduleProperties.integerByteSize);
-        }
-
-        public ModuleProperties GetModuleProperties() {
-            if (!IsRecordReaderInitialized) {
-                GetRecordReader();
-            }
-
-            return moduleProperties;
+            return format;
         }
 
         public void Dispose() {
             if (!disposed) {
                 GC.SuppressFinalize(this);
 
-                if (moduleReader == null) {
-                    throw new NotImplementedException("How to dispose moduleReader if recordReader was not constructed?");
-                }
-
-                if (IsRecordReaderInitialized) {
-                    SAILAR.DisposeRecordReader(recordReader);
-                    recordReader = null;
-                }
+                SAILAR.DisposeModuleReader(reader);
+                reader = null;
 
                 if (disposeMemoryBuffer) {
                     new Interop.Buffer(buffer).Dispose();

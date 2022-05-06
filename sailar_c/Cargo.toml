@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 sailar = { path = "../sailar" }
+thiserror = "1.0.30"
 
 [lib]
 name = "SAILARCore"

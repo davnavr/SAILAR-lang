@@ -1,6 +1,6 @@
 //! Functions for creating identifiers.
 
-use crate::error::Error;
+use crate::error::{self, Error};
 use sailar::identifier::Identifier;
 
 crate::box_wrapper!(IdentifierRef(pub Identifier));
@@ -12,13 +12,7 @@ crate::box_wrapper!(IdentifierRef(pub Identifier));
 #[no_mangle]
 pub unsafe extern "C" fn sailar_create_identifier(contents: *const u8, length: usize, error: *mut Error) -> IdentifierRef {
     let bytes = std::slice::from_raw_parts(contents, length);
-    match Identifier::try_from(bytes) {
-        Ok(identifier) => IdentifierRef::new(identifier),
-        Err(e) => {
-            *error = Error::from_error(e);
-            IdentifierRef::null()
-        }
-    }
+    error::handle_result(Identifier::try_from(bytes), |id| IdentifierRef::new(id), error)
 }
 
 #[no_mangle]
