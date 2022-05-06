@@ -47,6 +47,9 @@
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_reader", ExactSpelling = true)]
         public static extern void DisposeModuleReader(OpaqueModuleReader* reader);
 
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_check_module_reader_finished", ExactSpelling = true)]
+        public static extern void CheckModuleReaderFinished(OpaqueModuleReader* reader, OpaqueError** error);
+
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_format_major_version", ExactSpelling = true)]
         public static extern byte GetModuleFormatMajorVersion(OpaqueModuleFormat* format);
 

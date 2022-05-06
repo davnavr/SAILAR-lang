@@ -46,7 +46,15 @@
             return next != null ? ModuleRecord.Create(next) : null;
         }
 
-        //public void Finish()
+        /// <summary>
+        /// Checks if the end of the module was reached.
+        /// </summary>
+        /// <exception cref="ErrorException">Thrown if the end of the module was not reached.</exception>
+        public void CheckIfFinished() {
+            OpaqueError* error;
+            SAILAR.CheckModuleReaderFinished(reader, &error);
+            Error.HandleError(error);
+        }
 
         public void Dispose() {
             if (!disposed) {

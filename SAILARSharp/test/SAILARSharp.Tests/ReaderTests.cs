@@ -18,6 +18,7 @@ namespace SAILARSharp.Tests {
             Assert.AreEqual(12, format.GetMinorFormatVersion());
             Assert.AreEqual(1, format.GetIntegerByteSize());
             Assert.AreEqual("Hello!", record?.ToString());
+            Assert.DoesNotThrow(() => reader.CheckIfFinished());
         }
     }
 }
