@@ -1,4 +1,4 @@
-﻿namespace SAILSharp.Interop {
+﻿namespace SAILARSharp.Interop {
     using System;
     using System.Runtime.InteropServices;
 

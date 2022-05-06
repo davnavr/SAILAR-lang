@@ -1,4 +1,4 @@
-﻿namespace SAILSharp {
+﻿namespace SAILARSharp {
     using System;
 
     public sealed class ErrorException : Exception {

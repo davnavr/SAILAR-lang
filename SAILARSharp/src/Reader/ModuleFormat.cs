@@ -1,6 +1,6 @@
-﻿namespace SAILSharp.Reader {
+﻿namespace SAILARSharp.Reader {
     using System;
-    using SAILSharp.Interop;
+    using SAILARSharp.Interop;
 
     public unsafe sealed class ModuleFormat : IDisposable {
         private OpaqueModuleFormat* format;

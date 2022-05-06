@@ -1,6 +1,6 @@
-﻿namespace SAILSharp.Reader {
+﻿namespace SAILARSharp.Reader {
     using System;
-    using SAILSharp.Interop;
+    using SAILARSharp.Interop;
 
     public unsafe sealed class ModuleRecord : IDisposable {
         private OpaqueModuleRecord* record;
