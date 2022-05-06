@@ -3,9 +3,24 @@
 // Workaround since dyn makes a fat pointer
 crate::box_wrapper!(Error(pub Box<dyn std::error::Error>));
 
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct StaticError(&'static str);
+
+impl From<&'static str> for StaticError {
+    #[inline]
+    fn from(message: &'static str) -> Self {
+        Self(message)
+    }
+}
+
 impl Error {
     pub(crate) unsafe fn from_error<E: Into<Box<dyn std::error::Error>>>(error: E) -> Self {
         Self::new(error.into())
+    }
+
+    pub(crate) unsafe fn from_str(message: &'static str) -> Self {
+        Self::from_error(StaticError(message))
     }
 }
 

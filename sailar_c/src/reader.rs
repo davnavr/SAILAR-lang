@@ -57,6 +57,15 @@ impl<R: std::io::Read> ReaderState<R> {
             Self::Invalid => Err(Box::new(ReaderInvalidError)),
         }
     }
+
+    fn check_finished(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let reader = std::mem::take(self);
+        match reader {
+            Self::Records(record_reader) => record_reader.finish().map_err(Box::from),
+            Self::Module(_) => Err(Box::new(error::StaticError::from("module reader has not reached end as format has not been parsed"))),
+            Self::Invalid => Err(Box::new(ReaderInvalidError)),
+        }
+    }
 }
 
 enum ReaderChoice {
@@ -80,16 +89,12 @@ pub unsafe extern "C" fn sailar_dispose_module_reader(reader: ModuleReader) {
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_read_module_format(reader: ModuleReader, error: *mut Error) -> ModuleFormat {
-    macro_rules! read {
-        ($state: ident) => {
-            error::handle_result($state.read_module_format(), error, |format| ModuleFormat::new(format))
-        };
-    }
+    let result = match reader.into_mut() {
+        ReaderChoice::Buffer(buffer_reader) => buffer_reader.read_module_format(),
+        ReaderChoice::File(file_reader) => file_reader.read_module_format(),
+    };
 
-    match reader.into_mut() {
-        ReaderChoice::Buffer(buffer_reader) => read!(buffer_reader),
-        ReaderChoice::File(file_reader) => read!(file_reader),
-    }
+    error::handle_result(result, error, |format| ModuleFormat::new(format))
 }
 
 #[no_mangle]
@@ -116,18 +121,30 @@ crate::box_wrapper!(Record(pub record::Record<'static>));
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_read_module_next_record(reader: ModuleReader, error: *mut Error) -> Record {
-    macro_rules! read {
-        ($state: ident) => {
-            error::handle_result($state.read_next_record(), error, |record| match record {
-                Some(record) => Record::new(record),
-                None => Record::null(),
-            })
-        };
-    }
+    let result = match reader.into_mut() {
+        ReaderChoice::Buffer(buffer_reader) => buffer_reader.read_next_record(),
+        ReaderChoice::File(file_reader) => file_reader.read_next_record(),
+    };
 
-    match reader.into_mut() {
-        ReaderChoice::Buffer(buffer_reader) => read!(buffer_reader),
-        ReaderChoice::File(file_reader) => read!(file_reader),
+    error::handle_result(result, error, |record| match record {
+        Some(record) => Record::new(record),
+        None => Record::null(),
+    })
+}
+
+/// Checks that no records remain in the module.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_check_module_reader_finished(reader: ModuleReader, error: *mut Error) {
+    let result = match reader.into_mut() {
+        ReaderChoice::Buffer(buffer_reader) => buffer_reader.check_finished(),
+        ReaderChoice::File(file_reader) => file_reader.check_finished(),
+    };
+
+    match result {
+        Ok(()) => (),
+        Err(e) => {
+            *error = Error::from_error(e);
+        }
     }
 }
 
