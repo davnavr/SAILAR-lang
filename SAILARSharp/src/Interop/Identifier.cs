@@ -2,7 +2,7 @@
     using System;
     using System.Text;
 
-    internal unsafe static class Identifier_ {
+    internal unsafe static class Identifier {
         public static OpaqueIdentifier* From(string contents) {
             byte[] bytes = Encoding.UTF8.GetBytes(contents);
             OpaqueIdentifier* identifier;

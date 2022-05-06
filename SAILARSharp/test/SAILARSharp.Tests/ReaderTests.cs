@@ -4,13 +4,20 @@ namespace SAILARSharp.Tests {
 
     public class ReaderTests {
         [Test]
-        public void Test1() {
-            var contents = new byte[] { (byte)'S', (byte)'A', (byte)'I', (byte)'L', (byte)'A', (byte)'R', 0, 12, 0, 0 };
+        public void BasicReaderTest() {
+            var contents = new byte[] {
+                (byte)'S', (byte)'A', (byte)'I', (byte)'L', (byte)'A', (byte)'R',
+                0, 12, 0, 1, 2, 6, (byte)'H', (byte)'e', (byte)'l', (byte)'l', (byte)'o', (byte)'!',
+            };
 
             using var reader = new ModuleReader(contents);
-            Assert.Equals(reader.GetModuleFormat().GetMajorFormatVersion(), 0);
-            Assert.Equals(reader.GetModuleFormat().GetMinorFormatVersion(), 12);
-            Assert.Equals(reader.GetModuleFormat().GetIntegerByteSize(), 1);
+            var format = reader.GetModuleFormat();
+            var record = reader.ReadNextRecord() as IdentifierRecord;
+
+            Assert.AreEqual(format.GetMajorFormatVersion(), 0);
+            Assert.AreEqual(format.GetMinorFormatVersion(), 12);
+            Assert.AreEqual(format.GetIntegerByteSize(), 1);
+            Assert.AreEqual(record?.ToString(), "Hello!");
         }
     }
 }

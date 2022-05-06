@@ -65,6 +65,12 @@
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_read_module_next_record", ExactSpelling = true)]
         public static extern OpaqueModuleRecord* ReadModuleNextRecord(OpaqueModuleReader* reader, OpaqueError** error);
 
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_type", ExactSpelling = true)]
+        public static extern Reader.RecordType GetModuleRecordType(OpaqueModuleRecord* format);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_identifier", ExactSpelling = true)]
+        public static extern OpaqueIdentifier* GetModuleRecordAsIdentifier(OpaqueModuleRecord* format);
+
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_record", ExactSpelling = true)]
         public static extern void DisposeModuleRecord(OpaqueModuleRecord* format);
     }

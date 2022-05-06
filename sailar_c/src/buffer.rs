@@ -32,5 +32,4 @@ pub unsafe extern "C" fn sailar_get_buffer_contents(buffer: Buffer, length: *mut
         *length = unwrapped.len();
         unwrapped.as_mut_ptr()
     }
-
 }

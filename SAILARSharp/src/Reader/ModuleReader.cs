@@ -34,6 +34,20 @@
             return format;
         }
 
+        /// <summary>
+        /// Reads the next record in the module.
+        /// </summary>
+        /// <returns>An object representing the parsed record, or <see langword="null"/> if the end of the module was reached.</returns>
+        /// <exception cref="ErrorException">Thrown if an error occured while reading the record; or if the module format was not yet parsed with <see cref="GetModuleFormat"/>.</exception>
+        public ModuleRecord? ReadNextRecord() {
+            OpaqueError* error;
+            var next = SAILAR.ReadModuleNextRecord(reader, &error);
+            Error.HandleError(error);
+            return next == null ? ModuleRecord.Create(next) : null;
+        }
+
+        //public void Finish()
+
         public void Dispose() {
             if (!disposed) {
                 GC.SuppressFinalize(this);

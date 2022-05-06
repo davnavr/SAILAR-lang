@@ -2,8 +2,9 @@
 
 use crate::buffer::Buffer;
 use crate::error::{self, Error};
-use sailar::binary::record;
+use crate::identifier::Identifier;
 use sailar::binary::module::reader;
+use sailar::binary::record;
 
 struct ActualModuleFormat {
     format_version: sailar::versioning::Format,
@@ -43,7 +44,7 @@ impl<R: std::io::Read> ReaderState<R> {
                     format_version,
                     integer_byte_size: integer_size.byte_count(),
                 })
-            },
+            }
             Self::Records(_) => Err(Box::new(ReaderAlreadyParsedFormatError)),
             Self::Invalid => Err(Box::new(ReaderInvalidError)),
         }
@@ -67,7 +68,9 @@ crate::box_wrapper!(ModuleReader(pub(self) ReaderChoice));
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: Buffer) -> ModuleReader {
-    ModuleReader::new(ReaderChoice::Buffer(ReaderState::Module(reader::Reader::new(buffer.into_ref()))))
+    ModuleReader::new(ReaderChoice::Buffer(ReaderState::Module(reader::Reader::new(
+        buffer.into_ref(),
+    ))))
 }
 
 #[no_mangle]
@@ -131,4 +134,22 @@ pub unsafe extern "C" fn sailar_read_module_next_record(reader: ModuleReader, er
 #[no_mangle]
 pub unsafe extern "C" fn sailar_dispose_module_record(record: Record) {
     record.into_box();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_record_type(record: Record) -> record::Type {
+    record.into_mut().record_type()
+}
+
+/// Copies the contents of a record into a newly allocated identifier, or returns `null` if the record is not an identifier.
+/// 
+/// The returned identifier should be freeed with `sailar_dispose_identifier`.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_record_as_identifier(record: Record) -> Identifier {
+    match record.into_mut() {
+        record::Record::Identifier(identifier) => {
+            Identifier::new(sailar::Identifier::from(std::convert::AsRef::as_ref(identifier)))
+        }
+        _ => Identifier::null(),
+    }
 }

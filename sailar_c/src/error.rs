@@ -9,7 +9,11 @@ impl Error {
     }
 }
 
-pub(crate) unsafe fn handle_result<T, U: Default, E: Into<Box<dyn std::error::Error>>, F: FnOnce(T) -> U>(result: Result<T, E>, error: *mut Error, f: F) -> U {
+pub(crate) unsafe fn handle_result<T, U: Default, E: Into<Box<dyn std::error::Error>>, F: FnOnce(T) -> U>(
+    result: Result<T, E>,
+    error: *mut Error,
+    f: F,
+) -> U {
     match result {
         Ok(value) => f(value),
         Err(e) => {

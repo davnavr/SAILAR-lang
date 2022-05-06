@@ -382,6 +382,7 @@ impl<R: Read> RecordReader<R> {
         })
     }
 
+    // TODO: What if reader returned elements of arrays as if they were not in an array?
     pub fn next_record<'a>(&mut self) -> Option<Result<Record<'a>>> {
         if self.count == 0 {
             return None;
