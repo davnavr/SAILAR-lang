@@ -72,7 +72,7 @@ impl<R: std::io::Read> ReaderState<R> {
 
 enum ReaderChoice {
     Buffer(ReaderState<&'static [u8]>),
-    File(ReaderState<&'static std::fs::File>),
+    File(ReaderState<std::fs::File>),
 }
 
 crate::box_wrapper!(ModuleReader(pub(self) ReaderChoice));
@@ -82,6 +82,20 @@ pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: Buffer)
     ModuleReader::new(ReaderChoice::Buffer(ReaderState::Module(reader::Reader::new(
         buffer.into_ref(),
     ))))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sailar_create_module_reader_from_path(
+    path: *const u8,
+    length: usize,
+    error: *mut Error,
+) -> ModuleReader {
+    let path = crate::handle_error!(
+        std::str::from_utf8(std::slice::from_raw_parts(path, length)),
+        error
+    );
+    let file = crate::handle_error!(std::fs::File::create(path), error);
+    ModuleReader::new(ReaderChoice::File(ReaderState::Module(reader::Reader::new(file))))
 }
 
 #[no_mangle]
@@ -96,7 +110,7 @@ pub unsafe extern "C" fn sailar_read_module_format(reader: ModuleReader, error: 
         ReaderChoice::File(file_reader) => file_reader.read_module_format(),
     };
 
-    error::handle_result(result, error, |format| ModuleFormat::new(format))
+    ModuleFormat::new(crate::handle_error!(result, error))
 }
 
 #[no_mangle]
@@ -128,10 +142,10 @@ pub unsafe extern "C" fn sailar_read_module_next_record(reader: ModuleReader, er
         ReaderChoice::File(file_reader) => file_reader.read_next_record(),
     };
 
-    error::handle_result(result, error, |record| match record {
+    match crate::handle_error!(result, error) {
         Some(record) => Record::new(record),
         None => Record::null(),
-    })
+    }
 }
 
 /// Checks that no records remain in the module.

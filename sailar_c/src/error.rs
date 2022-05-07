@@ -24,16 +24,15 @@ impl Error {
     }
 }
 
-pub(crate) unsafe fn handle_result<T, U: Default, E: Into<Box<dyn std::error::Error>>, F: FnOnce(T) -> U>(
+pub(crate) unsafe fn handle_error<T, E: Into<Box<dyn std::error::Error>>>(
     result: Result<T, E>,
     error: *mut Error,
-    f: F,
-) -> U {
+) -> Option<T> {
     match result {
-        Ok(value) => f(value),
+        Ok(value) => Some(value),
         Err(e) => {
             *error = Error::from_error(e);
-            Default::default()
+            None
         }
     }
 }

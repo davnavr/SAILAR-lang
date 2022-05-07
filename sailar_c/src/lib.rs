@@ -9,6 +9,17 @@ pub mod reader;
 
 #[macro_export]
 #[doc(hidden)]
+macro_rules! handle_error {
+    ($result: expr, $error: ident) => {
+        match crate::error::handle_error($result, $error) {
+            Some(value) => value,
+            None => return Default::default(),
+        }
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
 macro_rules! box_wrapper {
     ($name: ident($visibility: vis $wrapped: ty)) => {
         #[repr(transparent)]
