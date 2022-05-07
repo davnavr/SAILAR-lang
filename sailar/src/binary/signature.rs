@@ -18,6 +18,7 @@ pub enum TypeCode {
     S64 = 0x18,
     SPtr = 0x1A,
     RawPtr = 0xCA,
+    VoidPtr = 0xCC,
     FuncPtr = 0xCF,
     F32 = 0xF4,
     F64 = 0xF8,
@@ -45,9 +46,14 @@ impl TryFrom<u8> for TypeCode {
             2 => Ok(Self::U16),
             4 => Ok(Self::U32),
             8 => Ok(Self::U64),
+            0xA => Ok(Self::UPtr),
             0x11 => Ok(Self::S8),
             0x12 => Ok(Self::S16),
             0x14 => Ok(Self::S32),
+            0x1A => Ok(Self::SPtr),
+            0xCA => Ok(Self::RawPtr),
+            0xCC => Ok(Self::VoidPtr),
+            0xCF => Ok(Self::FuncPtr),
             0x18 => Ok(Self::S64),
             0xF4 => Ok(Self::F32),
             0xF8 => Ok(Self::F64),
@@ -105,7 +111,7 @@ pub enum Type<'a> {
     S64,
     /// Unsigned integer with the same size as a raw pointer.
     UPtr,
-    /// Unsigned integer with the same size as a raw pointer.
+    /// Signed integer with the same size as a raw pointer.
     SPtr,
     RawPtr(Option<&'a Type<'a>>),
     /// Represents a pointer to a function.
@@ -125,8 +131,9 @@ impl Type<'_> {
             Self::S64 => TypeCode::S64,
             Self::UPtr => TypeCode::UPtr,
             Self::SPtr => TypeCode::SPtr,
-            Self::RawPtr(_) => TypeCode::RawPtr,
-            Self::FuncPtr(_) => TypeCode::RawPtr,
+            Self::RawPtr(Some(_)) => TypeCode::RawPtr,
+            Self::RawPtr(None) => TypeCode::VoidPtr,
+            Self::FuncPtr(_) => TypeCode::FuncPtr,
         }
     }
 }
