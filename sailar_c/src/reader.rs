@@ -62,7 +62,9 @@ impl<R: std::io::Read> ReaderState<R> {
         let reader = std::mem::take(self);
         match reader {
             Self::Records(record_reader) => record_reader.finish().map_err(Box::from),
-            Self::Module(_) => Err(Box::new(error::StaticError::from("module reader has not reached end as format has not been parsed"))),
+            Self::Module(_) => Err(Box::new(error::StaticError::from(
+                "module reader has not reached end as format has not been parsed",
+            ))),
             Self::Invalid => Err(Box::new(ReaderInvalidError)),
         }
     }
@@ -142,9 +144,7 @@ pub unsafe extern "C" fn sailar_check_module_reader_finished(reader: ModuleReade
 
     match result {
         Ok(()) => (),
-        Err(e) => {
-            *error = Error::from_error(e);
-        }
+        Err(e) => *error = Error::from_error(e),
     }
 }
 
@@ -159,8 +159,8 @@ pub unsafe extern "C" fn sailar_get_module_record_type(record: Record) -> record
 }
 
 /// Copies the contents of a record into a newly allocated identifier, or returns `null` if the record is not an identifier.
-/// 
-/// The returned identifier should be freeed with `sailar_dispose_identifier`.
+///
+/// The returned identifier should be freed with `sailar_dispose_identifier`.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_get_module_record_as_identifier(record: Record) -> Identifier {
     match record.into_mut() {

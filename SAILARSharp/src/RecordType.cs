@@ -1,4 +1,4 @@
-﻿namespace SAILARSharp.Reader {
+﻿namespace SAILARSharp {
     public enum RecordType : byte {
         HeaderField = 0,
         Array = 1,
