@@ -24,10 +24,7 @@ impl Error {
     }
 }
 
-pub(crate) unsafe fn handle_error<T, E: Into<Box<dyn std::error::Error>>>(
-    result: Result<T, E>,
-    error: *mut Error,
-) -> Option<T> {
+pub(crate) unsafe fn handle_error<T, E: Into<Box<dyn std::error::Error>>>(result: Result<T, E>, error: *mut Error) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(e) => {

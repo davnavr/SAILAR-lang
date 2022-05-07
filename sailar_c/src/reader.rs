@@ -84,16 +84,16 @@ pub unsafe extern "C" fn sailar_create_module_reader_from_buffer(buffer: Buffer)
     ))))
 }
 
+/// Creates a module reader from a UTF-8 string.
+///
+/// If the file is not found or the path is valid returns null along with an `error` value.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_create_module_reader_from_path(
     path: *const u8,
     length: usize,
     error: *mut Error,
 ) -> ModuleReader {
-    let path = crate::handle_error!(
-        std::str::from_utf8(std::slice::from_raw_parts(path, length)),
-        error
-    );
+    let path = crate::handle_error!(std::str::from_utf8(std::slice::from_raw_parts(path, length)), error);
     let file = crate::handle_error!(std::fs::File::create(path), error);
     ModuleReader::new(ReaderChoice::File(ReaderState::Module(reader::Reader::new(file))))
 }

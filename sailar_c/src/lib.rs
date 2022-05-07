@@ -64,9 +64,7 @@ macro_rules! box_wrapper {
 
         impl std::default::Default for $name {
             fn default() -> Self {
-                unsafe {
-                    Self::null()
-                }
+                Self::null()
             }
         }
     };

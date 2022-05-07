@@ -45,6 +45,9 @@
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_create_module_reader_from_buffer", ExactSpelling = true)]
         public static extern OpaqueModuleReader* CreateModuleReaderFromBuffer(OpaqueBuffer* buffer);
 
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_create_module_reader_from_path", ExactSpelling = true)]
+        public static extern OpaqueModuleReader* CreateModuleReaderFromPath(byte* path, UIntPtr length, OpaqueError** error);
+
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_reader", ExactSpelling = true)]
         public static extern void DisposeModuleReader(OpaqueModuleReader* reader);
 

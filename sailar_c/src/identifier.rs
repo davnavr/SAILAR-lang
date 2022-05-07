@@ -1,6 +1,6 @@
 //! Functions for creating identifiers.
 
-use crate::error::{self, Error};
+use crate::error::Error;
 use sailar::identifier;
 
 crate::box_wrapper!(Identifier(pub identifier::Identifier));
