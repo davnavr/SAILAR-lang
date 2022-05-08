@@ -58,26 +58,6 @@ impl TryFrom<u8> for Type {
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum Array<'a> {
-    HeaderField(Vec<HeaderField<'a>>),
-    Identifier(Vec<Cow<'a, Id>>),
-    TypeSignature(Vec<&'a signature::Type<'a>>),
-    FunctionSignature(Vec<&'a signature::Function>),
-}
-
-impl Array<'_> {
-    pub fn item_type(&self) -> Type {
-        match self {
-            Self::HeaderField(_) => Type::HeaderField,
-            Self::Identifier(_) => Type::Identifier,
-            Self::TypeSignature(_) => Type::TypeSignature,
-            Self::FunctionSignature(_) => Type::FunctionSignature,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-#[non_exhaustive]
 pub enum HeaderField<'a> {
     ModuleIdentifier { name: Cow<'a, Id>, version: Cow<'a, [usize]> },
 }
@@ -92,7 +72,6 @@ impl HeaderField<'_> {
     }
 }
 
-// TODO: Array records only? Doesn't make sense to generate a whole entire record byte count and all just for one identifier, field, function, etc.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Record<'a> {
@@ -100,7 +79,6 @@ pub enum Record<'a> {
     Identifier(Cow<'a, Id>),
     TypeSignature(Cow<'a, signature::Type<'a>>),
     FunctionSignature(Cow<'a, signature::Function>),
-    Array(Array<'a>),
 }
 
 impl Record<'_> {
@@ -110,7 +88,6 @@ impl Record<'_> {
             Self::Identifier(_) => Type::Identifier,
             Self::TypeSignature(_) => Type::TypeSignature,
             Self::FunctionSignature(_) => Type::FunctionSignature,
-            Self::Array(_) => Type::Array,
         }
     }
 }
@@ -126,6 +103,6 @@ impl From<Identifier> for Record<'_> {
 mod tests {
     #[test]
     fn size_of_record_is_acceptable() {
-        assert!(std::mem::size_of::<crate::binary::record::Record>() < 80)
+        assert!(std::mem::size_of::<crate::binary::record::Record>() < 64)
     }
 }

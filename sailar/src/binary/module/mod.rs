@@ -112,15 +112,15 @@ impl<'a> Module<'a> {
                 Record::Identifier(identifier) => out.write_all(identifier.as_bytes()),
                 Record::TypeSignature(signature) => write_type_signature(out, signature),
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),
-                Record::Array(array) => {
-                    out.write_all(&[u8::from(array.item_type())])?;
-                    match array {
-                        record::Array::HeaderField(fields) => write_array_record!(fields, write_header_field),
-                        record::Array::Identifier(identifiers) => write_array_record!(identifiers, Writer::write_identifier),
-                        record::Array::TypeSignature(signatures) => write_array_record!(signatures, write_type_signature),
-                        record::Array::FunctionSignature(signatures) => write_array_record!(signatures, write_function_signature),
-                    }
-                }
+                // Record::Array(array) => {
+                //     out.write_all(&[u8::from(array.item_type())])?;
+                //     match array {
+                //         record::Array::HeaderField(fields) => write_array_record!(fields, write_header_field),
+                //         record::Array::Identifier(identifiers) => write_array_record!(identifiers, Writer::write_identifier),
+                //         record::Array::TypeSignature(signatures) => write_array_record!(signatures, write_type_signature),
+                //         record::Array::FunctionSignature(signatures) => write_array_record!(signatures, write_function_signature),
+                //     }
+                // }
             }
         }
 
@@ -138,7 +138,9 @@ impl<'a> Module<'a> {
 
         Ok(())
     }
+}
 
+impl Module<'static> {
     pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
         let (format_version, integer_size, mut reader) = source.to_record_reader()?;
         let mut records = Vec::with_capacity(reader.record_count());

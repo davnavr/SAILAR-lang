@@ -1,12 +1,13 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
 use crate::binary;
-use crate::binary::record::{self, Record};
+use crate::binary::record;
 use crate::identifier;
 use crate::versioning;
-use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
+
+pub type Record = record::Record<'static>;
 
 /// Used when an invalid magic value used to indicate the start of a SAILAR module is invalid.
 #[derive(Clone, Debug)]
@@ -274,12 +275,54 @@ impl<R: Read> From<R> for Reader<R> {
     }
 }
 
+type RecordContentReader = for<'c, 'b> fn(&'c mut Wrapper<&'b [u8]>, IntegerReader<&'b [u8]>) -> Result<Record>;
+
+struct ArrayRecordReader {
+    element_count: usize,
+    element_reader: RecordContentReader,
+    element_buffer: Box<[u8]>,
+    element_buffer_offset: usize,
+}
+
+impl ArrayRecordReader {
+    fn new(count: usize, buffer: Box<[u8]>, reader: RecordContentReader) -> Self {
+        Self {
+            element_count: count,
+            element_reader: reader,
+            element_buffer: buffer,
+            element_buffer_offset: 0,
+        }
+    }
+
+    // TODO: Could reuse element_buffer across iterations.
+    // fn reset_buffer(&mut self, contents: &[u8]) {
+    //     let mut buffer = std::mem::take(&mut self.element_buffer).into_vec();
+    //     buffer.clear();
+    //     buffer.extend_from_slice(contents);
+    //     self.element_buffer = buffer.into_boxed_slice();
+    // }
+
+    fn read_next<'a>(&'a mut self, integer_reader: IntegerReader<&'a [u8]>) -> Option<Result<Record>> {
+        if self.element_count > 0 {
+            let mut wrapper = Wrapper::new(&self.element_buffer[0..(self.element_buffer.len() - self.element_buffer_offset)]);
+            let record = (self.element_reader)(&mut wrapper, integer_reader);
+            let element_size = wrapper.offset;
+            self.element_count -= 1;
+            self.element_buffer_offset += element_size;
+            Some(record)
+        } else {
+            None
+        }
+    }
+}
+
 /// Reads the records of a SAILAR module.
 pub struct RecordReader<R> {
     count: usize,
     source: Wrapper<R>,
     integer_size: binary::VarIntSize,
     integer_reader: IntegerReader<R>,
+    array_reader: Option<ArrayRecordReader>,
     buffer: Vec<u8>,
 }
 
@@ -290,6 +333,7 @@ impl<R: Read> RecordReader<R> {
             source,
             integer_size,
             integer_reader,
+            array_reader: None,
             buffer: Vec::default(),
         }
     }
@@ -300,7 +344,8 @@ impl<R: Read> RecordReader<R> {
         self.count
     }
 
-    fn read_record<'a>(&mut self) -> Result<Record<'a>> {
+    /// Consumes bytes in the input, returning the parsed record, or `None` if an empty array record is encountered.
+    fn read_record(&mut self) -> Result<Option<Record>> {
         fn read_record_type<R: Read>(source: &mut Wrapper<R>) -> Result<record::Type> {
             let mut type_value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut type_value))? == 0 {
@@ -335,7 +380,7 @@ impl<R: Read> RecordReader<R> {
             });
         }
 
-        fn read_identifier_content(source: &mut BufferWrapper, size: usize) -> Result<identifier::Identifier> {
+        fn read_identifier_content(source: &mut BufferWrapper, size: usize) -> Result<Record> {
             let mut buffer = vec![0u8; size];
             let actual_size = source.read_bytes(&mut buffer)?;
             if actual_size != buffer.len() {
@@ -346,52 +391,76 @@ impl<R: Read> RecordReader<R> {
                 });
             }
 
-            source.wrap_result(identifier::Identifier::from_utf8(buffer))
+            source
+                .wrap_result(identifier::Identifier::from_utf8(buffer))
+                .map(Record::from)
         }
 
-        fn read_identifier<'b>(
-            source: &mut BufferWrapper<'b>,
-            integer_reader: IntegerReader<&'b [u8]>,
-        ) -> Result<identifier::Identifier> {
+        fn read_identifier<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
             let size = integer_reader(source, || ErrorKind::MissingIdentifierLength)?;
             read_identifier_content(source, size)
         }
 
         self.count -= 1;
 
-        Ok(match record_type {
+        match record_type {
             record::Type::Array => {
                 let array_type = read_record_type(content)?;
                 let array_count = content_integer_reader(content, || ErrorKind::MissingRecordArrayCount)?;
+                let array_elements = content.source.to_vec().into_boxed_slice();
 
-                match array_type {
-                    record::Type::Identifier => {
-                        let mut identifiers = Vec::with_capacity(array_count);
+                let array_reader = self.array_reader.insert(ArrayRecordReader::new(
+                    array_count,
+                    array_elements,
+                    match array_type {
+                        record::Type::Identifier => read_identifier,
+                        _ => todo!("add support for array record type {:?}", array_type),
+                    },
+                ));
 
-                        for _ in 0..array_count {
-                            identifiers.push(Cow::Owned(read_identifier(content, content_integer_reader)?));
-                        }
-
-                        record::Record::Array(record::Array::Identifier(identifiers))
-                    }
-                    _ => todo!("array of {:?}", array_type),
+                match array_reader.read_next(content_integer_reader) {
+                    Some(first_element) => first_element.map(Some),
+                    None => Ok(None),
                 }
             }
-            record::Type::Identifier => record::Record::from(read_identifier_content(content, record_size)?),
+            record::Type::Identifier => read_identifier_content(content, record_size).map(Some),
             _ => todo!("parse a {:?}", record_type),
-        })
+        }
     }
 
-    // TODO: What if reader returned elements of arrays as if they were not in an array?
-    pub fn next_record<'a>(&mut self) -> Option<Result<Record<'a>>> {
-        if self.count == 0 {
-            return None;
+    /// Returns the next record in the module, or `None` if no records remain in the module.
+    pub fn next_record(&mut self) -> Option<Result<Record>> {
+        match self.array_reader {
+            None => (),
+            Some(ref mut array_reader) => {
+                let element = array_reader.read_next(select_integer_reader(self.integer_size));
+                if element.is_some() {
+                    return element;
+                } else {
+                    self.array_reader = None;
+                }
+            }
         }
 
-        Some(self.read_record())
+        // Read records, skipping empty arrays
+        loop {
+            if self.count == 0 {
+                return None;
+            }
+
+            let result = self.read_record();
+            match result {
+                Ok(Some(record)) => break Some(Ok(record)),
+                Ok(None) => continue,
+                Err(err) => break Some(Err(err)),
+            }
+        }
     }
 
     /// Skips over any remaining records in the module, and checks that there are no remaining bytes in the input.
+    ///
+    /// # Errors
+    /// If there are still remaining bytes in the input after the module records, then an error is returned.
     pub fn finish(mut self) -> Result<()> {
         while let Some(record) = self.next_record() {
             record?;
@@ -407,7 +476,7 @@ impl<R: Read> RecordReader<R> {
 }
 
 impl<R: Read> std::iter::Iterator for RecordReader<R> {
-    type Item = Result<Record<'static>>; // TODO: Allow any lifetime for records in iterator. Maybe make a RecordIterator struct.
+    type Item = Result<Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_record()

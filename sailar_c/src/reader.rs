@@ -133,7 +133,7 @@ pub unsafe extern "C" fn sailar_dispose_module_format(format: ModuleFormat) {
     format.into_box();
 }
 
-crate::box_wrapper!(Record(pub record::Record<'static>));
+crate::box_wrapper!(Record(pub reader::Record));
 
 #[no_mangle]
 pub unsafe extern "C" fn sailar_read_module_next_record(reader: ModuleReader, error: *mut Error) -> Record {
