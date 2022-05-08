@@ -79,9 +79,11 @@ impl<'a> Module<'a> {
                     | Type::U64
                     | Type::S64
                     | Type::UPtr
-                    | Type::SPtr => Ok(()),
-                    Type::RawPtr(None) => out.write_all(&[u8::from(signature::TypeCode::Void)]),
-                    Type::RawPtr(Some(pointee)) => write_type_signature(out, pointee),
+                    | Type::SPtr
+                    | Type::F32
+                    | Type::F64
+                    | Type::RawPtr(None) => Ok(()),
+                    Type::RawPtr(Some(index)) => out.write_integer(*index),
                     Type::FuncPtr(index) => out.write_integer(*index),
                 }
             }
@@ -97,15 +99,15 @@ impl<'a> Module<'a> {
                 Ok(())
             }
 
-            macro_rules! write_array_record {
-                ($items: expr, $item_writer: expr) => {{
-                    out.write_integer($items.len())?;
-                    for item in $items.iter() {
-                        ($item_writer)(out, item)?;
-                    }
-                    Ok(())
-                }};
-            }
+            // macro_rules! write_array_record {
+            //     ($items: expr, $item_writer: expr) => {{
+            //         out.write_integer($items.len())?;
+            //         for item in $items.iter() {
+            //             ($item_writer)(out, item)?;
+            //         }
+            //         Ok(())
+            //     }};
+            // }
 
             match record {
                 Record::HeaderField(field) => write_header_field(out, field),

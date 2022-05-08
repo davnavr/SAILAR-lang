@@ -6,7 +6,6 @@ use crate::binary::index;
 #[repr(u8)]
 #[non_exhaustive]
 pub enum TypeCode {
-    Void = 0,
     U8 = 1,
     U16 = 2,
     U32 = 4,
@@ -92,7 +91,7 @@ impl Function {
 
 /// Represents a type signature
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Type<'a> {
+pub enum Type {
     /// Unsigned 8-bit integer.
     U8,
     /// Signed 8-bit integer.
@@ -113,12 +112,16 @@ pub enum Type<'a> {
     UPtr,
     /// Signed integer with the same size as a raw pointer.
     SPtr,
-    RawPtr(Option<&'a Type<'a>>),
+    /// Single-precision floating point number.
+    F32,
+    /// Double-precision floating point number.
+    F64,
+    RawPtr(Option<index::TypeSignature>),
     /// Represents a pointer to a function.
     FuncPtr(index::FunctionSignature),
 }
 
-impl Type<'_> {
+impl Type {
     pub fn code(&self) -> TypeCode {
         match self {
             Self::U8 => TypeCode::U8,
@@ -131,6 +134,8 @@ impl Type<'_> {
             Self::S64 => TypeCode::S64,
             Self::UPtr => TypeCode::UPtr,
             Self::SPtr => TypeCode::SPtr,
+            Self::F32 => TypeCode::F32,
+            Self::F64 => TypeCode::F64,
             Self::RawPtr(Some(_)) => TypeCode::RawPtr,
             Self::RawPtr(None) => TypeCode::VoidPtr,
             Self::FuncPtr(_) => TypeCode::FuncPtr,

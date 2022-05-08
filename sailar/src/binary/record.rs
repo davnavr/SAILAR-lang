@@ -77,7 +77,7 @@ impl HeaderField<'_> {
 pub enum Record<'a> {
     HeaderField(HeaderField<'a>),
     Identifier(Cow<'a, Id>),
-    TypeSignature(Cow<'a, signature::Type<'a>>),
+    TypeSignature(Cow<'a, signature::Type>),
     FunctionSignature(Cow<'a, signature::Function>),
 }
 
@@ -99,10 +99,17 @@ impl From<Identifier> for Record<'_> {
     }
 }
 
+impl From<signature::Type> for Record<'_> {
+    #[inline]
+    fn from(signature: signature::Type) -> Self {
+        Self::TypeSignature(Cow::Owned(signature))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn size_of_record_is_acceptable() {
-        assert!(std::mem::size_of::<crate::binary::record::Record>() < 64)
+        assert!(std::mem::size_of::<crate::binary::record::Record>() <= 72)
     }
 }

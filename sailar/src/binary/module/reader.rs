@@ -2,6 +2,7 @@
 
 use crate::binary;
 use crate::binary::record;
+use crate::binary::signature;
 use crate::identifier;
 use crate::versioning;
 use std::fmt::{Display, Formatter};
@@ -76,6 +77,14 @@ pub enum ErrorKind {
     MissingIdentifierLength,
     #[error("expected element count integer for array record")]
     MissingRecordArrayCount,
+    #[error("expected tag byte for type signature")]
+    MissingTypeSignatureTag,
+    #[error(transparent)]
+    InvalidTypeSignatureTag(#[from] signature::InvalidTypeCode),
+    #[error("expected type signature index")]
+    MissingTypeSignatureIndex,
+    #[error("expected function signature index")]
+    MissingFunctionSignatureIndex,
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -345,6 +354,12 @@ impl<R: Read> RecordReader<R> {
     }
 
     /// Consumes bytes in the input, returning the parsed record, or `None` if an empty array record is encountered.
+    ///
+    /// When an array record is encountered, the elements of the array each time this method is called.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Some(Err(_))` when invalid input is encountered, or if an error occurs during reading.
     fn read_record(&mut self) -> Result<Option<Record>> {
         fn read_record_type<R: Read>(source: &mut Wrapper<R>) -> Result<record::Type> {
             let mut type_value = 0u8;
@@ -399,6 +414,37 @@ impl<R: Read> RecordReader<R> {
         fn read_identifier<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
             let size = integer_reader(source, || ErrorKind::MissingIdentifierLength)?;
             read_identifier_content(source, size)
+        }
+
+        fn read_type_signature<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
+            let mut tag_value = 0u8;
+            if source.read_bytes(std::slice::from_mut(&mut tag_value))? == 0 {
+                return source.fail_with(ErrorKind::MissingRecordType);
+            }
+
+            Ok(Record::from(
+                match source.wrap_result(signature::TypeCode::try_from(tag_value))? {
+                    signature::TypeCode::U8 => signature::Type::U8,
+                    signature::TypeCode::S8 => signature::Type::S8,
+                    signature::TypeCode::U16 => signature::Type::U16,
+                    signature::TypeCode::S16 => signature::Type::S16,
+                    signature::TypeCode::U32 => signature::Type::U32,
+                    signature::TypeCode::S32 => signature::Type::S32,
+                    signature::TypeCode::U64 => signature::Type::U64,
+                    signature::TypeCode::S64 => signature::Type::S64,
+                    signature::TypeCode::UPtr => signature::Type::UPtr,
+                    signature::TypeCode::SPtr => signature::Type::SPtr,
+                    signature::TypeCode::F32 => signature::Type::F32,
+                    signature::TypeCode::F64 => signature::Type::F64,
+                    signature::TypeCode::VoidPtr => signature::Type::RawPtr(None),
+                    signature::TypeCode::RawPtr => {
+                        signature::Type::RawPtr(Some(integer_reader(source, || ErrorKind::MissingTypeSignatureIndex)?.into()))
+                    }
+                    signature::TypeCode::FuncPtr => {
+                        signature::Type::FuncPtr(integer_reader(source, || ErrorKind::MissingFunctionSignatureIndex)?.into())
+                    }
+                },
+            ))
         }
 
         self.count -= 1;
