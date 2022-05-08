@@ -460,6 +460,7 @@ impl<R: Read> RecordReader<R> {
                     array_elements,
                     match array_type {
                         record::Type::Identifier => read_identifier,
+                        record::Type::TypeSignature => read_type_signature,
                         _ => todo!("add support for array record type {:?}", array_type),
                     },
                 ));
@@ -470,6 +471,7 @@ impl<R: Read> RecordReader<R> {
                 }
             }
             record::Type::Identifier => read_identifier_content(content, record_size).map(Some),
+            record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
             _ => todo!("parse a {:?}", record_type),
         }
     }
