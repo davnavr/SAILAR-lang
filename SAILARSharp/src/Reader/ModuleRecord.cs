@@ -4,6 +4,7 @@
 
     public unsafe abstract class ModuleRecord : IDisposable {
         private OpaqueModuleRecord* record;
+        private readonly object theLock = new();
         private bool disposed = false;
 
         // Prevent users from deriving their own module record subclasses.
@@ -24,12 +25,14 @@
         private protected virtual void Cleanup() { }
 
         public void Dispose() {
-            if (!disposed) {
-                GC.SuppressFinalize(this);
-                Cleanup();
-                SAILAR.DisposeModuleRecord(record);
-                record = null;
-                disposed = true;
+            lock (theLock) {
+                if (!disposed) {
+                    GC.SuppressFinalize(this);
+                    Cleanup();
+                    SAILAR.DisposeModuleRecord(record);
+                    record = null;
+                    disposed = true;
+                }
             }
         }
 

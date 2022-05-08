@@ -9,6 +9,7 @@
         private OpaqueBuffer* buffer = default;
         private ModuleFormat? format = null;
 
+        private readonly object theLock = new();
         private readonly bool disposeMemoryBuffer = false;
         private bool disposed = false;
 
@@ -79,18 +80,20 @@
         }
 
         public void Dispose() {
-            if (!disposed) {
-                GC.SuppressFinalize(this);
+            lock (theLock) {
+                if (!disposed) {
+                    GC.SuppressFinalize(this);
 
-                SAILAR.DisposeModuleReader(reader);
-                reader = null;
+                    SAILAR.DisposeModuleReader(reader);
+                    reader = null;
 
-                if (disposeMemoryBuffer) {
-                    SAILAR.DisposeBuffer(buffer);
-                    buffer = null;
+                    if (disposeMemoryBuffer) {
+                        SAILAR.DisposeBuffer(buffer);
+                        buffer = null;
+                    }
+
+                    disposed = true;
                 }
-
-                disposed = true;
             }
         }
 
