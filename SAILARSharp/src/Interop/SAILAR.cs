@@ -6,6 +6,7 @@
     public struct OpaqueError { }
     public struct OpaqueErrorMessage { }
     public struct OpaqueBuffer { }
+    public struct OpaqueTypeSignature { }
     public struct OpaqueModuleReader { }
     public struct OpaqueModuleFormat { }
     public struct OpaqueModuleRecord { }
@@ -42,6 +43,12 @@
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_buffer_contents", ExactSpelling = true)]
         public static extern byte* GetBufferContents(OpaqueBuffer* buffer, UIntPtr* length);
 
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_type_signature_kind", ExactSpelling = true)]
+        public static extern TypeSignatureKind GetTypeSignatureKind(OpaqueTypeSignature* signature);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_type_signature", ExactSpelling = true)]
+        public static extern void DisposeTypeSignature(OpaqueTypeSignature* signature);
+
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_create_module_reader_from_buffer", ExactSpelling = true)]
         public static extern OpaqueModuleReader* CreateModuleReaderFromBuffer(OpaqueBuffer* buffer);
 
@@ -77,6 +84,9 @@
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_identifier", ExactSpelling = true)]
         public static extern OpaqueIdentifier* GetModuleRecordAsIdentifier(OpaqueModuleRecord* format);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_type_signature", ExactSpelling = true)]
+        public static extern OpaqueTypeSignature* GetModuleRecordAsTypeSignature(OpaqueModuleRecord* format);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_record", ExactSpelling = true)]
         public static extern void DisposeModuleRecord(OpaqueModuleRecord* format);

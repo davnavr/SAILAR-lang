@@ -3,6 +3,7 @@
 use crate::buffer::Buffer;
 use crate::error::{self, Error};
 use crate::identifier::Identifier;
+use crate::signature;
 use sailar::binary::module::reader;
 use sailar::binary::record;
 
@@ -172,15 +173,28 @@ pub unsafe extern "C" fn sailar_get_module_record_type(record: Record) -> record
     record.into_mut().record_type()
 }
 
-/// Copies the contents of a record into a newly allocated identifier, or returns `null` if the record is not an identifier.
+/// Copies the contents of a record into a newly allocated identifier, or returns `null` if the record does not contain an
+/// identifier.
 ///
 /// The returned identifier should be freed with `sailar_dispose_identifier`.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_get_module_record_as_identifier(record: Record) -> Identifier {
-    match record.into_mut() {
-        record::Record::Identifier(identifier) => {
-            Identifier::new(sailar::Identifier::from(std::convert::AsRef::as_ref(identifier)))
-        }
-        _ => Identifier::null(),
+    if let record::Record::Identifier(identifier) = record.into_mut() {
+        Identifier::new(sailar::Identifier::from(std::convert::AsRef::as_ref(identifier)))
+    } else {
+        Identifier::null()
+    }
+}
+
+/// Copies the contents of a record into a newly allocated type signature, or returns `null` if the record does not contain a
+/// type signature.
+///
+/// The returned type signature should be freed with `sailar_dispose_type_signature`.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_record_as_type_signature(record: Record) -> signature::TypeSignature {
+    if let record::Record::TypeSignature(signature) = record.into_mut() {
+        signature::TypeSignature::new(signature.to_mut().clone())
+    } else {
+        signature::TypeSignature::null()
     }
 }

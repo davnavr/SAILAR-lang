@@ -16,11 +16,20 @@
             return SAILAR.GetModuleRecordType(record) switch
             {
                 RecordType.Identifier => new IdentifierRecord(record),
+                RecordType.TypeSignature => new TypeSignatureRecord(record),
                 var invalid => throw new InvalidRecordTypeException(invalid),
             };
         }
 
+        public RecordType GetRecordType() => SAILAR.GetModuleRecordType(record);
+
         public OpaqueModuleRecord* Reference => record;
+
+        private protected void ThrowIfDisposed() {
+            if (disposed) {
+                throw new ObjectDisposedException(null);
+            }
+        }
 
         private protected virtual void Cleanup() { }
 

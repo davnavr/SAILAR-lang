@@ -9,7 +9,12 @@
             identifier = SAILAR.GetModuleRecordAsIdentifier(record);
         }
 
-        public OpaqueIdentifier* Content => identifier;
+        public OpaqueIdentifier* Content {
+            get {
+                ThrowIfDisposed();
+                return identifier;
+            }
+        }
 
         public sealed override string ToString() {
             if (contents == null) {

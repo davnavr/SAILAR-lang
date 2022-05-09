@@ -6,6 +6,7 @@ pub mod buffer;
 pub mod error;
 pub mod identifier;
 pub mod reader;
+pub mod signature;
 
 #[macro_export]
 #[doc(hidden)]
