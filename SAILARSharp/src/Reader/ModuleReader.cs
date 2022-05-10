@@ -49,12 +49,14 @@
         /// </summary>
         /// <exception cref="ErrorException">Thrown if an error occured while reading the module format.</exception>
         public ModuleFormat GetModuleFormat() {
-            if (format == null) {
-                OpaqueError* error;
-                format = new ModuleFormat(SAILAR.ReadModuleFormat(reader, &error));
-            }
+            lock (theLock) {
+                if (format == null) {
+                    OpaqueError* error;
+                    format = new ModuleFormat(SAILAR.ReadModuleFormat(reader, &error));
+                }
 
-            return format;
+                return format;
+            }
         }
 
         /// <summary>
@@ -63,10 +65,12 @@
         /// <returns>An object representing the parsed record, or <see langword="null"/> if the end of the module was reached.</returns>
         /// <exception cref="ErrorException">Thrown if an error occured while reading the record; or if the module format was not yet parsed with <see cref="GetModuleFormat"/>.</exception>
         public ModuleRecord? ReadNextRecord() {
-            OpaqueError* error;
-            var next = SAILAR.ReadModuleNextRecord(reader, &error);
-            Error.HandleError(error);
-            return next != null ? ModuleRecord.Create(next) : null;
+            lock (theLock) {
+                OpaqueError* error;
+                var next = SAILAR.ReadModuleNextRecord(reader, &error);
+                Error.HandleError(error);
+                return next != null ? ModuleRecord.Create(next) : null;
+            }
         }
 
         /// <summary>
@@ -74,9 +78,11 @@
         /// </summary>
         /// <exception cref="ErrorException">Thrown if the end of the module was not reached.</exception>
         public void CheckIfFinished() {
-            OpaqueError* error;
-            SAILAR.CheckModuleReaderFinished(reader, &error);
-            Error.HandleError(error);
+            lock (theLock) {
+                OpaqueError* error;
+                SAILAR.CheckModuleReaderFinished(reader, &error);
+                Error.HandleError(error);
+            }
         }
 
         public void Dispose() {

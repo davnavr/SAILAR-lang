@@ -80,15 +80,18 @@
         public static extern OpaqueModuleRecord* ReadModuleNextRecord(OpaqueModuleReader* reader, OpaqueError** error);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_type", ExactSpelling = true)]
-        public static extern RecordType GetModuleRecordType(OpaqueModuleRecord* format);
+        public static extern RecordType GetModuleRecordType(OpaqueModuleRecord* record);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_identifier", ExactSpelling = true)]
-        public static extern OpaqueIdentifier* GetModuleRecordAsIdentifier(OpaqueModuleRecord* format);
+        public static extern OpaqueIdentifier* GetModuleRecordAsIdentifier(OpaqueModuleRecord* record);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_type_signature", ExactSpelling = true)]
-        public static extern OpaqueTypeSignature* GetModuleRecordAsTypeSignature(OpaqueModuleRecord* format);
+        public static extern OpaqueTypeSignature* GetModuleRecordAsTypeSignature(OpaqueModuleRecord* record);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_data_buffer", ExactSpelling = true)]
+        public static extern OpaqueBuffer* GetModuleRecordAsDataBuffer(OpaqueModuleRecord* record);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_module_record", ExactSpelling = true)]
-        public static extern void DisposeModuleRecord(OpaqueModuleRecord* format);
+        public static extern void DisposeModuleRecord(OpaqueModuleRecord* record);
     }
 }

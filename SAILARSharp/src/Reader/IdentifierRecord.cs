@@ -5,7 +5,7 @@
         private OpaqueIdentifier* identifier;
         private string? contents = null;
 
-        internal IdentifierRecord(OpaqueModuleRecord* record) : base(record) {
+        internal IdentifierRecord(OpaqueModuleRecord* record) : base(record, RecordType.Identifier) {
             identifier = SAILAR.GetModuleRecordAsIdentifier(record);
         }
 
@@ -17,11 +17,13 @@
         }
 
         public sealed override string ToString() {
-            if (contents == null) {
-                contents = Identifier.ToString(identifier);
-            }
+            lock (Lock) {
+                if (contents == null) {
+                    contents = Identifier.ToString(identifier);
+                }
 
-            return contents;
+                return contents;
+            }
         }
 
         private protected override void Cleanup() {

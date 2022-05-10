@@ -472,6 +472,9 @@ impl<R: Read> RecordReader<R> {
             }
             record::Type::Identifier => read_identifier_content(content, record_size).map(Some),
             record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
+            record::Type::Data => Ok(Some(Record::Data(std::borrow::Cow::Owned(
+                content.source.to_vec().into_boxed_slice(),
+            )))),
             _ => todo!("parse a {:?}", record_type),
         }
     }

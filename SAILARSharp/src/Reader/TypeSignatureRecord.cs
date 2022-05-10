@@ -5,7 +5,7 @@
     public unsafe sealed class TypeSignatureRecord : ModuleRecord {
         private readonly TypeSignature signature;
 
-        internal TypeSignatureRecord(OpaqueModuleRecord* record) : base(record) {
+        internal TypeSignatureRecord(OpaqueModuleRecord* record) : base(record, RecordType.TypeSignature) {
             signature = new(SAILAR.GetModuleRecordAsTypeSignature(record));
         }
 

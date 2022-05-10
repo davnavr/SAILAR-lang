@@ -79,6 +79,7 @@ pub enum Record<'a> {
     Identifier(Cow<'a, Id>),
     TypeSignature(Cow<'a, signature::Type>),
     FunctionSignature(Cow<'a, signature::Function>),
+    Data(Cow<'a, Box<[u8]>>),
 }
 
 impl Record<'_> {
@@ -88,6 +89,7 @@ impl Record<'_> {
             Self::Identifier(_) => Type::Identifier,
             Self::TypeSignature(_) => Type::TypeSignature,
             Self::FunctionSignature(_) => Type::FunctionSignature,
+            Self::Data(_) => Type::Data,
         }
     }
 }
