@@ -33,7 +33,9 @@
         public OpaqueIndex GetReturnType(int index) {
             lock (theLock) {
                 OpaqueIndex returnType;
-                SAILAR.GetFunctionSignatureReturnType(signature, (UIntPtr)index, &returnType);
+                if (!SAILAR.GetFunctionSignatureReturnType(signature, (UIntPtr)index, &returnType)) {
+                    throw new IndexOutOfRangeException();
+                }
                 return returnType;
             }
         }

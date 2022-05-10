@@ -18,6 +18,7 @@
             {
                 RecordType.Identifier => new IdentifierRecord(record),
                 RecordType.TypeSignature => new TypeSignatureRecord(record),
+                RecordType.FunctionSignature => new FunctionSignatureRecord(record),
                 RecordType.Data => new DataRecord(record),
                 var invalid => throw new InvalidRecordTypeException(invalid),
             };
