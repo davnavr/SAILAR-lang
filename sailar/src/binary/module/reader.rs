@@ -476,6 +476,7 @@ impl<R: Read> RecordReader<R> {
         }
     }
 
+    // TODO: Reader could return index of record (e.g. TypeSignature index for TypeSignatures, etc.)
     /// Returns the next record in the module, or `None` if no records remain in the module.
     pub fn next_record(&mut self) -> Option<Result<Record>> {
         match self.array_reader {
