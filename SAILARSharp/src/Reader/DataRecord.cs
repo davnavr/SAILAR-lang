@@ -16,8 +16,10 @@
 
         public ReadOnlySpan<byte> Content {
             get {
-                ThrowIfDisposed();
-                return new(address, length);
+                lock (Lock) {
+                    ThrowIfDisposed();
+                    return new(address, length);
+                }
             }
         }
 

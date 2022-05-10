@@ -62,8 +62,13 @@
         /// <summary>
         /// Reads the next record in the module.
         /// </summary>
-        /// <returns>An object representing the parsed record, or <see langword="null"/> if the end of the module was reached.</returns>
-        /// <exception cref="ErrorException">Thrown if an error occured while reading the record; or if the module format was not yet parsed with <see cref="GetModuleFormat"/>.</exception>
+        /// <returns>
+        /// An object representing the parsed record, or <see langword="null"/> if the end of the module was reached.
+        /// </returns>
+        /// <exception cref="ErrorException">
+        /// Thrown if an error occured while reading the record; or if the module format was not yet parsed with
+        /// <see cref="GetModuleFormat"/>.
+        /// </exception>
         public ModuleRecord? ReadNextRecord() {
             lock (theLock) {
                 OpaqueError* error;

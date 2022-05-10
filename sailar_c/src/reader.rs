@@ -200,6 +200,15 @@ pub unsafe extern "C" fn sailar_get_module_record_as_type_signature(record: Reco
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn sailar_get_module_record_as_function_signature(record: Record) -> signature::FunctionSignature {
+    if let record::Record::FunctionSignature(signature) = record.into_mut() {
+        signature::FunctionSignature::new(signature.as_ref().clone())
+    } else {
+        signature::FunctionSignature::null()
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn sailar_get_module_record_as_data_buffer(record: Record) -> Buffer {
     if let record::Record::Data(bytes) = record.into_mut() {
         Buffer::new(bytes.as_ref().clone())

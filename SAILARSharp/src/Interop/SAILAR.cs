@@ -7,10 +7,22 @@
     public struct OpaqueErrorMessage { }
     public struct OpaqueBuffer { }
     public struct OpaqueTypeSignature { }
+    public struct OpaqueFunctionSignature { }
     public struct OpaqueModuleReader { }
     public struct OpaqueModuleFormat { }
     public struct OpaqueModuleRecord { }
     public struct OpaqueModuleBuilder { }
+
+    // TODO: Repalce this with specific index structs.
+    public readonly struct OpaqueIndex {
+        public readonly UIntPtr Value;
+
+        public OpaqueIndex(UIntPtr index) {
+            Value = index;
+        }
+
+        public static explicit operator OpaqueIndex(int index) => new((UIntPtr)index);
+    }
 
     internal static unsafe class SAILAR {
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_identifier", ExactSpelling = true)]
@@ -48,6 +60,16 @@
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_type_signature", ExactSpelling = true)]
         public static extern void DisposeTypeSignature(OpaqueTypeSignature* signature);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_function_signature_counts", ExactSpelling = true)]
+        public static extern void GetFunctionSignatureCounts(OpaqueFunctionSignature* signature, UIntPtr* resultCount, UIntPtr* parameterCount);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_function_signature_return_type", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        public static extern bool GetFunctionSignatureReturnType(OpaqueFunctionSignature* signature, UIntPtr index, OpaqueIndex* returnType);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_function_signature", ExactSpelling = true)]
+        public static extern void DisposeFunctionSignature(OpaqueFunctionSignature* signature);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_create_module_reader_from_buffer", ExactSpelling = true)]
         public static extern OpaqueModuleReader* CreateModuleReaderFromBuffer(OpaqueBuffer* buffer);
@@ -87,6 +109,9 @@
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_type_signature", ExactSpelling = true)]
         public static extern OpaqueTypeSignature* GetModuleRecordAsTypeSignature(OpaqueModuleRecord* record);
+
+        [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_function_signature", ExactSpelling = true)]
+        public static extern OpaqueFunctionSignature* GetModuleRecordAsFunctionSignature(OpaqueModuleRecord* record);
 
         [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_get_module_record_as_data_buffer", ExactSpelling = true)]
         public static extern OpaqueBuffer* GetModuleRecordAsDataBuffer(OpaqueModuleRecord* record);
