@@ -72,6 +72,62 @@ impl HeaderField<'_> {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+#[repr(transparent)]
+pub struct DataArray(pub [u8]);
+
+impl DataArray {
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl<'a> From<&'a DataArray> for &'a [u8] {
+    #[inline]
+    fn from(data: &'a DataArray) -> &'a [u8] {
+        data.as_bytes()
+    }
+}
+
+impl<'a> From<&'a [u8]> for &'a DataArray {
+    #[inline]
+    fn from(bytes: &'a [u8]) -> &'a DataArray {
+        unsafe {
+            // Safety: Layout of data array is the same.
+            std::mem::transmute(bytes)
+        }
+    }
+}
+
+impl std::borrow::Borrow<DataArray> for Box<[u8]> {
+    #[inline]
+    fn borrow(&self) -> &DataArray {
+        self.as_ref().into()
+    }
+}
+
+impl std::borrow::ToOwned for DataArray {
+    type Owned = Box<[u8]>;
+
+    #[inline]
+    fn to_owned(&self) -> Self::Owned {
+        Box::from(self.as_bytes())
+    }
+}
+
+impl std::cmp::PartialEq<[u8]> for DataArray {
+    fn eq(&self, other: &[u8]) -> bool {
+        self.as_bytes() == other
+    }
+}
+
+impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
+    fn eq(&self, other: &[u8; N]) -> bool {
+        self.as_bytes() == other.as_slice()
+    }
+}
+
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Record<'a> {
@@ -79,7 +135,7 @@ pub enum Record<'a> {
     Identifier(Cow<'a, Id>),
     TypeSignature(Cow<'a, signature::Type>),
     FunctionSignature(Cow<'a, signature::Function>),
-    Data(Cow<'a, Box<[u8]>>),
+    Data(Cow<'a, DataArray>),
 }
 
 impl Record<'_> {

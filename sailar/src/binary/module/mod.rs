@@ -114,7 +114,7 @@ impl<'a> Module<'a> {
                 Record::Identifier(identifier) => out.write_all(identifier.as_bytes()),
                 Record::TypeSignature(signature) => write_type_signature(out, signature),
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),
-                Record::Data(bytes) => out.write_all(bytes),
+                Record::Data(bytes) => out.write_all(bytes.as_ref().as_bytes()),
                 // Record::Array(array) => {
                 //     out.write_all(&[u8::from(array.item_type())])?;
                 //     match array {

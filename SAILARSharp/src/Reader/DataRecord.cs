@@ -23,6 +23,10 @@
             }
         }
 
+        public byte[] ToArray() {
+            return Content.ToArray();
+        }
+
         private protected override void Cleanup() {
             SAILAR.DisposeBuffer(buffer);
             buffer = null;

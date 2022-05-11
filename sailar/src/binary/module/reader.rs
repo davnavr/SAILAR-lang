@@ -5,6 +5,7 @@ use crate::binary::record;
 use crate::binary::signature;
 use crate::identifier;
 use crate::versioning;
+use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::io::Read;
 
@@ -87,6 +88,8 @@ pub enum ErrorKind {
     MissingFunctionSignatureIndex,
     #[error("expected end of file")]
     ExpectedEOF,
+    #[error("expected data array byte length")]
+    MissingDataLength,
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -461,6 +464,19 @@ impl<R: Read> RecordReader<R> {
                     match array_type {
                         record::Type::Identifier => read_identifier,
                         record::Type::TypeSignature => read_type_signature,
+                        record::Type::Data => |source: &mut BufferWrapper, integer_reader: IntegerReader<_>| {
+                            let data_size = integer_reader(source, || ErrorKind::MissingDataLength)?;
+                            let mut buffer = vec![0u8; data_size];
+                            let actual_size = source.read_bytes(&mut buffer)?;
+                            if actual_size < data_size {
+                                return Err(source.wrap_error(ErrorKind::UnexpectedEndOfData {
+                                    name: "data array",
+                                    actual_size,
+                                    expected_size: data_size,
+                                }));
+                            }
+                            Ok(Record::Data(Cow::Owned(buffer.into_boxed_slice())))
+                        },
                         _ => todo!("add support for array record type {:?}", array_type),
                     },
                 ));
@@ -472,9 +488,7 @@ impl<R: Read> RecordReader<R> {
             }
             record::Type::Identifier => read_identifier_content(content, record_size).map(Some),
             record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
-            record::Type::Data => Ok(Some(Record::Data(std::borrow::Cow::Owned(
-                content.source.to_vec().into_boxed_slice(),
-            )))),
+            record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
             _ => todo!("parse a {:?}", record_type),
         }
     }
@@ -507,6 +521,10 @@ impl<R: Read> RecordReader<R> {
                 Err(err) => break Some(Err(err)),
             }
         }
+    }
+
+    pub fn next_record_transposed(&mut self) -> Result<Option<Record>> {
+        self.next_record().transpose()
     }
 
     /// Skips over any remaining records in the module, and checks that there are no remaining bytes in the input.
@@ -543,5 +561,53 @@ impl<R: Read> std::iter::ExactSizeIterator for RecordReader<R> {
     #[inline]
     fn len(&self) -> usize {
         self.count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn array_of_data_records_is_parsed() {
+        let module = [
+            b'S',
+            b'A',
+            b'I',
+            b'L',
+            b'A',
+            b'R',
+            versioning::Format::CURRENT.major,
+            versioning::Format::CURRENT.minor,
+            0,
+            1, // Number of records
+            1,
+            14,
+            5,
+            2,
+            6,
+            0xA,
+            0xB,
+            0xC,
+            0xD,
+            0xE,
+            0xF,
+            4,
+            b'T',
+            b'E',
+            b'S',
+            b'T',
+        ];
+
+        let reader = Reader::new(module.as_slice());
+        let (_, _, mut record_reader) = reader.to_record_reader().unwrap();
+
+        assert!(
+            matches!(record_reader.next_record_transposed().unwrap(), Some(Record::Data(bytes)) if bytes.as_ref() == &[0xA, 0xB, 0xC, 0xD, 0xE, 0xF])
+        );
+        assert!(
+            matches!(record_reader.next_record_transposed().unwrap(), Some(Record::Data(bytes)) if bytes.as_ref() == &[b'T', b'E', b'S', b'T'])
+        );
+        record_reader.finish().unwrap();
     }
 }
