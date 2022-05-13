@@ -133,7 +133,7 @@ impl<'a> Module<'a> {
         for record in self.records.iter() {
             content_buffer.clear();
             let mut record_content = out.derive_from(&mut content_buffer);
-            write_record_content(&mut record_content, &record)?;
+            write_record_content(&mut record_content, record)?;
 
             out.write_all(&[u8::from(record.record_type())])?;
             out.write_integer(content_buffer.len())?;
@@ -151,6 +151,12 @@ impl<'a> Module<'a> {
             // write_to
             binary::RawModule::from_vec_unchecked(contents)
         }
+    }
+}
+
+impl Default for Module<'_> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

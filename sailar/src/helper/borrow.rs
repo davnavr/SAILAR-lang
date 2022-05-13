@@ -4,24 +4,24 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter};
 
 /// Trait implemented by objects that can be boxed.
-pub trait IntoBox {
-    fn into_box(&self) -> Box<Self>;
+pub trait ToBox {
+    fn to_box(&self) -> Box<Self>;
 }
 
-impl<C: Clone> IntoBox for C {
-    fn into_box(&self) -> Box<Self> {
+impl<C: Clone> ToBox for C {
+    fn to_box(&self) -> Box<Self> {
         Box::new(self.clone())
     }
 }
 
-impl<T: Copy> IntoBox for [T] {
-    fn into_box(&self) -> Box<Self> {
+impl<T: Copy> ToBox for [T] {
+    fn to_box(&self) -> Box<Self> {
         Box::from(self)
     }
 }
 
-impl IntoBox for str {
-    fn into_box(&self) -> Box<str> {
+impl ToBox for str {
+    fn to_box(&self) -> Box<str> {
         Box::from(self)
     }
 }
@@ -44,11 +44,11 @@ impl<B: ?Sized> From<Box<B>> for CowBox<'_, B> {
     }
 }
 
-impl<'a, B: ?Sized + IntoBox> CowBox<'a, B> {
+impl<'a, B: ?Sized + ToBox> CowBox<'a, B> {
     pub fn to_mut(&mut self) -> &mut B {
         match self {
             Self::Borrowed(borrowed) => {
-                *self = Self::Boxed(borrowed.into_box());
+                *self = Self::Boxed(borrowed.to_box());
                 if let Self::Boxed(ref mut owned) = self {
                     owned
                 } else {
@@ -61,7 +61,7 @@ impl<'a, B: ?Sized + IntoBox> CowBox<'a, B> {
 
     pub fn into_box(self) -> Box<B> {
         match self {
-            Self::Borrowed(borrowed) => borrowed.into_box(),
+            Self::Borrowed(borrowed) => borrowed.to_box(),
             Self::Boxed(owned) => owned,
         }
     }
@@ -71,7 +71,7 @@ impl<B: ?Sized> Borrow<B> for CowBox<'_, B> {
     fn borrow(&self) -> &B {
         match self {
             Self::Borrowed(borrowed) => borrowed,
-            Self::Boxed(owned) => &owned,
+            Self::Boxed(owned) => owned,
         }
     }
 }
@@ -82,10 +82,10 @@ impl<B: ?Sized> std::convert::AsRef<B> for CowBox<'_, B> {
     }
 }
 
-impl<B: ?Sized + IntoBox> Clone for CowBox<'_, B> {
+impl<B: ?Sized + ToBox> Clone for CowBox<'_, B> {
     fn clone(&self) -> Self {
         let borrowed: &B = self.borrow();
-        Self::Boxed(borrowed.into_box())
+        Self::Boxed(borrowed.to_box())
     }
 }
 

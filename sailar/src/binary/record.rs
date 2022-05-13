@@ -133,8 +133,31 @@ impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
 pub struct CodeBlock<'a> {
     register_types: CowBox<'a, [index::TypeSignature]>,
     input_count: usize,
-    temporary_count: usize,
+    result_count: usize,
     instructions: Cow<'a, [crate::instruction::Instruction]>,
+}
+
+impl<'a> CodeBlock<'a> {
+    #[inline]
+    fn register_types(&self) -> &[index::TypeSignature] {
+        std::borrow::Borrow::borrow(&self.register_types)
+    }
+
+    pub fn input_types(&self) -> &[index::TypeSignature] {
+        &self.register_types()[0..self.input_count]
+    }
+
+    pub fn result_types(&self) -> &[index::TypeSignature] {
+        &self.register_types()[self.input_count..self.input_count + self.result_count]
+    }
+
+    pub fn temporary_types(&self) -> &[index::TypeSignature] {
+        &self.register_types()[self.input_count + self.result_count..]
+    }
+
+    pub fn instructions(&self) -> &[crate::instruction::Instruction] {
+        &self.instructions
+    }
 }
 
 #[derive(Clone, Debug)]
