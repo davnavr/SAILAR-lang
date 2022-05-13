@@ -115,6 +115,7 @@ impl<'a> Module<'a> {
                 Record::TypeSignature(signature) => write_type_signature(out, signature),
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),
                 Record::Data(bytes) => out.write_all(bytes.as_ref().as_bytes()),
+                Record::CodeBlock(_) => todo!("write code"),
                 // Record::Array(array) => {
                 //     out.write_all(&[u8::from(array.item_type())])?;
                 //     match array {

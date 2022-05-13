@@ -493,6 +493,8 @@ impl<R: Read> RecordReader<R> {
         }
     }
 
+    // TODO: Return a mini-record reader in a function next_record_reader to allow temporary skipping of invalid records and parsing of records that follow an invalid record
+
     // TODO: Reader could return index of record (e.g. TypeSignature index for TypeSignatures, etc.)
     /// Returns the next record in the module, or `None` if no records remain in the module.
     pub fn next_record(&mut self) -> Option<Result<Record>> {

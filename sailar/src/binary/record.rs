@@ -1,6 +1,7 @@
 //! Types that represent records in a SAILAR module binary.
 
-use crate::binary::signature;
+use crate::binary::{index, signature};
+use crate::helper::borrow::CowBox;
 use crate::{Id, Identifier};
 use std::borrow::Cow;
 
@@ -14,7 +15,7 @@ pub enum Type {
     TypeSignature = 3,
     FunctionSignature = 4,
     Data = 5,
-    Code = 6,
+    CodeBlock = 6,
     //ModuleImport = 7,
     //FunctionImport = 8,
     //StructureImport = 9,
@@ -48,7 +49,7 @@ impl TryFrom<u8> for Type {
     type Error = InvalidTypeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value <= Type::Code.into() {
+        if value <= Type::CodeBlock.into() {
             Ok(unsafe { std::mem::transmute::<u8, Self>(value) })
         } else {
             Err(InvalidTypeError { value })
@@ -129,6 +130,14 @@ impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
 }
 
 #[derive(Clone, Debug)]
+pub struct CodeBlock<'a> {
+    register_types: CowBox<'a, [index::TypeSignature]>,
+    input_count: usize,
+    temporary_count: usize,
+    instructions: Cow<'a, [crate::instruction::Instruction]>,
+}
+
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Record<'a> {
     HeaderField(HeaderField<'a>),
@@ -136,6 +145,7 @@ pub enum Record<'a> {
     TypeSignature(Cow<'a, signature::Type>),
     FunctionSignature(Cow<'a, signature::Function>),
     Data(Cow<'a, DataArray>),
+    CodeBlock(CowBox<'a, CodeBlock<'a>>),
 }
 
 impl Record<'_> {
@@ -146,6 +156,7 @@ impl Record<'_> {
             Self::TypeSignature(_) => Type::TypeSignature,
             Self::FunctionSignature(_) => Type::FunctionSignature,
             Self::Data(_) => Type::Data,
+            Self::CodeBlock(_) => Type::CodeBlock,
         }
     }
 }

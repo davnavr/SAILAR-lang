@@ -1,6 +1,9 @@
 //! Contains types for reading and writing SAILAR modules.
+//!
+//! For a summary of the instruction set, see [`instruction::Instruction`].
 
 pub mod binary;
+pub mod helper;
 pub mod identifier;
 pub mod instruction;
 pub mod type_system;
