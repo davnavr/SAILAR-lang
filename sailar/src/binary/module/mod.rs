@@ -141,6 +141,16 @@ impl<'a> Module<'a> {
 
         Ok(())
     }
+
+    pub fn into_raw_contents(self) -> binary::RawModule {
+        let mut contents = Vec::default();
+        self.write_to(&mut contents).unwrap();
+        unsafe {
+            // Safety: contents are assumed to be a syntactically valid module, unless there is a bug in the implementation of
+            // write_to
+            binary::RawModule::from_vec_unchecked(contents)
+        }
+    }
 }
 
 impl Module<'static> {
@@ -161,5 +171,11 @@ impl Module<'static> {
 
     pub fn read_from<R: Read>(source: R) -> reader::Result<Self> {
         Self::from_reader(reader::Reader::new(source))
+    }
+}
+
+impl From<Module<'_>> for binary::RawModule {
+    fn from(module: Module<'_>) -> Self {
+        module.into_raw_contents()
     }
 }

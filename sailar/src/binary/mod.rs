@@ -20,7 +20,12 @@ pub struct RawModule {
 }
 
 impl RawModule {
-    pub(crate) fn from_vec(contents: Vec<u8>) -> Self {
+    /// Creates a module from a vector of bytes.
+    /// 
+    /// # Safety
+    /// 
+    /// Callers should ensure that the content of the vector is a syntactically correct SAILAR module.
+    pub unsafe fn from_vec_unchecked(contents: Vec<u8>) -> Self {
         Self { contents }
     }
 
