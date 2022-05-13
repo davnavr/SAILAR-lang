@@ -2,6 +2,7 @@
 
 pub mod binary;
 pub mod identifier;
+pub mod instruction;
 pub mod type_system;
 pub mod versioning;
 

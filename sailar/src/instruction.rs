@@ -1,8 +1,7 @@
 //! Model of the SAILAR instruction set.
 
-use crate::function;
+use crate::binary::index;
 use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
@@ -193,98 +192,63 @@ impl IntegerArithmetic {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FunctionCall {
-    function: Arc<function::Instantiation>,
-    arguments: Box<[Value]>,
-}
-
-impl FunctionCall {
-    pub fn new<A: Into<Box<[Value]>>>(function: Arc<function::Instantiation>, arguments: A) -> Self {
-        Self {
-            function,
-            arguments: arguments.into(),
-        }
-    }
-
-    #[inline]
-    pub fn function(&self) -> &Arc<function::Instantiation> {
-        &self.function
-    }
-
-    #[inline]
-    pub fn arguments(&self) -> &[Value] {
-        &self.arguments
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[repr(u8)]
-pub enum Opcode {
-    Nop = 0,
-    Break = 1,
-    Ret = 2,
-    // Select = 3,
-    // Switch = 4,
-    // Br = 5,
-    // BrIf = 6,
-    Call = 7,
-    AddI = 0xA,
-    SubI = 0xB,
-    MulI = 0xC,
-}
-
-impl From<Opcode> for u8 {
-    #[inline]
-    fn from(opcode: Opcode) -> u8 {
-        opcode as u8
-    }
-}
-
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("{value:#02X} is not a valid opcode")]
 pub struct InvalidOpcodeError {
     value: u8,
 }
 
-impl TryFrom<u8> for Opcode {
-    type Error = InvalidOpcodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        macro_rules! success {
-            ($opcode: ident) => {
-                Ok(Self::$opcode)
-            };
+macro_rules! instruction_set {
+    ({
+        $($(#[$instruction_meta:meta])* $instruction_name:ident$(($($instruction_argument_name:ident: $instruction_argument:ty,)*))? = $instruction_code:literal,)*
+    }) => {
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+        #[repr(u8)]
+        pub enum Opcode {
+            $($instruction_name = $instruction_code,)*
         }
 
-        match value {
-            0 => success!(Nop),
-            1 => success!(Break),
-            2 => success!(Ret),
-            0xA => success!(AddI),
-            0xB => success!(SubI),
-            0xC => success!(MulI),
-            _ => Err(InvalidOpcodeError { value }),
+        impl TryFrom<u8> for Opcode {
+            type Error = InvalidOpcodeError;
+
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    $(_ if value == $instruction_code => Ok(Self::$instruction_name),)*
+                    _ => Err(InvalidOpcodeError { value }),
+                }
+            }
         }
-    }
+
+        #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+        #[non_exhaustive]
+        pub enum Instruction {
+            $($(#[$instruction_meta])* $instruction_name$(($($instruction_argument,)*))?,)*
+        }
+
+        impl Instruction {
+            pub fn opcode(&self) -> Opcode {
+                match self {
+                    $(Self::$instruction_name$(($($instruction_argument_name,)*))? => Opcode::$instruction_name,)*
+                }
+            }
+        }
+    };
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
-pub enum Instruction {
-    Nop,
-    Break,
-    Ret(Box<[Value]>),
-    //Select,
-    //Switch,
-    //Br,
-    //BrIf,
-    Call(Box<FunctionCall>),
-    //CallIndr,
-    //CallRet,
-    AddI(Box<IntegerArithmetic>),
-    SubI(Box<IntegerArithmetic>),
-    MulI(Box<IntegerArithmetic>),
+instruction_set! {{
+    Nop = 0,
+    Break = 1,
+    Ret(_values: Box<[Value]>,) = 2,
+    // Select = 3,
+    // Switch = 4,
+    // Br = 5,
+    // BrIf = 6,
+    Call(_callee: u32, _arguments: Box<[Value]>,) = 7,
+    //CallIndr = 8,
+    //CallRet = 9,
+    AddI(_op: Box<IntegerArithmetic>,) = 0xA,
+    SubI(_op: Box<IntegerArithmetic>,) = 0xB,
+    MulI(_op: Box<IntegerArithmetic>,) = 0xC,
     //DivI,
     //RemI,
     //ModI,
@@ -303,20 +267,12 @@ pub enum Instruction {
     //Cmp,
     //BitCount,
     //Reverse,
-    //
-}
+}}
 
-impl Instruction {
-    pub fn opcode(&self) -> Opcode {
-        match self {
-            Self::Nop => Opcode::Nop,
-            Self::Break => Opcode::Break,
-            Self::Ret(_) => Opcode::Ret,
-            Self::Call(_) => Opcode::Call,
-            Self::AddI(_) => Opcode::AddI,
-            Self::SubI(_) => Opcode::SubI,
-            Self::MulI(_) => Opcode::MulI,
-        }
+impl From<Opcode> for u8 {
+    #[inline]
+    fn from(opcode: Opcode) -> u8 {
+        opcode as u8
     }
 }
 
