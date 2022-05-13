@@ -236,20 +236,51 @@ macro_rules! instruction_set {
 }
 
 instruction_set! {{
+    /// ```text
+    /// nop
+    /// ```
+    /// Does absolutely nothing.
     Nop = 0,
+    /// ```text
+    /// break
+    /// ```
+    /// On supported platforms, indicates a debugger breakpoint has been hit. Behaves like a `nop` instruction otherwise.
     Break = 1,
+    /// ```text
+    /// ret <value0>, <value1>, ... ; Return multiple values
+    /// ret ; Return no values
+    /// ```
+    /// Transfers control flow back to the calling function, providing the specified return value(s).
     Ret(_values: Box<[Value]>,) = 2,
     // Select = 3,
     // Switch = 4,
     // Br = 5,
     // BrIf = 6,
+    /// ```text
+    /// <result0>, <result1>, ... = call <function> (<argument0>, <argument1>, ...) ; Call function with return values
+    /// call <function> (<argument0>, <argument1>, ...) ; Call function with no return values
+    /// ```
+    /// Transfers control flow to the specified `function`, providing the specified values as arguments.
     Call(_callee: u32, _arguments: Box<[Value]>,) = 7,
     //CallIndr = 8,
     //CallRet = 9,
+    /// ```text
+    /// <sum> = addi <x> <y>
+    /// <sum> = addi sat <x> <y>
+    /// <sum>, <overflowed> = addi ovf <x> <y>
+    /// ```
+    /// Calculates the sum of two integer values.
     AddI(_op: Box<IntegerArithmetic>,) = 0xA,
+    /// ```text
+    /// <sum> = subi <x> <y> ; Calculates x - y
+    /// <sum> = subi sat <x> <y>
+    /// <sum>, <overflowed> = subi ovf <x> <y>
+    /// ```
+    /// Calculates the integer result of subtracting `y` from `x`.
     SubI(_op: Box<IntegerArithmetic>,) = 0xB,
-    MulI(_op: Box<IntegerArithmetic>,) = 0xC,
-    //DivI,
+    // TODO: Could introduce muli overflow variant that returns the HIGH overflowing bits instead of just a single I overflow bool.
+    //MulI(_op: Box<IntegerArithmetic>,) = 0xC,
+    //DivI = 0xD,
     //RemI,
     //ModI,
     //DivRemI,
