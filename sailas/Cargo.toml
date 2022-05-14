@@ -4,11 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ariadne = "0.1.3"
-sailar_asm = { path = "../sailar_asm" }
-structopt = "0.3.25"
+clap = { version = "3.1.18", features = ["derive"] }
+sailasm = { path = "../sailasm" }
 sailar = { path = "../sailar" }
-
-[[bin]]
-name = "sailas"
-path = "src/main.rs"

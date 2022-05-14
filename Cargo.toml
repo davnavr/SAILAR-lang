@@ -3,4 +3,5 @@ members = [
     "sailar",
     "sailar_c",
     "sailasm",
+    "sailas",
 ]
