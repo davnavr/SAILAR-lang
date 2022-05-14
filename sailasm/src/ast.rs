@@ -60,8 +60,8 @@ pub struct LocationRange {
 
 impl LocationRange {
     pub fn new(start: Location, end: Location) -> Self {
-        if start < end {
-            panic!("end location must not come before start location");
+        if start > end {
+            panic!("end location {} must not come before start location {}", end, start);
         }
 
         Self { start, end }
