@@ -27,13 +27,7 @@ pub struct Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        Display::fmt(&self.location.start, f)?;
-
-        if self.location.end > self.location.start {
-            f.write_str(" - ")?;
-            Display::fmt(&self.location.end, f)?;
-        }
-
+        ast::fmt_location_range(&self.location, f)?;
         f.write_str(": ")?;
         Display::fmt(&self.kind, f)
     }

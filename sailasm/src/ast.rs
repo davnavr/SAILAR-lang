@@ -1,5 +1,7 @@
 //! Contains structures to represent the abstract syntax tree.
 
+use std::fmt::{Display, Formatter};
+
 /// Represents a line or column number.
 pub type LocationNumber = std::num::NonZeroUsize;
 
@@ -21,8 +23,8 @@ impl Location {
     }
 }
 
-impl std::fmt::Display for Location {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for Location {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "({}, {})", self.line, self.column)
     }
 }
@@ -33,6 +35,8 @@ impl From<Location> for (usize, usize) {
     }
 }
 
+
+
 impl From<Location> for std::ops::Range<Location> {
     fn from(location: Location) -> Self {
         let next = Location {
@@ -42,6 +46,15 @@ impl From<Location> for std::ops::Range<Location> {
 
         location..next
     }
+}
+
+pub(crate) fn fmt_location_range(location: &std::ops::Range<Location>, f: &mut Formatter) -> std::fmt::Result {
+    Display::fmt(&location.start, f)?;
+    if location.end > location.start {
+        f.write_str(" - ")?;
+        Display::fmt(&location.end, f)?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq)]
