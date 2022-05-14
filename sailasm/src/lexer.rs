@@ -23,8 +23,11 @@ impl<'s> OffsetMapBuilder<'s> {
     }
 
     fn push_new_line(&mut self, offset: usize) {
-        self.lookup
-            .push((self.previous_offset, self.next_line_number, &self.input[self.previous_offset..offset]));
+        self.lookup.push((
+            self.previous_offset,
+            self.next_line_number,
+            &self.input[self.previous_offset..offset],
+        ));
         self.previous_offset = offset + 1;
         self.next_line_number = ast::LocationNumber::new(self.next_line_number.get() + 1).unwrap();
     }
@@ -37,7 +40,10 @@ impl<'s> OffsetMapBuilder<'s> {
             _ => (),
         };
 
-        OffsetMap { bytes: 0..last_offset, lookup: self.lookup }
+        OffsetMap {
+            bytes: 0..last_offset,
+            lookup: self.lookup,
+        }
     }
 }
 
@@ -75,10 +81,9 @@ impl<'s> OffsetMap<'s> {
                 Ok(exact) => Some(ast::Location::new(self.lookup[exact].1, ast::LOCATION_NUMBER_START)),
                 Err(0) => unreachable!("missing first line lookup entry"),
                 Err(index) => {
-                    let (line_offset, _, _) = self.lookup[index];
-                    let (_, line_number, line) = self.lookup[index - 1];
-                    let column_number =
-                        ast::LocationNumber::new(line[0..line_offset - offset].chars().count() + 1).expect("valid column number");
+                    let (line_offset, line_number, line) = self.lookup[index - 1];
+                    let column_count = line[0..offset - line_offset].chars().count();
+                    let column_number = ast::LocationNumber::new(column_count + 1).expect("valid column number");
                     Some(ast::Location::new(line_number, column_number))
                 }
             }
@@ -203,7 +208,10 @@ mod tests {
     use super::*;
 
     fn collect_actual_locations(lookup: &OffsetMap) -> Vec<(usize, usize, usize)> {
-        lookup.iter_locations().map(|(byte_offset, location)| (byte_offset, location.line.get(), location.column.get())).collect()
+        lookup
+            .iter_locations()
+            .map(|(byte_offset, location)| (byte_offset, location.line.get(), location.column.get()))
+            .collect()
     }
 
     #[test]
@@ -233,10 +241,7 @@ mod tests {
             (Token::Newline, 42..43),
         ];
 
-        let expected_locations = [
-            (0usize, 1usize, 1usize),
-            (8, 1, 9),
-        ];
+        let expected_locations = [(0usize, 1usize, 1usize), (8, 1, 9)];
 
         dbg!(&locations);
 

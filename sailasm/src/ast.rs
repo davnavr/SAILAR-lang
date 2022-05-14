@@ -64,7 +64,7 @@ impl LiteralString {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FormatVersionKind {
     Major,
-    Minor
+    Minor,
 }
 
 #[derive(Clone, Debug, PartialEq)]
