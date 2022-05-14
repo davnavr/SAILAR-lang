@@ -80,26 +80,37 @@ impl<'s> Output<'s> {
         &self.errors
     }
 }
+macro_rules! push_error {
+    ($errors: expr, $kind: expr, $location: expr) => {
+        $errors.push(Error::new($kind, $location))
+    };
+}
 
-macro_rules! fail {
+macro_rules! fail_continue {
     ($errors: expr, $kind: expr, $location: expr) => {{
-        $errors.push(Error::new($kind, $location));
+        push_error!($errors, $kind, $location);
         continue;
     }};
 }
 
-macro_rules! result {
-    ($errors: expr, $value: expr, $location: expr) => {
-        match $value {
-            Ok(v) => v,
-            Err(e) => fail!($errors, ErrorKind::from(e), $location),
+macro_rules! fail_skip_line {
+    ($errors: expr, $kind: expr, $location: expr, $input: expr) => {{
+        push_error!($errors, $kind, $location);
+
+        loop {
+            match $input.next_token() {
+                Some((Token::Newline, _)) | None => break,
+                Some(_) => (),
+            }
         }
-    };
+
+        continue;
+    }};
 }
 
 macro_rules! match_exhausted {
     ($errors: expr, $kind: expr, $token: expr, $input: expr) => {
-        fail!(
+        fail_continue!(
             $errors,
             $kind,
             if let Some((_, location)) = $token {
@@ -135,7 +146,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     Some((Token::Word("major"), _)) => ast::FormatVersionKind::Major,
                     Some((Token::Word("minor"), _)) => ast::FormatVersionKind::Minor,
                     Some((Token::Word(bad), location)) => {
-                        fail!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location)
+                        fail_skip_line!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location, input)
                     }
                     bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersionKind, bad, input),
                 };
@@ -143,11 +154,10 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                 let format_version = match input.next_token() {
                     Some((Token::LiteralInteger(digits), location)) => {
                         end_location = location.end().clone();
-                        result!(
-                            errors,
-                            u8::try_from(digits).map_err(ErrorKind::InvalidFormatVersion),
-                            location
-                        )
+                        match u8::try_from(digits) {
+                            Ok(version) => version,
+                            Err(e) => fail_skip_line!(errors, ErrorKind::InvalidFormatVersion(e), location, input),
+                        }
                     }
                     bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersion, bad, input),
                 };
@@ -160,9 +170,9 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     end_location,
                 ));
             }
-            Token::Unknown => fail!(errors, ErrorKind::UnknownToken, location),
+            Token::Unknown => fail_continue!(errors, ErrorKind::UnknownToken, location),
             Token::Newline => (),
-            bad => todo!("handle {:?}", bad),
+            bad => todo!("handle {:?}, {:?}", bad, &errors),
         }
     }
 
