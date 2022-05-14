@@ -1,23 +1,22 @@
 //! Provides functions for the tokenization of SAILAR assembly.
 
-use std::borrow::Cow;
+use logos::Logos;
 
-const DIRECTIVES: phf::Set<&'static str> = phf::phf_set! {
-    "format"
-};
-
-fn get_directive_name(lex: &mut logos::Lexer<Token>) -> Cow<'static, str> {
-    let name = &lex.slice()[1..];
-    DIRECTIVES
-        .get_key(name)
-        .map(|known| Cow::Borrowed(*known))
-        .unwrap_or_else(|| Cow::Owned(name.to_string()))
+fn literal_string_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
+    let token: &'s str = lex.slice();
+    &token[0..token.len() - 1]
 }
 
-#[derive(logos::Logos, Debug, Eq, PartialEq)]
-pub enum Token {
-    #[regex(r"\.[a-zA-Z]+", get_directive_name)]
-    Directive(Cow<'static, str>),
+#[derive(Logos, Debug, Eq, PartialEq)]
+pub enum Token<'s> {
+    #[token(".format")]
+    FormatDirective,
+    #[token(".identifier")]
+    IdentifierDirective,
+    #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
+    Word(&'s str),
+    #[regex("\"[a-zA-Z0-9_\\?\\\\/!\\*\\+\\.]*\"@#;", literal_string_contents)]
+    LiteralString(&'s str),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
     #[error]
@@ -25,3 +24,9 @@ pub enum Token {
     #[regex(r";[ \t\w\d;\?!\\/\.\*\+-=#]*", logos::skip)]
     Unknown,
 }
+
+pub fn tokenizer(mut input: &str) -> impl std::iter::Iterator<Item = (Token<'_>, std::ops::Range<usize>)> {
+    Token::lexer(&mut input).spanned()
+}
+
+//pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, OffsetMap)

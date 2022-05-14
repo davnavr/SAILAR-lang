@@ -5,6 +5,5 @@ edition = "2021"
 
 [dependencies]
 logos = "0.12.0"
-phf = { version = "0.10.1", features = ["macros"] }
 sailar = { path = "../sailar" }
 thiserror = "1.0.30"
