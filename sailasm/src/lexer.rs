@@ -18,14 +18,14 @@ impl<'s> OffsetMapBuilder<'s> {
             lookup: Vec::with_capacity(16),
             input,
             previous_offset: 0,
-            next_line_number: ast::LocationNumber::new(2).unwrap(),
+            next_line_number: ast::LocationNumber::new(1).unwrap(),
         }
     }
 
     fn push_new_line(&mut self, offset: usize) {
         self.lookup
-            .push((offset, self.next_line_number, &self.input[self.previous_offset..offset]));
-        self.previous_offset = offset;
+            .push((self.previous_offset, self.next_line_number, &self.input[self.previous_offset..offset]));
+        self.previous_offset = offset + 1;
         self.next_line_number = ast::LocationNumber::new(self.next_line_number.get() + 1).unwrap();
     }
 
@@ -37,14 +37,35 @@ impl<'s> OffsetMapBuilder<'s> {
             _ => (),
         };
 
-        OffsetMap { lookup: self.lookup }
+        OffsetMap { bytes: 0..last_offset, lookup: self.lookup }
     }
 }
 
 /// Maps byte offsets into the input file into line and column numbers.
 #[derive(Clone, Debug)]
 pub struct OffsetMap<'s> {
+    bytes: std::ops::Range<usize>,
     lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
+}
+
+pub struct OffsetMapLocations<'m, 's> {
+    bytes: std::ops::Range<usize>,
+    lookup: &'m OffsetMap<'s>,
+}
+
+impl<'s> std::iter::Iterator for OffsetMapLocations<'_, 's> {
+    type Item = (usize, ast::Location);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let offset = self.bytes.next()?;
+        Some((offset, self.lookup.get_location(offset)?))
+    }
+}
+
+impl std::iter::ExactSizeIterator for OffsetMapLocations<'_, '_> {
+    fn len(&self) -> usize {
+        self.bytes.len()
+    }
 }
 
 impl<'s> OffsetMap<'s> {
@@ -54,15 +75,23 @@ impl<'s> OffsetMap<'s> {
                 Ok(exact) => Some(ast::Location::new(self.lookup[exact].1, ast::LOCATION_NUMBER_START)),
                 Err(0) => unreachable!("missing first line lookup entry"),
                 Err(index) => {
-                    let (_, line_number, line) = self.lookup[index];
-                    let (line_offset, _, _) = self.lookup[index - 1];
+                    let (line_offset, _, _) = self.lookup[index];
+                    let (_, line_number, line) = self.lookup[index - 1];
                     let column_number =
-                        ast::LocationNumber::new(line[0..offset - line_offset].chars().count()).expect("valid column number");
+                        ast::LocationNumber::new(line[0..line_offset - offset].chars().count() + 1).expect("valid column number");
                     Some(ast::Location::new(line_number, column_number))
                 }
             }
         } else {
             None
+        }
+    }
+
+    /// Returns an iterator over each byte offset in the input and the corresponding line and column number.
+    pub fn iter_locations(&self) -> OffsetMapLocations<'_, 's> {
+        OffsetMapLocations {
+            bytes: self.bytes.clone(),
+            lookup: self,
         }
     }
 }
@@ -173,6 +202,10 @@ pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, O
 mod tests {
     use super::*;
 
+    fn collect_actual_locations(lookup: &OffsetMap) -> Vec<(usize, usize, usize)> {
+        lookup.iter_locations().map(|(byte_offset, location)| (byte_offset, location.line.get(), location.column.get())).collect()
+    }
+
     #[test]
     fn format_version_is_tokenized() {
         let (tokens, locations) = tokenize(".format major 0\n.format minor 12 ; Comment\n");
@@ -200,10 +233,14 @@ mod tests {
             (Token::Newline, 42..43),
         ];
 
+        let expected_locations = [
+            (0usize, 1usize, 1usize),
+            (8, 1, 9),
+        ];
+
         dbg!(&locations);
 
         assert_eq!(expected_tokens.as_slice(), &tokens);
-        assert_eq!(Some((1usize, 9usize)), locations.get_location(8).map(Into::into));
-        unimplemented!("todo check locations");
+        assert_eq!(expected_locations.as_slice(), collect_actual_locations(&locations).as_slice());
     }
 }
