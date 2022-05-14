@@ -120,6 +120,16 @@ pub enum IntegerLiteralBase {
     Hexadecimal,
 }
 
+impl IntegerLiteralBase {
+    pub fn radix(self) -> u8 {
+        match self {
+            Self::Binary => 2,
+            Self::Decimal => 10,
+            Self::Hexadecimal => 16,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct LiteralDigits<'s> {
     base: IntegerLiteralBase,
@@ -135,6 +145,21 @@ impl LiteralDigits<'_> {
     #[inline]
     pub fn digits(&self) -> &str {
         self.digits
+    }
+
+    fn into_integer_radix<T>(
+        &self,
+        convert: fn(&str, u32) -> Result<T, std::num::ParseIntError>,
+    ) -> Result<T, std::num::ParseIntError> {
+        convert(self.digits, self.base.radix().into())
+    }
+}
+
+impl TryFrom<&LiteralDigits<'_>> for u8 {
+    type Error = std::num::ParseIntError;
+
+    fn try_from(digits: &LiteralDigits<'_>) -> Result<u8, Self::Error> {
+        digits.into_integer_radix(u8::from_str_radix)
     }
 }
 

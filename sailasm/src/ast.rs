@@ -39,7 +39,7 @@ impl From<Location> for std::ops::Range<Location> {
             column: LocationNumber::new(location.column.get() + 1).unwrap(),
             ..location
         };
-        
+
         location..next
     }
 }

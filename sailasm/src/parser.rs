@@ -13,6 +13,10 @@ pub enum ErrorKind {
     InvalidFormatVersionKind(String),
     #[error("expected format version kind")]
     ExpectedFormatVersionKind,
+    #[error("expected integer format version")]
+    ExpectedFormatVersion,
+    #[error("invalid format version: {0}")]
+    InvalidFormatVersion(std::num::ParseIntError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -98,6 +102,29 @@ macro_rules! fail {
     }};
 }
 
+macro_rules! result {
+    ($errors: expr, $value: expr, $location: expr) => {
+        match $value {
+            Ok(v) => v,
+            Err(e) => fail!($errors, ErrorKind::from(e), $location),
+        }
+    };
+}
+
+macro_rules! match_exhausted {
+    ($errors: expr, $kind: expr, $token: expr, $input: expr) => {
+        fail!(
+            $errors,
+            $kind,
+            if let Some((_, location)) = $token {
+                location
+            } else {
+                $input.locations.get_last().unwrap().into()
+            }
+        )
+    };
+}
+
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = Input {
         source: input.tokens().into_iter(),
@@ -108,7 +135,11 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut errors = Vec::default();
 
     while let Some((token, location)) = input.next_token() {
+        let start_location = location.start.clone();
+        let end_location;
+
         match token {
+            Token::ArrayDirective => tree.push(ast::Located::new(ast::Directive::Array, start_location, location.end)),
             Token::FormatDirective => {
                 let format_kind = match input.next_token() {
                     Some((Token::Word("major"), _)) => ast::FormatVersionKind::Major,
@@ -116,16 +147,32 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     Some((Token::Word(bad), location)) => {
                         fail!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location)
                     }
-                    Some((_, location)) => fail!(errors, ErrorKind::ExpectedFormatVersionKind, location),
-                    None => fail!(
-                        errors,
-                        ErrorKind::ExpectedFormatVersionKind,
-                        input.locations.get_last().unwrap()
-                    ),
+                    bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersionKind, bad, input),
                 };
+
+                let format_version = match input.next_token() {
+                    Some((Token::LiteralInteger(digits), location)) => {
+                        end_location = location.end.clone();
+                        result!(
+                            errors,
+                            u8::try_from(digits).map_err(ErrorKind::InvalidFormatVersion),
+                            location
+                        )
+                    }
+                    bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersion, bad, input),
+                };
+
+                // TODO: Have helper/macro that checks for newline or EOF
+
+                tree.push(ast::Located::new(
+                    ast::Directive::Format(format_kind, format_version),
+                    start_location,
+                    end_location,
+                ));
             }
             Token::Unknown => fail!(errors, ErrorKind::UnknownToken, location),
             Token::Newline => (),
+            bad => todo!("handle {:?}", bad),
         }
     }
 
