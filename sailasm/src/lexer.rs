@@ -3,6 +3,7 @@
 use crate::ast;
 use logos::Logos;
 use std::fmt::{Debug, Formatter};
+use std::ops::Range;
 
 #[derive(Debug)]
 pub struct OffsetMapBuilder<'s> {
@@ -50,12 +51,12 @@ impl<'s> OffsetMapBuilder<'s> {
 /// Maps byte offsets into the input file into line and column numbers.
 #[derive(Clone, Debug)]
 pub struct OffsetMap<'s> {
-    bytes: std::ops::Range<usize>,
+    bytes: Range<usize>,
     lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
 }
 
 pub struct OffsetMapLocations<'m, 's> {
-    bytes: std::ops::Range<usize>,
+    bytes: Range<usize>,
     lookup: &'m OffsetMap<'s>,
 }
 
@@ -189,9 +190,25 @@ pub enum Token<'s> {
     Unknown,
 }
 
-//pub struct Output<'s>
+#[derive(Debug)]
+pub struct Output<'s> {
+    tokens: Vec<(Token<'s>, Range<usize>)>,
+    offset_map: OffsetMap<'s>,
+}
 
-pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, OffsetMap) {
+impl<'s> Output<'s> {
+    #[inline]
+    pub fn tokens(&self) -> &[(Token<'s>, Range<usize>)] {
+        &self.tokens
+    }
+
+    #[inline]
+    pub fn locations(&self) -> &OffsetMap<'s> {
+        &self.offset_map
+    }
+}
+
+pub fn tokenize(mut input: &str) -> Output<'_> {
     let mut tokens = Vec::default();
     let mut lexer = Token::lexer_with_extras(&mut input, OffsetMapBuilder::new(input));
     while let Some(token) = lexer.next() {
@@ -204,7 +221,10 @@ pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, O
         tokens.push((token, offset));
     }
 
-    (tokens, lexer.extras.finish())
+    Output {
+        tokens,
+        offset_map: lexer.extras.finish(),
+    }
 }
 
 #[cfg(test)]
@@ -220,7 +240,7 @@ mod tests {
 
     #[test]
     fn format_version_is_tokenized() {
-        let (tokens, locations) = tokenize(".format major 0\n.format minor 12 ; Comment\n");
+        let output = tokenize(".format major 0\n.format minor 12 ; Comment\n");
 
         let expected_tokens = [
             (Token::FormatDirective, 0usize..7),
@@ -291,7 +311,10 @@ mod tests {
             (42, 2, 27),
         ];
 
-        assert_eq!(expected_tokens.as_slice(), &tokens);
-        assert_eq!(expected_locations.as_slice(), collect_actual_locations(&locations).as_slice());
+        assert_eq!(expected_tokens.as_slice(), output.tokens());
+        assert_eq!(
+            expected_locations.as_slice(),
+            collect_actual_locations(output.locations()).as_slice()
+        );
     }
 }

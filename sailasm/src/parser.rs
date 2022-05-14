@@ -5,19 +5,19 @@ use crate::lexer::{self, Token};
 use std::ops::Range;
 
 #[derive(Debug)]
-struct Input<'s, S> {
+struct Input<'o, 's, S> {
     source: S,
-    offset_map: lexer::OffsetMap<'s>,
+    locations: &'o lexer::OffsetMap<'s>,
 }
 
-impl<'s, S: std::iter::Iterator<Item = (Token<'s>, Range<usize>)>> Input<'s, S> {
+impl<'s, S: std::iter::Iterator<Item = (Token<'s>, Range<usize>)>> Input<'_, 's, S> {
     fn next_token(&mut self) -> Option<(Token<'s>, Range<ast::Location>)> {
         let (token, offsets) = self.source.next()?;
         Some((
             token,
             Range {
-                start: self.offset_map.get_location(offsets.start).unwrap(),
-                end: self.offset_map.get_location(offsets.end).unwrap(),
+                start: self.locations.get_location(offsets.start).unwrap(),
+                end: self.locations.get_location(offsets.end).unwrap(),
             },
         ))
     }
@@ -25,13 +25,10 @@ impl<'s, S: std::iter::Iterator<Item = (Token<'s>, Range<usize>)>> Input<'s, S> 
 
 pub type Result<T> = std::result::Result<T, ()>;
 
-pub fn parse<'s, T: IntoIterator<Item = (Token<'s>, Range<usize>)>>(
-    tokens: T,
-    offset_map: lexer::OffsetMap<'s>,
-) -> Result<Vec<ast::Located<ast::Directive<'s>>>> {
+pub fn parse<'s>(input: &lexer::Output<'s>) -> Result<Vec<ast::Located<ast::Directive<'s>>>> {
     let mut input = Input {
-        source: tokens.into_iter(),
-        offset_map,
+        source: input.tokens().into_iter(),
+        locations: input.locations(),
     };
     let mut directives = Vec::default();
     todo!("parse the nodes");
