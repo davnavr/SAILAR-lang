@@ -147,7 +147,7 @@ impl LiteralDigits<'_> {
         self.digits
     }
 
-    fn into_integer_radix<T>(
+    fn to_integer_radix<T>(
         &self,
         convert: fn(&str, u32) -> Result<T, std::num::ParseIntError>,
     ) -> Result<T, std::num::ParseIntError> {
@@ -159,7 +159,7 @@ impl TryFrom<&LiteralDigits<'_>> for u8 {
     type Error = std::num::ParseIntError;
 
     fn try_from(digits: &LiteralDigits<'_>) -> Result<u8, Self::Error> {
-        digits.into_integer_radix(u8::from_str_radix)
+        digits.to_integer_radix(u8::from_str_radix)
     }
 }
 
@@ -239,9 +239,9 @@ impl<'s> Output<'s> {
     }
 }
 
-pub fn tokenize(mut input: &str) -> Output<'_> {
+pub fn tokenize(input: &str) -> Output<'_> {
     let mut tokens = Vec::default();
-    let mut lexer = Token::lexer_with_extras(&mut input, OffsetMapBuilder::new(input));
+    let mut lexer = Token::lexer_with_extras(input, OffsetMapBuilder::new(input));
     while let Some(token) = lexer.next() {
         let offset = lexer.span();
 

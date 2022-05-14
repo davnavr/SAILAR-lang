@@ -1,5 +1,6 @@
 //! Contains structures to represent the abstract syntax tree.
 
+use std::cmp::{Ord, Ordering, PartialOrd};
 use std::fmt::{Display, Formatter};
 
 /// Represents a line or column number.
@@ -11,7 +12,7 @@ pub(crate) const LOCATION_NUMBER_START: LocationNumber = unsafe {
 };
 
 /// Represents a pair of line and column numbers.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Location {
     pub line: LocationNumber,
     pub column: LocationNumber,
@@ -20,6 +21,21 @@ pub struct Location {
 impl Location {
     pub fn new(line: LocationNumber, column: LocationNumber) -> Self {
         Self { line, column }
+    }
+}
+
+impl Ord for Location {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.line.cmp(&other.line) {
+            Ordering::Equal => self.column.cmp(&other.column),
+            c => c,
+        }
+    }
+}
+
+impl PartialOrd for Location {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -35,31 +51,80 @@ impl From<Location> for (usize, usize) {
     }
 }
 
+/// An inclusive range of locations in the input.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct LocationRange {
+    start: Location,
+    end: Location,
+}
 
+impl LocationRange {
+    pub fn new(start: Location, end: Location) -> Self {
+        if start < end {
+            panic!("end location must not come before start location");
+        }
 
-impl From<Location> for std::ops::Range<Location> {
-    fn from(location: Location) -> Self {
-        let next = Location {
-            column: LocationNumber::new(location.column.get() + 1).unwrap(),
-            ..location
-        };
+        Self { start, end }
+    }
 
-        location..next
+    #[inline]
+    pub fn start(&self) -> &Location {
+        &self.start
+    }
+
+    #[inline]
+    pub fn end(&self) -> &Location {
+        &self.end
     }
 }
 
-pub(crate) fn fmt_location_range(location: &std::ops::Range<Location>, f: &mut Formatter) -> std::fmt::Result {
-    Display::fmt(&location.start, f)?;
-    if location.end > location.start {
-        f.write_str(" - ")?;
-        Display::fmt(&location.end, f)?;
+impl From<&Location> for LocationRange {
+    fn from(location: &Location) -> Self {
+        Self::new(location.clone(), location.clone())
     }
-    Ok(())
+}
+
+impl From<Location> for LocationRange {
+    fn from(location: Location) -> Self {
+        Self::new(location.clone(), location)
+    }
+}
+
+impl From<&LocationRange> for std::ops::RangeInclusive<Location> {
+    fn from(range: &LocationRange) -> Self {
+        Self::new(range.start.clone(), range.end.clone())
+    }
+}
+
+impl Ord for LocationRange {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.start.cmp(&other.start) {
+            Ordering::Equal => self.end.cmp(&other.end),
+            c => c,
+        }
+    }
+}
+
+impl PartialOrd for LocationRange {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Display for LocationRange {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Display::fmt(&self.start, f)?;
+        if self.end > self.start {
+            f.write_str(" - ")?;
+            Display::fmt(&self.end, f)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Located<N> {
-    location: std::ops::Range<Location>,
+    location: LocationRange,
     node: N,
 }
 
@@ -67,7 +132,7 @@ impl<N> Located<N> {
     pub fn new(node: N, start: Location, end: Location) -> Self {
         Self {
             node,
-            location: std::ops::Range { start, end },
+            location: LocationRange::new(start, end),
         }
     }
 }

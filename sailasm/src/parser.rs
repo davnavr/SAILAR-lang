@@ -2,7 +2,6 @@
 
 use crate::ast;
 use crate::lexer::{self, Token};
-use std::fmt::{Display, Formatter};
 use std::ops::Range;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -20,21 +19,14 @@ pub enum ErrorKind {
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
+#[error("{location}: {kind}")]
 pub struct Error {
     kind: Box<ErrorKind>,
-    location: Range<ast::Location>,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        ast::fmt_location_range(&self.location, f)?;
-        f.write_str(": ")?;
-        Display::fmt(&self.kind, f)
-    }
+    location: ast::LocationRange,
 }
 
 impl Error {
-    pub fn new<K: Into<ErrorKind>, L: Into<Range<ast::Location>>>(kind: K, location: L) -> Self {
+    pub fn new<K: Into<ErrorKind>, L: Into<ast::LocationRange>>(kind: K, location: L) -> Self {
         Self {
             kind: Box::new(kind.into()),
             location: location.into(),
@@ -47,7 +39,7 @@ impl Error {
     }
 
     #[inline]
-    pub fn location(&self) -> &Range<ast::Location> {
+    pub fn location(&self) -> &ast::LocationRange {
         &self.location
     }
 }
@@ -59,14 +51,14 @@ struct Input<'o, 's, S> {
 }
 
 impl<'o, 's, S: std::iter::Iterator<Item = &'o (Token<'s>, Range<usize>)>> Input<'o, 's, S> {
-    fn next_token(&mut self) -> Option<(&'o Token<'s>, Range<ast::Location>)> {
+    fn next_token(&mut self) -> Option<(&'o Token<'s>, ast::LocationRange)> {
         let (token, offsets) = self.source.next()?;
         Some((
             token,
-            Range {
-                start: self.locations.get_location(offsets.start).unwrap(),
-                end: self.locations.get_location(offsets.end).unwrap(),
-            },
+            ast::LocationRange::new(
+                self.locations.get_location(offsets.start).unwrap(),
+                self.locations.get_location(offsets.end).unwrap(),
+            ),
         ))
     }
 }
@@ -121,7 +113,7 @@ macro_rules! match_exhausted {
 
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = Input {
-        source: input.tokens().into_iter(),
+        source: input.tokens().iter(),
         locations: input.locations(),
     };
 
@@ -129,11 +121,15 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut errors = Vec::default();
 
     while let Some((token, location)) = input.next_token() {
-        let start_location = location.start.clone();
+        let start_location = location.start().clone();
         let end_location;
 
         match token {
-            Token::ArrayDirective => tree.push(ast::Located::new(ast::Directive::Array, start_location, location.end)),
+            Token::ArrayDirective => tree.push(ast::Located::new(
+                ast::Directive::Array,
+                start_location,
+                location.end().clone(),
+            )),
             Token::FormatDirective => {
                 let format_kind = match input.next_token() {
                     Some((Token::Word("major"), _)) => ast::FormatVersionKind::Major,
@@ -146,7 +142,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
 
                 let format_version = match input.next_token() {
                     Some((Token::LiteralInteger(digits), location)) => {
-                        end_location = location.end.clone();
+                        end_location = location.end().clone();
                         result!(
                             errors,
                             u8::try_from(digits).map_err(ErrorKind::InvalidFormatVersion),

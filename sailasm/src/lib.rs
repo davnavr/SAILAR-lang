@@ -2,9 +2,6 @@
 //!
 //! For a quick overview of the basic syntax and available directives, see [`ast::Directive`].
 
-use std::collections::BTreeSet;
-use std::ops::Range;
-
 pub mod ast;
 pub mod lexer;
 pub mod parser;
@@ -17,10 +14,11 @@ pub enum AnyErrorKind {
 }
 
 /// Represents an error that occured at any point during assembly.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("{location}: {kind}")]
 pub struct AnyError {
     kind: Box<AnyErrorKind>,
-    location: Range<ast::Location>,
+    location: ast::LocationRange,
 }
 
 impl AnyError {
@@ -30,16 +28,8 @@ impl AnyError {
     }
 
     #[inline]
-    pub fn location(&self) -> &Range<ast::Location> {
+    pub fn location(&self) -> &ast::LocationRange {
         &self.location
-    }
-}
-
-impl std::fmt::Display for AnyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        ast::fmt_location_range(&self.location, f)?;
-        f.write_str(": ")?;
-        std::fmt::Display::fmt(&self.kind, f)
     }
 }
 
@@ -52,7 +42,10 @@ impl From<&parser::Error> for AnyError {
     }
 }
 
-fn extend_errors_from_slice<'e, E>(errors: &mut Vec<AnyError>, other: &'e [E]) where AnyError: From<&'e E> {
+fn extend_errors_from_slice<'e, E>(errors: &mut Vec<AnyError>, other: &'e [E])
+where
+    AnyError: From<&'e E>,
+{
     errors.reserve_exact(other.len());
     for e in other.iter() {
         errors.push(e.into());
@@ -69,7 +62,7 @@ pub fn assemble(input: &str) -> Result<(), Vec<AnyError>> {
     if errors.is_empty() {
         todo!("do the assembly")
     } else {
-        errors.sort_by_key(|e| e.location());
+        errors.sort_by_key(|e| e.location().clone());
         Err(errors)
     }
 }
