@@ -14,6 +14,29 @@ struct Arguments {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Arguments = clap::Parser::parse();
+    let input = std::fs::read_to_string(&arguments.input)?;
+    
+    match sailasm::assemble(&input) {
+        Ok(module) => {
+            let default_output;
+            let output = if let Some(path) = &arguments.output {
+                path
+            } else {
+                default_output = arguments.input.with_extension(".sail");
+                &default_output
+            };
+            todo!("write the module to disk")
+        },
+        Err(errors) => {
+            use std::fmt::Write as _;
 
-    todo!("assemble it");
+            for e in errors.iter() {
+                eprintln!("{}", e);
+            }
+
+            let mut message = String::from("failed with ");
+            write!(&mut message, "{} errors", errors.len());
+            Err(Box::from(message))
+        }
+    }
 }
