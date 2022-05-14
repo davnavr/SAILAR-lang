@@ -20,3 +20,9 @@ impl Location {
         Self { line, column }
     }
 }
+
+impl From<Location> for (usize, usize) {
+    fn from(location: Location) -> (usize, usize) {
+        (location.line.get(), location.column.get())
+    }
+}

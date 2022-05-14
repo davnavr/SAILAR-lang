@@ -1,8 +1,8 @@
 //! Provides functions for the tokenization of SAILAR assembly.
 
-use std::fmt::{Debug, Formatter};
 use crate::ast;
 use logos::Logos;
+use std::fmt::{Debug, Formatter};
 
 #[derive(Debug)]
 pub struct OffsetMapBuilder<'s> {
@@ -157,7 +157,13 @@ pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, O
     let mut tokens = Vec::default();
     let mut lexer = Token::lexer_with_extras(&mut input, OffsetMapBuilder::new(input));
     while let Some(token) = lexer.next() {
-        tokens.push((token, lexer.span()));
+        let offset = lexer.span();
+
+        if let Token::Newline = token {
+            lexer.extras.push_new_line(offset.start);
+        }
+
+        tokens.push((token, offset));
     }
 
     (tokens, lexer.extras.finish())
@@ -168,8 +174,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn format_version_is_parsed() {
-        let (tokens, locations) = tokenize(".format major 0\n.format minor 1 ; Comment\n");
-        unimplemented!();
+    fn format_version_is_tokenized() {
+        let (tokens, locations) = tokenize(".format major 0\n.format minor 12 ; Comment\n");
+
+        let expected_tokens = [
+            (Token::FormatDirective, 0usize..7),
+            (Token::Word("major"), 8..13),
+            (
+                Token::LiteralInteger(LiteralDigits {
+                    base: IntegerLiteralBase::Decimal,
+                    digits: "0",
+                }),
+                14..15,
+            ),
+            (Token::Newline, 15..16),
+            (Token::FormatDirective, 16..23),
+            (Token::Word("minor"), 24..29),
+            (
+                Token::LiteralInteger(LiteralDigits {
+                    base: IntegerLiteralBase::Decimal,
+                    digits: "12",
+                }),
+                30..32,
+            ),
+            (Token::Newline, 42..43),
+        ];
+
+        dbg!(&locations);
+
+        assert_eq!(expected_tokens.as_slice(), &tokens);
+        assert_eq!(Some((1usize, 9usize)), locations.get_location(8).map(Into::into));
+        unimplemented!("todo check locations");
     }
 }
