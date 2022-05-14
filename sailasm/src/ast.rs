@@ -69,6 +69,30 @@ pub enum FormatVersionKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'s> {
+    /// ```text
+    /// .array
+    /// ```
+    /// Indicates that records that follow the next record after this directive should be merged into a single array record.
+    /// 
+    /// # Example
+    /// 
+    /// ```text
+    /// .array ; Merges the following 3 identifier records into one record.
+    /// .identifier "abc"
+    /// .identifier "def"
+    /// .identifier "testing"
+    /// ```
+    Array,
+    /// ```text
+    /// .format major 0
+    /// .format minor 12
+    /// ```
+    /// Sets the major or minor format version of the module.
     Format(FormatVersionKind, u8),
+    /// ```text
+    /// .identifier "no symbol" ; Referred to by numeric index
+    /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
+    /// ```
+    /// Defines record containing a reusable identifier string.
     Identifier(Option<Symbol<'s>>, LiteralString),
 }

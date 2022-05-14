@@ -26,7 +26,7 @@ impl ToBox for str {
     }
 }
 
-/// Version of [`Cow`] whose owned form is `Box<T>`.
+/// Version of [`std::borrow::Cow`] whose owned form is `Box<T>`.
 pub enum CowBox<'a, B: ?Sized> {
     Borrowed(&'a B),
     Boxed(Box<B>),

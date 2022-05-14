@@ -169,6 +169,8 @@ fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
+    #[token(".array")]
+    ArrayDirective,
     #[token(".format")]
     FormatDirective,
     #[token(".identifier")]
