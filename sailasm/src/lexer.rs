@@ -189,6 +189,8 @@ pub enum Token<'s> {
     Unknown,
 }
 
+//pub struct Output<'s>
+
 pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, OffsetMap) {
     let mut tokens = Vec::default();
     let mut lexer = Token::lexer_with_extras(&mut input, OffsetMapBuilder::new(input));

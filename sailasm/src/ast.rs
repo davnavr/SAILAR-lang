@@ -29,8 +29,17 @@ impl From<Location> for (usize, usize) {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Located<N> {
-    location: Location,
+    location: std::ops::Range<Location>,
     node: N,
+}
+
+impl<N> Located<N> {
+    pub fn new(node: N, start: Location, end: Location) -> Self {
+        Self {
+            node,
+            location: std::ops::Range { start, end },
+        }
+    }
 }
 
 pub type Symbol<'s> = Located<&'s sailar::Id>;
@@ -73,9 +82,9 @@ pub enum Directive<'s> {
     /// .array
     /// ```
     /// Indicates that records that follow the next record after this directive should be merged into a single array record.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```text
     /// .array ; Merges the following 3 identifier records into one record.
     /// .identifier "abc"
