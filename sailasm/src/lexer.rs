@@ -1,8 +1,10 @@
 //! Provides functions for the tokenization of SAILAR assembly.
 
+use std::fmt::{Debug, Formatter};
 use crate::ast;
 use logos::Logos;
 
+#[derive(Debug)]
 pub struct OffsetMapBuilder<'s> {
     lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
     input: &'s str,
@@ -40,6 +42,7 @@ impl<'s> OffsetMapBuilder<'s> {
 }
 
 /// Maps byte offsets into the input file into line and column numbers.
+#[derive(Clone, Debug)]
 pub struct OffsetMap<'s> {
     lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
 }
@@ -69,7 +72,67 @@ fn literal_string_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str
     &token[0..token.len() - 1]
 }
 
-#[derive(Logos, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum IntegerLiteralBase {
+    Binary,
+    Decimal,
+    Hexadecimal,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct LiteralDigits<'s> {
+    base: IntegerLiteralBase,
+    digits: &'s str,
+}
+
+impl LiteralDigits<'_> {
+    #[inline]
+    pub fn base(&self) -> IntegerLiteralBase {
+        self.base
+    }
+
+    #[inline]
+    pub fn digits(&self) -> &str {
+        self.digits
+    }
+}
+
+impl Debug for LiteralDigits<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self.base {
+            IntegerLiteralBase::Binary => f.write_str("0b")?,
+            IntegerLiteralBase::Hexadecimal => f.write_str("0x")?,
+            IntegerLiteralBase::Decimal => (),
+        }
+
+        f.write_str(self.digits)
+    }
+}
+
+fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<LiteralDigits<'s>> {
+    let token = lex.slice();
+    let base;
+    let digits;
+
+    match token.get(0..2) {
+        Some("0x" | "0X") => {
+            base = IntegerLiteralBase::Binary;
+            digits = &token[2..];
+        }
+        Some("0b" | "0B") => {
+            base = IntegerLiteralBase::Hexadecimal;
+            digits = &token[2..];
+        }
+        _ => {
+            base = IntegerLiteralBase::Decimal;
+            digits = token;
+        }
+    }
+
+    Some(LiteralDigits { base, digits })
+}
+
+#[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
     #[token(".format")]
@@ -80,6 +143,8 @@ pub enum Token<'s> {
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_\\?\\\\/!\\*\\+\\.]*\"@#;", literal_string_contents)]
     LiteralString(&'s str),
+    #[regex("(0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*", literal_integer_contents)]
+    LiteralInteger(LiteralDigits<'s>),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
     #[error]
@@ -96,4 +161,15 @@ pub fn tokenize(mut input: &str) -> (Vec<(Token<'_>, std::ops::Range<usize>)>, O
     }
 
     (tokens, lexer.extras.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_version_is_parsed() {
+        let (tokens, locations) = tokenize(".format major 0\n.format minor 1 ; Comment\n");
+        unimplemented!();
+    }
 }
