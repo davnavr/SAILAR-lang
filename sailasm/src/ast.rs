@@ -21,6 +21,12 @@ impl Location {
     }
 }
 
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "({}, {})", self.line, self.column)
+    }
+}
+
 impl From<Location> for (usize, usize) {
     fn from(location: Location) -> (usize, usize) {
         (location.line.get(), location.column.get())
