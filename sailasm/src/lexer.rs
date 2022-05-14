@@ -93,6 +93,12 @@ impl<'s> OffsetMap<'s> {
         }
     }
 
+    pub(crate) fn get_last(&self) -> Option<ast::Location> {
+        self.lookup
+            .last()
+            .map(|(_, line_number, _)| ast::Location::new(*line_number, ast::LOCATION_NUMBER_START))
+    }
+
     /// Returns an iterator over each byte offset in the input and the corresponding line and column number.
     pub fn iter_locations(&self) -> OffsetMapLocations<'_, 's> {
         OffsetMapLocations {

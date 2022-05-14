@@ -33,6 +33,17 @@ impl From<Location> for (usize, usize) {
     }
 }
 
+impl From<Location> for std::ops::Range<Location> {
+    fn from(location: Location) -> Self {
+        let next = Location {
+            column: LocationNumber::new(location.column.get() + 1).unwrap(),
+            ..location
+        };
+        
+        location..next
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Located<N> {
     location: std::ops::Range<Location>,

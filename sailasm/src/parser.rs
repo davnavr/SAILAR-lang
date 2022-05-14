@@ -9,6 +9,10 @@ use std::ops::Range;
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
+    #[error("{0} is not a valid format version kind")]
+    InvalidFormatVersionKind(String),
+    #[error("expected format version kind")]
+    ExpectedFormatVersionKind,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -32,10 +36,10 @@ impl Display for Error {
 }
 
 impl Error {
-    pub fn new<K: Into<ErrorKind>>(kind: K, location: Range<ast::Location>) -> Self {
+    pub fn new<K: Into<ErrorKind>, L: Into<Range<ast::Location>>>(kind: K, location: L) -> Self {
         Self {
             kind: Box::new(kind.into()),
-            location,
+            location: location.into(),
         }
     }
 
@@ -87,6 +91,13 @@ impl<'s> Output<'s> {
     }
 }
 
+macro_rules! fail {
+    ($errors: expr, $kind: expr, $location: expr) => {{
+        $errors.push(Error::new($kind, $location));
+        continue;
+    }};
+}
+
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = Input {
         source: input.tokens().into_iter(),
@@ -99,9 +110,22 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     while let Some((token, location)) = input.next_token() {
         match token {
             Token::FormatDirective => {
-                todo!("parse")
+                let format_kind = match input.next_token() {
+                    Some((Token::Word("major"), _)) => ast::FormatVersionKind::Major,
+                    Some((Token::Word("minor"), _)) => ast::FormatVersionKind::Minor,
+                    Some((Token::Word(bad), location)) => {
+                        fail!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location)
+                    }
+                    Some((_, location)) => fail!(errors, ErrorKind::ExpectedFormatVersionKind, location),
+                    None => fail!(
+                        errors,
+                        ErrorKind::ExpectedFormatVersionKind,
+                        input.locations.get_last().unwrap()
+                    ),
+                };
             }
-            Token::Unknown => errors.push(Error::new(ErrorKind::UnknownToken, location.clone())),
+            Token::Unknown => fail!(errors, ErrorKind::UnknownToken, location),
+            Token::Newline => (),
         }
     }
 
