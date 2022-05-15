@@ -1,10 +1,10 @@
-//! Functions that provide a low-level way to read SAILAR modules, delegating to [`sailar::binary::module::reader`].
+//! Functions that provide a low-level way to read SAILAR modules, delegating to [`sailar::binary::reader`].
 
 use crate::buffer::Buffer;
 use crate::error::{self, Error};
 use crate::identifier::Identifier;
 use crate::signature;
-use sailar::binary::module::reader;
+use sailar::binary::reader;
 use sailar::binary::record;
 
 struct ActualModuleFormat {

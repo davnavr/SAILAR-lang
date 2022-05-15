@@ -57,7 +57,7 @@ pub enum ErrorKind {
     #[error("expected record count")]
     MissingRecordCount,
     #[error("the integer value {0} was too large")]
-    IntegerTooLarge(u32),
+    IntegerTooLarge(u32), // TODO: Make this a panic.
     #[error("expected record type byte")]
     MissingRecordType,
     #[error(transparent)]
@@ -210,7 +210,7 @@ fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> 
     }
 }
 
-/// Provides a way to read the contents of a SAILAR module.
+/// Allows the reading of the contents of a SAILAR module from a source.
 #[derive(Debug)]
 pub struct Reader<R> {
     source: Wrapper<R>,

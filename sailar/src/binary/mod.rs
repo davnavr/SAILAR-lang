@@ -2,9 +2,11 @@
 
 mod buffer;
 mod num;
+mod writer;
 
+pub mod builder;
 pub mod index;
-pub mod module;
+pub mod reader;
 pub mod record;
 pub mod signature;
 
@@ -13,7 +15,7 @@ pub use num::{InvalidVarIntSize, VarIntSize};
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";
 
-/// Represents an array of bytes that make up a SAILAR module.
+/// Represents an array of bytes that make up a syntactically correct and valid SAILAR module.
 #[derive(Clone)]
 pub struct RawModule {
     contents: Vec<u8>,

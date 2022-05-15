@@ -1,38 +1,32 @@
-//! Low-level API containing types that represent the contents of a SAILAR module binary.
+//! Low-level API for building SAILAR binary modules.
 
-use crate::binary;
+use crate::binary::reader;
 use crate::binary::record::{self, Record};
 use crate::binary::signature;
+use crate::binary::writer;
 use crate::versioning;
 use std::io::{Read, Write};
 
-mod writer;
-
-pub mod reader;
-
-/// Represents the content of a SAILAR module.
+/// Allows the writing the contents of a SAILAR module to a destination.
+///
+/// For simplicty and to avoid edge cases, modules produced by `Writer` always default to an integer size of 4 bytes.
 #[derive(Clone, Debug)]
-pub struct Module<'a> {
+pub struct Builder<'a> {
     format_version: versioning::Format,
-    integer_size: binary::VarIntSize,
     records: Vec<Record<'a>>,
-    //records: Vec<Vec<u8>>,
 }
 
-impl<'a> Module<'a> {
+impl<'a> Builder<'a> {
     pub fn new() -> Self {
         Self {
             format_version: versioning::Format::CURRENT.clone(),
-            integer_size: binary::VarIntSize::One,
             records: Vec::default(),
         }
     }
 
     pub fn add_record<R: Into<Record<'a>>>(&mut self, record: R) {
         let record = record.into();
-        // TODO: Conversion of record to bytes might be needed, problem is that during writing, large enough record could have byte length that exceeds max varinteger.
         self.records.push(record);
-        self.integer_size.resize_to_fit(self.records.len());
     }
 
     #[inline]
@@ -44,11 +38,17 @@ impl<'a> Module<'a> {
     pub fn write_to<W: Write>(&self, destination: W) -> std::io::Result<()> {
         use writer::{Result, VecWriter, Writer};
 
-        let mut wrapper = Writer::new(destination, self.integer_size);
+        let mut wrapper = Writer::new(destination);
         let out = &mut wrapper;
 
         out.write_all(crate::binary::MAGIC)?;
-        out.write_all(&[self.format_version.major, self.format_version.minor, self.integer_size.into()])?;
+
+        out.write_all(&[
+            self.format_version.major,
+            self.format_version.minor,
+            crate::binary::VarIntSize::Four.into(),
+        ])?;
+
         out.write_integer(self.records.len())?;
 
         fn write_record_content(out: &mut VecWriter, record: &Record) -> Result {
@@ -132,9 +132,8 @@ impl<'a> Module<'a> {
 
         for record in self.records.iter() {
             content_buffer.clear();
-            let mut record_content = out.derive_from(&mut content_buffer);
+            let mut record_content = VecWriter::new(&mut content_buffer);
             write_record_content(&mut record_content, record)?;
-
             out.write_all(&[u8::from(record.record_type())])?;
             out.write_integer(content_buffer.len())?;
             out.write_all(&content_buffer)?;
@@ -142,47 +141,28 @@ impl<'a> Module<'a> {
 
         Ok(())
     }
-
-    pub fn into_raw_contents(self) -> binary::RawModule {
-        let mut contents = Vec::default();
-        self.write_to(&mut contents).unwrap();
-        unsafe {
-            // Safety: contents are assumed to be a syntactically valid module, unless there is a bug in the implementation of
-            // write_to
-            binary::RawModule::from_vec_unchecked(contents)
-        }
-    }
 }
 
-impl Default for Module<'_> {
+impl Default for Builder<'_> {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Module<'static> {
+impl Builder<'static> {
     pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
-        let (format_version, integer_size, mut reader) = source.to_record_reader()?;
+        let (format_version, _, mut reader) = source.to_record_reader()?;
         let mut records = Vec::with_capacity(reader.record_count());
 
         while let Some(record) = reader.next_record() {
             records.push(record?);
         }
 
-        Ok(Self {
-            format_version,
-            integer_size,
-            records,
-        })
+        Ok(Self { format_version, records })
     }
 
     pub fn read_from<R: Read>(source: R) -> reader::Result<Self> {
         Self::from_reader(reader::Reader::new(source))
-    }
-}
-
-impl From<Module<'_>> for binary::RawModule {
-    fn from(module: Module<'_>) -> Self {
-        module.into_raw_contents()
     }
 }
