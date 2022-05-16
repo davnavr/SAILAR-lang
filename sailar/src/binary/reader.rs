@@ -233,7 +233,7 @@ impl<R: Read> Reader<R> {
     /// let reader = Reader::new(input.as_bytes());
     /// assert!(matches!(reader.to_record_reader(), Err(_)));
     /// ```
-    pub fn to_record_reader(mut self) -> Result<(versioning::Format, binary::VarIntSize, RecordReader<R>)> {
+    pub fn to_record_reader(mut self) -> Result<(versioning::SupportedFormat, binary::VarIntSize, RecordReader<R>)> {
         {
             let mut magic_buffer = [0u8; binary::MAGIC.len()];
             let magic_length = self.source.read_bytes(&mut magic_buffer)?;
@@ -242,7 +242,7 @@ impl<R: Read> Reader<R> {
             }
         }
 
-        let format_version: versioning::Format;
+        let format_version: versioning::SupportedFormat;
         let integer_size: binary::VarIntSize;
 
         {
@@ -253,14 +253,10 @@ impl<R: Read> Reader<R> {
                 return self.source.fail_with(ErrorKind::MissingFormatVersion);
             }
 
-            format_version = versioning::Format {
+            format_version = self.source.wrap_result(versioning::SupportedFormat::try_from(versioning::Format {
                 major: values[0],
                 minor: values[1],
-            };
-
-            if !format_version.is_supported() {
-                return self.source.fail_with(versioning::UnsupportedFormatError::new(format_version));
-            }
+            }))?;
 
             if value_count < 3 {
                 return self.source.fail_with(ErrorKind::MissingIntegerSize);

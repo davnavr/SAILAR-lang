@@ -8,7 +8,7 @@ use sailar::binary::reader;
 use sailar::binary::record;
 
 struct ActualModuleFormat {
-    format_version: sailar::versioning::Format,
+    format_version: sailar::versioning::SupportedFormat,
     integer_byte_size: u8,
 }
 

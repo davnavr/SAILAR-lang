@@ -12,18 +12,25 @@ use std::io::{Read, Write};
 /// For simplicty and to avoid edge cases, modules produced by `Writer` always default to an integer size of 4 bytes.
 #[derive(Clone, Debug)]
 pub struct Builder<'a> {
-    format_version: versioning::Format,
+    format_version: versioning::SupportedFormat,
     records: Vec<Record<'a>>,
 }
 
 impl<'a> Builder<'a> {
-    //pub fn with_format_version(format_version: versioning::ValidFormat)
-
-    pub fn new() -> Self {
+    pub fn with_format_version(format_version: versioning::SupportedFormat) -> Self {
         Self {
-            format_version: versioning::Format::CURRENT.clone(),
+            format_version,
             records: Vec::default(),
         }
+    }
+
+    pub fn new() -> Self {
+        Self::with_format_version(versioning::SupportedFormat::CURRENT)
+    }
+
+    #[inline]
+    pub fn format_version(&self) -> &versioning::SupportedFormat {
+        &self.format_version
     }
 
     pub fn add_record<R: Into<Record<'a>>>(&mut self, record: R) {
