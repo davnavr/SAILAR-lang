@@ -17,10 +17,10 @@ pub enum AnyErrorKind {
 
 /// Represents an error that occured at any point during assembly.
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("{location}: {kind}")]
+#[error("{kind}")]
 pub struct AnyError {
-    kind: Box<AnyErrorKind>,
-    location: ast::LocationRange,
+    kind: AnyErrorKind,
+    location: Option<ast::LocationRange>,
 }
 
 impl AnyError {
@@ -29,17 +29,17 @@ impl AnyError {
         &self.kind
     }
 
-    #[inline]
-    pub fn location(&self) -> &ast::LocationRange {
-        &self.location
+    /// The location, if any, where this error occured in the source code.
+    pub fn location(&self) -> Option<&ast::LocationRange> {
+        self.location.as_ref()
     }
 }
 
 impl From<&parser::Error> for AnyError {
     fn from(error: &parser::Error) -> Self {
         Self {
-            kind: Box::new(error.kind().clone().into()),
-            location: error.location().clone(),
+            kind: error.kind().clone().into(),
+            location: Some(error.location().clone()),
         }
     }
 }
@@ -47,8 +47,8 @@ impl From<&parser::Error> for AnyError {
 impl From<&assembler::Error> for AnyError {
     fn from(error: &assembler::Error) -> Self {
         Self {
-            kind: Box::new(error.kind().clone().into()),
-            location: error.location().clone(),
+            kind: error.kind().clone().into(),
+            location: error.location().cloned(),
         }
     }
 }
@@ -76,6 +76,6 @@ pub fn assemble(input: &str) -> Result<sailar::binary::Builder, Vec<AnyError>> {
         Err(e) => extend_errors_from_slice(&mut errors, e.as_slice()),
     }
 
-    errors.sort_by_key(|e| e.location().clone());
+    errors.sort_by_key(|e| e.location().cloned());
     Err(errors)
 }

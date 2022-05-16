@@ -16,18 +16,22 @@ pub enum ErrorKind {
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("{location}: kind")]
+#[error("{kind}")]
 pub struct Error {
     kind: ErrorKind,
-    location: ast::LocationRange,
+    location: Option<ast::LocationRange>,
 }
 
 impl Error {
-    pub fn new<K: Into<ErrorKind>, L: Into<ast::LocationRange>>(kind: K, location: L) -> Self {
+    pub fn new<K: Into<ErrorKind>>(kind: K, location: Option<ast::LocationRange>) -> Self {
         Self {
             kind: kind.into(),
-            location: location.into(),
+            location,
         }
+    }
+
+    pub fn with_location<K: Into<ErrorKind>, L: Into<ast::LocationRange>>(kind: K, location: L) -> Self {
+        Self::new(kind, Some(location.into()))
     }
 
     #[inline]
@@ -36,8 +40,8 @@ impl Error {
     }
 
     #[inline]
-    pub fn location(&self) -> &ast::LocationRange {
-        &self.location
+    pub fn location(&self) -> Option<&ast::LocationRange> {
+        self.location.as_ref()
     }
 }
 
@@ -46,7 +50,7 @@ enum FormatVersion<'t> {
     Unspecified,
     MajorOnly(u8, &'t ast::LocationRange),
     MinorOnly(u8, &'t ast::LocationRange),
-    Full(versioning::Format),
+    Full(versioning::Format, &'t ast::LocationRange, &'t ast::LocationRange),
 }
 
 impl TryFrom<FormatVersion<'_>> for versioning::Format {
@@ -56,8 +60,8 @@ impl TryFrom<FormatVersion<'_>> for versioning::Format {
         match version {
             FormatVersion::Unspecified => Ok(*versioning::SupportedFormat::MINIMUM),
             FormatVersion::MajorOnly(major, _) => Ok(Self::new(major, 0)),
-            FormatVersion::MinorOnly(_, location) => Err(Error::new(ErrorKind::MissingMajorFormatVersion, location.clone())),
-            FormatVersion::Full(full) => Ok(full),
+            FormatVersion::MinorOnly(_, _) => Err(Error::new(ErrorKind::MissingMajorFormatVersion, None)),
+            FormatVersion::Full(full, _, _) => Ok(full),
         }
     }
 }
@@ -77,14 +81,14 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
         match directive.node() {
             ast::Directive::Format(ast::FormatVersionKind::Major, major) => match directives.format_version {
                 FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major, directive.location()),
-                FormatVersion::MinorOnly(minor, _) => {
-                    directives.format_version = FormatVersion::Full(versioning::Format::new(*major, minor))
+                FormatVersion::MinorOnly(minor, minor_location) => {
+                    directives.format_version =
+                        FormatVersion::Full(versioning::Format::new(*major, minor), directive.location(), minor_location)
                 }
-                FormatVersion::MajorOnly(_, location) => errors.push(Error::new(
+                FormatVersion::MajorOnly(_, location) | FormatVersion::Full(_, location, _) => errors.push(Error::with_location(
                     ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Major),
                     location.clone(),
                 )),
-                FormatVersion::Full(_) => todo!("what location to use when full version conflits with a new .format major node?"),
             },
             _ => todo!("assemble {:?}", directive),
         }
@@ -111,7 +115,7 @@ fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives) -> B
     let mut builder = Builder::with_format_version(actual_format_version);
 
     // TODO: Build the module.
-    
+
     builder
 }
 

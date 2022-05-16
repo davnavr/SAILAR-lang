@@ -19,7 +19,7 @@ pub enum ErrorKind {
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("{location}: {kind}")]
+#[error("{kind}")]
 pub struct Error {
     kind: Box<ErrorKind>,
     location: ast::LocationRange,
