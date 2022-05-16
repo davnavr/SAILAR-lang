@@ -63,7 +63,7 @@ impl TryFrom<Format> for SupportedFormat {
 }
 
 /// Error used when a format version is not supported.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub struct UnsupportedFormatError {
     version: Format,
 }

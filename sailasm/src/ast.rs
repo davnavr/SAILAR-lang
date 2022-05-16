@@ -135,6 +135,16 @@ impl<N> Located<N> {
             location: LocationRange::new(start, end),
         }
     }
+
+    #[inline]
+    pub fn location(&self) -> &LocationRange {
+        &self.location
+    }
+
+    #[inline]
+    pub fn node(&self) -> &N {
+        &self.node
+    }
 }
 
 pub type Symbol<'s> = Located<&'s sailar::Id>;

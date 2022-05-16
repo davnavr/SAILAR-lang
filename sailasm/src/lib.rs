@@ -2,6 +2,7 @@
 //!
 //! For a quick overview of the basic syntax and available directives, see [`ast::Directive`].
 
+pub mod assembler;
 pub mod ast;
 pub mod lexer;
 pub mod parser;
@@ -10,7 +11,8 @@ pub mod parser;
 pub enum AnyErrorKind {
     #[error(transparent)]
     Parser(#[from] parser::ErrorKind),
-    //Assembler(assembler::error),
+    #[error(transparent)]
+    Assembler(#[from] assembler::ErrorKind),
 }
 
 /// Represents an error that occured at any point during assembly.
@@ -42,6 +44,15 @@ impl From<&parser::Error> for AnyError {
     }
 }
 
+impl From<&assembler::Error> for AnyError {
+    fn from(error: &assembler::Error) -> Self {
+        Self {
+            kind: Box::new(error.kind().clone().into()),
+            location: error.location().clone(),
+        }
+    }
+}
+
 fn extend_errors_from_slice<'e, E>(errors: &mut Vec<AnyError>, other: &'e [E])
 where
     AnyError: From<&'e E>,
@@ -52,17 +63,19 @@ where
     }
 }
 
-pub fn assemble(input: &str) -> Result<(), Vec<AnyError>> {
+pub fn assemble(input: &str) -> Result<sailar::binary::Builder, Vec<AnyError>> {
     let mut errors = Vec::default();
     let tokens = lexer::tokenize(input);
     let tree = parser::parse(&tokens);
 
     extend_errors_from_slice(&mut errors, tree.errors());
 
-    if errors.is_empty() {
-        todo!("do the assembly")
-    } else {
-        errors.sort_by_key(|e| e.location().clone());
-        Err(errors)
+    match assembler::assemble(&tree) {
+        Ok(module) if errors.is_empty() => return Ok(module),
+        Ok(_) => (),
+        Err(e) => extend_errors_from_slice(&mut errors, e.as_slice()),
     }
+
+    errors.sort_by_key(|e| e.location().clone());
+    Err(errors)
 }

@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 default_output = arguments.input.with_extension(".sail");
                 &default_output
             };
+
             todo!("write the module to disk")
         }
         Err(errors) => {
