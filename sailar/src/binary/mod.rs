@@ -10,6 +10,7 @@ pub mod reader;
 pub mod record;
 pub mod signature;
 
+pub use builder::Builder;
 pub use num::{InvalidVarIntSize, VarIntSize};
 
 /// The magic number that is the start of all SAILAR module files.

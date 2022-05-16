@@ -15,11 +15,17 @@ impl Format {
 
     pub const CURRENT: &'static Self = Self::MINIMUM_SUPPORTED;
 
+    pub const fn new(major: u8, minor: u8) -> Self {
+        Self { major, minor }
+    }
+
     #[inline]
     pub fn is_supported(&self) -> bool {
         self >= Self::MINIMUM_SUPPORTED
     }
 }
+
+//pub struct ValidFormat(FormatVersion);
 
 /// Error used when a format version is not supported.
 #[derive(Debug, thiserror::Error)]

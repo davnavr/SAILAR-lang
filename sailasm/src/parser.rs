@@ -1,4 +1,4 @@
-//! Transfers a sequence of tokens into an abstract syntax tree.
+//! Provides functions for parsing SAILAR assembly.
 
 use crate::ast;
 use crate::lexer::{self, Token};
@@ -122,6 +122,7 @@ macro_rules! match_exhausted {
     };
 }
 
+/// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = Input {
         source: input.tokens().iter(),

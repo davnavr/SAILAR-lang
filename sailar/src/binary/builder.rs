@@ -17,6 +17,8 @@ pub struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    //pub fn with_format_version(format_version: versioning::ValidFormat)
+
     pub fn new() -> Self {
         Self {
             format_version: versioning::Format::CURRENT.clone(),

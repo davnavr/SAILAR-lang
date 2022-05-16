@@ -171,6 +171,15 @@ pub enum FormatVersionKind {
     Minor,
 }
 
+impl Display for FormatVersionKind {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Major => "major",
+            Self::Minor => "minor",
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'s> {
     /// ```text
