@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let output = if let Some(path) = &arguments.output {
                 path
             } else {
-                default_output = arguments.input.with_extension(".sail");
+                default_output = arguments.input.with_extension("sail");
                 &default_output
             };
 
