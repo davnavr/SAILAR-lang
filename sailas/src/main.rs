@@ -1,101 +1,39 @@
-use structopt::StructOpt;
+//! Executable for assembling SAILAR assembly files
 
-#[derive(StructOpt)]
+/// SAILAR bytecode assembler
+#[derive(Debug, clap::Parser)]
+#[clap(version, about)]
 struct Arguments {
-    /// The input text module file to assemble.
-    #[structopt(long, short)]
+    /// Path to the SAILAR assembly file
+    #[clap(long, short)]
     input: std::path::PathBuf,
-    /// The path to the file containing the assembled binary module.
-    #[structopt(long, short)]
+    /// Path to the file containing the assembled SAILAR binary module.
+    #[clap(long, short)]
     output: Option<std::path::PathBuf>,
 }
 
-fn main() -> Result<(), sailar::writer::Error> {
-    let arguments = Arguments::from_args();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments: Arguments = clap::Parser::parse();
     let input = std::fs::read_to_string(&arguments.input)?;
-    let (syntax_tree, lexer_errors, parser_errors) = sailar_asm::parser::tree_from_str(&input);
 
-    let module;
-    let assembler_errors;
-    match sailar_asm::assembler::assemble_declarations(&syntax_tree) {
-        Ok(assembled) => {
-            module = Some(assembled);
-            assembler_errors = Vec::new();
-        }
-        Err(errors) => {
-            module = None;
-            assembler_errors = errors;
-        }
-    }
-
-    if !(lexer_errors.is_empty() && parser_errors.is_empty() && assembler_errors.is_empty()) {
-        use ariadne::{Label, Report, ReportKind, Source};
-        // NOTE: ariadne currently does not work with CRLF
-
-        let source_path = arguments
-            .input
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-            .unwrap_or("txtmdl");
-
-        let mut source = (source_path, Source::from(&input));
-
-        let input_errors = lexer_errors
-            .into_iter()
-            .map(|error| error.map(|msg| msg.to_string()))
-            .chain(
-                parser_errors
-                    .into_iter()
-                    .map(|error| error.map(|msg| msg.to_string())),
-            );
-
-        let create_report = |position: &sailar_asm::ast::Position| {
-            Report::<(&str, sailar_asm::ast::Position)>::build(
-                ReportKind::Error,
-                source_path,
-                position.start,
-            )
-        };
-
-        for error in input_errors {
-            let position = error.span();
-            create_report(&position)
-                .with_label(Label::new((source_path, position)).with_message(error))
-                .finish()
-                .eprint(&mut source)?;
-        }
-
-        for error in assembler_errors {
-            use sailar_asm::assembler::ErrorKind as AssemblerError;
-
-            let position = error.location().cloned().unwrap_or_default();
-            let mut report = create_report(&position)
-                .with_label(Label::new((source_path, position)).with_message(error.kind()));
-
-            report = match error.kind() {
-                AssemblerError::InvalidFormatVersion => {
-                    let minimum_version =
-                        sailar::format::FormatVersion::minimum_supported_version();
-                    report.with_note(format!(
-                        "minimum supported version is {}.{}",
-                        minimum_version.major, minimum_version.minor
-                    ))
-                }
-                _ => report,
+    match sailasm::assemble(&input) {
+        Ok(module) => {
+            let default_output;
+            let output = if let Some(path) = &arguments.output {
+                path
+            } else {
+                default_output = arguments.input.with_extension("sail");
+                &default_output
             };
 
-            report.finish().eprint(&mut source)?;
+            module.write_to(std::fs::File::create(output)?).map_err(Box::from)
         }
+        Err(errors) => {
+            for e in errors.iter() {
+                eprintln!("{}", e);
+            }
 
-        std::process::exit(1)
+            Err(Box::from(format!("failed with {} errors", errors.len())))
+        }
     }
-
-    let mut output = std::fs::File::create(
-        arguments
-            .output
-            .as_ref()
-            .unwrap_or(&arguments.input.with_extension("binmdl")),
-    )?;
-
-    sailar::writer::write_module(module.as_ref().unwrap(), &mut output)
 }

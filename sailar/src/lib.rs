@@ -1,12 +1,25 @@
-//! Contains types for reading and writing binary modules.
+//! Contains types for reading and writing SAILAR modules.
+//!
+//! For a summary of the instruction set, see [`instruction::Instruction`].
 
-mod buffers;
-/// High-level interface for assembling binary modules.
-pub mod builder;
-/// Contains types representing the file format of modules.
-pub mod format;
-pub mod hashing;
-/// Contains functions for reading binary modules.
-pub mod parser;
-/// Contains functions for writing binary modules.
-pub mod writer;
+pub mod binary;
+pub mod helper;
+pub mod identifier;
+pub mod instruction;
+pub mod type_system;
+pub mod versioning;
+
+pub use identifier::{Id, Identifier};
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! enum_case_from_impl {
+    ($implementor: ty, $case_name: ident, $case_type: ty) => {
+        impl std::convert::From<$case_type> for $implementor {
+            #[inline]
+            fn from(value: $case_type) -> Self {
+                Self::$case_name(value)
+            }
+        }
+    };
+}

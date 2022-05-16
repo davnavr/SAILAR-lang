@@ -1,9 +1,0 @@
-[package]
-name = "sailar_asm"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-chumsky = "0.7.0"
-sailar = { path = "../sailar" }
-thiserror = "1.0.30"

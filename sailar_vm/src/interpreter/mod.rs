@@ -148,9 +148,52 @@ impl<'l> Interpreter<'l> {
             let (result, overflowed) = o(x, y).map_err(|_| ErrorKind::RegisterTypeMismatch {
                 expected: x.value_type(),
                 actual: y.value_type(),
-            })?; // TODO: Move check for equal register types into actual operation
+            })?; // TODO: Move check for equal register types into actual operation.
             frame.registers.define_temporary(result)?;
             handle_value_overflow(frame, operation.overflow, overflowed)
+        }
+
+        fn unary_bitwise_operation<'l>(
+            frame: &mut call_stack::Frame<'l>,
+            value: instruction_set::RegisterIndex,
+            operation: fn(&Register) -> std::result::Result<register::IntVal, register::Type>,
+        ) -> Result<()> {
+            let register = frame.registers.get(value)?;
+            let result = operation(register)
+                .expect("TODO: error for expected an integer type during unary bitwise operation");
+            frame.registers.define_temporary(Register::Int(result))?;
+            Ok(())
+        }
+
+        fn binary_bitwise_operation<'l>(
+            frame: &mut call_stack::Frame<'l>,
+            x: instruction_set::RegisterIndex,
+            y: instruction_set::RegisterIndex,
+            operation: fn(
+                &Register,
+                &Register,
+            ) -> std::result::Result<register::IntVal, register::Type>,
+        ) -> Result<()> {
+            let x_register = frame.registers.get(x)?;
+            let y_register = frame.registers.get(y)?;
+            let result =
+                operation(x_register, y_register).map_err(|_| ErrorKind::RegisterTypeMismatch {
+                    expected: x_register.value_type(),
+                    actual: y_register.value_type(),
+                })?; // TODO: Move check for equal register types into actual operation.
+            frame.registers.define_temporary(Register::Int(result))?;
+            Ok(())
+        }
+
+        fn expect_address_register(register: &Register) -> Result<register::PointerVal> {
+            if let Register::Pointer(pointer) = register {
+                Ok(*pointer)
+            } else {
+                Err(ErrorKind::RegisterTypeMismatch {
+                    expected: register::Type::Pointer(0),
+                    actual: register.value_type(),
+                })
+            }
         }
 
         match instruction {
@@ -172,6 +215,23 @@ impl<'l> Interpreter<'l> {
                     }
                     None => *entry_point_results = results,
                 }
+            }
+            Instruction::Select { condition, values } => {
+                let result_indices = if self
+                    .call_stack
+                    .current_mut()?
+                    .registers
+                    .get(*condition)?
+                    .is_truthy()
+                {
+                    values.true_registers().0.as_slice()
+                } else {
+                    values.false_registers()
+                };
+
+                let current_frame = self.call_stack.current_mut()?;
+                let mut results = collect_registers_from(current_frame, result_indices)?;
+                current_frame.registers.append_temporaries(&mut results);
             }
             Instruction::Switch {
                 comparison,
@@ -275,6 +335,21 @@ impl<'l> Interpreter<'l> {
                 operation,
                 Register::overflowing_mul,
             )?,
+            Instruction::And { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitand)?
+            }
+            Instruction::Or { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitor)?
+            }
+            Instruction::Not(value) => {
+                unary_bitwise_operation(self.call_stack.current_mut()?, *value, Register::bitnot)?
+            }
+            Instruction::Xor { x, y } => {
+                binary_bitwise_operation(self.call_stack.current_mut()?, *x, *y, Register::bitxor)?
+            }
+            Instruction::Rotate { .. } => {
+                todo!("rotate instruction will be merged, interpretation not yet supported")
+            }
             Instruction::ConstI(value) => self
                 .call_stack
                 .current_mut()?
@@ -321,6 +396,33 @@ impl<'l> Interpreter<'l> {
                             result == Ordering::Greater || result == Ordering::Equal
                         }
                     }))?;
+            }
+            Instruction::BitCount(kind, value) => {
+                todo!("what is the return type of the bitcount instruction?")
+            }
+            Instruction::Store { destination, value } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let value_register = current_frame.registers.get(*value)?;
+                let destination_address =
+                    expect_address_register(current_frame.registers.get(*destination)?)?;
+
+                // Memory safety of a memory store is dependent on the code being executed.
+                unsafe {
+                    value_register.store_value_into(destination_address);
+                }
+            }
+            Instruction::Load { source } => {
+                let current_frame = self.call_stack.current_mut()?;
+                let source_address =
+                    expect_address_register(current_frame.registers.get(*source)?)?;
+
+                //let pointee_type
+
+                // Memory safety of a memory load is dependent on the code being executed.
+                let result =
+                    unsafe { Register::load_value_from(source_address, todo!("pointee_type")) };
+
+                current_frame.registers.define_temporary(result)?;
             }
             Instruction::Field { field, object } => {
                 let current_frame = self.call_stack.current_mut()?;

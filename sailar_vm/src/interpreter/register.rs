@@ -1,6 +1,7 @@
 use sailar::format::{instruction_set::IntegerConstant, type_system};
 use sailar_get::loader;
 use std::fmt::{Display, Formatter};
+use std::ops::{BitAnd, BitOr, BitXor, Not};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Type {
@@ -138,6 +139,7 @@ impl PointerVal {
     }
 
     // TODO: Does an overflow even make sense? Should pointers be treated as signed/unsigned when doing math here?
+    // TODO: Remove, math operations on pointers are not allowed/implemented.
     pub fn overflowing_add(&self, count: usize) -> (Self, bool) {
         let (address, overflowed) = (self.address as usize).overflowing_add(count);
         (Self::new(address as *mut u8, self.pointee_size), overflowed)
@@ -435,6 +437,87 @@ basic_arithmetic_operation!(overflowing_add);
 basic_arithmetic_operation!(overflowing_sub);
 basic_arithmetic_operation!(overflowing_mul);
 
+macro_rules! binary_bitwise_operation {
+    ($operation_name: ident) => {
+        impl Register {
+            pub fn $operation_name(&self, other: &Self) -> Result<IntVal, Type> {
+                match (self, other) {
+                    (Self::Int(x), Self::Int(y)) => match (*x, *y) {
+                        (IntVal::S8(x_value), IntVal::S8(y_value)) => {
+                            Ok(IntVal::S8(i8::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U8(x_value), IntVal::U8(y_value)) => {
+                            Ok(IntVal::U8(u8::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S16(x_value), IntVal::S16(y_value)) => {
+                            Ok(IntVal::S16(i16::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U16(x_value), IntVal::U16(y_value)) => {
+                            Ok(IntVal::U16(u16::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S32(x_value), IntVal::S32(y_value)) => {
+                            Ok(IntVal::S32(i32::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U32(x_value), IntVal::U32(y_value)) => {
+                            Ok(IntVal::U32(u32::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::S64(x_value), IntVal::S64(y_value)) => {
+                            Ok(IntVal::S64(i64::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::U64(x_value), IntVal::U64(y_value)) => {
+                            Ok(IntVal::U64(u64::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::SNative(x_value), IntVal::SNative(y_value)) => {
+                            Ok(IntVal::SNative(isize::$operation_name(x_value, y_value)))
+                        }
+                        (IntVal::UNative(x_value), IntVal::UNative(y_value)) => {
+                            Ok(IntVal::UNative(usize::$operation_name(x_value, y_value)))
+                        }
+                        _ => Err(self.value_type()),
+                    },
+                    (_, Self::Int(_)) => Err(self.value_type()),
+                    _ => Err(other.value_type()),
+                }
+            }
+        }
+    };
+}
+
+binary_bitwise_operation!(bitand);
+binary_bitwise_operation!(bitor);
+binary_bitwise_operation!(bitxor);
+
+macro_rules! unary_bitwise_operation {
+    ($helper_name: ident, $operation_name: ident) => {
+        impl Register {
+            pub fn $helper_name(&self) -> Result<IntVal, Type> {
+                if let Self::Int(integer_value) = self {
+                    match *integer_value {
+                        IntVal::S8(value) => Ok(IntVal::S8(i8::$operation_name(value))),
+                        IntVal::U8(value) => Ok(IntVal::U8(u8::$operation_name(value))),
+                        IntVal::S16(value) => Ok(IntVal::S16(i16::$operation_name(value))),
+                        IntVal::U16(value) => Ok(IntVal::U16(u16::$operation_name(value))),
+                        IntVal::S32(value) => Ok(IntVal::S32(i32::$operation_name(value))),
+                        IntVal::U32(value) => Ok(IntVal::U32(u32::$operation_name(value))),
+                        IntVal::S64(value) => Ok(IntVal::S64(i64::$operation_name(value))),
+                        IntVal::U64(value) => Ok(IntVal::U64(u64::$operation_name(value))),
+                        IntVal::SNative(value) => {
+                            Ok(IntVal::SNative(isize::$operation_name(value)))
+                        }
+                        IntVal::UNative(value) => {
+                            Ok(IntVal::UNative(usize::$operation_name(value)))
+                        }
+                    }
+                } else {
+                    Err(self.value_type())
+                }
+            }
+        }
+    };
+}
+
+unary_bitwise_operation!(bitnot, not);
+
 impl Register {
     pub fn compare_to(&self, other: &Self) -> Result<std::cmp::Ordering, Type> {
         match (self, other) {
@@ -450,6 +533,73 @@ impl Register {
             (Self::Int(IntVal::UNative(x)), Self::Int(IntVal::UNative(y))) => Ok(x.cmp(y)),
             (Self::Pointer(x), Self::Pointer(y)) => Ok(x.address.cmp(&y.address)),
             (_, _) => Err(other.value_type()),
+        }
+    }
+
+    pub unsafe fn store_value_into(&self, destination: PointerVal) {
+        let address = destination.address();
+        match self {
+            Self::Int(integer_value) => match *integer_value {
+                IntVal::S8(value) => (address as *mut i8).write_unaligned(value),
+                IntVal::U8(value) => address.write_unaligned(value),
+                IntVal::S16(value) => (address as *mut i16).write_unaligned(value),
+                IntVal::U16(value) => (address as *mut u16).write_unaligned(value),
+                IntVal::S32(value) => (address as *mut i32).write_unaligned(value),
+                IntVal::U32(value) => (address as *mut u32).write_unaligned(value),
+                IntVal::S64(value) => (address as *mut i64).write_unaligned(value),
+                IntVal::U64(value) => (address as *mut u64).write_unaligned(value),
+                IntVal::SNative(value) => (address as *mut isize).write_unaligned(value),
+                IntVal::UNative(value) => (address as *mut usize).write_unaligned(value),
+            },
+            Self::Pointer(pointer_value) => {
+                (address as *mut *mut u8).write_unaligned((*pointer_value).address())
+            }
+        }
+    }
+
+    pub unsafe fn load_value_from<'l>(
+        source: PointerVal,
+        pointee_type: &'l loader::TypeSignature<'l>,
+    ) -> Self {
+        let address = source.address();
+        match pointee_type.as_raw() {
+            type_system::Any::Primitive(primitive_type) => match primitive_type {
+                type_system::Primitive::Int(int_type) => Self::Int(match int_type {
+                    type_system::Int::Fixed(fixed_type) => match fixed_type {
+                        type_system::FixedInt::S8 => {
+                            IntVal::S8((address as *mut i8).read_unaligned())
+                        }
+                        type_system::FixedInt::U8 => IntVal::U8(address.read_unaligned()),
+                        type_system::FixedInt::S16 => {
+                            IntVal::S16((address as *mut i16).read_unaligned())
+                        }
+                        type_system::FixedInt::U16 => {
+                            IntVal::U16((address as *mut u16).read_unaligned())
+                        }
+                        type_system::FixedInt::S32 => {
+                            IntVal::S32((address as *mut i32).read_unaligned())
+                        }
+                        type_system::FixedInt::U32 => {
+                            IntVal::U32((address as *mut u32).read_unaligned())
+                        }
+                        type_system::FixedInt::S64 => {
+                            IntVal::S64((address as *mut i64).read_unaligned())
+                        }
+                        type_system::FixedInt::U64 => {
+                            IntVal::U64((address as *mut u64).read_unaligned())
+                        }
+                    },
+                    type_system::Int::SNative => {
+                        IntVal::SNative((address as *mut isize).read_unaligned())
+                    }
+                    type_system::Int::UNative => {
+                        IntVal::UNative((address as *mut usize).read_unaligned())
+                    }
+                }),
+                type_system::Primitive::Real(bad) => todo!("unsupported load for fp {:?}", bad),
+            },
+            //type_system::Any::NativePointer(pointee_type)
+            bad => todo!("unsupported load for {:?}", bad),
         }
     }
 }

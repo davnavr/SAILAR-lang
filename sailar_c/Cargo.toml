@@ -1,9 +1,12 @@
 [package]
-name = "sailar_get"
+name = "sailar_c"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rustc-hash = "1.1.0"
 sailar = { path = "../sailar" }
 thiserror = "1.0.30"
+
+[lib]
+name = "SAILARCore"
+crate-type = ["staticlib", "cdylib"]

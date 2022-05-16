@@ -1,9 +1,9 @@
 [package]
-name = "sailar_get"
+name = "sailasm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rustc-hash = "1.1.0"
+logos = "0.12.0"
 sailar = { path = "../sailar" }
 thiserror = "1.0.30"
