@@ -36,9 +36,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut buffered_output = std::io::BufWriter::new(output_handle);
 
             for e in errors.iter() {
-                writeln!(buffered_output, "error")?;
+                write!(buffered_output, "error")?;
                 if let Some(location) = e.location() {
-                    writeln!(buffered_output, "{}", location)?;
+                    write!(buffered_output, "{}", location)?;
                 }
                 writeln!(buffered_output, ": {}", e.kind())?;
             }

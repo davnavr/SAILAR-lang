@@ -83,8 +83,11 @@ impl std::fmt::Display for UnsupportedFormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "the format version {}.{} is not supported",
-            self.version.major, self.version.minor
+            "the format version {}.{} is not supported, minimum allowed is {}.{}",
+            self.version.major,
+            self.version.minor,
+            SupportedFormat::MINIMUM.major,
+            SupportedFormat::MINIMUM.minor,
         )
     }
 }

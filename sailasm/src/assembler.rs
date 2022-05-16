@@ -120,7 +120,10 @@ fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives) -> B
 
     let actual_format_version = match versioning::SupportedFormat::try_from(format_version) {
         Ok(version) => version,
-        Err(_) => todo!("what location to use for unsupported format version?"),
+        Err(e) => {
+            errors.push(Error::new(e, None));
+            versioning::SupportedFormat::MINIMUM
+        }
     };
 
     let mut builder = Builder::with_format_version(actual_format_version);
