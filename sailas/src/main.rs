@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &default_output
             };
 
-            todo!("write the module to disk")
+            module.write_to(std::fs::File::create(output)?).map_err(Box::from)
         }
         Err(errors) => {
             for e in errors.iter() {
