@@ -90,6 +90,17 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     location.clone(),
                 )),
             },
+            ast::Directive::Format(ast::FormatVersionKind::Minor, minor) => match directives.format_version {
+                FormatVersion::Unspecified => directives.format_version = FormatVersion::MinorOnly(*minor, directive.location()),
+                FormatVersion::MajorOnly(major, major_location) => {
+                    directives.format_version =
+                        FormatVersion::Full(versioning::Format::new(major, *minor), major_location, directive.location())
+                }
+                FormatVersion::MinorOnly(_, location) | FormatVersion::Full(_, _, location) => errors.push(Error::with_location(
+                    ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Minor),
+                    location.clone(),
+                )),
+            },
             _ => todo!("assemble {:?}", directive),
         }
     }
