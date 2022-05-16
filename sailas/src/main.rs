@@ -29,8 +29,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             module.write_to(std::fs::File::create(output)?).map_err(Box::from)
         }
         Err(errors) => {
+            let output = std::io::stderr();
+            let output_handle = output.lock();
+            let mut buffered_output = std::io::BufWriter::new(output_handle);
+
             for e in errors.iter() {
-                eprintln!("{}", e);
+                writeln!(buffered_output, "error")?;
+                if let Some(location) = e.location() {
+                    writeln!(buffered_output, "{}", location);
+                }
+                writeln!(buffered_output, ": {}", e.kind())?;
             }
 
             Err(Box::from(format!("failed with {} errors", errors.len())))
