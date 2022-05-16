@@ -253,10 +253,12 @@ impl<R: Read> Reader<R> {
                 return self.source.fail_with(ErrorKind::MissingFormatVersion);
             }
 
-            format_version = self.source.wrap_result(versioning::SupportedFormat::try_from(versioning::Format {
-                major: values[0],
-                minor: values[1],
-            }))?;
+            format_version = self
+                .source
+                .wrap_result(versioning::SupportedFormat::try_from(versioning::Format {
+                    major: values[0],
+                    minor: values[1],
+                }))?;
 
             if value_count < 3 {
                 return self.source.fail_with(ErrorKind::MissingIntegerSize);
@@ -575,8 +577,8 @@ mod tests {
             b'L',
             b'A',
             b'R',
-            versioning::Format::CURRENT.major,
-            versioning::Format::CURRENT.minor,
+            versioning::SupportedFormat::CURRENT.major,
+            versioning::SupportedFormat::CURRENT.minor,
             0,
             1, // Number of records
             1,

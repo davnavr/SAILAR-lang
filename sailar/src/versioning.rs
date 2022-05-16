@@ -10,9 +10,8 @@ pub struct Format {
 }
 
 impl Format {
-    /// The minimum version of the format supported by this API.
-    pub const MINIMUM_SUPPORTED: Self = Self { major: 0, minor: 12 };
-    pub const CURRENT: Self = Self::MINIMUM_SUPPORTED;
+    pub const SUPPORTED_RANGE: std::ops::RangeInclusive<Format> =
+        std::ops::RangeInclusive::new(SupportedFormat::MINIMUM.0, SupportedFormat::MAXIMUM.0);
 
     pub const fn new(major: u8, minor: u8) -> Self {
         Self { major, minor }
@@ -20,7 +19,7 @@ impl Format {
 
     #[inline]
     pub fn is_supported(&self) -> bool {
-        self >= &Self::MINIMUM_SUPPORTED
+        Self::SUPPORTED_RANGE.contains(self)
     }
 }
 
@@ -30,8 +29,11 @@ impl Format {
 pub struct SupportedFormat(Format);
 
 impl SupportedFormat {
-    pub const MINIMUM: Self = Self(Format::MINIMUM_SUPPORTED);
-    pub const CURRENT: Self = Self(Format::CURRENT);
+    /// The minimum version of the format supported by this API.
+    pub const MINIMUM: Self = Self(Format::new(0, 18));
+    /// The maximum version of the format that is supported.
+    pub const MAXIMUM: Self = Self::MINIMUM;
+    pub const CURRENT: Self = Self::MINIMUM;
 
     #[inline]
     pub fn new(major: u8, minor: u8) -> Result<Self, UnsupportedFormatError> {
