@@ -1,6 +1,6 @@
 #!/usr/bin/env -S just --justfile
 build:
-  wasm-pack build --target nodejs --out-dir ./web/pkg --out-name lib
+  wasm-pack build --target web --out-dir ./web/pkg --out-name lib
 
 serve: build
   http -m wasm:application/wasm --no-colour -- ./web
