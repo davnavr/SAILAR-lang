@@ -14,7 +14,7 @@ module.exports = {
             title: 'SAILAR Interactive Assembler',
             template: 'index.html'
         }),
-        new HtmlWebpackTagsPlugin({ tags: ['index.css'], append: true }),
+        new HtmlWebpackTagsPlugin({ tags: ['index.css', './node_modules/codemirror/lib/codemirror.css'], append: true }),
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, ".")
         }),
