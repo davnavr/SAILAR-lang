@@ -19,5 +19,8 @@ module.exports = {
             crateDirectory: path.resolve(__dirname, ".")
         }),
     ],
-    mode: 'development'
+    mode: 'development',
+    experiments: {
+        asyncWebAssembly: true,
+    },
 };

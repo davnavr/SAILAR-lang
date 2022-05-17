@@ -1,5 +1,6 @@
 'use strict';
 const CodeMirror = require('codemirror');
+const assembler = require('./pkg');
 
 document.addEventListener('DOMContentLoaded', async(event) => {
     const editor = CodeMirror((e) => { document.getElementById('input').appendChild(e); }, {
