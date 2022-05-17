@@ -37,8 +37,12 @@ main {
     left: 0;
     position: absolute;
     top: 0;
+    width: 100%;
 }
 
 #output {
+    border-left-style: solid;
+    border-color: #555555;
+    border-width: 1px;
     float: right;
 }
