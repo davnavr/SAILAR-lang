@@ -7,5 +7,5 @@ pub struct Output;
 
 #[wasm_bindgen]
 pub fn assemble(input: &str) -> Output {
-    todo!("output")
+    todo!("output {}", input)
 }
