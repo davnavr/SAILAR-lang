@@ -1,5 +1,8 @@
-"use strict";
+'use strict';
 
 document.addEventListener('DOMContentLoaded', async(event) => {
-    console.log('hello');
+    const CodeMirror = require('codemirror');
+    const editor = CodeMirror.fromTextArea(document.getElementById('input'), {
+        lineNumbers: true,
+    });
 })
