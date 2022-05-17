@@ -14,9 +14,33 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const refreshCodeEditor = setTimeout(() => editor.refresh(), 0);
 
     const initializeAssembler = rustWebAssembly.then((asm) => {
-        console.log(asm.assemble);
+        let outputContentCache = '';
+
+        function appendOutputMessage(message) {
+            outputContentCache += message;
+        }
+
+        function appendOutputError(error, locations) {
+            outputContentCache += 'error';
+            if (locations !== null) {
+                outputContentCache += `(${locations[0]},${locations[1]})-(${locations[2]},${locations[3]})`;
+            }
+            outputContentCache += ': ' + error + '\n';
+        }
+
+        function update(editor) {
+            outputContentCache = '';
+
+            asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
+
+            output.innerHTML = outputContentCache;
+        }
+
+        editor.on('update', update);
+
+        update(editor);
     }).catch(console.error);
 
-    await refreshCodeEditor;
     await initializeAssembler;
+    await refreshCodeEditor;
 })
