@@ -9,4 +9,7 @@ document.addEventListener('DOMContentLoaded', async(event) => {
     });
 
     setTimeout(() => editor.refresh(), 0);
+
+    const output = document.getElementById('output').appendChild(document.createElement("p"));
+    output.style = "width: 100%; height: 100%; margin: 0";
 })

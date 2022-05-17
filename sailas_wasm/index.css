@@ -6,6 +6,14 @@ body {
     height: 100vh;
 }
 
+#header {
+    height: 50px;
+}
+
+#header h1 {
+    margin: 5px 20px;
+}
+
 main {
     flex: 1;
 }
