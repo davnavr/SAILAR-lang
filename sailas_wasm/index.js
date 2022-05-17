@@ -3,7 +3,7 @@ const CodeMirror = require('codemirror');
 const rustWebAssembly = require('./pkg');
 
 document.addEventListener('DOMContentLoaded', async (event) => {
-    const output = document.getElementById('output').appendChild(document.createElement("p"));
+    const output = document.getElementById('output').appendChild(document.createElement("pre"));
     output.style = "width: 100%; height: 100%; margin: 0";
 
     const editor = CodeMirror((e) => { document.getElementById('input').appendChild(e); }, {
@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', async (event) => {
 
     const refreshCodeEditor = setTimeout(() => editor.refresh(), 0);
 
-    const initializeAssembler = rustWebAssembly.then((a) => {
-        console.log(a.assemble);
+    const initializeAssembler = rustWebAssembly.then((asm) => {
+        console.log(asm.assemble);
     }).catch(console.error);
 
     await refreshCodeEditor;
