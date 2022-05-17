@@ -11,7 +11,7 @@ module.exports = {
     },
     plugins: [
         new HtmlWebpackPlugin({
-            title: 'SAILAR Interactive Assembler',
+            title: 'Interactive Assembler',
             template: 'index.html'
         }),
         new HtmlWebpackTagsPlugin({ tags: ['index.css', './node_modules/codemirror/lib/codemirror.css'], append: true }),

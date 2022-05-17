@@ -3,23 +3,34 @@ body {
     flex-direction: column;
     font-family: sans-serif;
     margin: 0;
-    min-height: 100vh;
+    height: 100vh;
 }
 
 main {
-    display: flex;
     flex: 1;
 }
 
-main div {
-    display: Flex;
-    flex-direction: column;
-    flex: 1;
+#input, #output {
+    box-sizing: border-box;
+    display: block;
+    overflow: hidden;
+    padding: 5px;
+    position: relative;
+    width: 50%;
+    height: 100%;
+}
+
+#input {
+    float: left;
+}
+
+#input .CodeMirror {
+    height: 100%;
+    left: 0;
+    position: absolute;
+    top: 0;
 }
 
 #output {
-    height: 100%;
-    overflow: auto;
-    padding: .25rem;
-    margin: 0;
+    float: right;
 }
