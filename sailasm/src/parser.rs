@@ -17,6 +17,8 @@ pub enum ErrorKind {
     ExpectedFormatVersion,
     #[error("invalid format version: {0}")]
     InvalidFormatVersion(std::num::ParseIntError),
+    #[error("expected end of line or file")]
+    ExpectedNewLineOrEndOfFile,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -146,8 +148,13 @@ macro_rules! match_exhausted {
     };
 }
 
-fn expect_new_line_or_end(errors: &mut Vec<Error>, input: &mut SliceInput) {
-    //match input.
+macro_rules! expect_new_line_or_end {
+    ($errors: expr, $input: expr) => {
+        match $input.peek_next_token() {
+            Some((Token::Newline, _)) | None => (),
+            Some((_, location)) => fail_skip_line!($errors, ErrorKind::ExpectedNewLineOrEndOfFile, location, $input),
+        }
+    };
 }
 
 /// Transfers a sequence of tokens into an abstract syntax tree.
@@ -187,7 +194,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersion, bad, input),
                 };
 
-                // TODO: Have helper/macro that checks for newline or EOF
+                expect_new_line_or_end!(errors, input);
 
                 tree.push(ast::Located::new(
                     ast::Directive::Format(format_kind, format_version),
@@ -195,9 +202,8 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     end_location,
                 ));
             }
-            Token::Unknown => fail_continue!(errors, ErrorKind::UnknownToken, location),
             Token::Newline => (),
-            bad => todo!("handle {:?}, {:?}", bad, &errors),
+            Token::Unknown | _ => fail_continue!(errors, ErrorKind::UnknownToken, location),
         }
     }
 
