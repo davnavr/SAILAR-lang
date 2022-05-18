@@ -16,8 +16,10 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const initializeAssembler = rustWebAssembly.then((asm) => {
         asm.register_panic_hook();
 
+        let updating = false;
+
         const errorMarkOptions = {
-            className: '.cm-error',
+            className: 'cm-error',
         };
 
         function appendOutputMessage(message) {
@@ -28,17 +30,21 @@ document.addEventListener('DOMContentLoaded', async (event) => {
             output.innerHTML += 'error';
             if (locations !== null) {
                 output.innerHTML += `(${locations[0]},${locations[1]})-(${locations[2]},${locations[3]})`;
-                editor.markText({ line: locations[0], ch: locations[1], }, { line: locations[2], ch: locations[3] }, errorMarkOptions);
+                editor.markText({ line: locations[0] - 1, ch: locations[1] - 1, }, { line: locations[2] - 1, ch: locations[3] - 1 }, errorMarkOptions);
             }
             output.innerHTML += ': ' + error + '\n';
         }
 
         function update() {
-            output.innerHTML = '';
+            if (!updating) {
+                updating = true;
+                output.innerHTML = '';
 
-            // TODO: Clear old marks with getAllMarks()?
+                // TODO: Clear old marks with getAllMarks()?
 
-            asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
+                asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
+                updating = false;
+            }
         }
 
         editor.on('update', update);
