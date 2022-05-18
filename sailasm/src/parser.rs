@@ -152,7 +152,20 @@ macro_rules! expect_new_line_or_end {
     ($errors: expr, $input: expr) => {
         match $input.peek_next_token() {
             Some((Token::Newline, _)) | None => (),
-            Some((_, location)) => fail_skip_line!($errors, ErrorKind::ExpectedNewLineOrEndOfFile, location, $input),
+            Some((_, location)) => {
+                let start_location = location.start();
+                let mut end_location = location.end().clone();
+
+                while let Some((_, location)) = $input.next_token_if(|next| !matches!(next, Token::Newline)) {
+                    end_location = location.end().clone();
+                }
+
+                fail_continue!(
+                    $errors,
+                    ErrorKind::ExpectedNewLineOrEndOfFile,
+                    ast::LocationRange::new(start_location.clone(), end_location)
+                );
+            }
         }
     };
 }
