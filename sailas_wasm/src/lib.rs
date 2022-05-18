@@ -19,14 +19,19 @@ impl PrintWrapper {
     }
 
     fn print_error(&self, message: &str, location: Option<&sailasm::ast::LocationRange>) -> JsResult<()> {
-        let js_location = location.map(|location| {
-            JsArray::from_iter([
-                &JsValue::from(location.start().line.get()),
-                &JsValue::from(location.start().column.get()),
-                &JsValue::from(location.end().line.get()),
-                &JsValue::from(location.end().column.get()),
-            ])
-        });
+        fn convert_location_number(number: sailasm::ast::LocationNumber) -> JsResult<JsValue> {
+            Ok(JsValue::from(u32::try_from(number.get()).map_err(|e| JsValue::from(e.to_string()))?))
+        }
+
+        let js_location = match location {
+            Some(location) => Some(JsArray::from_iter([
+                &convert_location_number(location.start().line)?,
+                &convert_location_number(location.start().column)?,
+                &convert_location_number(location.end().line)?,
+                &convert_location_number(location.end().column)?,
+            ])),
+            None => None,
+        };
 
         self.error_function
             .call2(
