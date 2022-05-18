@@ -19,6 +19,8 @@ pub enum ErrorKind {
     InvalidFormatVersion(std::num::ParseIntError),
     #[error("expected end of line or file")]
     ExpectedNewLineOrEndOfFile,
+    #[error("expected literal contents of identifier")]
+    ExpectedIdentifierLiteral,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -214,6 +216,18 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     start_location,
                     end_location,
                 ));
+            }
+            Token::IdentifierDirective => {
+                // symbol
+
+                let literal = match input.next_token() {
+                    Some((Token::LiteralString(contents), _)) => {
+                        todo!("lit")
+                    }
+                    bad => match_exhausted!(errors, ErrorKind::ExpectedIdentifierLiteral, bad, input),
+                };
+
+                todo!("id")
             }
             Token::Newline => (),
             Token::Unknown | _ => fail_continue!(errors, ErrorKind::UnknownToken, location),

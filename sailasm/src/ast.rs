@@ -1,7 +1,7 @@
 //! Contains structures to represent the abstract syntax tree.
 
 use std::cmp::{Ord, Ordering, PartialOrd};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 /// Represents a line or column number.
 pub type LocationNumber = std::num::NonZeroUsize;
@@ -149,29 +149,95 @@ impl<N> Located<N> {
 
 pub type Symbol<'s> = Located<&'s sailar::Id>;
 
-#[derive(Clone, Debug, PartialEq)]
-#[repr(transparent)]
-pub struct LiteralString(Box<str>);
+#[derive(Debug, thiserror::Error)]
+#[error("\"\\{sequence}\" is not a valid escape sequence")]
+pub struct InvalidEscapeSequenceError {
+    byte_offset: usize,
+    sequence: Box<str>,
+}
 
-impl LiteralString {
-    /// Creates a string literal from its contents, which can pontentially contain escape sequences.
-    pub fn with_escape_sequences(contents: &str, buffer: &mut String) -> Self {
-        buffer.clear();
-        buffer.reserve(contents.len());
-        for c in contents.chars() {
-            if c == '\\' {
-                todo!("escape sequences are not yet supported");
-            }
-
-            buffer.push(c);
-        }
-
-        Self(buffer.clone().into_boxed_str())
+impl InvalidEscapeSequenceError {
+    /// The byte offset into the original string where the invalid escape sequence is, where 0 is the first byte in the string
+    /// literal.
+    #[inline]
+    pub fn byte_offset(&self) -> usize {
+        self.byte_offset
     }
 
+    /// The invalid escape sequence, without the leading backslash.
     #[inline]
+    pub fn sequence(&self) -> &str {
+        &self.sequence
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct LiteralString<'s> {
+    original_contents: &'s str,
+    actual_contents: Option<Box<str>>,
+}
+
+impl<'s> LiteralString<'s> {
+    /// Creates a string literal from its contents, which can pontentially contain escape sequences.
+    pub fn with_escape_sequences(contents: &'s str, buffer: &mut String) -> Result<Self, InvalidEscapeSequenceError> {
+        buffer.clear();
+
+        let mut characters = contents.char_indices();
+        while let Some((byte_offset, c)) = characters.next() {
+            if c == '\\' {
+                if buffer.is_empty() {
+                    buffer.reserve(contents.len());
+                    buffer.push_str(&contents[0..byte_offset]);
+                }
+
+                match characters.next() {
+                    Some((_, 't')) => buffer.push('\t'),
+                    Some((_, 'n')) => buffer.push('\n'),
+                    Some((_, 'r')) => buffer.push('\r'),
+                    Some((_, '"')) => buffer.push('"'),
+                    Some((_, '\'')) => buffer.push('\''),
+                    Some((_, '\\')) => buffer.push('\\'),
+                    _ => {
+                        return Err(InvalidEscapeSequenceError {
+                            byte_offset: byte_offset + 1,
+                            sequence: Box::from(characters.as_str()),
+                        })
+                    }
+                }
+            } else if !buffer.is_empty() {
+                buffer.push(c);
+            }
+        }
+
+        Ok(Self {
+            original_contents: contents,
+            actual_contents: if !buffer.is_empty() {
+                Some(buffer.clone().into_boxed_str())
+            } else {
+                None
+            },
+        })
+    }
+
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.actual_contents
+            .as_ref()
+            .map(|contents| contents.as_ref())
+            .unwrap_or(&self.original_contents)
+    }
+}
+
+impl<'s> TryFrom<&'s str> for LiteralString<'s> {
+    type Error = InvalidEscapeSequenceError;
+
+    fn try_from(literal: &'s str) -> Result<Self, Self::Error> {
+        LiteralString::with_escape_sequences(literal, &mut String::default())
+    }
+}
+
+impl Debug for LiteralString<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Debug::fmt(self.original_contents, f)
     }
 }
 
@@ -217,5 +283,18 @@ pub enum Directive<'s> {
     /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
     /// ```
     /// Defines record containing a reusable identifier string.
-    Identifier(Option<Symbol<'s>>, LiteralString),
+    Identifier(Option<Symbol<'s>>, LiteralString<'s>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn basic_literal_string_with_escape_sequences_is_valid() {
+        assert_eq!(
+            "test\nfor\tthings\r\nthat work\\",
+            LiteralString::try_from("test\\nfor\\tthings\\r\\nthat work\\\\").unwrap().as_str()
+        );
+    }
 }
