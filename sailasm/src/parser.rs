@@ -58,7 +58,7 @@ struct Input<'o, 's, S: Iterator> {
 
 type SliceInput<'o, 's> = Input<'o, 's, std::slice::Iter<'o, (Token<'s>, Range<usize>)>>;
 
-type LocatedToken<'o, 's> = (&'o Token<'s>, ast::LocationRange);
+type LocatedToken<'o, 's> = (&'o (Token<'s>, Range<usize>), ast::LocationRange);
 
 impl<'o, 's, S: Iterator<Item = &'o (Token<'s>, Range<usize>)>> Input<'o, 's, S> {
     fn new<I: std::iter::IntoIterator<IntoIter = S>>(source: I, locations: &'o lexer::OffsetMap<'s>) -> Self {
@@ -69,9 +69,10 @@ impl<'o, 's, S: Iterator<Item = &'o (Token<'s>, Range<usize>)>> Input<'o, 's, S>
     }
 
     fn token_from_offsets(token: Option<&S::Item>, locations: &'o lexer::OffsetMap<'s>) -> Option<LocatedToken<'o, 's>> {
-        token.map(|(token, offsets)| {
+        token.map(|lexer_token| {
+            let (_, offsets) = lexer_token;
             (
-                token,
+                *lexer_token,
                 ast::LocationRange::new(
                     locations.get_location(offsets.start).unwrap(),
                     locations.get_location(offsets.end).unwrap(),
@@ -110,6 +111,7 @@ impl<'s> Output<'s> {
         &self.errors
     }
 }
+
 macro_rules! push_error {
     ($errors: expr, $kind: expr, $location: expr) => {
         $errors.push(Error::new($kind, $location))
@@ -129,7 +131,7 @@ macro_rules! fail_skip_line {
 
         loop {
             match $input.next_token() {
-                Some((Token::Newline, _)) | None => break,
+                Some(((Token::Newline, _), _)) | None => break,
                 Some(_) => (),
             }
         }
@@ -155,7 +157,7 @@ macro_rules! match_exhausted {
 macro_rules! expect_new_line_or_end {
     ($errors: expr, $input: expr) => {
         match $input.peek_next_token() {
-            Some((Token::Newline, _)) | None => (),
+            Some(((Token::Newline, _), _)) | None => (),
             Some((_, location)) => {
                 let start_location = location.start();
                 let mut end_location = location.end().clone();
@@ -181,7 +183,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut tree = Vec::default();
     let mut errors = Vec::default();
 
-    while let Some((token, location)) = input.next_token() {
+    while let Some(((token, _), location)) = input.next_token() {
         let start_location = location.start().clone();
         let end_location;
 
@@ -193,16 +195,16 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
             )),
             Token::FormatDirective => {
                 let format_kind = match input.next_token() {
-                    Some((Token::Word("major"), _)) => ast::FormatVersionKind::Major,
-                    Some((Token::Word("minor"), _)) => ast::FormatVersionKind::Minor,
-                    Some((Token::Word(bad), location)) => {
+                    Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
+                    Some(((Token::Word("minor"), _), _)) => ast::FormatVersionKind::Minor,
+                    Some(((Token::Word(bad), _), location)) => {
                         fail_skip_line!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location, input)
                     }
                     bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersionKind, bad, input),
                 };
 
                 let format_version = match input.next_token() {
-                    Some((Token::LiteralInteger(digits), location)) => {
+                    Some(((Token::LiteralInteger(digits), _), location)) => {
                         end_location = location.end().clone();
                         match u8::try_from(digits) {
                             Ok(version) => version,
@@ -224,19 +226,22 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                 let symbol = None;
 
                 let literal = match input.next_token() {
-                    Some((Token::LiteralString(contents), location)) => {
+                    Some(((Token::LiteralString(contents), literal_offset), location)) => {
                         match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
                             Ok(literal) => {
                                 end_location = location.end().clone();
                                 literal
                             }
                             Err(e) => {
-                                let escape_sequence_offset = e.byte_offset();
-                                let escape_start_location = start_location; // TODO: Have input return original offsets of token as well.
+                                let escape_start_location = literal_offset.start + 1 + e.byte_offset();
+                                let escape_end_location = escape_start_location + e.sequence().len() + 1;
                                 fail_skip_line!(
                                     errors,
                                     ErrorKind::InvalidEscapeSequence(e.take_sequence()),
-                                    ast::LocationRange::new(todo!(), todo!()),
+                                    ast::LocationRange::new(
+                                        input.locations.get_location(escape_start_location).unwrap(),
+                                        input.locations.get_location(escape_end_location).unwrap()
+                                    ),
                                     input
                                 );
                             }
