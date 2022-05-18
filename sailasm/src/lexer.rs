@@ -110,7 +110,7 @@ impl<'s> OffsetMap<'s> {
 
 fn literal_string_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
     let token: &'s str = lex.slice();
-    &token[0..token.len() - 1]
+    &token[1..token.len() - 1]
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
