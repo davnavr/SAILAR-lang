@@ -63,14 +63,14 @@ where
     }
 }
 
-pub fn assemble(input: &str) -> Result<sailar::binary::Builder, Vec<AnyError>> {
+pub fn assemble<'i: 's, 's>(input: &'i str, parse_tree: &'s mut Option<parser::Output<'s>>) -> Result<sailar::binary::Builder<'s>, Vec<AnyError>> {
     let mut errors = Vec::default();
     let tokens = lexer::tokenize(input);
-    let tree = parser::parse(&tokens);
+    let tree: &'s _ = parse_tree.insert(parser::parse(&tokens));
 
     extend_errors_from_slice(&mut errors, tree.errors());
 
-    match assembler::assemble(&tree) {
+    match assembler::assemble(tree) {
         Ok(module) if errors.is_empty() => return Ok(module),
         Ok(_) => (),
         Err(e) => extend_errors_from_slice(&mut errors, e.as_slice()),

@@ -15,8 +15,9 @@ struct Arguments {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Arguments = clap::Parser::parse();
     let input = std::fs::read_to_string(&arguments.input)?;
+    let mut tree = None;
 
-    match sailasm::assemble(&input) {
+    match sailasm::assemble(&input, &mut tree) {
         Ok(module) => {
             let default_output;
             let output = if let Some(path) = &arguments.output {

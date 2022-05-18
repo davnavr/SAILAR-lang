@@ -61,7 +61,9 @@ pub fn assemble(input: &str, print_output: JsFunction, print_error: JsFunction) 
         error_function: print_error,
     };
 
-    match sailasm::assemble(input) {
+    let mut parse_tree = None;
+
+    match sailasm::assemble(input, &mut parse_tree) {
         Ok(module) => {
             let mut buffer = Vec::default();
             module.write_to(&mut buffer).unwrap();

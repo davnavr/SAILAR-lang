@@ -226,7 +226,7 @@ impl<'s> LiteralString<'s> {
 
     /// Gets the contents of the string literal, if it did not contain any escape sequences.
     pub fn as_original_str(&self) -> Result<&'s str, &str> {
-        match self.actual_contents {
+        match &self.actual_contents {
             None => Ok(self.original_contents),
             Some(actual_contents) => Err(&actual_contents),
         }

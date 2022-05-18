@@ -2,8 +2,10 @@
 
 use crate::ast;
 use crate::parser;
+use sailar::binary::record;
 use sailar::binary::Builder;
 use sailar::versioning;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ErrorKind {
@@ -73,7 +75,7 @@ impl TryFrom<FormatVersion<'_>> for versioning::Format {
 #[derive(Debug)]
 struct Directives<'t> {
     format_version: FormatVersion<'t>,
-    identifiers: Vec<Cow<'t, sailar::Id>>,
+    identifiers: Vec<&'t sailar::Id>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -122,7 +124,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives) -> Builder<'s> {
+fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives<'s>) -> Builder<'s> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
@@ -141,13 +143,15 @@ fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives) -> B
 
     let mut builder = Builder::with_format_version(actual_format_version);
 
-    // TODO: Build the module.
+    for id in directives.identifiers.into_iter() {
+        builder.add_record(record::Record::Identifier(Cow::Borrowed(id)))
+    }
 
     builder
 }
 
 /// Assembles a SAILAR module from an abstract syntax tree.
-pub fn assemble<'s>(input: &parser::Output<'s>) -> Result<Builder<'s>, Vec<Error>> {
+pub fn assemble<'i: 's, 's>(input: &'i parser::Output<'s>) -> Result<Builder<'s>, Vec<Error>> {
     let mut errors = Vec::default();
     let directives = get_record_definitions(&mut errors, input);
     let module = assemble_directives(&mut errors, directives);

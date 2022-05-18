@@ -232,7 +232,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     Some(((Token::LiteralString(contents), literal_offset), location)) => {
                         match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
                             Ok(literal) => {
-                                literal_start_location = location.start();
+                                literal_start_location = location.start().clone();
                                 end_location = location.end().clone();
                                 literal
                             }
@@ -261,7 +261,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     Err(e) => fail_skip_line!(
                         errors,
                         e,
-                        ast::LocationRange::new(literal_start_location.clone(), end_location),
+                        ast::LocationRange::new(literal_start_location, end_location),
                         input
                     ),
                 };
