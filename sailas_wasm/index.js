@@ -9,10 +9,11 @@ const assemblerModeName = "sailar";
 
 CodeMirror.defineSimpleMode(assemblerModeName, {
     start: [
-        { regex: /(?:\.format|identifier)\b/, token: 'keyword' },
+        { regex: /\.[a-zA-Z]+/, token: 'keyword' },
         { regex: /[a-zA-Z$][a-zA-Z$]+/, token: 'atom' },
         { regex: /;.*/, token: 'comment' },
         { regex: /(0x[0-9a-fA-F][0-9a-fA-F_]*)|(0b[01][01_]*)|([0-9][0-9_]*)/, token: 'number' },
+        { regex: /"([a-zA-Z!:\?0-9\-_\+\*\/]|\\[trn\\"'])*"/, token: 'string' }
     ],
     meta: {
         lineComment: ';',
