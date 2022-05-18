@@ -16,8 +16,6 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const initializeAssembler = rustWebAssembly.then((asm) => {
         asm.register_panic_hook();
 
-        let updating = false;
-
         const errorMarkOptions = {
             className: 'cm-error',
         };
@@ -36,18 +34,14 @@ document.addEventListener('DOMContentLoaded', async (event) => {
         }
 
         function update() {
-            if (!updating) {
-                updating = true;
-                output.innerHTML = '';
+            output.innerHTML = '';
 
-                // TODO: Clear old marks with getAllMarks()?
+            // TODO: Clear old marks with getAllMarks()?
 
-                asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
-                updating = false;
-            }
+            asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
         }
 
-        editor.on('update', update);
+        editor.on('change', update);
 
         update();
     }).catch(console.error);
