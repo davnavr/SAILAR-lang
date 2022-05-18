@@ -2,6 +2,7 @@
 
 use crate::ast;
 use crate::lexer::{self, Token};
+use std::iter::Iterator;
 use std::ops::Range;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -44,22 +45,45 @@ impl Error {
     }
 }
 
-#[derive(Debug)]
-struct Input<'o, 's, S> {
-    source: S,
+struct Input<'o, 's, S: Iterator> {
+    source: std::iter::Peekable<S>,
     locations: &'o lexer::OffsetMap<'s>,
 }
 
-impl<'o, 's, S: std::iter::Iterator<Item = &'o (Token<'s>, Range<usize>)>> Input<'o, 's, S> {
-    fn next_token(&mut self) -> Option<(&'o Token<'s>, ast::LocationRange)> {
-        let (token, offsets) = self.source.next()?;
-        Some((
-            token,
-            ast::LocationRange::new(
-                self.locations.get_location(offsets.start).unwrap(),
-                self.locations.get_location(offsets.end).unwrap(),
-            ),
-        ))
+type SliceInput<'o, 's> = Input<'o, 's, std::slice::Iter<'o, (Token<'s>, Range<usize>)>>;
+
+type LocatedToken<'o, 's> = (&'o Token<'s>, ast::LocationRange);
+
+impl<'o, 's, S: Iterator<Item = &'o (Token<'s>, Range<usize>)>> Input<'o, 's, S> {
+    fn new<I: std::iter::IntoIterator<IntoIter = S>>(source: I, locations: &'o lexer::OffsetMap<'s>) -> Self {
+        Self {
+            source: source.into_iter().peekable(),
+            locations,
+        }
+    }
+
+    fn token_from_offsets(token: Option<&S::Item>, locations: &'o lexer::OffsetMap<'s>) -> Option<LocatedToken<'o, 's>> {
+        token.map(|(token, offsets)| {
+            (
+                token,
+                ast::LocationRange::new(
+                    locations.get_location(offsets.start).unwrap(),
+                    locations.get_location(offsets.end).unwrap(),
+                ),
+            )
+        })
+    }
+
+    fn next_token(&mut self) -> Option<LocatedToken<'o, 's>> {
+        Self::token_from_offsets(self.source.next().as_ref(), self.locations)
+    }
+
+    fn next_token_if<F: FnOnce(&'o Token<'s>) -> bool>(&mut self, condition: F) -> Option<LocatedToken<'o, 's>> {
+        Self::token_from_offsets(self.source.next_if(|(token, _)| condition(token)).as_ref(), self.locations)
+    }
+
+    fn peek_next_token(&mut self) -> Option<LocatedToken<'o, 's>> {
+        Self::token_from_offsets(self.source.peek(), self.locations)
     }
 }
 
@@ -122,13 +146,13 @@ macro_rules! match_exhausted {
     };
 }
 
+fn expect_new_line_or_end(errors: &mut Vec<Error>, input: &mut SliceInput) {
+    //match input.
+}
+
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
-    let mut input = Input {
-        source: input.tokens().iter(),
-        locations: input.locations(),
-    };
-
+    let mut input = SliceInput::new(input.tokens(), input.locations());
     let mut tree = Vec::default();
     let mut errors = Vec::default();
 
