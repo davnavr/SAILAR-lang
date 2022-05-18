@@ -1,5 +1,6 @@
 //! Contains structures to represent the abstract syntax tree.
 
+use std::borrow::Cow;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -223,11 +224,26 @@ impl<'s> LiteralString<'s> {
         })
     }
 
+    /// Gets the contents of the string literal, if it did not contain any escape sequences.
+    pub fn as_original_str(&self) -> Result<&'s str, &str> {
+        match self.actual_contents {
+            None => Ok(self.original_contents),
+            Some(actual_contents) => Err(&actual_contents),
+        }
+    }
+
     pub fn as_str(&self) -> &str {
-        self.actual_contents
-            .as_ref()
-            .map(|contents| contents.as_ref())
-            .unwrap_or(&self.original_contents)
+        match self.as_original_str() {
+            Ok(original) => original,
+            Err(actual) => actual,
+        }
+    }
+
+    pub fn try_into_identifier(self) -> Result<Cow<'s, sailar::Id>, sailar::identifier::InvalidError> {
+        match self.actual_contents {
+            Some(actual_contents) => sailar::Identifier::try_from(actual_contents).map(Cow::Owned),
+            None => sailar::Id::from_str(self.original_contents).map(Cow::Borrowed),
+        }
     }
 }
 
@@ -236,6 +252,15 @@ impl<'s> TryFrom<&'s str> for LiteralString<'s> {
 
     fn try_from(literal: &'s str) -> Result<Self, Self::Error> {
         LiteralString::with_escape_sequences(literal, &mut String::default())
+    }
+}
+
+impl<'s> TryFrom<LiteralString<'s>> for Cow<'s, sailar::Id> {
+    type Error = sailar::identifier::InvalidError;
+
+    #[inline]
+    fn try_from(literal: LiteralString<'s>) -> Result<Self, Self::Error> {
+        literal.try_into_identifier()
     }
 }
 
@@ -286,8 +311,8 @@ pub enum Directive<'s> {
     /// .identifier "no symbol" ; Referred to by numeric index
     /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
     /// ```
-    /// Defines record containing a reusable identifier string.
-    Identifier(Option<Symbol<'s>>, LiteralString<'s>),
+    /// Defines a record containing a reusable identifier string.
+    Identifier(Option<Symbol<'s>>, Cow<'s, sailar::Id>),
 }
 
 #[cfg(test)]

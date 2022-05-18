@@ -23,6 +23,8 @@ pub enum ErrorKind {
     ExpectedIdentifierLiteral,
     #[error("\"\\{0}\" is not a valid escape sequence")]
     InvalidEscapeSequence(Box<str>),
+    #[error(transparent)]
+    InvalidIdentifierLiteral(#[from] sailar::identifier::InvalidError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -225,10 +227,12 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
             Token::IdentifierDirective => {
                 let symbol = None;
 
+                let literal_start_location;
                 let literal = match input.next_token() {
                     Some(((Token::LiteralString(contents), literal_offset), location)) => {
                         match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
                             Ok(literal) => {
+                                literal_start_location = location.start();
                                 end_location = location.end().clone();
                                 literal
                             }
@@ -252,8 +256,18 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
 
                 expect_new_line_or_end!(errors, input);
 
+                let identifier = match literal.try_into_identifier() {
+                    Ok(identifier) => identifier,
+                    Err(e) => fail_skip_line!(
+                        errors,
+                        e,
+                        ast::LocationRange::new(literal_start_location.clone(), end_location),
+                        input
+                    ),
+                };
+
                 tree.push(ast::Located::new(
-                    ast::Directive::Identifier(symbol, literal),
+                    ast::Directive::Identifier(symbol, identifier),
                     start_location,
                     end_location,
                 ));

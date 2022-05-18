@@ -66,15 +66,21 @@ impl TryFrom<FormatVersion<'_>> for versioning::Format {
     }
 }
 
+//struct SymbolMap<T> {
+//    items: Vec<T>,
+//}
+
 #[derive(Debug)]
 struct Directives<'t> {
     format_version: FormatVersion<'t>,
+    identifiers: Vec<Cow<'t, sailar::Id>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
 fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output) -> Directives<'t> {
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
+        identifiers: Default::default(),
     };
 
     for directive in input.tree().iter() {
@@ -101,6 +107,13 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     location.clone(),
                 )),
             },
+            ast::Directive::Identifier(symbol, identifier) => {
+                if symbol.is_some() {
+                    todo!("identifier symbols not yet supported");
+                }
+
+                directives.identifiers.push(identifier);
+            }
             _ => todo!("assemble {:?}", directive),
         }
     }

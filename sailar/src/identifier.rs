@@ -92,6 +92,11 @@ impl Identifier {
     }
 
     #[inline]
+    pub fn from_boxed_str(identifier: Box<str>) -> Result<Self, InvalidError> {
+        Self::from_string(identifier.into_string())
+    }
+
+    #[inline]
     pub fn from_str(identifier: &str) -> Result<Self, InvalidError> {
         Id::from_str(identifier)?;
         Ok(Self(identifier.to_owned()))
@@ -157,6 +162,15 @@ impl TryFrom<String> for Identifier {
     #[inline]
     fn try_from(identifier: String) -> Result<Self, InvalidError> {
         Self::from_string(identifier)
+    }
+}
+
+impl TryFrom<Box<str>> for Identifier {
+    type Error = InvalidError;
+
+    #[inline]
+    fn try_from(identifier: Box<str>) -> Result<Self, InvalidError> {
+        Self::from_boxed_str(identifier)
     }
 }
 
