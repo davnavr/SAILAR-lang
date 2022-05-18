@@ -45,4 +45,5 @@ main {
     border-color: #555555;
     border-width: 1px;
     float: right;
+    overflow: scroll;
 }
