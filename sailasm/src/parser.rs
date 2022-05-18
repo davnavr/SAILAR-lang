@@ -21,6 +21,8 @@ pub enum ErrorKind {
     ExpectedNewLineOrEndOfFile,
     #[error("expected literal contents of identifier")]
     ExpectedIdentifierLiteral,
+    #[error("\"\\{0}\" is not a valid escape sequence")]
+    InvalidEscapeSequence(Box<str>),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -175,6 +177,7 @@ macro_rules! expect_new_line_or_end {
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = SliceInput::new(input.tokens(), input.locations());
+    let mut character_buffer = String::default();
     let mut tree = Vec::default();
     let mut errors = Vec::default();
 
@@ -218,16 +221,37 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                 ));
             }
             Token::IdentifierDirective => {
-                // symbol
+                let symbol = None;
 
                 let literal = match input.next_token() {
-                    Some((Token::LiteralString(contents), _)) => {
-                        todo!("lit")
+                    Some((Token::LiteralString(contents), location)) => {
+                        match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
+                            Ok(literal) => {
+                                end_location = location.end().clone();
+                                literal
+                            }
+                            Err(e) => {
+                                let escape_sequence_offset = e.byte_offset();
+                                let escape_start_location = start_location; // TODO: Have input return original offsets of token as well.
+                                fail_skip_line!(
+                                    errors,
+                                    ErrorKind::InvalidEscapeSequence(e.take_sequence()),
+                                    ast::LocationRange::new(todo!(), todo!()),
+                                    input
+                                );
+                            }
+                        }
                     }
                     bad => match_exhausted!(errors, ErrorKind::ExpectedIdentifierLiteral, bad, input),
                 };
 
-                todo!("id")
+                expect_new_line_or_end!(errors, input);
+
+                tree.push(ast::Located::new(
+                    ast::Directive::Identifier(symbol, literal),
+                    start_location,
+                    end_location,
+                ));
             }
             Token::Newline => (),
             Token::Unknown | _ => fail_continue!(errors, ErrorKind::UnknownToken, location),

@@ -169,6 +169,10 @@ impl InvalidEscapeSequenceError {
     pub fn sequence(&self) -> &str {
         &self.sequence
     }
+
+    pub(crate) fn take_sequence(self) -> Box<str> {
+        self.sequence
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -294,7 +298,9 @@ mod tests {
     fn basic_literal_string_with_escape_sequences_is_valid() {
         assert_eq!(
             "test\nfor\tthings\r\nthat work\\",
-            LiteralString::try_from("test\\nfor\\tthings\\r\\nthat work\\\\").unwrap().as_str()
+            LiteralString::try_from("test\\nfor\\tthings\\r\\nthat work\\\\")
+                .unwrap()
+                .as_str()
         );
     }
 }
