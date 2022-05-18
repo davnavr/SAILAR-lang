@@ -20,7 +20,9 @@ impl PrintWrapper {
 
     fn print_error(&self, message: &str, location: Option<&sailasm::ast::LocationRange>) -> JsResult<()> {
         fn convert_location_number(number: sailasm::ast::LocationNumber) -> JsResult<JsValue> {
-            Ok(JsValue::from(u32::try_from(number.get()).map_err(|e| JsValue::from(e.to_string()))?))
+            Ok(JsValue::from(
+                u32::try_from(number.get()).map_err(|e| JsValue::from(e.to_string()))?,
+            ))
         }
 
         let js_location = match location {
@@ -51,6 +53,7 @@ pub fn register_panic_hook() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 }
 
+// TODO: Could return a Vec<u8>?
 #[wasm_bindgen]
 pub fn assemble(input: &str, print_output: JsFunction, print_error: JsFunction) -> JsResult<()> {
     let print_wrapper = PrintWrapper {
@@ -59,7 +62,14 @@ pub fn assemble(input: &str, print_output: JsFunction, print_error: JsFunction) 
     };
 
     match sailasm::assemble(input) {
-        Ok(module) => Ok(()), // TODO: Output the module.
+        Ok(module) => {
+            let mut buffer = Vec::default();
+            module.write_to(&mut buffer).unwrap();
+            // Safety: Module is valid as it is output of assembler.
+            let raw = unsafe { sailar::binary::RawModule::from_vec_unchecked(buffer) };
+            print_wrapper.print_output(&raw.hex_dump_to_string())?;
+            Ok(())
+        }
         Err(errors) => {
             use std::fmt::Write as _;
 

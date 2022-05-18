@@ -21,6 +21,7 @@ CodeMirror.defineSimpleMode(assemblerModeName, {
 
 let globalAssemblyLinter;
 
+// TODO: Could accept extra parameter to assembler and other state here (see javascript-lint).
 CodeMirror.registerHelper("lint", assemblerModeName, function(text) {
     // TODO: Figure out if call to asm.assemble can go here.
     if (globalAssemblyLinter !== undefined) {
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async (_) => {
 
             function appendOutputMessage(message) {
                 if (errors.length === 0) {
+                    output.innerHTML += message;
                 }
             }
 
