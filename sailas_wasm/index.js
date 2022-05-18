@@ -14,31 +14,36 @@ document.addEventListener('DOMContentLoaded', async (event) => {
     const refreshCodeEditor = setTimeout(() => editor.refresh(), 0);
 
     const initializeAssembler = rustWebAssembly.then((asm) => {
-        let outputContentCache = '';
+        asm.register_panic_hook();
+
+        const errorMarkOptions = {
+            className: '.cm-error',
+        };
 
         function appendOutputMessage(message) {
-            outputContentCache += message;
+            output.innerHTML += message;
         }
 
         function appendOutputError(error, locations) {
-            outputContentCache += 'error';
+            output.innerHTML += 'error';
             if (locations !== null) {
-                outputContentCache += `(${locations[0]},${locations[1]})-(${locations[2]},${locations[3]})`;
+                output.innerHTML += `(${locations[0]},${locations[1]})-(${locations[2]},${locations[3]})`;
+                editor.markText({ line: locations[0], ch: locations[1], }, { line: locations[2], ch: locations[3] }, errorMarkOptions);
             }
-            outputContentCache += ': ' + error + '\n';
+            output.innerHTML += ': ' + error + '\n';
         }
 
-        function update(editor) {
-            outputContentCache = '';
+        function update() {
+            output.innerHTML = '';
+
+            // TODO: Clear old marks with getAllMarks()?
 
             asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
-
-            output.innerHTML = outputContentCache;
         }
 
         editor.on('update', update);
 
-        update(editor);
+        update();
     }).catch(console.error);
 
     await initializeAssembler;

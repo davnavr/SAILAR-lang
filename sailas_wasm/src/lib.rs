@@ -42,6 +42,11 @@ impl PrintWrapper {
 }
 
 #[wasm_bindgen]
+pub fn register_panic_hook() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+}
+
+#[wasm_bindgen]
 pub fn assemble(input: &str, print_output: JsFunction, print_error: JsFunction) -> JsResult<()> {
     let print_wrapper = PrintWrapper {
         output_function: print_output,
