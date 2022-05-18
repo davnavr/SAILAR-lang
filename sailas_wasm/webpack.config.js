@@ -14,7 +14,14 @@ module.exports = {
             title: 'Interactive Assembler',
             template: 'index.html'
         }),
-        new HtmlWebpackTagsPlugin({ tags: ['index.css', './node_modules/codemirror/lib/codemirror.css'], append: true }),
+        new HtmlWebpackTagsPlugin({
+            tags: [
+                'index.css',
+                './node_modules/codemirror/lib/codemirror.css',
+                './node_modules/codemirror/addon/lint/lint.css'
+            ],
+            append: true
+        }),
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, ".")
         }),
