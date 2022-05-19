@@ -39,6 +39,11 @@ document.addEventListener('DOMContentLoaded', async (_) => {
      */
     const outputTypeSelection = document.getElementById('output-type');
 
+    /**
+     * @type {HTMLButtonElement}
+     */
+    const outputDownloadButton = document.getElementById('output-download');
+
     const output = document.getElementById('output-area').appendChild(document.createElement('pre'));
     output.style = 'width: 100%; height: 100%; margin: 0';
 
@@ -57,6 +62,7 @@ document.addEventListener('DOMContentLoaded', async (_) => {
             let errors = [];
 
             function appendOutputError(error, locations) {
+                outputDownloadButton.onclick = null;
                 output.innerHTML = '';
                 output.innerHTML += 'error';
 
@@ -79,6 +85,23 @@ document.addEventListener('DOMContentLoaded', async (_) => {
              * @param {Uint8Array} module 
              */
             function writeAssemblyOutput(module) {
+                const blob = new Blob([ module.buffer ], { type: 'application/octet-stream' });
+                
+                outputDownloadButton.onclick = () => {
+                    const url = URL.createObjectURL(blob);
+                    
+                    /**
+                     * @type {HTMLAnchorElement}
+                     */
+                    const blobAnchorElement = document.body.appendChild(document.createElement('a'));
+                    blobAnchorElement.href = url;
+                    blobAnchorElement.download = 'module.sail';
+
+                    blobAnchorElement.click();
+                    document.body.removeChild(blobAnchorElement);
+                    URL.revokeObjectURL(url);
+                };
+
                 output.innerHTML = '';
 
                 switch (outputTypeSelection.selectedIndex) {
