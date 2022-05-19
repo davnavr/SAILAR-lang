@@ -40,10 +40,24 @@ main {
     width: 100%;
 }
 
-#output {
-    border-left-style: solid;
+.bordered {
     border-color: #555555;
     border-width: 1px;
+}
+
+#output {
+    display: flex;
+    border-left-style: solid;
+    flex-direction: column;
     float: right;
+}
+
+.tab-header {
+    border-bottom-style: solid;
+    padding-bottom: 10px;
+}
+
+#output-area {
+    flex: 1;
     overflow: scroll;
 }

@@ -33,7 +33,7 @@ CodeMirror.registerHelper("lint", assemblerModeName, function(text) {
 });
 
 document.addEventListener('DOMContentLoaded', async (_) => {
-    const output = document.getElementById('output').appendChild(document.createElement("pre"));
+    const output = document.getElementById('output-area').appendChild(document.createElement("pre"));
     output.style = "width: 100%; height: 100%; margin: 0";
 
     const editor = CodeMirror((e) => { document.getElementById('input').appendChild(e); }, {
@@ -51,12 +51,6 @@ document.addEventListener('DOMContentLoaded', async (_) => {
             output.innerHTML = '';
 
             let errors = [];
-
-            function appendOutputMessage(message) {
-                if (errors.length === 0) {
-                    output.innerHTML += message;
-                }
-            }
 
             function appendOutputError(error, locations) {
                 output.innerHTML += 'error';
@@ -76,7 +70,14 @@ document.addEventListener('DOMContentLoaded', async (_) => {
                 output.innerHTML += ': ' + error + '\n';
             }
 
-            asm.assemble(editor.getValue(), appendOutputMessage, appendOutputError);
+            /**
+             * @param {Uint8Array} module 
+             */
+            function writeAssemblyOutput(module) {
+
+            }
+
+            asm.assemble(editor.getValue(), appendOutputError, writeAssemblyOutput);
             
             return errors;
         }

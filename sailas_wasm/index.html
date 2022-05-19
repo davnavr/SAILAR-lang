@@ -11,7 +11,16 @@
     </header>
     <main>
         <div id="input"></div>
-        <div id="output"></div>
+        <div id="output" class="bordered">
+            <header class="tab-header bordered">
+                <label>Output:</label>
+                <select id="output-type">
+                    <option>Raw Bytes</option>
+                    <option>Base64</option>
+                </select>
+            </header>
+            <section id="output-area"></section>
+        </div>
     </main>
 </body>
 
