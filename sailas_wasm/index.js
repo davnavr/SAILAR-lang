@@ -6,6 +6,7 @@ require('codemirror/addon/mode/simple.js');
 require('codemirror/addon/lint/lint.js');
 
 const assemblerModeName = "sailar";
+const hexDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
 
 CodeMirror.defineSimpleMode(assemblerModeName, {
     start: [
@@ -33,11 +34,16 @@ CodeMirror.registerHelper("lint", assemblerModeName, function(text) {
 });
 
 document.addEventListener('DOMContentLoaded', async (_) => {
-    const output = document.getElementById('output-area').appendChild(document.createElement("pre"));
-    output.style = "width: 100%; height: 100%; margin: 0";
+    /**
+     * @type {HTMLSelectElement}
+     */
+    const outputTypeSelection = document.getElementById('output-type');
+
+    const output = document.getElementById('output-area').appendChild(document.createElement('pre'));
+    output.style = 'width: 100%; height: 100%; margin: 0';
 
     const editor = CodeMirror((e) => { document.getElementById('input').appendChild(e); }, {
-        gutters: ["CodeMirror-lint-markers"],
+        gutters: ['CodeMirror-lint-markers'],
         lineNumbers: true,
         lint:  true,
         mode: assemblerModeName,
@@ -48,11 +54,10 @@ document.addEventListener('DOMContentLoaded', async (_) => {
 
     const initializeAssembler = rustWebAssembly.then((asm) => {
         function update() {
-            output.innerHTML = '';
-
             let errors = [];
 
             function appendOutputError(error, locations) {
+                output.innerHTML = '';
                 output.innerHTML += 'error';
 
                 if (locations !== null) {
@@ -74,7 +79,46 @@ document.addEventListener('DOMContentLoaded', async (_) => {
              * @param {Uint8Array} module 
              */
             function writeAssemblyOutput(module) {
+                output.innerHTML = '';
 
+                switch (outputTypeSelection.selectedIndex) {
+                    case 0:
+                        const table = output.appendChild(document.createElement('table'));
+                        const header = table.appendChild(document.createElement('tr'));
+
+                        function appendTableHeader(title) {
+                            header.appendChild(document.createElement('th')).innerText = title;
+                        }
+
+                        table.id = 'byte-table';
+                        appendTableHeader('Address');
+                        hexDigits.forEach((v) => appendTableHeader('0' + v));
+                        appendTableHeader('ASCII');
+
+                        let row;
+                        let rowAsciiCharacters = [];
+
+                        for (let index = 0; index < module.length; index++) {
+                            if (index % 16 === 0) {
+                                row = table.appendChild(document.createElement('tr'));
+                                row.appendChild(document.createElement('td')).innerText = index
+                                    .toString(16)
+                                    .toUpperCase()
+                                    .padStart(8, '0');
+
+                                rowAsciiCharacters = [];
+                            }
+
+                            row.appendChild(document.createElement('td')).innerText = module[index]
+                                .toString(16)
+                                .toUpperCase()
+                                .padStart(2, '0');
+                        }
+
+                        break;
+                    default:
+                        output.innerHTML = 'unknown output type';
+                }
             }
 
             asm.assemble(editor.getValue(), appendOutputError, writeAssemblyOutput);
