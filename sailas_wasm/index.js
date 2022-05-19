@@ -14,7 +14,7 @@ CodeMirror.defineSimpleMode(assemblerModeName, {
         { regex: /[a-zA-Z$][a-zA-Z$]+/, token: 'atom' },
         { regex: /;.*/, token: 'comment' },
         { regex: /(0x[0-9a-fA-F][0-9a-fA-F_]*)|(0b[01][01_]*)|([0-9][0-9_]*)/, token: 'number' },
-        { regex: /"([a-zA-Z!:\?0-9\-_\+\*\/]|\\[trn\\"'])*"/, token: 'string' }
+        { regex: /"([a-zA-Z !:\?0-9\-_\+\*\/]|\\[trn\\"'])*"/, token: 'string' }
     ],
     meta: {
         lineComment: ';',

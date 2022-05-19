@@ -209,7 +209,7 @@ pub enum Token<'s> {
     IdentifierDirective,
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
-    #[regex("\"[a-zA-Z0-9_\\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
+    #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
     LiteralString(&'s str),
     #[regex("(0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*", literal_integer_contents)]
     LiteralInteger(LiteralDigits<'s>),
