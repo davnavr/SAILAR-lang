@@ -63,7 +63,10 @@ where
     }
 }
 
-pub fn assemble<'i: 's, 's>(input: &'i str, parse_tree: &'s mut Option<parser::Output<'s>>) -> Result<sailar::binary::Builder<'s>, Vec<AnyError>> {
+pub fn assemble<'i: 's, 's>(
+    input: &'i str,
+    parse_tree: &'s mut Option<parser::Output<'s>>,
+) -> Result<sailar::binary::Builder<'s>, Vec<AnyError>> {
     let mut errors = Vec::default();
     let tokens = lexer::tokenize(input);
     let tree: &'s _ = parse_tree.insert(parser::parse(&tokens));

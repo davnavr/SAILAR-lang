@@ -198,6 +198,10 @@ fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option
     Some(LiteralDigits { base, digits })
 }
 
+fn unknown_directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
+    &lex.slice()[1..]
+}
+
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
@@ -215,6 +219,8 @@ pub enum Token<'s> {
     LiteralInteger(LiteralDigits<'s>),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
+    #[regex(r"\.[a-zA-Z]+", unknown_directive)]
+    UnknownDirective(&'s str),
     #[error]
     #[regex(r"[ \t]+", logos::skip)]
     #[regex(r";[ \t\w\d;\?!\\/\.\*\+-=#]*", logos::skip)]

@@ -72,7 +72,7 @@ A record that describes an aspect of the module. The content of a header field r
 
 Field Name|Description
 ---|---
-`mID`|Indicates that a [module identifier](#module-identifier) follows the field name, indicating the name and version of the current module.
+`id`|Indicates that a [module identifier](#module-identifier) follows the field name, indicating the name and version of the current module.
 
 ## Identifier Record
 Provides a way to use duplicated [identifiers](#identifiers) without having to copy and paste their contents all over the module.

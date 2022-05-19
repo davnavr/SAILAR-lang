@@ -9,8 +9,10 @@ use std::ops::Range;
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
+    #[error("unknown directive \".{0}\"")]
+    UnknownDirective(Box<str>),
     #[error("{0} is not a valid format version kind")]
-    InvalidFormatVersionKind(String),
+    InvalidFormatVersionKind(Box<str>),
     #[error("expected format version kind")]
     ExpectedFormatVersionKind,
     #[error("expected integer format version")]
@@ -200,7 +202,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
                     Some(((Token::Word("minor"), _), _)) => ast::FormatVersionKind::Minor,
                     Some(((Token::Word(bad), _), location)) => {
-                        fail_skip_line!(errors, ErrorKind::InvalidFormatVersionKind(bad.to_string()), location, input)
+                        fail_skip_line!(errors, ErrorKind::InvalidFormatVersionKind(Box::from(*bad)), location, input)
                     }
                     bad => match_exhausted!(errors, ErrorKind::ExpectedFormatVersionKind, bad, input),
                 };
@@ -273,6 +275,9 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                 ));
             }
             Token::Newline => (),
+            Token::UnknownDirective(directive) => {
+                fail_skip_line!(errors, ErrorKind::UnknownDirective(Box::from(*directive)), location, input)
+            }
             Token::Unknown | _ => fail_continue!(errors, ErrorKind::UnknownToken, location),
         }
     }
