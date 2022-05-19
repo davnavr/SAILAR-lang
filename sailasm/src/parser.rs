@@ -9,6 +9,8 @@ use std::ops::Range;
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
+    #[error("expected end of line or file")]
+    ExpectedNewLineOrEndOfFile,
     #[error("unknown directive \".{0}\"")]
     UnknownDirective(Box<str>),
     #[error("{0} is not a valid format version kind")]
@@ -19,8 +21,12 @@ pub enum ErrorKind {
     ExpectedFormatVersion,
     #[error("invalid format version: {0}")]
     InvalidFormatVersion(std::num::ParseIntError),
-    #[error("expected end of line or file")]
-    ExpectedNewLineOrEndOfFile,
+    #[error("expected metadata field name")]
+    ExpectedMetadataFieldName,
+    #[error("{0} is not a known metadata field name")]
+    UnknownMetadataFieldName(Box<str>),
+    #[error("expected metadata module name")]
+    ExpectedMetadataModuleName,
     #[error("expected literal contents of identifier")]
     ExpectedIdentifierLiteral,
     #[error("\"\\{0}\" is not a valid escape sequence")]
@@ -180,6 +186,33 @@ macro_rules! expect_new_line_or_end {
     };
 }
 
+/// Parsers a literal string that also qualifies as a valid SAILAR identifier.
+fn parse_literal_identifier<'s>(errors: &mut Vec<Error>, input: &mut SliceInput<'_, 's>, character_buffer: &mut String, missing_literal: impl Into<ErrorKind>) {
+    match input.next_token() {
+        Some(((Token::LiteralString(contents), literal_offset), location)) => match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
+            Ok(literal) => {
+                literal_start_location = location.start().clone();
+                end_location = location.end().clone();
+                literal
+            }
+            Err(e) => {
+                let escape_start_location = literal_offset.start + 1 + e.byte_offset();
+                let escape_end_location = escape_start_location + e.sequence().len() + 1;
+                fail_skip_line!(
+                    errors,
+                    ErrorKind::InvalidEscapeSequence(e.take_sequence()),
+                    ast::LocationRange::new(
+                        input.locations.get_location(escape_start_location).unwrap(),
+                        input.locations.get_location(escape_end_location).unwrap()
+                    ),
+                    input
+                );
+            }
+        },
+        bad => match_exhausted!(errors, missing_literal, bad, input),
+    }
+}
+
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut input = SliceInput::new(input.tokens(), input.locations());
@@ -187,6 +220,7 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
     let mut tree = Vec::default();
     let mut errors = Vec::default();
 
+    // TODO: Could split up parsers and all those helepr macros into functions that use CPS to avoid using "continue" statements
     while let Some(((token, _), location)) = input.next_token() {
         let start_location = location.start().clone();
         let end_location;
@@ -226,12 +260,32 @@ pub fn parse<'s>(input: &lexer::Output<'s>) -> Output<'s> {
                     end_location,
                 ));
             }
+            Token::MetadataDirective => match input.next_token() {
+                Some(((Token::Word("id"), _), _)) => {
+                    // TODO: Use helper function for parsing identifier string.
+                    let name = match input.next_token() {
+
+                        bad => match_exhausted!(errors, ErrorKind::ExpectedMetadataModuleName, bad, input),
+                    };
+
+                    // TODO: When parsing version when match_exhausted just do UnknownToken or ExpectedEofOrNewLine
+                    todo!("module id");
+                }
+                Some(((Token::Word(unknown), _), location)) => fail_skip_line!(
+                    errors,
+                    ErrorKind::UnknownMetadataFieldName(Box::from(*unknown)),
+                    location,
+                    input
+                ),
+                bad => match_exhausted!(errors, ErrorKind::ExpectedMetadataFieldName, bad, input),
+            },
             Token::IdentifierDirective => {
                 let symbol = None;
 
                 let literal_start_location;
                 let literal = match input.next_token() {
                     Some(((Token::LiteralString(contents), literal_offset), location)) => {
+                        // TODO: Make helper function for parsing identifier string.
                         match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
                             Ok(literal) => {
                                 literal_start_location = location.start().clone();

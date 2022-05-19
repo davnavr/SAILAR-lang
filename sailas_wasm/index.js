@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', async (_) => {
         lineNumbers: true,
         lint:  true,
         mode: assemblerModeName,
-        value: '.format major 0\n.format minor 18\n\n; Add additional directives below\n\n',
+        value: '.format major 0\n.format minor 18\n.metadata id "MyModule" 1.0.0\n; Add additional directives below\n\n',
     });
 
     const refreshCodeEditor = setTimeout(() => editor.refresh(), 0);

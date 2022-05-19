@@ -286,6 +286,11 @@ impl Display for FormatVersionKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum Metadata<'s> {
+    Identifier(Cow<'s, sailar::Id>, Box<[usize]>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'s> {
     /// ```text
     /// .array
@@ -307,6 +312,12 @@ pub enum Directive<'s> {
     /// ```
     /// Sets the major or minor format version of the module.
     Format(FormatVersionKind, u8),
+    /// ```text
+    /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module.
+    /// .metadata id "MyModuleNoVersion"
+    /// ```
+    /// Specifies information about the module.
+    Metadata(Metadata<'s>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
     /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.

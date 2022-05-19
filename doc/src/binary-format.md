@@ -66,8 +66,8 @@ Offset|Name|Size|Notes
 `1`|Record Count|`L`|A non-zero [integer](#integer-size) indicating the number of records in the array.
 `L + 1`|Records|?|The records in the array.
 
-## Header Field Record
-A record that describes an aspect of the module. The content of a header field record starts with a single
+## Metadata Record
+A record that describes an aspect of the module. The content of a metadata record starts with a single
 [identifier](#identifiers) called the field name, which indicates the meaning of the field's contents.
 
 Field Name|Description

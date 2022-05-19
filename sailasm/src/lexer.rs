@@ -209,6 +209,8 @@ pub enum Token<'s> {
     ArrayDirective,
     #[token(".format")]
     FormatDirective,
+    #[token(".metadata")]
+    MetadataDirective,
     #[token(".identifier")]
     IdentifierDirective,
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
