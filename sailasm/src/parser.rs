@@ -105,6 +105,15 @@ impl<'tree, 'source, S: Iterator<Item = &'tree (Token<'source>, Range<usize>)>> 
     fn peek_next_token(&mut self) -> Option<LocatedToken<'tree, 'source>> {
         Self::token_from_offsets(self.source.peek(), self.locations)
     }
+
+    fn skip_current_line(&mut self) {
+        loop {
+            match self.next_token() {
+                Some(((Token::Newline, _), _)) | None => break,
+                Some(_) => (),
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -125,20 +134,6 @@ impl<'source> Output<'source> {
     }
 }
 
-enum Parser<'tree, 'source> {
-    Pointer(fn(&mut State<'tree, 'source>) -> Option<Self>),
-    Closure(Box<dyn FnMut(&mut State<'tree, 'source>) -> Option<Self>>),
-}
-
-impl<'tree, 'source> Parser<'tree, 'source> {
-    fn parse(&mut self, state: &mut State<'tree, 'source>) -> Option<Self> {
-        match self {
-            Self::Pointer(pointer) => (pointer)(state),
-            Self::Closure(boxed) => (boxed)(state),
-        }
-    }
-}
-
 struct State<'tree, 'source> {
     input: SliceInput<'tree, 'source>,
     character_buffer: String,
@@ -146,188 +141,179 @@ struct State<'tree, 'source> {
 }
 
 impl<'tree, 'source> State<'tree, 'source> {
+    fn locations(&self) -> &'tree lexer::OffsetMap<'source> {
+        self.input.locations
+    }
+
     fn push_error<E: Into<ErrorKind>, L: Into<ast::LocationRange>>(&mut self, error: E, location: L) {
         self.output.errors.push(Error::new(error, location));
     }
-}
 
-macro_rules! fail_continue {
-    ($state: expr, $error: expr, $location: expr, $next_parser: expr) => {{
-        $state.push_error($error, $location);
-        return $next_parser.into();
-    }};
-}
-
-macro_rules! fail_skip_line {
-    ($state: expr, $error: expr, $location: expr, $next_parser: expr) => {{
-        $state.push_error($error, $location);
-
-        loop {
-            match $state.input.next_token() {
-                Some(((Token::Newline, _), _)) | None => break,
-                Some(_) => (),
-            }
-        }
-
-        return $next_parser.into();
-    }};
-}
-
-macro_rules! fail_match_exhausted {
-    ($state: expr, $error: expr, $token: expr, $next_parser: expr) => {
-        fail_continue!(
-            $state,
-            $error,
-            if let Some((_, location)) = $token {
-                location
-            } else {
-                $state.input.locations.get_last().unwrap().into()
-            },
-            $next_parser
-        )
-    };
-}
-
-macro_rules! expect_new_line_or_end {
-    ($state: expr, $next_parser: expr) => {
-        match $state.input.peek_next_token() {
+    fn expect_newline_or_end(&mut self) {
+        match self.input.peek_next_token() {
             Some(((Token::Newline, _), _)) | None => (),
             Some((_, location)) => {
                 let start_location = location.start();
                 let mut end_location = location.end().clone();
 
-                while let Some((_, location)) = $state.input.next_token_if(|next| !matches!(next, Token::Newline)) {
+                while let Some((_, location)) = self.input.next_token_if(|next| !matches!(next, Token::Newline)) {
                     end_location = location.end().clone();
                 }
 
-                fail_continue!(
-                    $state,
+                self.push_error(
                     ErrorKind::ExpectedNewLineOrEndOfFile,
                     ast::LocationRange::new(start_location.clone(), end_location),
-                    $next_parser
                 );
             }
         }
-    };
+    }
 }
 
-/// Parsers a literal string that also qualifies as a valid SAILAR identifier.
-fn parse_literal_identifier<'tree, 'source>(
-    state: &mut State<'tree, 'source>,
-    success_parser: impl FnOnce(ast::Located<ast::Identifier<'source>>) -> Parser<'tree, 'source>,
-    failed_parser: Parser<'tree, 'source>,
-) -> Option<Parser<'tree, 'source>> {
+fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::OffsetMap) -> ast::LocationRange {
+    token
+        .map(|(_, location)| location.clone())
+        .unwrap_or_else(|| locations.get_last().unwrap().into())
+}
+
+/// Parses a token containing a valid stirng literal.
+fn parse_literal_string<'t, 's>(
+    state: &mut State<'t, 's>,
+    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<ast::LiteralString<'s>>),
+    mut exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+) {
     match state.input.next_token() {
         Some(((Token::LiteralString(contents), literal_offset), location)) => {
             match ast::LiteralString::with_escape_sequences(contents, &mut state.character_buffer) {
-                Ok(literal) => match literal.try_into_identifier() {
-                    Ok(identifier) => {
-                        return Some(success_parser(ast::Located::with_range(identifier, location)));
-                    }
-                    Err(e) => fail_skip_line!(state, e, location, failed_parser),
-                },
-                Err(e) => {
-                    let escape_start_location = literal_offset.start + 1 + e.byte_offset();
-                    let escape_end_location = escape_start_location + e.sequence().len() + 1;
-                    fail_skip_line!(
-                        state,
-                        ErrorKind::InvalidEscapeSequence(e.take_sequence()),
+                Ok(s) => success(state, ast::Located::with_range(s, location)),
+                Err(error) => {
+                    let escape_start_location = literal_offset.start + 1 + error.byte_offset();
+                    let escape_end_location = escape_start_location + error.sequence().len() + 1;
+                    state.push_error(
+                        ErrorKind::InvalidEscapeSequence(error.take_sequence()),
                         ast::LocationRange::new(
                             state.input.locations.get_location(escape_start_location).unwrap(),
-                            state.input.locations.get_location(escape_end_location).unwrap()
+                            state.input.locations.get_location(escape_end_location).unwrap(),
                         ),
-                        failed_parser
                     );
                 }
             }
         }
-        bad => fail_match_exhausted!(state, ErrorKind::ExpectedIdentifierLiteral, bad, failed_parser),
+        bad => exhausted(state, bad),
     }
 }
 
-fn parse_format_directive<'tree, 'source>(state: &mut State<'tree, 'source>) -> Option<Parser<'tree, 'source>> {
-    let format_kind = match state.input.next_token() {
-        Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
-        Some(((Token::Word("minor"), _), _)) => ast::FormatVersionKind::Minor,
-        Some(((Token::Word(bad), _), location)) => fail_skip_line!(
-            state,
-            ErrorKind::InvalidFormatVersionKind(Box::from(*bad)),
-            location,
-            Parser::Pointer(parse_directive)
-        ),
-        bad => fail_match_exhausted!(
-            state,
-            ErrorKind::ExpectedFormatVersionKind,
-            bad,
-            Parser::Pointer(parse_directive)
-        ),
-    };
-
-    let end_location;
-    let format_version = match state.input.next_token() {
-        Some(((Token::LiteralInteger(digits), _), location)) => {
-            end_location = location.end().clone();
-            match u8::try_from(digits) {
-                Ok(version) => version,
-                Err(e) => fail_skip_line!(
-                    state,
-                    ErrorKind::InvalidFormatVersion(e),
-                    location,
-                    Parser::Pointer(parse_directive)
-                ),
+/// Parsers a literal string containing a valid SAILAR identifier.
+fn parse_literal_identifier<'t, 's>(
+    state: &mut State<'t, 's>,
+    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<ast::Identifier<'s>>),
+    exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+) {
+    parse_literal_string(
+        state,
+        |state, token| {
+            let (literal, location) = token.into();
+            match literal.try_into_identifier() {
+                Ok(identifier) => success(state, ast::Located::with_range(identifier, location)),
+                Err(error) => state.push_error(error, location),
             }
-        }
-        bad => fail_match_exhausted!(state, ErrorKind::ExpectedFormatVersion, bad, Parser::Pointer(parse_directive)),
-    };
-
-    expect_new_line_or_end!(state, Parser::Pointer(parse_directive));
-
-    state.output.tree.push(ast::Located::new(
-        ast::Directive::Format(format_kind, format_version),
-        todo!("location"), //state.current_location,
-        end_location,
-    ));
-
-    return Some(Parser::Pointer(parse_directive));
-}
-
-fn parse_directive<'tree, 'source>(state: &mut State<'tree, 'source>) -> Option<Parser<'tree, 'source>> {
-    state.input.next_token().and_then(|((token, _), location)| {
-        match token {
-            Token::Newline => (),
-            Token::ArrayDirective => state
-                .output
-                .tree
-                .push(ast::Located::with_range(ast::Directive::Array, location)),
-            Token::FormatDirective => return Some(Parser::Pointer(parse_format_directive)),
-            Token::UnknownDirective(directive) => fail_skip_line!(
-                state,
-                ErrorKind::UnknownDirective(Box::from(*directive)),
-                location,
-                Parser::Pointer(parse_directive)
-            ),
-            Token::Unknown | _ => fail_continue!(state, ErrorKind::UnknownToken, location, Parser::Pointer(parse_directive)),
-        }
-
-        Some(Parser::Pointer(parse_directive))
-    })
+        },
+        exhausted,
+    );
 }
 
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
-    let mut current_parser = Some(Parser::Pointer(parse_directive));
     let mut state = State {
         input: SliceInput::new(input.tokens(), input.locations()),
         character_buffer: String::default(),
         output: Output::default(),
     };
 
-    while let Some(mut parser) = current_parser {
-        current_parser = parser.parse(&mut state);
+    while let Some(((token, _), location)) = state.input.next_token() {
+        match token {
+            Token::Newline => (),
+            Token::ArrayDirective => state
+                .output
+                .tree
+                .push(ast::Located::with_range(ast::Directive::Array, location)),
+            Token::FormatDirective => {
+                let format_kind = match state.input.next_token() {
+                    Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
+                    Some(((Token::Word("minor"), _), _)) => ast::FormatVersionKind::Minor,
+                    Some(((Token::Word(bad), _), location)) => {
+                        state.push_error(ErrorKind::InvalidFormatVersionKind(Box::from(*bad)), location);
+                        state.input.skip_current_line();
+                        continue;
+                    }
+                    bad => {
+                        state.push_error(
+                            ErrorKind::ExpectedFormatVersionKind,
+                            token_location_or_last(bad.as_ref(), input.locations()),
+                        );
+                        state.input.skip_current_line();
+                        continue;
+                    }
+                };
+
+                let end_location;
+                let format_version = match state.input.next_token() {
+                    Some(((Token::LiteralInteger(digits), _), location)) => {
+                        end_location = location.end().clone();
+                        match u8::try_from(digits) {
+                            Ok(version) => version,
+                            Err(e) => {
+                                state.push_error(ErrorKind::InvalidFormatVersion(e), location);
+                                state.input.skip_current_line();
+                                continue;
+                            }
+                        }
+                    }
+                    bad => {
+                        state.push_error(
+                            ErrorKind::ExpectedFormatVersion,
+                            token_location_or_last(bad.as_ref(), input.locations()),
+                        );
+                        state.input.skip_current_line();
+                        continue;
+                    }
+                };
+
+                state.expect_newline_or_end();
+
+                state.output.tree.push(ast::Located::new(
+                    ast::Directive::Format(format_kind, format_version),
+                    location.start().clone(),
+                    end_location,
+                ));
+            }
+            Token::IdentifierDirective => {
+                let symbol = None;
+
+                parse_literal_identifier(
+                    &mut state,
+                    move |state, identifier| {
+                        let end_location = identifier.location().end().clone();
+                        state.output.tree.push(ast::Located::new(
+                            ast::Directive::Identifier(symbol.clone(), identifier),
+                            location.start().clone(),
+                            end_location,
+                        ));
+                    },
+                    |state, token| {
+                        state.push_error(
+                            ErrorKind::ExpectedIdentifierLiteral,
+                            token_location_or_last(token.as_ref(), state.locations()),
+                        )
+                    },
+                )
+            }
+            Token::UnknownDirective(directive) => state.push_error(ErrorKind::UnknownDirective(Box::from(*directive)), location),
+            Token::Unknown | _ => state.push_error(ErrorKind::UnknownToken, location),
+        }
     }
 
     state.output
-    
+
     //     match token {
     //         Token::MetadataDirective => match input.next_token() {
     //             Some(((Token::Word("id"), _), _)) => {
@@ -348,55 +334,6 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     //             ),
     //             bad => match_exhausted!(errors, ErrorKind::ExpectedMetadataFieldName, bad, input),
     //         },
-    //         Token::IdentifierDirective => {
-    //             let symbol = None;
-
-    //             let literal_start_location;
-    //             let literal = match input.next_token() {
-    //                 Some(((Token::LiteralString(contents), literal_offset), location)) => {
-    //                     // TODO: Make helper function for parsing identifier string.
-    //                     match ast::LiteralString::with_escape_sequences(contents, &mut character_buffer) {
-    //                         Ok(literal) => {
-    //                             literal_start_location = location.start().clone();
-    //                             end_location = location.end().clone();
-    //                             literal
-    //                         }
-    //                         Err(e) => {
-    //                             let escape_start_location = literal_offset.start + 1 + e.byte_offset();
-    //                             let escape_end_location = escape_start_location + e.sequence().len() + 1;
-    //                             fail_skip_line!(
-    //                                 errors,
-    //                                 ErrorKind::InvalidEscapeSequence(e.take_sequence()),
-    //                                 ast::LocationRange::new(
-    //                                     input.locations.get_location(escape_start_location).unwrap(),
-    //                                     input.locations.get_location(escape_end_location).unwrap()
-    //                                 ),
-    //                                 input
-    //                             );
-    //                         }
-    //                     }
-    //                 }
-    //                 bad => match_exhausted!(errors, ErrorKind::ExpectedIdentifierLiteral, bad, input),
-    //             };
-
-    //             expect_new_line_or_end!(errors, input);
-
-    //             let identifier = match literal.try_into_identifier() {
-    //                 Ok(identifier) => identifier,
-    //                 Err(e) => fail_skip_line!(
-    //                     errors,
-    //                     e,
-    //                     ast::LocationRange::new(literal_start_location, end_location),
-    //                     input
-    //                 ),
-    //             };
-
-    //             tree.push(ast::Located::new(
-    //                 ast::Directive::Identifier(symbol, identifier),
-    //                 start_location,
-    //                 end_location,
-    //             ));
-    //         }
     //     }
     // }
 }

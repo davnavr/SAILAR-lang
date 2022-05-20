@@ -162,6 +162,12 @@ impl<N> Located<N> {
     }
 }
 
+impl<N> From<Located<N>> for (N, LocationRange) {
+    fn from(located: Located<N>) -> Self {
+        (located.node, located.location)
+    }
+}
+
 // TODO: Make symbol a struct();
 pub type Symbol<'s> = Located<&'s sailar::Id>; // TODO: Make this a Cow.
 

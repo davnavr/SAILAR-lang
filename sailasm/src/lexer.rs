@@ -6,15 +6,15 @@ use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 
 #[derive(Debug)]
-pub struct OffsetMapBuilder<'s> {
-    lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
-    input: &'s str,
+pub struct OffsetMapBuilder<'source> {
+    lookup: Vec<(usize, ast::LocationNumber, &'source str)>,
+    input: &'source str,
     previous_offset: usize,
     next_line_number: ast::LocationNumber,
 }
 
-impl<'s> OffsetMapBuilder<'s> {
-    fn new(input: &'s str) -> Self {
+impl<'source> OffsetMapBuilder<'source> {
+    fn new(input: &'source str) -> Self {
         Self {
             lookup: Vec::with_capacity(16),
             input,
@@ -33,7 +33,7 @@ impl<'s> OffsetMapBuilder<'s> {
         self.next_line_number = ast::LocationNumber::new(self.next_line_number.get() + 1).unwrap();
     }
 
-    fn finish(mut self) -> OffsetMap<'s> {
+    fn finish(mut self) -> OffsetMap<'source> {
         let last_offset = self.input.len();
 
         match self.lookup.last() {
@@ -50,17 +50,17 @@ impl<'s> OffsetMapBuilder<'s> {
 
 /// Maps byte offsets into the input file into line and column numbers.
 #[derive(Clone, Debug)]
-pub struct OffsetMap<'s> {
+pub struct OffsetMap<'source> {
     bytes: Range<usize>,
-    lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
+    lookup: Vec<(usize, ast::LocationNumber, &'source str)>,
 }
 
-pub struct OffsetMapLocations<'m, 's> {
+pub struct OffsetMapLocations<'map, 'source> {
     bytes: Range<usize>,
-    lookup: &'m OffsetMap<'s>,
+    lookup: &'map OffsetMap<'source>,
 }
 
-impl<'s> std::iter::Iterator for OffsetMapLocations<'_, 's> {
+impl<'source> std::iter::Iterator for OffsetMapLocations<'_, 'source> {
     type Item = (usize, ast::Location);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,7 +75,7 @@ impl std::iter::ExactSizeIterator for OffsetMapLocations<'_, '_> {
     }
 }
 
-impl<'s> OffsetMap<'s> {
+impl<'source> OffsetMap<'source> {
     pub fn get_location(&self, offset: usize) -> Option<ast::Location> {
         if !self.lookup.is_empty() {
             match self.lookup.binary_search_by_key(&offset, |(o, _, _)| *o) {
@@ -100,7 +100,7 @@ impl<'s> OffsetMap<'s> {
     }
 
     /// Returns an iterator over each byte offset in the input and the corresponding line and column number.
-    pub fn iter_locations(&self) -> OffsetMapLocations<'_, 's> {
+    pub fn iter_locations(&self) -> OffsetMapLocations<'_, 'source> {
         OffsetMapLocations {
             bytes: self.bytes.clone(),
             lookup: self,
@@ -131,9 +131,9 @@ impl IntegerLiteralBase {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LiteralDigits<'s> {
+pub struct LiteralDigits<'source> {
     base: IntegerLiteralBase,
-    digits: &'s str,
+    digits: &'source str,
 }
 
 impl LiteralDigits<'_> {
@@ -230,26 +230,26 @@ pub enum Token<'s> {
 }
 
 #[derive(Debug)]
-pub struct Output<'s> {
-    tokens: Vec<(Token<'s>, Range<usize>)>,
-    offset_map: OffsetMap<'s>,
+pub struct Output<'source> {
+    tokens: Vec<(Token<'source>, Range<usize>)>,
+    offset_map: OffsetMap<'source>,
 }
 
-impl<'s> Output<'s> {
+impl<'source> Output<'source> {
     #[inline]
-    pub fn tokens(&self) -> &[(Token<'s>, Range<usize>)] {
+    pub fn tokens(&self) -> &[(Token<'source>, Range<usize>)] {
         &self.tokens
     }
 
     #[inline]
-    pub fn locations(&self) -> &OffsetMap<'s> {
+    pub fn locations(&self) -> &OffsetMap<'source> {
         &self.offset_map
     }
 }
 
-pub fn tokenize(input: &str) -> Output<'_> {
+pub fn tokenize<'source>(input: &'source str) -> Output<'source> {
     let mut tokens = Vec::default();
-    let mut lexer = Token::lexer_with_extras(input, OffsetMapBuilder::new(input));
+    let mut lexer = Token::lexer_with_extras(input, OffsetMapBuilder::<'source>::new(input));
     while let Some(token) = lexer.next() {
         let offset = lexer.span();
 
