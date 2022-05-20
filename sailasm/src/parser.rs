@@ -232,11 +232,11 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     while let Some(((token, _), location)) = state.input.next_token() {
         match token {
             Token::Newline => (),
-            Token::ArrayDirective => state
+            Token::Directive("array") => state
                 .output
                 .tree
                 .push(ast::Located::with_range(ast::Directive::Array, location)),
-            Token::FormatDirective => {
+            Token::Directive("format") => {
                 let format_kind = match state.input.next_token() {
                     Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
                     Some(((Token::Word("minor"), _), _)) => ast::FormatVersionKind::Minor,
@@ -286,7 +286,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     end_location,
                 ));
             }
-            Token::IdentifierDirective => {
+            Token::Directive("identifier") => {
                 let symbol = None;
 
                 parse_literal_identifier(
@@ -307,7 +307,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     },
                 )
             }
-            Token::UnknownDirective(directive) => state.push_error(ErrorKind::UnknownDirective(Box::from(*directive)), location),
+            Token::Directive(unknown) => state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), location),
             Token::Unknown | _ => state.push_error(ErrorKind::UnknownToken, location),
         }
     }

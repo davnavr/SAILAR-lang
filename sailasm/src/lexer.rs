@@ -198,21 +198,15 @@ fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option
     Some(LiteralDigits { base, digits })
 }
 
-fn unknown_directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
+fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
     &lex.slice()[1..]
 }
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
-    #[token(".array")]
-    ArrayDirective,
-    #[token(".format")]
-    FormatDirective,
-    #[token(".metadata")]
-    MetadataDirective,
-    #[token(".identifier")]
-    IdentifierDirective,
+    #[regex(r"\.[a-zA-Z]+", directive)]
+    Directive(&'s str),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
@@ -221,8 +215,6 @@ pub enum Token<'s> {
     LiteralInteger(LiteralDigits<'s>),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
-    #[regex(r"\.[a-zA-Z]+", unknown_directive)]
-    UnknownDirective(&'s str),
     #[error]
     #[regex(r"[ \t]+", logos::skip)]
     #[regex(r";[ \t\w\d;\?!\\/\.\*\+-=#]*", logos::skip)]
@@ -282,7 +274,7 @@ mod tests {
         let output = tokenize(".format major 0\n.format minor 12 ; Comment\n");
 
         let expected_tokens = [
-            (Token::FormatDirective, 0usize..7),
+            (Token::Directive("format"), 0usize..7),
             (Token::Word("major"), 8..13),
             (
                 Token::LiteralInteger(LiteralDigits {
@@ -292,7 +284,7 @@ mod tests {
                 14..15,
             ),
             (Token::Newline, 15..16),
-            (Token::FormatDirective, 16..23),
+            (Token::Directive("format"), 16..23),
             (Token::Word("minor"), 24..29),
             (
                 Token::LiteralInteger(LiteralDigits {
