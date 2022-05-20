@@ -205,6 +205,14 @@ fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
+    #[token(".")]
+    Period,
+    #[token(",")]
+    Comma,
+    #[token("(")]
+    OpenParenthesis,
+    #[token(")")]
+    CloseParenthesis,
     #[regex(r"\.[a-zA-Z]+", directive)]
     Directive(&'s str),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
