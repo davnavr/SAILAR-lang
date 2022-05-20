@@ -48,11 +48,11 @@ impl Error {
 }
 
 #[derive(Debug)]
-enum FormatVersion<'t> {
+enum FormatVersion<'tree> {
     Unspecified,
-    MajorOnly(u8, &'t ast::LocationRange),
-    MinorOnly(u8, &'t ast::LocationRange),
-    Full(versioning::Format, &'t ast::LocationRange, &'t ast::LocationRange),
+    MajorOnly(u8, &'tree ast::LocationRange),
+    MinorOnly(u8, &'tree ast::LocationRange),
+    Full(versioning::Format, &'tree ast::LocationRange, &'tree ast::LocationRange),
 }
 
 impl TryFrom<FormatVersion<'_>> for versioning::Format {
@@ -73,13 +73,13 @@ impl TryFrom<FormatVersion<'_>> for versioning::Format {
 //}
 
 #[derive(Debug)]
-struct Directives<'t> {
-    format_version: FormatVersion<'t>,
-    identifiers: Vec<&'t sailar::Id>,
+struct Directives<'tree> {
+    format_version: FormatVersion<'tree>,
+    identifiers: Vec<&'tree sailar::Id>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
-fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output) -> Directives<'t> {
+fn get_record_definitions<'tree>(errors: &mut Vec<Error>, input: &'tree parser::Output) -> Directives<'tree> {
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
         identifiers: Default::default(),
@@ -114,7 +114,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     todo!("identifier symbols not yet supported");
                 }
 
-                directives.identifiers.push(identifier);
+                directives.identifiers.push(identifier.node());
             }
             _ => todo!("assemble {:?}", directive),
         }
@@ -124,7 +124,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives<'s>) -> Builder<'s> {
+fn assemble_directives<'tree>(errors: &mut Vec<Error>, directives: Directives<'tree>) -> Builder<'tree> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
@@ -151,7 +151,7 @@ fn assemble_directives<'s>(errors: &mut Vec<Error>, directives: Directives<'s>) 
 }
 
 /// Assembles a SAILAR module from an abstract syntax tree.
-pub fn assemble<'i: 's, 's>(input: &'i parser::Output<'s>) -> Result<Builder<'s>, Vec<Error>> {
+pub fn assemble<'tree, 'source: 'tree>(input: &'tree parser::Output<'source>) -> Result<Builder<'tree>, Vec<Error>> {
     let mut errors = Vec::default();
     let directives = get_record_definitions(&mut errors, input);
     let module = assemble_directives(&mut errors, directives);

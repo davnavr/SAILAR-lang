@@ -20,6 +20,11 @@ pub struct Location {
 }
 
 impl Location {
+    pub const START: Self = Self {
+        line: LOCATION_NUMBER_START,
+        column: LOCATION_NUMBER_START,
+    };
+
     pub fn new(line: LocationNumber, column: LocationNumber) -> Self {
         Self { line, column }
     }
@@ -60,6 +65,11 @@ pub struct LocationRange {
 }
 
 impl LocationRange {
+    pub const START: Self = Self {
+        start: Location::START,
+        end: Location::START,
+    };
+
     pub fn new(start: Location, end: Location) -> Self {
         if start > end {
             panic!("end location {} must not come before start location {}", end, start);
@@ -130,11 +140,15 @@ pub struct Located<N> {
 }
 
 impl<N> Located<N> {
-    pub fn new(node: N, start: Location, end: Location) -> Self {
+    pub fn with_range<L: Into<LocationRange>>(node: N, location: L) -> Self {
         Self {
             node,
-            location: LocationRange::new(start, end),
+            location: location.into(),
         }
+    }
+
+    pub fn new(node: N, start: Location, end: Location) -> Self {
+        Self::with_range(node, LocationRange::new(start, end))
     }
 
     #[inline]
@@ -148,7 +162,8 @@ impl<N> Located<N> {
     }
 }
 
-pub type Symbol<'s> = Located<&'s sailar::Id>;
+// TODO: Make symbol a struct();
+pub type Symbol<'s> = Located<&'s sailar::Id>; // TODO: Make this a Cow.
 
 #[derive(Debug, thiserror::Error)]
 #[error("\"\\{sequence}\" is not a valid escape sequence")]
@@ -177,14 +192,16 @@ impl InvalidEscapeSequenceError {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LiteralString<'s> {
-    original_contents: &'s str,
+pub struct LiteralString<'source> {
+    original_contents: &'source str,
     actual_contents: Option<Box<str>>,
 }
 
-impl<'s> LiteralString<'s> {
+pub type Identifier<'source> = Cow<'source, sailar::Id>;
+
+impl<'source> LiteralString<'source> {
     /// Creates a string literal from its contents, which can pontentially contain escape sequences.
-    pub fn with_escape_sequences(contents: &'s str, buffer: &mut String) -> Result<Self, InvalidEscapeSequenceError> {
+    pub fn with_escape_sequences(contents: &'source str, buffer: &mut String) -> Result<Self, InvalidEscapeSequenceError> {
         buffer.clear();
 
         let mut characters = contents.char_indices();
@@ -225,7 +242,7 @@ impl<'s> LiteralString<'s> {
     }
 
     /// Gets the contents of the string literal, if it did not contain any escape sequences.
-    pub fn as_original_str(&self) -> Result<&'s str, &str> {
+    pub fn as_original_str(&self) -> Result<&'source str, &str> {
         match &self.actual_contents {
             None => Ok(self.original_contents),
             Some(actual_contents) => Err(&actual_contents),
@@ -239,7 +256,7 @@ impl<'s> LiteralString<'s> {
         }
     }
 
-    pub fn try_into_identifier(self) -> Result<Cow<'s, sailar::Id>, sailar::identifier::InvalidError> {
+    pub fn try_into_identifier(self) -> Result<Identifier<'source>, sailar::identifier::InvalidError> {
         match self.actual_contents {
             Some(actual_contents) => sailar::Identifier::try_from(actual_contents).map(Cow::Owned),
             None => sailar::Id::from_str(self.original_contents).map(Cow::Borrowed),
@@ -247,19 +264,19 @@ impl<'s> LiteralString<'s> {
     }
 }
 
-impl<'s> TryFrom<&'s str> for LiteralString<'s> {
+impl<'source> TryFrom<&'source str> for LiteralString<'source> {
     type Error = InvalidEscapeSequenceError;
 
-    fn try_from(literal: &'s str) -> Result<Self, Self::Error> {
+    fn try_from(literal: &'source str) -> Result<Self, Self::Error> {
         LiteralString::with_escape_sequences(literal, &mut String::default())
     }
 }
 
-impl<'s> TryFrom<LiteralString<'s>> for Cow<'s, sailar::Id> {
+impl<'source> TryFrom<LiteralString<'source>> for Identifier<'source> {
     type Error = sailar::identifier::InvalidError;
 
     #[inline]
-    fn try_from(literal: LiteralString<'s>) -> Result<Self, Self::Error> {
+    fn try_from(literal: LiteralString<'source>) -> Result<Self, Self::Error> {
         literal.try_into_identifier()
     }
 }
@@ -286,12 +303,12 @@ impl Display for FormatVersionKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Metadata<'s> {
-    Identifier(Cow<'s, sailar::Id>, Box<[usize]>),
+pub enum Metadata<'source> {
+    Identifier(Identifier<'source>, Box<[usize]>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Directive<'s> {
+pub enum Directive<'source> {
     /// ```text
     /// .array
     /// ```
@@ -317,13 +334,13 @@ pub enum Directive<'s> {
     /// .metadata id "MyModuleNoVersion"
     /// ```
     /// Specifies information about the module.
-    Metadata(Metadata<'s>),
+    Metadata(Metadata<'source>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
     /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
     /// ```
     /// Defines a record containing a reusable identifier string.
-    Identifier(Option<Symbol<'s>>, Cow<'s, sailar::Id>),
+    Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
 }
 
 #[cfg(test)]
