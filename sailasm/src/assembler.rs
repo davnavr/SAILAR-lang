@@ -48,22 +48,22 @@ impl Error {
 }
 
 #[derive(Debug)]
-enum FormatVersion<'tree> {
+enum FormatVersion {
     Unspecified,
-    MajorOnly(u8, &'tree ast::LocationRange),
-    MinorOnly(u8, &'tree ast::LocationRange),
-    Full(versioning::Format, &'tree ast::LocationRange, &'tree ast::LocationRange),
+    MajorOnly(u8),
+    MinorOnly(u8),
+    Full(versioning::Format),
 }
 
-impl TryFrom<FormatVersion<'_>> for versioning::Format {
+impl TryFrom<FormatVersion> for versioning::Format {
     type Error = Error;
 
     fn try_from(version: FormatVersion) -> Result<Self, Error> {
         match version {
             FormatVersion::Unspecified => Ok(*versioning::SupportedFormat::MINIMUM),
-            FormatVersion::MajorOnly(major, _) => Ok(Self::new(major, 0)),
-            FormatVersion::MinorOnly(_, _) => Err(Error::new(ErrorKind::MissingMajorFormatVersion, None)),
-            FormatVersion::Full(full, _, _) => Ok(full),
+            FormatVersion::MajorOnly(major) => Ok(Self::new(major, 0)),
+            FormatVersion::MinorOnly(_) => Err(Error::new(ErrorKind::MissingMajorFormatVersion, None)),
+            FormatVersion::Full(full) => Ok(full),
         }
     }
 }
@@ -73,13 +73,13 @@ impl TryFrom<FormatVersion<'_>> for versioning::Format {
 //}
 
 #[derive(Debug)]
-struct Directives<'tree> {
-    format_version: FormatVersion<'tree>,
-    identifiers: Vec<&'tree sailar::Id>,
+struct Directives<'t> {
+    format_version: FormatVersion,
+    identifiers: Vec<&'t sailar::Id>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
-fn get_record_definitions<'tree>(errors: &mut Vec<Error>, input: &'tree parser::Output) -> Directives<'tree> {
+fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output) -> Directives<'t> {
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
         identifiers: Default::default(),
@@ -88,25 +88,25 @@ fn get_record_definitions<'tree>(errors: &mut Vec<Error>, input: &'tree parser::
     for directive in input.tree().iter() {
         match directive.node() {
             ast::Directive::Format(ast::FormatVersionKind::Major, major) => match directives.format_version {
-                FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major, directive.location()),
-                FormatVersion::MinorOnly(minor, minor_location) => {
+                FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major),
+                FormatVersion::MinorOnly(minor) => {
                     directives.format_version =
-                        FormatVersion::Full(versioning::Format::new(*major, minor), directive.location(), minor_location)
+                        FormatVersion::Full(versioning::Format::new(*major, minor))
                 }
-                FormatVersion::MajorOnly(_, location) | FormatVersion::Full(_, location, _) => errors.push(Error::with_location(
+                FormatVersion::MajorOnly(_) | FormatVersion::Full(_) => errors.push(Error::with_location(
                     ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Major),
-                    location.clone(),
+                    directive.location().clone(),
                 )),
             },
             ast::Directive::Format(ast::FormatVersionKind::Minor, minor) => match directives.format_version {
-                FormatVersion::Unspecified => directives.format_version = FormatVersion::MinorOnly(*minor, directive.location()),
-                FormatVersion::MajorOnly(major, major_location) => {
+                FormatVersion::Unspecified => directives.format_version = FormatVersion::MinorOnly(*minor),
+                FormatVersion::MajorOnly(major) => {
                     directives.format_version =
-                        FormatVersion::Full(versioning::Format::new(major, *minor), major_location, directive.location())
+                        FormatVersion::Full(versioning::Format::new(major, *minor))
                 }
-                FormatVersion::MinorOnly(_, location) | FormatVersion::Full(_, _, location) => errors.push(Error::with_location(
+                FormatVersion::MinorOnly(_) | FormatVersion::Full(_) => errors.push(Error::with_location(
                     ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Minor),
-                    location.clone(),
+                    directive.location().clone(),
                 )),
             },
             ast::Directive::Identifier(symbol, identifier) => {
@@ -124,7 +124,7 @@ fn get_record_definitions<'tree>(errors: &mut Vec<Error>, input: &'tree parser::
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'tree>(errors: &mut Vec<Error>, directives: Directives<'tree>) -> Builder<'tree> {
+fn assemble_directives<'t>(errors: &mut Vec<Error>, directives: Directives<'t>) -> Builder<'t> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
