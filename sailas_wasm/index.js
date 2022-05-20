@@ -62,9 +62,13 @@ document.addEventListener('DOMContentLoaded', async (_) => {
             let errors = [];
 
             function appendOutputError(error, locations) {
+                if (errors.length === 0) {
+                    output.innerHTML = '';
+                }
+
                 outputDownloadButton.onclick = null;
-                output.innerHTML = '';
                 output.innerHTML += 'error';
+
 
                 if (locations !== null) {
                     output.innerHTML += `(${locations[0]},${locations[1]})-(${locations[2]},${locations[3]})`;
