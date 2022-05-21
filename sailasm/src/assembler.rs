@@ -79,6 +79,7 @@ struct Directives<'t> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     identifiers: Vec<&'t sailar::Id>,
+    data_arrays: Vec<&'t Box<[u8]>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -86,7 +87,8 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
         module_identifier: None,
-        identifiers: Default::default(),
+        identifiers: Vec::default(),
+        data_arrays: Vec::default(),
     };
 
     for directive in input.tree().iter() {
@@ -133,6 +135,13 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 
                 directives.identifiers.push(identifier.node());
             }
+            ast::Directive::Data(symbol, data) => {
+                if symbol.is_some() {
+                    todo!("data symbols not yet supported");
+                }
+
+                directives.data_arrays.push(data.node());
+            }
         }
     }
 
@@ -168,6 +177,10 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
 
     for id in directives.identifiers.into_iter() {
         builder.add_record(record::Record::Identifier(Cow::Borrowed(id)))
+    }
+
+    for data in directives.data_arrays.into_iter() {
+        builder.add_record(record::Record::Data(Cow::Borrowed(record::DataArray::from_bytes(data))));
     }
 
     builder

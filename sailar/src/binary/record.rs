@@ -60,7 +60,10 @@ impl TryFrom<u8> for Type {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum MetadataField<'a> {
-    ModuleIdentifier { name: Cow<'a, Id>, version: CowBox<'a, [usize]> },
+    ModuleIdentifier {
+        name: Cow<'a, Id>,
+        version: CowBox<'a, [usize]>,
+    },
 }
 
 impl MetadataField<'_> {
@@ -83,6 +86,14 @@ impl DataArray {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    #[inline]
+    pub fn from_bytes<'a>(bytes: &'a [u8]) -> &'a Self {
+        unsafe {
+            // Safety: Layout of data array is the same.
+            std::mem::transmute::<&'a _, &'a _>(bytes)
+        }
+    }
 }
 
 impl<'a> From<&'a DataArray> for &'a [u8] {
@@ -95,10 +106,7 @@ impl<'a> From<&'a DataArray> for &'a [u8] {
 impl<'a> From<&'a [u8]> for &'a DataArray {
     #[inline]
     fn from(bytes: &'a [u8]) -> &'a DataArray {
-        unsafe {
-            // Safety: Layout of data array is the same.
-            std::mem::transmute(bytes)
-        }
+        DataArray::from_bytes(bytes)
     }
 }
 

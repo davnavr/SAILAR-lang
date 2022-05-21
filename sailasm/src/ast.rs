@@ -323,7 +323,7 @@ pub enum Directive<'source> {
     /// # Example
     ///
     /// ```text
-    /// .array ; Merges the following 3 identifier records into one record.
+    /// .array ; Merges the following 3 identifier records into one record
     /// .identifier "abc"
     /// .identifier "def"
     /// .identifier "testing"
@@ -336,17 +336,23 @@ pub enum Directive<'source> {
     /// Sets the major or minor format version of the module.
     Format(FormatVersionKind, u8),
     /// ```text
-    /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module.
+    /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module
     /// .metadata id "MyModuleNoVersion"
     /// ```
     /// Specifies information about the module.
     Metadata(Metadata<'source>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
-    /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
+    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol.
     /// ```
     /// Defines a record containing a reusable identifier string.
     Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
+    /// ```text
+    /// .data 0x68 0x65 0x6C 0x6C 0x6F ; Referred to by numeric index
+    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by symbol.
+    /// ```
+    /// Defines a record containing arbitrary data. Used to declare constant values such as string literals.
+    Data(Option<Symbol<'source>>, Located<Box<[u8]>>),
 }
 
 #[cfg(test)]

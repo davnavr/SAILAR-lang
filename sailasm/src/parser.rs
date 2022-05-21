@@ -37,6 +37,8 @@ pub enum ErrorKind {
     ExpectedIdentifierLiteral,
     #[error(transparent)]
     InvalidIdentifierLiteral(#[from] sailar::identifier::InvalidError),
+    #[error("invalid byte literal: {0}")]
+    InvalidByteLiteral(std::num::ParseIntError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -389,6 +391,38 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         state.input.skip_current_line();
                     },
                 )
+            }
+            Token::Directive("data") => {
+                let symbol = None;
+                let mut data = Vec::default();
+                let mut end_location = start_location.end().clone();
+                let mut data_start_location = end_location.clone();
+                let mut data_location_updated = false;
+
+                while let Some(((Token::LiteralInteger(digits), _), location)) = state.input.next_token() {
+                    if !data_location_updated {
+                        data_start_location = location.start().clone();
+                        data_location_updated = true;
+                    }
+
+                    end_location = location.end().clone();
+
+                    match u8::try_from(digits) {
+                        Ok(byte) => data.push(byte),
+                        Err(e) => state.push_error(ErrorKind::InvalidByteLiteral(e), location),
+                    }
+                }
+
+                state.expect_newline_or_end();
+
+                state.output.tree.push(ast::Located::new(
+                    ast::Directive::Data(
+                        symbol,
+                        ast::Located::new(data.into_boxed_slice(), data_start_location, end_location.clone()),
+                    ),
+                    start_location.start().clone(),
+                    end_location,
+                ));
             }
             Token::Directive(unknown) => {
                 state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);
