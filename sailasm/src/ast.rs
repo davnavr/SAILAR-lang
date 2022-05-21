@@ -312,27 +312,23 @@ pub enum Metadata<'source> {
     Identifier(Located<Identifier<'source>>, Box<[u32]>),
 }
 
-pub type FixedIntegerType = sailar::type_system::FixedInt;
-
-pub type IntegerType = sailar::type_system::Int;
-
-pub type PrimitiveType = sailar::type_system::Primitive;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeSignature {
-    Primitive(PrimitiveType),
+    U8,
+    S8,
+    U16,
+    S16,
+    U32,
+    S32,
+    U64,
+    S64,
+    UAddr,
+    SAddr,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Signature {
     Type(TypeSignature),
-}
-
-impl From<PrimitiveType> for Signature {
-    #[inline]
-    fn from(primitive_type: PrimitiveType) -> Self {
-        Self::Type(TypeSignature::Primitive(primitive_type))
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

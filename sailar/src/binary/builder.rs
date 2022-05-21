@@ -87,8 +87,8 @@ impl<'a> Builder<'a> {
                     | Type::S32
                     | Type::U64
                     | Type::S64
-                    | Type::UPtr
-                    | Type::SPtr
+                    | Type::UAddr
+                    | Type::SAddr
                     | Type::F32
                     | Type::F64
                     | Type::RawPtr(None) => Ok(()),

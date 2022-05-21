@@ -10,12 +10,12 @@ pub enum TypeCode {
     U16 = 2,
     U32 = 4,
     U64 = 8,
-    UPtr = 0xA,
+    UAddr = 0xA,
     S8 = 0x11,
     S16 = 0x12,
     S32 = 0x14,
     S64 = 0x18,
-    SPtr = 0x1A,
+    SAddr = 0x1A,
     RawPtr = 0xCA,
     VoidPtr = 0xCC,
     FuncPtr = 0xCF,
@@ -45,11 +45,11 @@ impl TryFrom<u8> for TypeCode {
             2 => Ok(Self::U16),
             4 => Ok(Self::U32),
             8 => Ok(Self::U64),
-            0xA => Ok(Self::UPtr),
+            0xA => Ok(Self::UAddr),
             0x11 => Ok(Self::S8),
             0x12 => Ok(Self::S16),
             0x14 => Ok(Self::S32),
-            0x1A => Ok(Self::SPtr),
+            0x1A => Ok(Self::SAddr),
             0xCA => Ok(Self::RawPtr),
             0xCC => Ok(Self::VoidPtr),
             0xCF => Ok(Self::FuncPtr),
@@ -108,10 +108,10 @@ pub enum Type {
     U64,
     /// Signed 64-bit integer.
     S64,
-    /// Unsigned integer with the same size as a raw pointer.
-    UPtr,
-    /// Signed integer with the same size as a raw pointer.
-    SPtr,
+    /// Unsigned integer with the same size as a raw pointer's address.
+    UAddr,
+    /// Signed integer with the same size as a raw pointer's address.
+    SAddr,
     /// Single-precision floating point number.
     F32,
     /// Double-precision floating point number.
@@ -132,8 +132,8 @@ impl Type {
             Self::S32 => TypeCode::S32,
             Self::U64 => TypeCode::U64,
             Self::S64 => TypeCode::S64,
-            Self::UPtr => TypeCode::UPtr,
-            Self::SPtr => TypeCode::SPtr,
+            Self::UAddr => TypeCode::UAddr,
+            Self::SAddr => TypeCode::SAddr,
             Self::F32 => TypeCode::F32,
             Self::F64 => TypeCode::F64,
             Self::RawPtr(Some(_)) => TypeCode::RawPtr,
