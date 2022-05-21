@@ -18,6 +18,8 @@ pub enum ErrorKind {
     UnsupportedFormatVersion(#[from] versioning::UnsupportedFormatError),
     #[error("metadata field \"{0}\" is already defined")]
     DuplicateMetadataField(&'static str),
+    #[error("symbol @{0} is defined more than once")]
+    DuplicateSymbolDefinition(Box<str>),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -71,14 +73,20 @@ impl TryFrom<FormatVersion> for versioning::Format {
     }
 }
 
-//struct SymbolMap<T> {
-//    items: Vec<T>,
-//}
+type FxIndexMap<K, V> = indexmap::map::IndexMap<K, V, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
+
+struct SymbolMap<'t, T> {
+    items: FxIndexMap<&'t sailar::Id, T>,
+}
+
+// TODO: Allow deciding whether duplicate records should be removed and whether records should be in source order.
 
 #[derive(Debug)]
 struct Directives<'t> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
+    /// Ensures that no symbols are defined more than once.
+    symbols: rustc_hash::FxHashSet<&'t sailar::Id>,
     identifiers: Vec<&'t sailar::Id>,
     data_arrays: Vec<&'t Box<[u8]>>,
     type_signatures: Vec<binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
@@ -89,13 +97,14 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
         module_identifier: None,
+        symbols: Default::default(),
         identifiers: Vec::default(),
         data_arrays: Vec::default(),
         type_signatures: Vec::default(),
     };
 
     for directive in input.tree().iter() {
-        match directive.node() {
+        match directive.item() {
             ast::Directive::Array => todo!("array record generation is not yet supported"),
             ast::Directive::Format(ast::FormatVersionKind::Major, major) => match directives.format_version {
                 FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major),
@@ -125,7 +134,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     )),
                     None => {
                         directives.module_identifier = Some((
-                            name.node(),
+                            name.item(),
                             version_numbers.iter().map(|v| usize::try_from(*v).unwrap()).collect(),
                         ))
                     }
@@ -136,14 +145,14 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     todo!("identifier symbols not yet supported");
                 }
 
-                directives.identifiers.push(identifier.node());
+                directives.identifiers.push(identifier.item());
             }
             ast::Directive::Data(symbol, data) => {
                 if symbol.is_some() {
                     todo!("data symbols not yet supported");
                 }
 
-                directives.data_arrays.push(data.node());
+                directives.data_arrays.push(data.item());
             }
             ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)) => {
                 if symbol.is_some() {

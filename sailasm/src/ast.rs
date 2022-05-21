@@ -136,19 +136,19 @@ impl Display for LocationRange {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Located<N> {
     location: LocationRange,
-    node: N,
+    item: N,
 }
 
 impl<N> Located<N> {
-    pub fn with_range<L: Into<LocationRange>>(node: N, location: L) -> Self {
+    pub fn with_range<L: Into<LocationRange>>(item: N, location: L) -> Self {
         Self {
-            node,
+            item,
             location: location.into(),
         }
     }
 
-    pub fn new(node: N, start: Location, end: Location) -> Self {
-        Self::with_range(node, LocationRange::new(start, end))
+    pub fn new(item: N, start: Location, end: Location) -> Self {
+        Self::with_range(item, LocationRange::new(start, end))
     }
 
     #[inline]
@@ -157,19 +157,18 @@ impl<N> Located<N> {
     }
 
     #[inline]
-    pub fn node(&self) -> &N {
-        &self.node
+    pub fn item(&self) -> &N {
+        &self.item
     }
 }
 
 impl<N> From<Located<N>> for (N, LocationRange) {
     fn from(located: Located<N>) -> Self {
-        (located.node, located.location)
+        (located.item, located.location)
     }
 }
 
-// TODO: Make symbol a struct();
-pub type Symbol<'s> = Located<&'s sailar::Id>; // TODO: Make this a Cow.
+pub type Symbol<'s> = Located<&'s sailar::Id>;
 
 #[derive(Debug, thiserror::Error)]
 #[error("\"\\{sequence}\" is not a valid escape sequence")]

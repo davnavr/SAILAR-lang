@@ -325,14 +325,14 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                                 state,
                                 |state, first_number| {
                                     end_location = first_number.location().end().clone();
-                                    version.push(*first_number.node());
+                                    version.push(*first_number.item());
                                     let mut failed = false;
                                     while !failed && state.input.next_token_if(|t| matches!(t, Token::Period)).is_some() {
                                         parse_literal_integer(
                                             state,
                                             |_, number| {
                                                 end_location = number.location().end().clone();
-                                                version.push(*number.node());
+                                                version.push(*number.item());
                                             },
                                             |state, bad| {
                                                 state.push_error(
