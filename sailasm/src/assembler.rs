@@ -230,21 +230,23 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     define_symbol!(symbol);
                 }
 
-                match type_signature {
-                    ast::TypeSignature::Primitive(ast::PrimitiveType::Int(ast::IntegerType::Fixed(fixed_integer))) => {
-                        directives.type_signatures.insert_with_symbol(symbol.as_ref(), match fixed_integer {
-                            ast::FixedIntegerType::U8 => binary::signature::Type::U8,
-                            ast::FixedIntegerType::S8 => binary::signature::Type::S8,
-                            ast::FixedIntegerType::U16 => binary::signature::Type::U16,
-                            ast::FixedIntegerType::S16 => binary::signature::Type::S16,
-                            ast::FixedIntegerType::U64 => binary::signature::Type::U64,
-                            ast::FixedIntegerType::S64 => binary::signature::Type::S64,
-                            ast::FixedIntegerType::U32 => binary::signature::Type::U32,
-                            ast::FixedIntegerType::S32 => binary::signature::Type::S32,
-                        });
-                    }
-                    _ => todo!("add support for {:?}", type_signature),
-                }
+                directives.type_signatures.insert_with_symbol(
+                    symbol.as_ref(),
+                    match type_signature {
+                        ast::TypeSignature::U8 => binary::signature::Type::U8,
+                        ast::TypeSignature::S8 => binary::signature::Type::S8,
+                        ast::TypeSignature::U16 => binary::signature::Type::U16,
+                        ast::TypeSignature::S16 => binary::signature::Type::S16,
+                        ast::TypeSignature::U32 => binary::signature::Type::U32,
+                        ast::TypeSignature::S32 => binary::signature::Type::S32,
+                        ast::TypeSignature::U64 => binary::signature::Type::U64,
+                        ast::TypeSignature::S64 => binary::signature::Type::S64,
+                        ast::TypeSignature::UAddr => binary::signature::Type::UAddr,
+                        ast::TypeSignature::SAddr => binary::signature::Type::SAddr,
+                        ast::TypeSignature::F32 => binary::signature::Type::F32,
+                        ast::TypeSignature::F64 => binary::signature::Type::F64,
+                    },
+                );
             }
         }
     }

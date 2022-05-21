@@ -46,6 +46,8 @@ pub enum ErrorKind {
     InvalidSignatureKind(Box<str>),
     #[error("not a valid type signature")]
     InvalidTypeSignature,
+    #[error("{0} is not a valid primitive type")]
+    UnknownPrimitiveType(Box<str>),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -446,13 +448,29 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                 match state.input.next_token() {
                     Some(((Token::Word("type"), _), location)) => match state.input.next_token() {
-                        // TODO: Add parsers for other primitive types
-                        Some(((Token::Word("u32"), _), location)) => {
+                        Some(((Token::Word(primitive_type_name), _), location)) => {
+                            let primitive_type = match *primitive_type_name {
+                                "u8" => ast::TypeSignature::U8,
+                                "s8" => ast::TypeSignature::S8,
+                                "u16" => ast::TypeSignature::U16,
+                                "s16" => ast::TypeSignature::S16,
+                                "u32" => ast::TypeSignature::U32,
+                                "s32" => ast::TypeSignature::S32,
+                                "u64" => ast::TypeSignature::U64,
+                                "s64" => ast::TypeSignature::S64,
+                                "uaddr" => ast::TypeSignature::UAddr,
+                                "saddr" => ast::TypeSignature::SAddr,
+                                "f32" => ast::TypeSignature::F32,
+                                "f64" => ast::TypeSignature::F64,
+                                bad => {
+                                    state.push_error(ErrorKind::UnknownPrimitiveType(Box::from(bad)), location);
+                                    state.input.skip_current_line();
+                                    continue;
+                                }
+                            };
+
                             state.output.tree.push(ast::Located::with_range(
-                                ast::Directive::Signature(
-                                    symbol,
-                                    ast::Signature::from(ast::PrimitiveType::from(ast::FixedIntegerType::U32)),
-                                ),
+                                ast::Directive::Signature(symbol, ast::Signature::Type(primitive_type)),
                                 location,
                             ));
                         }

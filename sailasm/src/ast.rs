@@ -324,6 +324,8 @@ pub enum TypeSignature {
     S64,
     UAddr,
     SAddr,
+    F32,
+    F64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
