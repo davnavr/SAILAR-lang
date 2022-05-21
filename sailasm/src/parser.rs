@@ -9,6 +9,10 @@ use std::ops::Range;
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
+    #[error("\"\\{0}\" is not a valid escape sequence")]
+    InvalidEscapeSequence(Box<str>),
+    #[error("invalid integer literal: {0}")]
+    InvalidIntegerLiteral(std::num::ParseIntError),
     #[error("expected end of line or file")]
     ExpectedNewLineOrEndOfFile,
     #[error("unknown directive \".{0}\"")]
@@ -27,10 +31,10 @@ pub enum ErrorKind {
     UnknownMetadataFieldName(Box<str>),
     #[error("expected metadata module name")]
     ExpectedMetadataModuleName,
+    #[error("expected another module version number")]
+    ExpectedMetadataModuleVersionNumber,
     #[error("expected literal contents of identifier")]
     ExpectedIdentifierLiteral,
-    #[error("\"\\{0}\" is not a valid escape sequence")]
-    InvalidEscapeSequence(Box<str>),
     #[error(transparent)]
     InvalidIdentifierLiteral(#[from] sailar::identifier::InvalidError),
 }
@@ -175,6 +179,20 @@ fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::Offse
         .unwrap_or_else(|| locations.get_last().unwrap().into())
 }
 
+fn parse_literal_integer<'t, 's>(
+    state: &mut State<'t, 's>,
+    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<u32>),
+    mut exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+) {
+    match state.input.next_token() {
+        Some(((Token::LiteralInteger(digits), _), location)) => match u32::try_from(digits) {
+            Ok(value) => success(state, ast::Located::with_range(value, location)),
+            Err(e) => state.push_error(ErrorKind::InvalidIntegerLiteral(e), location),
+        },
+        bad => exhausted(state, bad),
+    }
+}
+
 /// Parses a token containing a valid stirng literal.
 fn parse_literal_string<'t, 's>(
     state: &mut State<'t, 's>,
@@ -202,7 +220,7 @@ fn parse_literal_string<'t, 's>(
     }
 }
 
-/// Parsers a literal string containing a valid SAILAR identifier.
+/// Parses a literal string containing a valid SAILAR identifier.
 fn parse_literal_identifier<'t, 's>(
     state: &mut State<'t, 's>,
     mut success: impl FnMut(&mut State<'t, 's>, ast::Located<ast::Identifier<'s>>),
@@ -229,13 +247,13 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
         output: Output::default(),
     };
 
-    while let Some(((token, _), location)) = state.input.next_token() {
+    while let Some(((token, _), start_location)) = state.input.next_token() {
         match token {
             Token::Newline => (),
             Token::Directive("array") => state
                 .output
                 .tree
-                .push(ast::Located::with_range(ast::Directive::Array, location)),
+                .push(ast::Located::with_range(ast::Directive::Array, start_location)),
             Token::Directive("format") => {
                 let format_kind = match state.input.next_token() {
                     Some(((Token::Word("major"), _), _)) => ast::FormatVersionKind::Major,
@@ -282,10 +300,74 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                 state.output.tree.push(ast::Located::new(
                     ast::Directive::Format(format_kind, format_version),
-                    location.start().clone(),
+                    start_location.start().clone(),
                     end_location,
                 ));
             }
+            Token::Directive("metadata") => match state.input.next_token() {
+                Some(((Token::Word(kind), _), location)) => match *kind {
+                    "id" => parse_literal_identifier(
+                        &mut state,
+                        move |state, identifier| {
+                            let mut version = Vec::default();
+                            let mut end_location = identifier.location().end().clone();
+
+                            parse_literal_integer(
+                                state,
+                                |state, first_number| {
+                                    end_location = first_number.location().end().clone();
+                                    version.push(*first_number.node());
+                                    let mut failed = false;
+                                    while !failed && state.input.next_token_if(|t| matches!(t, Token::Period)).is_some() {
+                                        parse_literal_integer(
+                                            state,
+                                            |_, number| {
+                                                end_location = number.location().end().clone();
+                                                version.push(*number.node());
+                                            },
+                                            |state, bad| {
+                                                state.push_error(
+                                                    ErrorKind::ExpectedMetadataModuleVersionNumber,
+                                                    token_location_or_last(bad.as_ref(), state.locations()),
+                                                );
+                                                failed = true;
+                                            },
+                                        )
+                                    }
+                                },
+                                |_, _| (),
+                            );
+
+                            state.expect_newline_or_end();
+                            state.output.tree.push(ast::Located::new(
+                                ast::Directive::Metadata(ast::Metadata::Identifier(identifier, version.into_boxed_slice())),
+                                start_location.start().clone(),
+                                end_location,
+                            ));
+                        },
+                        |state, bad| {
+                            state.push_error(
+                                ErrorKind::ExpectedMetadataModuleName,
+                                token_location_or_last(bad.as_ref(), state.locations()),
+                            );
+                            state.input.skip_current_line();
+                        },
+                    ),
+                    unknown => {
+                        state.push_error(ErrorKind::UnknownMetadataFieldName(Box::from(unknown)), location);
+                        state.input.skip_current_line();
+                        continue;
+                    }
+                },
+                bad => {
+                    state.push_error(
+                        ErrorKind::ExpectedMetadataFieldName,
+                        token_location_or_last(bad.as_ref(), input.locations()),
+                    );
+                    state.input.skip_current_line();
+                    continue;
+                }
+            },
             Token::Directive("identifier") => {
                 let symbol = None;
 
@@ -295,7 +377,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         let end_location = identifier.location().end().clone();
                         state.output.tree.push(ast::Located::new(
                             ast::Directive::Identifier(symbol.clone(), identifier),
-                            location.start().clone(),
+                            start_location.start().clone(),
                             end_location,
                         ));
                     },
@@ -303,37 +385,19 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         state.push_error(
                             ErrorKind::ExpectedIdentifierLiteral,
                             token_location_or_last(token.as_ref(), state.locations()),
-                        )
+                        );
+                        state.input.skip_current_line();
                     },
                 )
             }
-            Token::Directive(unknown) => state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), location),
-            Token::Unknown | _ => state.push_error(ErrorKind::UnknownToken, location),
+            Token::Directive(unknown) => {
+                state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);
+                state.input.skip_current_line();
+                continue;
+            }
+            Token::Unknown | _ => state.push_error(ErrorKind::UnknownToken, start_location),
         }
     }
 
     state.output
-
-    //     match token {
-    //         Token::MetadataDirective => match input.next_token() {
-    //             Some(((Token::Word("id"), _), _)) => {
-    //                 // TODO: Use helper function for parsing identifier string.
-    //                 let name = match input.next_token() {
-
-    //                     bad => match_exhausted!(errors, ErrorKind::ExpectedMetadataModuleName, bad, input),
-    //                 };
-
-    //                 // TODO: When parsing version when match_exhausted just do UnknownToken or ExpectedEofOrNewLine
-    //                 todo!("module id");
-    //             }
-    //             Some(((Token::Word(unknown), _), location)) => fail_skip_line!(
-    //                 errors,
-    //                 ErrorKind::UnknownMetadataFieldName(Box::from(*unknown)),
-    //                 location,
-    //                 input
-    //             ),
-    //             bad => match_exhausted!(errors, ErrorKind::ExpectedMetadataFieldName, bad, input),
-    //         },
-    //     }
-    // }
 }

@@ -90,8 +90,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
             ast::Directive::Format(ast::FormatVersionKind::Major, major) => match directives.format_version {
                 FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major),
                 FormatVersion::MinorOnly(minor) => {
-                    directives.format_version =
-                        FormatVersion::Full(versioning::Format::new(*major, minor))
+                    directives.format_version = FormatVersion::Full(versioning::Format::new(*major, minor))
                 }
                 FormatVersion::MajorOnly(_) | FormatVersion::Full(_) => errors.push(Error::with_location(
                     ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Major),
@@ -101,8 +100,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
             ast::Directive::Format(ast::FormatVersionKind::Minor, minor) => match directives.format_version {
                 FormatVersion::Unspecified => directives.format_version = FormatVersion::MinorOnly(*minor),
                 FormatVersion::MajorOnly(major) => {
-                    directives.format_version =
-                        FormatVersion::Full(versioning::Format::new(major, *minor))
+                    directives.format_version = FormatVersion::Full(versioning::Format::new(major, *minor))
                 }
                 FormatVersion::MinorOnly(_) | FormatVersion::Full(_) => errors.push(Error::with_location(
                     ErrorKind::DuplicateFormatVersion(ast::FormatVersionKind::Minor),

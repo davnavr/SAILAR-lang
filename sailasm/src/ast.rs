@@ -251,7 +251,7 @@ impl<'source> LiteralString<'source> {
     pub fn as_original_str(&self) -> Result<&'source str, &str> {
         match &self.actual_contents {
             None => Ok(self.original_contents),
-            Some(actual_contents) => Err(&actual_contents),
+            Some(actual_contents) => Err(actual_contents),
         }
     }
 
@@ -310,7 +310,7 @@ impl Display for FormatVersionKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Metadata<'source> {
-    Identifier(Identifier<'source>, Box<[usize]>),
+    Identifier(Located<Identifier<'source>>, Box<[u32]>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

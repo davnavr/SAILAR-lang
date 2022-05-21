@@ -155,13 +155,20 @@ impl LiteralDigits<'_> {
     }
 }
 
-impl TryFrom<&LiteralDigits<'_>> for u8 {
-    type Error = std::num::ParseIntError;
+macro_rules! integer_from_digits {
+    ($integer_type: ty) => {
+        impl TryFrom<&LiteralDigits<'_>> for $integer_type {
+            type Error = std::num::ParseIntError;
 
-    fn try_from(digits: &LiteralDigits<'_>) -> Result<u8, Self::Error> {
-        digits.to_integer_radix(u8::from_str_radix)
-    }
+            fn try_from(digits: &LiteralDigits<'_>) -> Result<$integer_type, Self::Error> {
+                digits.to_integer_radix(<$integer_type>::from_str_radix)
+            }
+        }
+    };
 }
+
+integer_from_digits!(u8);
+integer_from_digits!(u32);
 
 impl Debug for LiteralDigits<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
