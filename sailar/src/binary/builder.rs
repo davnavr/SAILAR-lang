@@ -61,10 +61,10 @@ impl<'a> Builder<'a> {
         out.write_integer(self.records.len())?;
 
         fn write_record_content(out: &mut VecWriter, record: &Record) -> Result {
-            fn write_header_field(out: &mut VecWriter, field: &record::HeaderField) -> Result {
+            fn write_metadata_field(out: &mut VecWriter, field: &record::MetadataField) -> Result {
                 out.write_identifier(field.field_name())?;
                 match field {
-                    record::HeaderField::ModuleIdentifier { name, version } => {
+                    record::MetadataField::ModuleIdentifier { name, version } => {
                         out.write_identifier(name.as_ref())?;
                         out.write_integer(version.len())?;
                         for number in version.iter() {
@@ -119,7 +119,7 @@ impl<'a> Builder<'a> {
             // }
 
             match record {
-                Record::HeaderField(field) => write_header_field(out, field),
+                Record::MetadataField(field) => write_metadata_field(out, field),
                 Record::Identifier(identifier) => out.write_all(identifier.as_bytes()),
                 Record::TypeSignature(signature) => write_type_signature(out, signature),
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),

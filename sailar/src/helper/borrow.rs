@@ -77,7 +77,17 @@ impl<B: ?Sized> Borrow<B> for CowBox<'_, B> {
 }
 
 impl<B: ?Sized> std::convert::AsRef<B> for CowBox<'_, B> {
+    #[inline]
     fn as_ref(&self) -> &B {
+        self.borrow()
+    }
+}
+
+impl<B: ?Sized> std::ops::Deref for CowBox<'_, B> {
+    type Target = B;
+
+    #[inline]
+    fn deref(&self) -> &B {
         self.borrow()
     }
 }

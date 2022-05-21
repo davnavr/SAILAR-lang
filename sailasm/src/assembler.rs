@@ -15,6 +15,8 @@ pub enum ErrorKind {
     MissingMajorFormatVersion,
     #[error(transparent)]
     UnsupportedFormatVersion(#[from] versioning::UnsupportedFormatError),
+    #[error("metadata field \"{0}\" is already defined")]
+    DuplicateMetadataField(&'static str),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -75,6 +77,7 @@ impl TryFrom<FormatVersion> for versioning::Format {
 #[derive(Debug)]
 struct Directives<'t> {
     format_version: FormatVersion,
+    module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     identifiers: Vec<&'t sailar::Id>,
 }
 
@@ -82,11 +85,13 @@ struct Directives<'t> {
 fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output) -> Directives<'t> {
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
+        module_identifier: None,
         identifiers: Default::default(),
     };
 
     for directive in input.tree().iter() {
         match directive.node() {
+            ast::Directive::Array => todo!("array record generation is not yet supported"),
             ast::Directive::Format(ast::FormatVersionKind::Major, major) => match directives.format_version {
                 FormatVersion::Unspecified => directives.format_version = FormatVersion::MajorOnly(*major),
                 FormatVersion::MinorOnly(minor) => {
@@ -107,6 +112,20 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                     directive.location().clone(),
                 )),
             },
+            ast::Directive::Metadata(metadata) => match metadata {
+                ast::Metadata::Identifier(name, version_numbers) => match directives.module_identifier {
+                    Some(_) => errors.push(Error::with_location(
+                        ErrorKind::DuplicateMetadataField("id"),
+                        directive.location().clone(),
+                    )),
+                    None => {
+                        directives.module_identifier = Some((
+                            name.node(),
+                            version_numbers.iter().map(|v| usize::try_from(*v).unwrap()).collect(),
+                        ))
+                    }
+                },
+            },
             ast::Directive::Identifier(symbol, identifier) => {
                 if symbol.is_some() {
                     todo!("identifier symbols not yet supported");
@@ -114,7 +133,6 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 
                 directives.identifiers.push(identifier.node());
             }
-            _ => todo!("assemble {:?}", directive),
         }
     }
 
@@ -122,7 +140,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'t>(errors: &mut Vec<Error>, directives: Directives<'t>) -> Builder<'t> {
+fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'t>) -> Builder<'t> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
@@ -140,6 +158,13 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, directives: Directives<'t>) 
     };
 
     let mut builder = Builder::with_format_version(actual_format_version);
+
+    if let Some((name, version_numbers)) = directives.module_identifier.take() {
+        builder.add_record(record::Record::MetadataField(record::MetadataField::ModuleIdentifier {
+            name: Cow::Borrowed(name),
+            version: sailar::helper::borrow::CowBox::Boxed(version_numbers),
+        }))
+    }
 
     for id in directives.identifiers.into_iter() {
         builder.add_record(record::Record::Identifier(Cow::Borrowed(id)))
