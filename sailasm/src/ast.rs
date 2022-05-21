@@ -315,6 +315,8 @@ pub enum Metadata<'source> {
 
 pub type FixedIntegerType = sailar::type_system::FixedInt;
 
+pub type IntegerType = sailar::type_system::Int;
+
 pub type PrimitiveType = sailar::type_system::Primitive;
 
 #[derive(Clone, Debug, PartialEq)]

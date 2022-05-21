@@ -2,6 +2,7 @@
 
 use crate::ast;
 use crate::parser;
+use sailar::binary;
 use sailar::binary::record;
 use sailar::binary::Builder;
 use sailar::versioning;
@@ -80,6 +81,7 @@ struct Directives<'t> {
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     identifiers: Vec<&'t sailar::Id>,
     data_arrays: Vec<&'t Box<[u8]>>,
+    type_signatures: Vec<binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -89,6 +91,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
         module_identifier: None,
         identifiers: Vec::default(),
         data_arrays: Vec::default(),
+        type_signatures: Vec::default(),
     };
 
     for directive in input.tree().iter() {
@@ -142,6 +145,27 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 
                 directives.data_arrays.push(data.node());
             }
+            ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)) => {
+                if symbol.is_some() {
+                    todo!("type signature symbols not yet supported");
+                }
+
+                match type_signature {
+                    ast::TypeSignature::Primitive(ast::PrimitiveType::Int(ast::IntegerType::Fixed(fixed_integer))) => {
+                        directives.type_signatures.push(match fixed_integer {
+                            ast::FixedIntegerType::U8 => binary::signature::Type::U8,
+                            ast::FixedIntegerType::S8 => binary::signature::Type::S8,
+                            ast::FixedIntegerType::U16 => binary::signature::Type::U16,
+                            ast::FixedIntegerType::S16 => binary::signature::Type::S16,
+                            ast::FixedIntegerType::U64 => binary::signature::Type::U64,
+                            ast::FixedIntegerType::S64 => binary::signature::Type::S64,
+                            ast::FixedIntegerType::U32 => binary::signature::Type::U32,
+                            ast::FixedIntegerType::S32 => binary::signature::Type::S32,
+                        });
+                    }
+                    _ => todo!("add support for {:?}", type_signature),
+                }
+            }
         }
     }
 
@@ -181,6 +205,10 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
 
     for data in directives.data_arrays.into_iter() {
         builder.add_record(record::Record::Data(Cow::Borrowed(record::DataArray::from_bytes(data))));
+    }
+
+    for signature in directives.type_signatures.into_iter() {
+        builder.add_record(record::Record::TypeSignature(Cow::Owned(signature)));
     }
 
     builder
