@@ -343,7 +343,6 @@ dependencies = [
 name = "sailasm"
 version = "0.1.0"
 dependencies = [
- "indexmap",
  "logos",
  "rustc-hash",
  "sailar",

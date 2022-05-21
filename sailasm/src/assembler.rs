@@ -7,6 +7,7 @@ use sailar::binary::record;
 use sailar::binary::Builder;
 use sailar::versioning;
 use std::borrow::Cow;
+use std::collections::hash_map;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ErrorKind {
@@ -73,12 +74,10 @@ impl TryFrom<FormatVersion> for versioning::Format {
     }
 }
 
-type FxIndexMap<K, V> = indexmap::map::IndexMap<K, V, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
-
 /// Ensures that no symbols are defined more than once.
 #[derive(Default)]
 struct SymbolSet<'s> {
-    lookup: rustc_hash::FxHashSet<&'s sailar::Id>
+    lookup: rustc_hash::FxHashSet<&'s sailar::Id>,
 }
 
 impl<'s> SymbolSet<'s> {
@@ -87,13 +86,62 @@ impl<'s> SymbolSet<'s> {
         if self.lookup.insert(name) {
             Ok(())
         } else {
-            Err(Error::with_location(ErrorKind::DuplicateSymbolDefinition(Box::from(name.as_str())), symbol.location().clone()))
+            Err(Error::with_location(
+                ErrorKind::DuplicateSymbolDefinition(Box::from(name.as_str())),
+                symbol.location().clone(),
+            ))
         }
     }
 }
 
-struct SymbolMap<'t, T> {
-    items: FxIndexMap<&'t sailar::Id, T>,
+struct SymbolMap<'s, T> {
+    items: Vec<T>,
+    lookup: rustc_hash::FxHashMap<&'s sailar::Id, usize>,
+}
+
+impl<'s, T> SymbolMap<'s, T> {
+    fn push(&mut self, item: T) -> usize {
+        let index = self.items.len();
+        self.items.push(item);
+        index
+    }
+
+    fn insert(&mut self, symbol: Option<&'s sailar::Id>, item: T) -> usize {
+        let index = self.push(item);
+        if let Some(symbol) = symbol {
+            self.lookup.insert(symbol, index);
+        }
+        index
+    }
+
+    fn insert_with_symbol(&mut self, symbol: Option<&ast::Symbol<'s>>, item: T) -> usize {
+        self.insert(symbol.map(|s| *s.item()), item)
+    }
+
+    fn get_from_index(&self, index: usize) -> Option<&T> {
+        self.items.get(index)
+    }
+
+    fn get_from_symbol(&self, symbol: &'s sailar::Id) -> Option<&T> {
+        self.lookup.get(symbol).and_then(|index| self.get_from_index(*index))
+    }
+
+    fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = &T> {
+        self.items.iter()
+    }
+
+    fn into_iter(self) -> impl std::iter::ExactSizeIterator<Item = T> {
+        self.items.into_iter()
+    }
+}
+
+impl<T> Default for SymbolMap<'_, T> {
+    fn default() -> Self {
+        Self {
+            items: Vec::default(),
+            lookup: Default::default(),
+        }
+    }
 }
 
 // TODO: Allow deciding whether duplicate records should be removed and whether records should be in source order.
@@ -102,9 +150,9 @@ struct Directives<'t, 's> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     symbols: SymbolSet<'s>,
-    identifiers: Vec<&'t sailar::Id>,
-    data_arrays: Vec<&'t Box<[u8]>>,
-    type_signatures: Vec<binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
+    identifiers: SymbolMap<'s, &'t sailar::Id>,
+    data_arrays: SymbolMap<'s, &'t Box<[u8]>>,
+    type_signatures: SymbolMap<'s, binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -113,9 +161,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
         format_version: FormatVersion::Unspecified,
         module_identifier: None,
         symbols: Default::default(),
-        identifiers: Vec::default(),
-        data_arrays: Vec::default(),
-        type_signatures: Vec::default(),
+        identifiers: Default::default(),
+        data_arrays: Default::default(),
+        type_signatures: Default::default(),
     };
 
     macro_rules! define_symbol {
@@ -168,14 +216,14 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     define_symbol!(symbol);
                 }
 
-                directives.identifiers.push(identifier.item());
+                directives.identifiers.insert_with_symbol(symbol.as_ref(), identifier.item());
             }
             ast::Directive::Data(symbol, data) => {
                 if let Some(symbol) = symbol {
                     define_symbol!(symbol);
                 }
 
-                directives.data_arrays.push(data.item());
+                directives.data_arrays.insert_with_symbol(symbol.as_ref(), data.item());
             }
             ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)) => {
                 if let Some(symbol) = symbol {
@@ -184,7 +232,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
 
                 match type_signature {
                     ast::TypeSignature::Primitive(ast::PrimitiveType::Int(ast::IntegerType::Fixed(fixed_integer))) => {
-                        directives.type_signatures.push(match fixed_integer {
+                        directives.type_signatures.insert_with_symbol(symbol.as_ref(), match fixed_integer {
                             ast::FixedIntegerType::U8 => binary::signature::Type::U8,
                             ast::FixedIntegerType::S8 => binary::signature::Type::S8,
                             ast::FixedIntegerType::U16 => binary::signature::Type::U16,
@@ -231,11 +279,11 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
         }))
     }
 
-    for id in directives.identifiers.into_iter() {
+    for id in directives.identifiers.iter() {
         builder.add_record(record::Record::Identifier(Cow::Borrowed(id)))
     }
 
-    for data in directives.data_arrays.into_iter() {
+    for data in directives.data_arrays.iter() {
         builder.add_record(record::Record::Data(Cow::Borrowed(record::DataArray::from_bytes(data))));
     }
 
