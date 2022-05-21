@@ -190,8 +190,8 @@ fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::Offse
 
 fn parse_literal_integer<'t, 's>(
     state: &mut State<'t, 's>,
-    mut success: impl FnOnce(&mut State<'t, 's>, ast::Located<u32>),
-    mut exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+    success: impl FnOnce(&mut State<'t, 's>, ast::Located<u32>),
+    exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
 ) {
     match state.input.next_token() {
         Some(((Token::LiteralInteger(digits), _), location)) => match u32::try_from(digits) {

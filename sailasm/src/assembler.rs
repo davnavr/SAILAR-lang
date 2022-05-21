@@ -75,25 +75,40 @@ impl TryFrom<FormatVersion> for versioning::Format {
 
 type FxIndexMap<K, V> = indexmap::map::IndexMap<K, V, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
 
+/// Ensures that no symbols are defined more than once.
+#[derive(Default)]
+struct SymbolSet<'s> {
+    lookup: rustc_hash::FxHashSet<&'s sailar::Id>
+}
+
+impl<'s> SymbolSet<'s> {
+    fn insert(&mut self, symbol: &ast::Symbol<'s>) -> Result<(), Error> {
+        let name = symbol.item();
+        if self.lookup.insert(name) {
+            Ok(())
+        } else {
+            Err(Error::with_location(ErrorKind::DuplicateSymbolDefinition(Box::from(name.as_str())), symbol.location().clone()))
+        }
+    }
+}
+
 struct SymbolMap<'t, T> {
     items: FxIndexMap<&'t sailar::Id, T>,
 }
 
 // TODO: Allow deciding whether duplicate records should be removed and whether records should be in source order.
 
-#[derive(Debug)]
-struct Directives<'t> {
+struct Directives<'t, 's> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
-    /// Ensures that no symbols are defined more than once.
-    symbols: rustc_hash::FxHashSet<&'t sailar::Id>,
+    symbols: SymbolSet<'s>,
     identifiers: Vec<&'t sailar::Id>,
     data_arrays: Vec<&'t Box<[u8]>>,
     type_signatures: Vec<binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
-fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output) -> Directives<'t> {
+fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Output<'s>) -> Directives<'t, 's> {
     let mut directives = Directives {
         format_version: FormatVersion::Unspecified,
         module_identifier: None,
@@ -102,6 +117,14 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
         data_arrays: Vec::default(),
         type_signatures: Vec::default(),
     };
+
+    macro_rules! define_symbol {
+        ($symbol: expr) => {
+            if let Err(e) = directives.symbols.insert($symbol) {
+                errors.push(e);
+            }
+        };
+    }
 
     for directive in input.tree().iter() {
         match directive.item() {
@@ -141,22 +164,22 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
                 },
             },
             ast::Directive::Identifier(symbol, identifier) => {
-                if symbol.is_some() {
-                    todo!("identifier symbols not yet supported");
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
                 }
 
                 directives.identifiers.push(identifier.item());
             }
             ast::Directive::Data(symbol, data) => {
-                if symbol.is_some() {
-                    todo!("data symbols not yet supported");
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
                 }
 
                 directives.data_arrays.push(data.item());
             }
             ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)) => {
-                if symbol.is_some() {
-                    todo!("type signature symbols not yet supported");
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
                 }
 
                 match type_signature {
@@ -182,7 +205,7 @@ fn get_record_definitions<'t>(errors: &mut Vec<Error>, input: &'t parser::Output
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'t>) -> Builder<'t> {
+fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'t, '_>) -> Builder<'t> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
