@@ -209,6 +209,10 @@ fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
     &lex.slice()[1..]
 }
 
+fn symbol<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Result<&'s sailar::Id, sailar::identifier::InvalidError> {
+    sailar::Id::from_str(&lex.slice()[1..])
+}
+
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
@@ -222,6 +226,8 @@ pub enum Token<'s> {
     CloseParenthesis,
     #[regex(r"\.[a-zA-Z]+", directive)]
     Directive(&'s str),
+    #[regex(r"@[a-zA-Z_]+", symbol)]
+    Symbol(&'s sailar::Id),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
