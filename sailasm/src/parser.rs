@@ -6,6 +6,7 @@ use std::iter::Iterator;
 use std::ops::Range;
 
 #[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
@@ -39,6 +40,12 @@ pub enum ErrorKind {
     InvalidIdentifierLiteral(#[from] sailar::identifier::InvalidError),
     #[error("invalid byte literal: {0}")]
     InvalidByteLiteral(std::num::ParseIntError),
+    #[error("expected kind of signature")]
+    ExpectedSignatureKind,
+    #[error("{0} is not a valid signature kind")]
+    InvalidSignatureKind(Box<str>),
+    #[error("not a valid type signature")]
+    InvalidTypeSignature,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -423,6 +430,42 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     start_location.start().clone(),
                     end_location,
                 ));
+            }
+            Token::Directive("signature") => {
+                let symbol = None;
+
+                match state.input.next_token() {
+                    Some(((Token::Word("type"), _), location)) => match state.input.next_token() {
+                        // TODO: Add parsers for other primitive types
+                        Some(((Token::Word("u32"), _), location)) => {
+                            state.output.tree.push(ast::Located::with_range(
+                                ast::Directive::Signature(
+                                    symbol,
+                                    ast::Signature::from(ast::PrimitiveType::from(ast::FixedIntegerType::U32)),
+                                ),
+                                location,
+                            ));
+                        }
+                        bad => {
+                            state.push_error(
+                                ErrorKind::InvalidTypeSignature,
+                                bad.map(|(_, location)| location.clone()).unwrap_or_else(|| location.into()),
+                            );
+                            state.input.skip_current_line();
+                        }
+                    },
+                    Some(((Token::Word(invalid), _), location)) => {
+                        state.push_error(ErrorKind::InvalidSignatureKind(Box::from(*invalid)), location);
+                        state.input.skip_current_line();
+                    }
+                    bad => {
+                        state.push_error(
+                            ErrorKind::ExpectedSignatureKind,
+                            token_location_or_last(bad.as_ref(), state.locations()),
+                        );
+                        state.input.skip_current_line();
+                    }
+                }
             }
             Token::Directive(unknown) => {
                 state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);

@@ -313,6 +313,27 @@ pub enum Metadata<'source> {
     Identifier(Located<Identifier<'source>>, Box<[u32]>),
 }
 
+pub type FixedIntegerType = sailar::type_system::FixedInt;
+
+pub type PrimitiveType = sailar::type_system::Primitive;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeSignature {
+    Primitive(PrimitiveType),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Signature {
+    Type(TypeSignature),
+}
+
+impl From<PrimitiveType> for Signature {
+    #[inline]
+    fn from(primitive_type: PrimitiveType) -> Self {
+        Self::Type(TypeSignature::Primitive(primitive_type))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'source> {
     /// ```text
@@ -343,16 +364,23 @@ pub enum Directive<'source> {
     Metadata(Metadata<'source>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
-    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol.
+    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol
     /// ```
     /// Defines a record containing a reusable identifier string.
     Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
     /// ```text
     /// .data 0x68 0x65 0x6C 0x6C 0x6F ; Referred to by numeric index
-    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by symbol.
+    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by symbol
     /// ```
     /// Defines a record containing arbitrary data. Used to declare constant values such as string literals.
     Data(Option<Symbol<'source>>, Located<Box<[u8]>>),
+    /// ```text
+    /// .signature type u32 ; Referred to by numeric index
+    /// .signature @my_type type s64 ; Referred to by numeric index or by symbol
+    /// ```
+    /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
+    /// fields, globals, and the return values and arguments of functions.
+    Signature(Option<Symbol<'source>>, Signature),
 }
 
 #[cfg(test)]
