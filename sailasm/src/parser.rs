@@ -190,8 +190,8 @@ fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::Offse
 
 fn parse_literal_integer<'t, 's>(
     state: &mut State<'t, 's>,
-    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<u32>),
-    mut exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+    mut success: impl FnOnce(&mut State<'t, 's>, ast::Located<u32>),
+    mut exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
 ) {
     match state.input.next_token() {
         Some(((Token::LiteralInteger(digits), _), location)) => match u32::try_from(digits) {
@@ -205,8 +205,8 @@ fn parse_literal_integer<'t, 's>(
 /// Parses a token containing a valid stirng literal.
 fn parse_literal_string<'t, 's>(
     state: &mut State<'t, 's>,
-    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<ast::LiteralString<'s>>),
-    mut exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+    success: impl FnOnce(&mut State<'t, 's>, ast::Located<ast::LiteralString<'s>>),
+    exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
 ) {
     match state.input.next_token() {
         Some(((Token::LiteralString(contents), literal_offset), location)) => {
@@ -232,8 +232,8 @@ fn parse_literal_string<'t, 's>(
 /// Parses a literal string containing a valid SAILAR identifier.
 fn parse_literal_identifier<'t, 's>(
     state: &mut State<'t, 's>,
-    mut success: impl FnMut(&mut State<'t, 's>, ast::Located<ast::Identifier<'s>>),
-    exhausted: impl FnMut(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+    success: impl FnOnce(&mut State<'t, 's>, ast::Located<ast::Identifier<'s>>),
+    exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
 ) {
     parse_literal_string(
         state,
@@ -246,6 +246,16 @@ fn parse_literal_identifier<'t, 's>(
         },
         exhausted,
     );
+}
+
+fn parse_symbol<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Symbol<'s>> {
+    state.input.peek_next_token().and_then(|token| match token {
+        ((Token::Symbol(symbol), _), location) => {
+            state.input.next_token();
+            Some(ast::Located::with_range(*symbol, location))
+        }
+        _ => None,
+    })
 }
 
 /// Transfers a sequence of tokens into an abstract syntax tree.
@@ -378,14 +388,14 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 }
             },
             Token::Directive("identifier") => {
-                let symbol = None;
+                let symbol = parse_symbol(&mut state);
 
                 parse_literal_identifier(
                     &mut state,
                     move |state, identifier| {
                         let end_location = identifier.location().end().clone();
                         state.output.tree.push(ast::Located::new(
-                            ast::Directive::Identifier(symbol.clone(), identifier),
+                            ast::Directive::Identifier(symbol, identifier),
                             start_location.start().clone(),
                             end_location,
                         ));
@@ -400,7 +410,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 )
             }
             Token::Directive("data") => {
-                let symbol = None;
+                let symbol = parse_symbol(&mut state);
                 let mut data = Vec::default();
                 let mut end_location = start_location.end().clone();
                 let mut data_start_location = end_location.clone();
@@ -432,7 +442,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 ));
             }
             Token::Directive("signature") => {
-                let symbol = None;
+                let symbol = parse_symbol(&mut state);
 
                 match state.input.next_token() {
                     Some(((Token::Word("type"), _), location)) => match state.input.next_token() {
