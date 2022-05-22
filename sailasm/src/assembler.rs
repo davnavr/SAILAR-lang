@@ -372,7 +372,7 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
                     }
                 }
                 ast::Reference::Symbol(symbol) => match assembler.symbol {
-                    Some(self_symbol) if symbol == self_symbol => errors.push(Error::new(
+                    Some(self_symbol) if symbol.item() == self_symbol.item() => errors.push(Error::new(
                         ErrorKind::RecursiveTypeSignature,
                         Some(assembler.signature_location.clone()),
                     )),
