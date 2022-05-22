@@ -344,7 +344,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     end_location,
                 ));
             }
-            Token::Directive("metadata") => match state.input.next_token() {
+            Token::Directive("metadata" | "meta") => match state.input.next_token() {
                 Some(((Token::Word(kind), _), location)) => match *kind {
                     "id" => parse_literal_identifier(
                         &mut state,
@@ -408,7 +408,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     continue;
                 }
             },
-            Token::Directive("identifier") => {
+            Token::Directive("identifier" | "ident") => {
                 let symbol = parse_symbol(&mut state);
 
                 parse_literal_identifier(
@@ -462,7 +462,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     end_location,
                 ));
             }
-            Token::Directive("signature") => {
+            Token::Directive("signature" | "sig") => {
                 let symbol = parse_symbol(&mut state);
 
                 match state.input.next_token() {

@@ -383,12 +383,14 @@ pub enum Directive<'source> {
     /// ```text
     /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module
     /// .metadata id "MyModuleNoVersion"
+    /// .meta id "ShortenedVersion"
     /// ```
     /// Specifies information about the module.
     Metadata(Metadata<'source>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
     /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol
+    /// .ident "shorter_syntax"
     /// ```
     /// Defines a record containing a reusable identifier string.
     Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
@@ -401,6 +403,7 @@ pub enum Directive<'source> {
     /// ```text
     /// ; Referred to by numeric index
     /// .signature type u32
+    /// .sig type u16
     /// .signature function (@parameter_type_1, @parameter_type_2) -> (@return_type_1, @return_type_2)
     /// .signature function () -> ()
     ///
@@ -408,6 +411,7 @@ pub enum Directive<'source> {
     /// .signature @my_type type s64
     /// .signature @my_pointer_type type rawptr 0
     /// .signature @my_function_signature (@my_type, 1) -> (1)
+    /// .sig @shorter_function_signature func (0, 1) -> (2)
     /// ```
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
     /// fields, globals, function return values, and function parameters.
