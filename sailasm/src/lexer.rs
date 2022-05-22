@@ -226,7 +226,7 @@ pub enum Token<'s> {
     CloseParenthesis,
     #[regex(r"\.[a-zA-Z]+", directive)]
     Directive(&'s str),
-    #[regex(r"@[a-zA-Z_]+", symbol)]
+    #[regex(r"@[a-zA-Z_0-9]+", symbol)]
     Symbol(&'s sailar::Id),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
