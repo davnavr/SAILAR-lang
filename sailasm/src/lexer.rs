@@ -224,6 +224,9 @@ pub enum Token<'s> {
     OpenParenthesis,
     #[token(")")]
     CloseParenthesis,
+    /// Indicates the return types of a function.
+    #[token("->")]
+    ResultSymbol,
     #[regex(r"\.[a-zA-Z]+", directive)]
     Directive(&'s str),
     #[regex(r"@[a-zA-Z_0-9]+", symbol)]

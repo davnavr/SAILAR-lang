@@ -170,6 +170,7 @@ impl<N> From<Located<N>> for (N, LocationRange) {
 
 pub type Symbol<'source> = Located<&'source sailar::Id>;
 
+/// Represents a symbol or numeric index used to refer to something.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Reference<'source> {
     Index(Located<u32>),
@@ -346,8 +347,15 @@ pub enum TypeSignature<'source> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FunctionSignature<'source> {
+    parameter_types: Box<[Reference<'source>]>,
+    argument_types: Box<[Reference<'source>]>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Signature<'source> {
     Type(TypeSignature<'source>),
+    Function(FunctionSignature<'source>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -391,11 +399,18 @@ pub enum Directive<'source> {
     /// Defines a record containing arbitrary data. Used to declare constant values such as string literals.
     Data(Option<Symbol<'source>>, Located<Box<[u8]>>),
     /// ```text
-    /// .signature type u32 ; Referred to by numeric index
-    /// .signature @my_type type s64 ; Referred to by numeric index or by symbol
+    /// ; Referred to by numeric index
+    /// .signature type u32
+    /// .signature function (@parameter_type_1, @parameter_type_2) -> (@return_type_1, @return_type_2)
+    /// .signature function () -> ()
+    ///
+    /// ; Referred to by numeric index or by symbol
+    /// .signature @my_type type s64
+    /// .signature @my_pointer_type type rawptr 0
+    /// .signature @my_function_signature (@my_type, 1) -> (1)
     /// ```
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
-    /// fields, globals, and the return values and arguments of functions.
+    /// fields, globals, function return values, and function parameters.
     Signature(Option<Symbol<'source>>, Located<Signature<'source>>),
 }
 
