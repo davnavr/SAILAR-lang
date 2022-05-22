@@ -10,12 +10,13 @@ const hexDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', '
 
 CodeMirror.defineSimpleMode(assemblerModeName, {
     start: [
+        { regex: /@[a-zA-Z_0-9]+/, token: 'variable-2' },
+        { regex: /[us](8|16|32|64|addr)|f(32|64)|voidptr|rawptr/, token: 'variable-3' },
         { regex: /\.[a-zA-Z]+/, token: 'keyword' },
         { regex: /[a-zA-Z$][a-zA-Z$]+/, token: 'atom' },
         { regex: /;.*/, token: 'comment' },
         { regex: /(0x[0-9a-fA-F][0-9a-fA-F_]*)|(0b[01][01_]*)|([0-9][0-9_]*)/, token: 'number' },
         { regex: /"([a-zA-Z !:\?0-9\-_\+\*\/]|\\[trn\\"'])*"/, token: 'string' },
-        { regex: /@[a-zA-Z_0-9]+/, token: 'variable-2' }
     ],
     meta: {
         lineComment: ';',
