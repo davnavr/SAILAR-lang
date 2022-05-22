@@ -7,10 +7,13 @@ use sailar::binary::record;
 use sailar::binary::Builder;
 use sailar::versioning;
 use std::borrow::Cow;
-use std::collections::hash_map;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ErrorKind {
+    #[error("symbol @{0} is defined more than once")]
+    DuplicateSymbolDefinition(Box<str>),
+    #[error(transparent)]
+    UnresolvedReference(#[from] UnresolvedReferenceError),
     #[error("{0} format version number was already specified")]
     DuplicateFormatVersion(ast::FormatVersionKind),
     #[error("missing corresponding major format version number")]
@@ -19,8 +22,8 @@ pub enum ErrorKind {
     UnsupportedFormatVersion(#[from] versioning::UnsupportedFormatError),
     #[error("metadata field \"{0}\" is already defined")]
     DuplicateMetadataField(&'static str),
-    #[error("symbol @{0} is defined more than once")]
-    DuplicateSymbolDefinition(Box<str>),
+    #[error("type signature is recursive")]
+    RecursiveTypeSignature,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -94,6 +97,41 @@ impl<'s> SymbolSet<'s> {
     }
 }
 
+#[derive(Clone, Debug)]
+enum UnresolvedReferenceKind {
+    Index(u32),
+    Symbol(Box<str>),
+}
+
+trait NamedItem {
+    fn item_name() -> &'static str;
+}
+
+impl NamedItem for TypeSignatureAssembler<'_, '_> {
+    fn item_name() -> &'static str {
+        "type signature"
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnresolvedReferenceError {
+    item_name: &'static str,
+    symbol: UnresolvedReferenceKind,
+}
+
+impl std::fmt::Display for UnresolvedReferenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "a {} corresponding to the ", self.item_name)?;
+        match &self.symbol {
+            UnresolvedReferenceKind::Index(index) => write!(f, "index {}", index)?,
+            UnresolvedReferenceKind::Symbol(symbol) => write!(f, "symbol @{}", symbol)?,
+        }
+        write!(f, " could not be found")
+    }
+}
+
+impl std::error::Error for UnresolvedReferenceError {}
+
 struct SymbolMap<'s, T> {
     items: Vec<T>,
     lookup: rustc_hash::FxHashMap<&'s sailar::Id, usize>,
@@ -104,6 +142,10 @@ impl<'s, T> SymbolMap<'s, T> {
         let index = self.items.len();
         self.items.push(item);
         index
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
     }
 
     fn insert(&mut self, symbol: Option<&'s sailar::Id>, item: T) -> usize {
@@ -118,20 +160,41 @@ impl<'s, T> SymbolMap<'s, T> {
         self.insert(symbol.map(|s| *s.item()), item)
     }
 
-    fn get_from_index(&self, index: usize) -> Option<&T> {
-        self.items.get(index)
-    }
-
-    fn get_from_symbol(&self, symbol: &'s sailar::Id) -> Option<&T> {
-        self.lookup.get(symbol).and_then(|index| self.get_from_index(*index))
+    fn get_index_from_symbol(&self, symbol: &'s sailar::Id) -> Option<usize> {
+        self.lookup.get(symbol).copied()
     }
 
     fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = &T> {
         self.items.iter()
     }
+}
 
-    fn into_iter(self) -> impl std::iter::ExactSizeIterator<Item = T> {
-        self.items.into_iter()
+impl<'s, T: NamedItem> SymbolMap<'s, T> {
+    fn get_index_from_reference(&self, reference: &ast::Reference<'s>) -> Result<usize, Error> {
+        let location;
+        let result = match reference {
+            ast::Reference::Index(index) => {
+                location = index.location();
+                usize::try_from(*index.item()).ok().filter(|i| *i < self.len())
+            }
+            ast::Reference::Symbol(symbol) => {
+                location = symbol.location();
+                self.get_index_from_symbol(symbol.item())
+            }
+        };
+
+        result.ok_or_else(|| {
+            Error::with_location(
+                UnresolvedReferenceError {
+                    item_name: T::item_name(),
+                    symbol: match reference {
+                        ast::Reference::Index(index) => UnresolvedReferenceKind::Index(*index.item()),
+                        ast::Reference::Symbol(symbol) => UnresolvedReferenceKind::Symbol(Box::from(symbol.item().as_str())),
+                    },
+                },
+                location.clone(),
+            )
+        })
     }
 }
 
@@ -146,13 +209,20 @@ impl<T> Default for SymbolMap<'_, T> {
 
 // TODO: Allow deciding whether duplicate records should be removed and whether records should be in source order.
 
+struct TypeSignatureAssembler<'t, 's> {
+    symbol: &'t Option<ast::Symbol<'s>>,
+    signature: &'t ast::TypeSignature<'s>,
+    signature_location: &'t ast::LocationRange,
+    references: Box<[&'t ast::Reference<'s>]>,
+}
+
 struct Directives<'t, 's> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     symbols: SymbolSet<'s>,
     identifiers: SymbolMap<'s, &'t sailar::Id>,
     data_arrays: SymbolMap<'s, &'t Box<[u8]>>,
-    type_signatures: SymbolMap<'s, binary::signature::Type>, // TODO: This should contain a struct that helps resolve any symbols to structs.
+    type_signatures: SymbolMap<'s, TypeSignatureAssembler<'t, 's>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -225,28 +295,29 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
 
                 directives.data_arrays.insert_with_symbol(symbol.as_ref(), data.item());
             }
-            ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)) => {
+            ast::Directive::Signature(symbol, signature) => {
                 if let Some(symbol) = symbol {
                     define_symbol!(symbol);
                 }
 
-                directives.type_signatures.insert_with_symbol(
-                    symbol.as_ref(),
-                    match type_signature {
-                        ast::TypeSignature::U8 => binary::signature::Type::U8,
-                        ast::TypeSignature::S8 => binary::signature::Type::S8,
-                        ast::TypeSignature::U16 => binary::signature::Type::U16,
-                        ast::TypeSignature::S16 => binary::signature::Type::S16,
-                        ast::TypeSignature::U32 => binary::signature::Type::U32,
-                        ast::TypeSignature::S32 => binary::signature::Type::S32,
-                        ast::TypeSignature::U64 => binary::signature::Type::U64,
-                        ast::TypeSignature::S64 => binary::signature::Type::S64,
-                        ast::TypeSignature::UAddr => binary::signature::Type::UAddr,
-                        ast::TypeSignature::SAddr => binary::signature::Type::SAddr,
-                        ast::TypeSignature::F32 => binary::signature::Type::F32,
-                        ast::TypeSignature::F64 => binary::signature::Type::F64,
-                    },
-                );
+                let location = signature.location();
+
+                match signature.item() {
+                    ast::Signature::Type(type_signature) => {
+                        directives.type_signatures.insert_with_symbol(
+                            symbol.as_ref(),
+                            TypeSignatureAssembler {
+                                symbol,
+                                signature: type_signature,
+                                signature_location: location,
+                                references: match type_signature {
+                                    ast::TypeSignature::RawPtr(pointee_type) => Box::from([pointee_type]),
+                                    _ => Box::default(),
+                                },
+                            },
+                        );
+                    }
+                }
             }
         }
     }
@@ -289,7 +360,50 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
         builder.add_record(record::Record::Data(Cow::Borrowed(record::DataArray::from_bytes(data))));
     }
 
-    for signature in directives.type_signatures.into_iter() {
+    for (index, assembler) in (0u32..).zip(directives.type_signatures.iter()) {
+        for reference in assembler.references.iter().copied() {
+            match reference {
+                ast::Reference::Index(i) => {
+                    if *i.item() == index {
+                        errors.push(Error::new(
+                            ErrorKind::RecursiveTypeSignature,
+                            Some(assembler.signature_location.clone()),
+                        ));
+                    }
+                }
+                ast::Reference::Symbol(symbol) => match assembler.symbol {
+                    Some(self_symbol) if symbol == self_symbol => errors.push(Error::new(
+                        ErrorKind::RecursiveTypeSignature,
+                        Some(assembler.signature_location.clone()),
+                    )),
+                    _ => (),
+                },
+            }
+        }
+
+        let signature = match assembler.signature {
+            ast::TypeSignature::U8 => binary::signature::Type::U8,
+            ast::TypeSignature::S8 => binary::signature::Type::S8,
+            ast::TypeSignature::U16 => binary::signature::Type::U16,
+            ast::TypeSignature::S16 => binary::signature::Type::S16,
+            ast::TypeSignature::U32 => binary::signature::Type::U32,
+            ast::TypeSignature::S32 => binary::signature::Type::S32,
+            ast::TypeSignature::U64 => binary::signature::Type::U64,
+            ast::TypeSignature::S64 => binary::signature::Type::S64,
+            ast::TypeSignature::UAddr => binary::signature::Type::UAddr,
+            ast::TypeSignature::SAddr => binary::signature::Type::SAddr,
+            ast::TypeSignature::F32 => binary::signature::Type::F32,
+            ast::TypeSignature::F64 => binary::signature::Type::F64,
+            ast::TypeSignature::VoidPtr => binary::signature::Type::RawPtr(None),
+            ast::TypeSignature::RawPtr(pointee) => match directives.type_signatures.get_index_from_reference(pointee) {
+                Ok(index) => binary::signature::Type::RawPtr(Some(binary::index::TypeSignature::from(index))),
+                Err(e) => {
+                    errors.push(e);
+                    continue;
+                }
+            },
+        };
+
         builder.add_record(record::Record::TypeSignature(Cow::Owned(signature)));
     }
 

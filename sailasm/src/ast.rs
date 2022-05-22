@@ -396,7 +396,7 @@ pub enum Directive<'source> {
     /// ```
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
     /// fields, globals, and the return values and arguments of functions.
-    Signature(Option<Symbol<'source>>, Signature<'source>),
+    Signature(Option<Symbol<'source>>, Located<Signature<'source>>),
 }
 
 #[cfg(test)]

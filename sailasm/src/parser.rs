@@ -467,6 +467,8 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                 match state.input.next_token() {
                     Some(((Token::Word("type"), _), location)) => {
+                        let signature_start_location;
+                        let end_location;
                         let type_signature = match state.input.next_token() {
                             Some(((Token::Word("rawptr"), _), pointer_type_location)) => {
                                 let mut pointee_type = None;
@@ -485,44 +487,63 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                                 );
 
                                 if let Some(pointee_type) = pointee_type {
+                                    signature_start_location = pointer_type_location.start().clone();
+                                    end_location = pointee_type.location().end().clone();
                                     ast::TypeSignature::RawPtr(pointee_type)
                                 } else {
                                     continue;
                                 }
                             }
-                            Some(((Token::Word("voidptr"), _), _)) => ast::TypeSignature::VoidPtr,
-                            Some(((Token::Word(primitive_type_name), _), location)) => match *primitive_type_name {
-                                "u8" => ast::TypeSignature::U8,
-                                "s8" => ast::TypeSignature::S8,
-                                "u16" => ast::TypeSignature::U16,
-                                "s16" => ast::TypeSignature::S16,
-                                "u32" => ast::TypeSignature::U32,
-                                "s32" => ast::TypeSignature::S32,
-                                "u64" => ast::TypeSignature::U64,
-                                "s64" => ast::TypeSignature::S64,
-                                "uaddr" => ast::TypeSignature::UAddr,
-                                "saddr" => ast::TypeSignature::SAddr,
-                                "f32" => ast::TypeSignature::F32,
-                                "f64" => ast::TypeSignature::F64,
-                                bad => {
-                                    state.push_error(ErrorKind::UnknownPrimitiveType(Box::from(bad)), location);
-                                    state.input.skip_current_line();
-                                    continue;
+                            Some(((Token::Word("voidptr"), _), location)) => {
+                                signature_start_location = location.start().clone();
+                                end_location = location.end().clone();
+                                ast::TypeSignature::VoidPtr
+                            }
+                            Some(((Token::Word(primitive_type_name), _), location)) => {
+                                signature_start_location = location.start().clone();
+                                end_location = location.end().clone();
+                                match *primitive_type_name {
+                                    "u8" => ast::TypeSignature::U8,
+                                    "s8" => ast::TypeSignature::S8,
+                                    "u16" => ast::TypeSignature::U16,
+                                    "s16" => ast::TypeSignature::S16,
+                                    "u32" => ast::TypeSignature::U32,
+                                    "s32" => ast::TypeSignature::S32,
+                                    "u64" => ast::TypeSignature::U64,
+                                    "s64" => ast::TypeSignature::S64,
+                                    "uaddr" => ast::TypeSignature::UAddr,
+                                    "saddr" => ast::TypeSignature::SAddr,
+                                    "f32" => ast::TypeSignature::F32,
+                                    "f64" => ast::TypeSignature::F64,
+                                    bad => {
+                                        state.push_error(ErrorKind::UnknownPrimitiveType(Box::from(bad)), location);
+                                        state.input.skip_current_line();
+                                        continue;
+                                    }
                                 }
-                            },
+                            }
                             bad => {
                                 state.push_error(
                                     ErrorKind::InvalidTypeSignature,
-                                    bad.map(|(_, location)| location.clone()).unwrap_or_else(|| location.into()),
+                                    bad.map(|(_, location)| location.clone())
+                                        .unwrap_or_else(|| location.end().into()),
                                 );
                                 state.input.skip_current_line();
                                 continue;
                             }
                         };
 
-                        state.output.tree.push(ast::Located::with_range(
-                            ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)),
-                            location,
+                        state.output.tree.push(ast::Located::new(
+                            ast::Directive::Signature(
+                                symbol,
+                                ast::Located::new(
+                                    ast::Signature::Type(type_signature),
+                                    signature_start_location,
+                                    end_location.clone(),
+                                ),
+                            ),
+                            start_location.start().clone(),
+                            end_location,
                         ));
                     }
                     Some(((Token::Word(invalid), _), location)) => {
