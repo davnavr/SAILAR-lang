@@ -168,7 +168,22 @@ impl<N> From<Located<N>> for (N, LocationRange) {
     }
 }
 
-pub type Symbol<'s> = Located<&'s sailar::Id>;
+pub type Symbol<'source> = Located<&'source sailar::Id>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reference<'source> {
+    Index(Located<u32>),
+    Symbol(Symbol<'source>),
+}
+
+impl Reference<'_> {
+    pub fn location(&self) -> &LocationRange {
+        match self {
+            Self::Index(index) => index.location(),
+            Self::Symbol(symbol) => symbol.location(),
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("\"\\{sequence}\" is not a valid escape sequence")]
@@ -313,7 +328,7 @@ pub enum Metadata<'source> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TypeSignature {
+pub enum TypeSignature<'source> {
     U8,
     S8,
     U16,
@@ -326,11 +341,13 @@ pub enum TypeSignature {
     SAddr,
     F32,
     F64,
+    RawPtr(Reference<'source>),
+    VoidPtr,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Signature {
-    Type(TypeSignature),
+pub enum Signature<'source> {
+    Type(TypeSignature<'source>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -379,7 +396,7 @@ pub enum Directive<'source> {
     /// ```
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
     /// fields, globals, and the return values and arguments of functions.
-    Signature(Option<Symbol<'source>>, Signature),
+    Signature(Option<Symbol<'source>>, Signature<'source>),
 }
 
 #[cfg(test)]

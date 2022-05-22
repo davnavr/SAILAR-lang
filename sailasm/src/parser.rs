@@ -48,6 +48,8 @@ pub enum ErrorKind {
     InvalidTypeSignature,
     #[error("{0} is not a valid primitive type")]
     UnknownPrimitiveType(Box<str>),
+    #[error("not a valid pointee type")]
+    InvalidPointeeType,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -260,6 +262,23 @@ fn parse_symbol<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Symbol<'s>> {
     })
 }
 
+fn parse_reference<'t, 's>(
+    state: &mut State<'t, 's>,
+    success: impl FnOnce(&mut State<'t, 's>, ast::Reference<'s>),
+    exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
+) {
+    match state.input.next_token() {
+        Some(((Token::Symbol(symbol), _), location)) => {
+            success(state, ast::Reference::Symbol(ast::Located::with_range(*symbol, location)))
+        }
+        Some(((Token::LiteralInteger(digits), _), location)) => match u32::try_from(digits) {
+            Ok(index) => success(state, ast::Reference::Index(ast::Located::with_range(index, location))),
+            Err(e) => state.push_error(ErrorKind::InvalidIntegerLiteral(e), location),
+        },
+        bad => exhausted(state, bad),
+    }
+}
+
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     let mut state = State {
@@ -447,9 +466,32 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 let symbol = parse_symbol(&mut state);
 
                 match state.input.next_token() {
-                    Some(((Token::Word("type"), _), location)) => match state.input.next_token() {
-                        Some(((Token::Word(primitive_type_name), _), location)) => {
-                            let primitive_type = match *primitive_type_name {
+                    Some(((Token::Word("type"), _), location)) => {
+                        let type_signature = match state.input.next_token() {
+                            Some(((Token::Word("rawptr"), _), pointer_type_location)) => {
+                                let mut pointee_type = None;
+
+                                parse_reference(
+                                    &mut state,
+                                    |_, pt| pointee_type = Some(pt),
+                                    |state, token| {
+                                        state.push_error(
+                                            ErrorKind::InvalidPointeeType,
+                                            token
+                                                .map(|(_, l)| l.clone())
+                                                .unwrap_or_else(|| pointer_type_location.end().clone().into()),
+                                        )
+                                    },
+                                );
+
+                                if let Some(pointee_type) = pointee_type {
+                                    ast::TypeSignature::RawPtr(pointee_type)
+                                } else {
+                                    continue;
+                                }
+                            }
+                            Some(((Token::Word("voidptr"), _), _)) => ast::TypeSignature::VoidPtr,
+                            Some(((Token::Word(primitive_type_name), _), location)) => match *primitive_type_name {
                                 "u8" => ast::TypeSignature::U8,
                                 "s8" => ast::TypeSignature::S8,
                                 "u16" => ast::TypeSignature::U16,
@@ -467,21 +509,22 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                                     state.input.skip_current_line();
                                     continue;
                                 }
-                            };
+                            },
+                            bad => {
+                                state.push_error(
+                                    ErrorKind::InvalidTypeSignature,
+                                    bad.map(|(_, location)| location.clone()).unwrap_or_else(|| location.into()),
+                                );
+                                state.input.skip_current_line();
+                                continue;
+                            }
+                        };
 
-                            state.output.tree.push(ast::Located::with_range(
-                                ast::Directive::Signature(symbol, ast::Signature::Type(primitive_type)),
-                                location,
-                            ));
-                        }
-                        bad => {
-                            state.push_error(
-                                ErrorKind::InvalidTypeSignature,
-                                bad.map(|(_, location)| location.clone()).unwrap_or_else(|| location.into()),
-                            );
-                            state.input.skip_current_line();
-                        }
-                    },
+                        state.output.tree.push(ast::Located::with_range(
+                            ast::Directive::Signature(symbol, ast::Signature::Type(type_signature)),
+                            location,
+                        ));
+                    }
                     Some(((Token::Word(invalid), _), location)) => {
                         state.push_error(ErrorKind::InvalidSignatureKind(Box::from(*invalid)), location);
                         state.input.skip_current_line();
@@ -494,6 +537,8 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         state.input.skip_current_line();
                     }
                 }
+
+                state.expect_newline_or_end();
             }
             Token::Directive(unknown) => {
                 state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);
