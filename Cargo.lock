@@ -344,6 +344,7 @@ name = "sailasm"
 version = "0.1.0"
 dependencies = [
  "logos",
+ "rustc-hash",
  "sailar",
  "thiserror",
 ]

@@ -55,6 +55,11 @@ impl Id {
         Identifier(self.0.to_string())
     }
 
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     /// Creates a reference to an identfier from a string, without any validation checks.
     /// # Safety
     /// Callers should ensure that the string does not contain any interior null bytes and must not be empty.

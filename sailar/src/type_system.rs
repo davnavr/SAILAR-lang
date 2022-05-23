@@ -96,6 +96,12 @@ impl Primitive {
 crate::enum_case_from_impl!(Primitive, Int, Int);
 crate::enum_case_from_impl!(Primitive, Real, Real);
 
+impl From<FixedInt> for Primitive {
+    fn from(integer_type: FixedInt) -> Self {
+        Self::Int(Int::from(integer_type))
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Any {

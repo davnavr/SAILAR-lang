@@ -6,15 +6,15 @@ use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 
 #[derive(Debug)]
-pub struct OffsetMapBuilder<'s> {
-    lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
-    input: &'s str,
+pub struct OffsetMapBuilder<'source> {
+    lookup: Vec<(usize, ast::LocationNumber, &'source str)>,
+    input: &'source str,
     previous_offset: usize,
     next_line_number: ast::LocationNumber,
 }
 
-impl<'s> OffsetMapBuilder<'s> {
-    fn new(input: &'s str) -> Self {
+impl<'source> OffsetMapBuilder<'source> {
+    fn new(input: &'source str) -> Self {
         Self {
             lookup: Vec::with_capacity(16),
             input,
@@ -33,7 +33,7 @@ impl<'s> OffsetMapBuilder<'s> {
         self.next_line_number = ast::LocationNumber::new(self.next_line_number.get() + 1).unwrap();
     }
 
-    fn finish(mut self) -> OffsetMap<'s> {
+    fn finish(mut self) -> OffsetMap<'source> {
         let last_offset = self.input.len();
 
         match self.lookup.last() {
@@ -50,17 +50,17 @@ impl<'s> OffsetMapBuilder<'s> {
 
 /// Maps byte offsets into the input file into line and column numbers.
 #[derive(Clone, Debug)]
-pub struct OffsetMap<'s> {
+pub struct OffsetMap<'source> {
     bytes: Range<usize>,
-    lookup: Vec<(usize, ast::LocationNumber, &'s str)>,
+    lookup: Vec<(usize, ast::LocationNumber, &'source str)>,
 }
 
-pub struct OffsetMapLocations<'m, 's> {
+pub struct OffsetMapLocations<'map, 'source> {
     bytes: Range<usize>,
-    lookup: &'m OffsetMap<'s>,
+    lookup: &'map OffsetMap<'source>,
 }
 
-impl<'s> std::iter::Iterator for OffsetMapLocations<'_, 's> {
+impl<'source> std::iter::Iterator for OffsetMapLocations<'_, 'source> {
     type Item = (usize, ast::Location);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,7 +75,7 @@ impl std::iter::ExactSizeIterator for OffsetMapLocations<'_, '_> {
     }
 }
 
-impl<'s> OffsetMap<'s> {
+impl<'source> OffsetMap<'source> {
     pub fn get_location(&self, offset: usize) -> Option<ast::Location> {
         if !self.lookup.is_empty() {
             match self.lookup.binary_search_by_key(&offset, |(o, _, _)| *o) {
@@ -100,7 +100,7 @@ impl<'s> OffsetMap<'s> {
     }
 
     /// Returns an iterator over each byte offset in the input and the corresponding line and column number.
-    pub fn iter_locations(&self) -> OffsetMapLocations<'_, 's> {
+    pub fn iter_locations(&self) -> OffsetMapLocations<'_, 'source> {
         OffsetMapLocations {
             bytes: self.bytes.clone(),
             lookup: self,
@@ -131,9 +131,9 @@ impl IntegerLiteralBase {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LiteralDigits<'s> {
+pub struct LiteralDigits<'source> {
     base: IntegerLiteralBase,
-    digits: &'s str,
+    digits: &'source str,
 }
 
 impl LiteralDigits<'_> {
@@ -155,13 +155,20 @@ impl LiteralDigits<'_> {
     }
 }
 
-impl TryFrom<&LiteralDigits<'_>> for u8 {
-    type Error = std::num::ParseIntError;
+macro_rules! integer_from_digits {
+    ($integer_type: ty) => {
+        impl TryFrom<&LiteralDigits<'_>> for $integer_type {
+            type Error = std::num::ParseIntError;
 
-    fn try_from(digits: &LiteralDigits<'_>) -> Result<u8, Self::Error> {
-        digits.to_integer_radix(u8::from_str_radix)
-    }
+            fn try_from(digits: &LiteralDigits<'_>) -> Result<$integer_type, Self::Error> {
+                digits.to_integer_radix(<$integer_type>::from_str_radix)
+            }
+        }
+    };
 }
+
+integer_from_digits!(u8);
+integer_from_digits!(u32);
 
 impl Debug for LiteralDigits<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
@@ -198,21 +205,32 @@ fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option
     Some(LiteralDigits { base, digits })
 }
 
-fn unknown_directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
+fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
     &lex.slice()[1..]
+}
+
+fn symbol<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Result<&'s sailar::Id, sailar::identifier::InvalidError> {
+    sailar::Id::from_str(&lex.slice()[1..])
 }
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(extras = OffsetMapBuilder<'s>)]
 pub enum Token<'s> {
-    #[token(".array")]
-    ArrayDirective,
-    #[token(".format")]
-    FormatDirective,
-    #[token(".metadata")]
-    MetadataDirective,
-    #[token(".identifier")]
-    IdentifierDirective,
+    #[token(".")]
+    Period,
+    #[token(",")]
+    Comma,
+    #[token("(")]
+    OpenParenthesis,
+    #[token(")")]
+    CloseParenthesis,
+    /// Indicates the return types of a function.
+    #[token("->")]
+    ResultSymbol,
+    #[regex(r"\.[a-zA-Z]+", directive)]
+    Directive(&'s str),
+    #[regex(r"@[a-zA-Z_0-9]+", symbol)]
+    Symbol(&'s sailar::Id),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
@@ -221,8 +239,6 @@ pub enum Token<'s> {
     LiteralInteger(LiteralDigits<'s>),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
-    #[regex(r"\.[a-zA-Z]+", unknown_directive)]
-    UnknownDirective(&'s str),
     #[error]
     #[regex(r"[ \t]+", logos::skip)]
     #[regex(r";[ \t\w\d;\?!\\/\.\*\+-=#]*", logos::skip)]
@@ -230,26 +246,26 @@ pub enum Token<'s> {
 }
 
 #[derive(Debug)]
-pub struct Output<'s> {
-    tokens: Vec<(Token<'s>, Range<usize>)>,
-    offset_map: OffsetMap<'s>,
+pub struct Output<'source> {
+    tokens: Vec<(Token<'source>, Range<usize>)>,
+    offset_map: OffsetMap<'source>,
 }
 
-impl<'s> Output<'s> {
+impl<'source> Output<'source> {
     #[inline]
-    pub fn tokens(&self) -> &[(Token<'s>, Range<usize>)] {
+    pub fn tokens(&self) -> &[(Token<'source>, Range<usize>)] {
         &self.tokens
     }
 
     #[inline]
-    pub fn locations(&self) -> &OffsetMap<'s> {
+    pub fn locations(&self) -> &OffsetMap<'source> {
         &self.offset_map
     }
 }
 
-pub fn tokenize(input: &str) -> Output<'_> {
+pub fn tokenize<'source>(input: &'source str) -> Output<'source> {
     let mut tokens = Vec::default();
-    let mut lexer = Token::lexer_with_extras(input, OffsetMapBuilder::new(input));
+    let mut lexer = Token::lexer_with_extras(input, OffsetMapBuilder::<'source>::new(input));
     while let Some(token) = lexer.next() {
         let offset = lexer.span();
 
@@ -282,7 +298,7 @@ mod tests {
         let output = tokenize(".format major 0\n.format minor 12 ; Comment\n");
 
         let expected_tokens = [
-            (Token::FormatDirective, 0usize..7),
+            (Token::Directive("format"), 0usize..7),
             (Token::Word("major"), 8..13),
             (
                 Token::LiteralInteger(LiteralDigits {
@@ -292,7 +308,7 @@ mod tests {
                 14..15,
             ),
             (Token::Newline, 15..16),
-            (Token::FormatDirective, 16..23),
+            (Token::Directive("format"), 16..23),
             (Token::Word("minor"), 24..29),
             (
                 Token::LiteralInteger(LiteralDigits {

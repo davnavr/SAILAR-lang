@@ -20,6 +20,11 @@ pub struct Location {
 }
 
 impl Location {
+    pub const START: Self = Self {
+        line: LOCATION_NUMBER_START,
+        column: LOCATION_NUMBER_START,
+    };
+
     pub fn new(line: LocationNumber, column: LocationNumber) -> Self {
         Self { line, column }
     }
@@ -60,6 +65,11 @@ pub struct LocationRange {
 }
 
 impl LocationRange {
+    pub const START: Self = Self {
+        start: Location::START,
+        end: Location::START,
+    };
+
     pub fn new(start: Location, end: Location) -> Self {
         if start > end {
             panic!("end location {} must not come before start location {}", end, start);
@@ -88,6 +98,12 @@ impl From<&Location> for LocationRange {
 impl From<Location> for LocationRange {
     fn from(location: Location) -> Self {
         Self::new(location.clone(), location)
+    }
+}
+
+impl From<std::cell::RefCell<Location>> for LocationRange {
+    fn from(location: std::cell::RefCell<Location>) -> Self {
+        Self::from(location.into_inner())
     }
 }
 
@@ -126,15 +142,19 @@ impl Display for LocationRange {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Located<N> {
     location: LocationRange,
-    node: N,
+    item: N,
 }
 
 impl<N> Located<N> {
-    pub fn new(node: N, start: Location, end: Location) -> Self {
+    pub fn with_range<L: Into<LocationRange>>(item: N, location: L) -> Self {
         Self {
-            node,
-            location: LocationRange::new(start, end),
+            item,
+            location: location.into(),
         }
+    }
+
+    pub fn new(item: N, start: Location, end: Location) -> Self {
+        Self::with_range(item, LocationRange::new(start, end))
     }
 
     #[inline]
@@ -143,12 +163,39 @@ impl<N> Located<N> {
     }
 
     #[inline]
-    pub fn node(&self) -> &N {
-        &self.node
+    pub fn item(&self) -> &N {
+        &self.item
+    }
+
+    #[inline]
+    pub fn take_item(self) -> N {
+        self.item
     }
 }
 
-pub type Symbol<'s> = Located<&'s sailar::Id>;
+impl<N> From<Located<N>> for (N, LocationRange) {
+    fn from(located: Located<N>) -> Self {
+        (located.item, located.location)
+    }
+}
+
+pub type Symbol<'source> = Located<&'source sailar::Id>;
+
+/// Represents a symbol or numeric index used to refer to something.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reference<'source> {
+    Index(Located<u32>),
+    Symbol(Symbol<'source>),
+}
+
+impl Reference<'_> {
+    pub fn location(&self) -> &LocationRange {
+        match self {
+            Self::Index(index) => index.location(),
+            Self::Symbol(symbol) => symbol.location(),
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("\"\\{sequence}\" is not a valid escape sequence")]
@@ -177,14 +224,16 @@ impl InvalidEscapeSequenceError {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LiteralString<'s> {
-    original_contents: &'s str,
+pub struct LiteralString<'source> {
+    original_contents: &'source str,
     actual_contents: Option<Box<str>>,
 }
 
-impl<'s> LiteralString<'s> {
+pub type Identifier<'source> = Cow<'source, sailar::Id>;
+
+impl<'source> LiteralString<'source> {
     /// Creates a string literal from its contents, which can pontentially contain escape sequences.
-    pub fn with_escape_sequences(contents: &'s str, buffer: &mut String) -> Result<Self, InvalidEscapeSequenceError> {
+    pub fn with_escape_sequences(contents: &'source str, buffer: &mut String) -> Result<Self, InvalidEscapeSequenceError> {
         buffer.clear();
 
         let mut characters = contents.char_indices();
@@ -225,10 +274,10 @@ impl<'s> LiteralString<'s> {
     }
 
     /// Gets the contents of the string literal, if it did not contain any escape sequences.
-    pub fn as_original_str(&self) -> Result<&'s str, &str> {
+    pub fn as_original_str(&self) -> Result<&'source str, &str> {
         match &self.actual_contents {
             None => Ok(self.original_contents),
-            Some(actual_contents) => Err(&actual_contents),
+            Some(actual_contents) => Err(actual_contents),
         }
     }
 
@@ -239,7 +288,7 @@ impl<'s> LiteralString<'s> {
         }
     }
 
-    pub fn try_into_identifier(self) -> Result<Cow<'s, sailar::Id>, sailar::identifier::InvalidError> {
+    pub fn try_into_identifier(self) -> Result<Identifier<'source>, sailar::identifier::InvalidError> {
         match self.actual_contents {
             Some(actual_contents) => sailar::Identifier::try_from(actual_contents).map(Cow::Owned),
             None => sailar::Id::from_str(self.original_contents).map(Cow::Borrowed),
@@ -247,19 +296,19 @@ impl<'s> LiteralString<'s> {
     }
 }
 
-impl<'s> TryFrom<&'s str> for LiteralString<'s> {
+impl<'source> TryFrom<&'source str> for LiteralString<'source> {
     type Error = InvalidEscapeSequenceError;
 
-    fn try_from(literal: &'s str) -> Result<Self, Self::Error> {
+    fn try_from(literal: &'source str) -> Result<Self, Self::Error> {
         LiteralString::with_escape_sequences(literal, &mut String::default())
     }
 }
 
-impl<'s> TryFrom<LiteralString<'s>> for Cow<'s, sailar::Id> {
+impl<'source> TryFrom<LiteralString<'source>> for Identifier<'source> {
     type Error = sailar::identifier::InvalidError;
 
     #[inline]
-    fn try_from(literal: LiteralString<'s>) -> Result<Self, Self::Error> {
+    fn try_from(literal: LiteralString<'source>) -> Result<Self, Self::Error> {
         literal.try_into_identifier()
     }
 }
@@ -286,12 +335,66 @@ impl Display for FormatVersionKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Metadata<'s> {
-    Identifier(Cow<'s, sailar::Id>, Box<[usize]>),
+pub enum Metadata<'source> {
+    Identifier(Located<Identifier<'source>>, Box<[u32]>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Directive<'s> {
+pub enum TypeSignature<'source> {
+    U8,
+    S8,
+    U16,
+    S16,
+    U32,
+    S32,
+    U64,
+    S64,
+    UAddr,
+    SAddr,
+    F32,
+    F64,
+    RawPtr(Reference<'source>),
+    VoidPtr,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionSignature<'source> {
+    types: Box<[Reference<'source>]>,
+    parameter_type_count: usize,
+}
+
+impl<'source> FunctionSignature<'source> {
+    /// Creates a function signature from the specified types, with the parameter types first and the return types last.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of parameters exceeds the actual number of types.
+    pub(crate) fn from_vec(types: &mut Vec<Reference<'source>>, parameter_type_count: usize) -> Self {
+        assert!(parameter_type_count <= types.len());
+
+        Self {
+            types: types.clone().into_boxed_slice(),
+            parameter_type_count,
+        }
+    }
+
+    pub fn parameter_types(&self) -> &[Reference<'source>] {
+        &self.types[0..self.parameter_type_count]
+    }
+
+    pub fn return_types(&self) -> &[Reference<'source>] {
+        &self.types[self.parameter_type_count..]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Signature<'source> {
+    Type(TypeSignature<'source>),
+    Function(FunctionSignature<'source>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Directive<'source> {
     /// ```text
     /// .array
     /// ```
@@ -300,7 +403,7 @@ pub enum Directive<'s> {
     /// # Example
     ///
     /// ```text
-    /// .array ; Merges the following 3 identifier records into one record.
+    /// .array ; Merges the following 3 identifier records into one record
     /// .identifier "abc"
     /// .identifier "def"
     /// .identifier "testing"
@@ -313,17 +416,42 @@ pub enum Directive<'s> {
     /// Sets the major or minor format version of the module.
     Format(FormatVersionKind, u8),
     /// ```text
-    /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module.
+    /// .metadata id "MyModule" 1.2.3 ; Specifies the name and version of the module
     /// .metadata id "MyModuleNoVersion"
+    /// .meta id "ShortenedVersion"
     /// ```
     /// Specifies information about the module.
-    Metadata(Metadata<'s>),
+    Metadata(Metadata<'source>),
     /// ```text
     /// .identifier "no symbol" ; Referred to by numeric index
-    /// .identifier @my_symbol "with symbol" ; Referred to by numeric index or by name.
+    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol
+    /// .ident "shorter_syntax"
     /// ```
     /// Defines a record containing a reusable identifier string.
-    Identifier(Option<Symbol<'s>>, Cow<'s, sailar::Id>),
+    Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
+    /// ```text
+    /// .data 0x68 0x65 0x6C 0x6C 0x6F ; Referred to by numeric index
+    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by symbol
+    /// ```
+    /// Defines a record containing arbitrary data. Used to declare constant values such as string literals.
+    Data(Option<Symbol<'source>>, Located<Box<[u8]>>),
+    /// ```text
+    /// ; Referred to by numeric index
+    /// .signature type u32
+    /// .sig type u16
+    /// .signature function (@parameter_type_1, @parameter_type_2) -> (@return_type_1, @return_type_2)
+    /// .signature function () -> ()
+    /// .sig func (3)
+    ///
+    /// ; Referred to by numeric index or by symbol
+    /// .signature @my_type type s64
+    /// .signature @my_pointer_type type rawptr 0
+    /// .signature @my_function_signature (@my_type, 1) -> (1)
+    /// .sig @shorter_function_signature func (0, 1) -> (2)
+    /// ```
+    /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
+    /// fields, globals, function return values, and function parameters.
+    Signature(Option<Symbol<'source>>, Located<Signature<'source>>),
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use std::borrow::Cow;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Type {
-    HeaderField = 0,
+    MetadataField = 0,
     Array = 1,
     Identifier = 2,
     TypeSignature = 3,
@@ -59,16 +59,20 @@ impl TryFrom<u8> for Type {
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum HeaderField<'a> {
-    ModuleIdentifier { name: Cow<'a, Id>, version: Cow<'a, [usize]> },
+pub enum MetadataField<'a> {
+    ModuleIdentifier {
+        name: Cow<'a, Id>,
+        version: CowBox<'a, [usize]>,
+    },
 }
 
-impl HeaderField<'_> {
+impl MetadataField<'_> {
     pub fn field_name(&self) -> &'static Id {
         let name = match self {
-            Self::ModuleIdentifier { .. } => "ModuleIdentifier",
+            Self::ModuleIdentifier { .. } => "id",
         };
 
+        // Safety: all above names are assumed to be valid.
         unsafe { Id::from_str_unchecked(name) }
     }
 }
@@ -82,6 +86,14 @@ impl DataArray {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    #[inline]
+    pub fn from_bytes<'a>(bytes: &'a [u8]) -> &'a Self {
+        unsafe {
+            // Safety: Layout of data array is the same.
+            std::mem::transmute::<&'a _, &'a _>(bytes)
+        }
+    }
 }
 
 impl<'a> From<&'a DataArray> for &'a [u8] {
@@ -94,10 +106,7 @@ impl<'a> From<&'a DataArray> for &'a [u8] {
 impl<'a> From<&'a [u8]> for &'a DataArray {
     #[inline]
     fn from(bytes: &'a [u8]) -> &'a DataArray {
-        unsafe {
-            // Safety: Layout of data array is the same.
-            std::mem::transmute(bytes)
-        }
+        DataArray::from_bytes(bytes)
     }
 }
 
@@ -163,7 +172,7 @@ impl<'a> CodeBlock<'a> {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Record<'a> {
-    HeaderField(HeaderField<'a>),
+    MetadataField(MetadataField<'a>),
     Identifier(Cow<'a, Id>),
     TypeSignature(Cow<'a, signature::Type>),
     FunctionSignature(Cow<'a, signature::Function>),
@@ -174,7 +183,7 @@ pub enum Record<'a> {
 impl Record<'_> {
     pub fn record_type(&self) -> Type {
         match self {
-            Self::HeaderField(_) => Type::HeaderField,
+            Self::MetadataField(_) => Type::MetadataField,
             Self::Identifier(_) => Type::Identifier,
             Self::TypeSignature(_) => Type::TypeSignature,
             Self::FunctionSignature(_) => Type::FunctionSignature,
