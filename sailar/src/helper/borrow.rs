@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter};
+use std::cmp::{Eq, PartialEq};
 
 /// Trait implemented by objects that can be boxed.
 pub trait ToBox {
@@ -116,3 +117,11 @@ impl<B: ?Sized + Display> Display for CowBox<'_, B> {
         }
     }
 }
+
+impl<B: ?Sized + PartialEq> PartialEq for CowBox<'_, B> {
+    fn eq(&self, other: &Self) -> bool {
+        B::eq(self.borrow(), other.borrow())
+    }
+}
+
+impl<B: ?Sized + Eq> Eq for CowBox<'_, B> {}

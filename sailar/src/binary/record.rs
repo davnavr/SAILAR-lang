@@ -13,7 +13,7 @@ pub enum Export {
     Public = 1,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum MetadataField<'a> {
     ModuleIdentifier {
@@ -94,7 +94,7 @@ impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CodeBlock<'a> {
     register_types: CowBox<'a, [index::TypeSignature]>,
     input_count: usize,
@@ -170,7 +170,7 @@ macro_rules! record_types {
             }
         }
 
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
         pub enum Record<'a> {
             $($(#[$case_meta])* $case_name$(($($case_argument,)*))?,)*
