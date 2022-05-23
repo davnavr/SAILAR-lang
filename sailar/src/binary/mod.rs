@@ -6,6 +6,7 @@ mod writer;
 
 pub mod builder;
 pub mod index;
+pub mod instruction;
 pub mod reader;
 pub mod record;
 pub mod signature;

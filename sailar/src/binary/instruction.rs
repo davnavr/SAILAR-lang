@@ -1,4 +1,4 @@
-//! Model of the SAILAR instruction set.
+//! Representation of the SAILAR instruction set encoding.
 
 use crate::binary::index;
 use std::fmt::{Debug, Formatter};

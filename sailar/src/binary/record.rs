@@ -1,6 +1,6 @@
 //! Types that represent records in a SAILAR module binary.
 
-use crate::binary::{index, signature};
+use crate::binary::{index, instruction, signature};
 use crate::helper::borrow::CowBox;
 use crate::{Id, Identifier};
 use std::borrow::Cow;
@@ -99,7 +99,7 @@ pub struct CodeBlock<'a> {
     register_types: CowBox<'a, [index::TypeSignature]>,
     input_count: usize,
     result_count: usize,
-    instructions: Cow<'a, [crate::instruction::Instruction]>,
+    instructions: Cow<'a, [instruction::Instruction]>,
 }
 
 impl<'a> CodeBlock<'a> {
@@ -120,7 +120,7 @@ impl<'a> CodeBlock<'a> {
         &self.register_types()[self.input_count + self.result_count..]
     }
 
-    pub fn instructions(&self) -> &[crate::instruction::Instruction] {
+    pub fn instructions(&self) -> &[instruction::Instruction] {
         &self.instructions
     }
 }
