@@ -10,6 +10,8 @@ use std::ops::Range;
 pub enum ErrorKind {
     #[error("unknown token")]
     UnknownToken,
+    #[error("expected symbol or integer index")]
+    ExpectedReference,
     #[error("\"\\{0}\" is not a valid escape sequence")]
     InvalidEscapeSequence(Box<str>),
     #[error("invalid integer literal: {0}")]
@@ -50,6 +52,8 @@ pub enum ErrorKind {
     UnknownPrimitiveType(Box<str>),
     #[error("not a valid pointee type")]
     InvalidPointeeType,
+    #[error("expected list of type symbols or indices for argument and return types")]
+    ExpectedFunctionSignatureTypeList,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -154,6 +158,7 @@ impl<'source> Output<'source> {
 struct State<'tree, 'source> {
     input: SliceInput<'tree, 'source>,
     character_buffer: String,
+    reference_buffer: Vec<ast::Reference<'source>>,
     output: Output<'source>,
 }
 
@@ -186,6 +191,11 @@ impl<'tree, 'source> State<'tree, 'source> {
     }
 }
 
+fn token_location_or_else(token: Option<&LocatedToken>, default: impl FnOnce() -> ast::LocationRange) -> ast::LocationRange {
+    token.map(|(_, location)| location.clone()).unwrap_or_else(default)
+}
+
+// TODO: Make this obsolete.
 fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::OffsetMap) -> ast::LocationRange {
     token
         .map(|(_, location)| location.clone())
@@ -284,6 +294,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     let mut state = State {
         input: SliceInput::new(input.tokens(), input.locations()),
         character_buffer: String::default(),
+        reference_buffer: Vec::default(),
         output: Output::default(),
     };
 
@@ -545,6 +556,120 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             start_location.start().clone(),
                             end_location,
                         ));
+                    }
+                    Some(((Token::Word("function" | "func"), _), location)) => {
+                        fn function_types<'t, 's>(
+                            state: &mut State<'t, 's>,
+                            signature_location: &ast::Location,
+                            reference_buffer: &mut Vec<ast::Reference<'s>>,
+                            success: impl FnOnce(&mut State<'t, 's>, &mut Vec<ast::Reference<'s>>, ast::LocationRange),
+                        ) {
+                            let start_location;
+                            let mut end_location;
+                            match state.input.next_token() {
+                                Some(((Token::OpenParenthesis, _), location)) => {
+                                    start_location = location.start().clone();
+                                    end_location = std::cell::RefCell::new(location.end().clone());
+                                }
+                                bad => {
+                                    state.push_error(
+                                        ErrorKind::ExpectedFunctionSignatureTypeList,
+                                        token_location_or_else(bad.as_ref(), || {
+                                            ast::LocationRange::from(signature_location.clone())
+                                        }),
+                                    );
+                                    return;
+                                }
+                            }
+
+                            let mut parse_type_reference = |state: &mut State<'t, 's>| {
+                                parse_reference(
+                                    state,
+                                    |_, s| {
+                                        *end_location.borrow_mut() = s.location().end().clone();
+                                        reference_buffer.push(s);
+                                    },
+                                    |s, b| {
+                                        s.push_error(
+                                            ErrorKind::ExpectedReference,
+                                            token_location_or_else(b.as_ref(), || ast::LocationRange::from(end_location.clone())),
+                                        )
+                                    },
+                                )
+                            };
+
+                            parse_type_reference(state);
+
+                            while state.input.next_token_if(|t| matches!(t, Token::Comma)).is_some() {
+                                parse_type_reference(state);
+                            }
+
+                            match state.input.next_token() {
+                                Some(((Token::CloseParenthesis, _), location)) => {
+                                    *end_location.get_mut() = location.end().clone();
+                                }
+                                bad => {
+                                    state.push_error(
+                                        ErrorKind::ExpectedReference,
+                                        token_location_or_else(bad.as_ref(), || {
+                                            ast::LocationRange::from(end_location.into_inner())
+                                        }),
+                                    );
+                                    return;
+                                }
+                            }
+
+                            success(
+                                state,
+                                reference_buffer,
+                                ast::LocationRange::new(start_location, end_location.into_inner()),
+                            )
+                        }
+
+                        let mut reference_buffer = std::mem::take(&mut state.reference_buffer);
+                        reference_buffer.clear();
+
+                        let start_location = location.end().clone();
+
+                        function_types(
+                            &mut state,
+                            &start_location,
+                            &mut reference_buffer,
+                            |state, reference_buffer, parameter_types_location| {
+                                let parameter_type_count = reference_buffer.len();
+                                let mut result_types_location = None;
+                                if state.input.next_token_if(|t| matches!(t, Token::ResultSymbol)).is_some() {
+                                    function_types(state, parameter_types_location.end(), reference_buffer, |_, _, l| {
+                                        result_types_location = Some(l);
+                                    });
+                                }
+
+                                state.expect_newline_or_end();
+
+                                let signature_start_location = parameter_types_location.start().clone();
+
+                                let signature_end_location =
+                                    result_types_location.unwrap_or(parameter_types_location).end().clone();
+
+                                state.output.tree.push(ast::Located::new(
+                                    ast::Directive::Signature(
+                                        symbol,
+                                        ast::Located::new(
+                                            ast::Signature::Function(ast::FunctionSignature::from_vec(
+                                                reference_buffer,
+                                                parameter_type_count,
+                                            )),
+                                            signature_start_location,
+                                            signature_end_location.clone(),
+                                        ),
+                                    ),
+                                    start_location.clone(),
+                                    signature_end_location,
+                                ));
+                            },
+                        );
+
+                        state.reference_buffer = reference_buffer;
                     }
                     Some(((Token::Word(invalid), _), location)) => {
                         state.push_error(ErrorKind::InvalidSignatureKind(Box::from(*invalid)), location);

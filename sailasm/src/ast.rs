@@ -101,6 +101,12 @@ impl From<Location> for LocationRange {
     }
 }
 
+impl From<std::cell::RefCell<Location>> for LocationRange {
+    fn from(location: std::cell::RefCell<Location>) -> Self {
+        Self::from(location.into_inner())
+    }
+}
+
 impl From<&LocationRange> for std::ops::RangeInclusive<Location> {
     fn from(range: &LocationRange) -> Self {
         Self::new(range.start.clone(), range.end.clone())
@@ -159,6 +165,11 @@ impl<N> Located<N> {
     #[inline]
     pub fn item(&self) -> &N {
         &self.item
+    }
+
+    #[inline]
+    pub fn take_item(self) -> N {
+        self.item
     }
 }
 
@@ -348,8 +359,32 @@ pub enum TypeSignature<'source> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionSignature<'source> {
-    parameter_types: Box<[Reference<'source>]>,
-    argument_types: Box<[Reference<'source>]>,
+    types: Box<[Reference<'source>]>,
+    parameter_type_count: usize,
+}
+
+impl<'source> FunctionSignature<'source> {
+    /// Creates a function signature from the specified types, with the parameter types first and the return types last.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of parameters exceeds the actual number of types.
+    pub(crate) fn from_vec(types: &mut Vec<Reference<'source>>, parameter_type_count: usize) -> Self {
+        assert!(parameter_type_count <= types.len());
+
+        Self {
+            types: types.clone().into_boxed_slice(),
+            parameter_type_count,
+        }
+    }
+
+    pub fn parameter_types(&self) -> &[Reference<'source>] {
+        &self.types[0..self.parameter_type_count]
+    }
+
+    pub fn return_types(&self) -> &[Reference<'source>] {
+        &self.types[self.parameter_type_count..]
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -406,6 +441,7 @@ pub enum Directive<'source> {
     /// .sig type u16
     /// .signature function (@parameter_type_1, @parameter_type_2) -> (@return_type_1, @return_type_2)
     /// .signature function () -> ()
+    /// .sig func (3)
     ///
     /// ; Referred to by numeric index or by symbol
     /// .signature @my_type type s64
