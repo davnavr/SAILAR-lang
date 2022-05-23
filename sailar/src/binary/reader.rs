@@ -52,12 +52,14 @@ pub enum ErrorKind {
     UnuspportedFormatVersion(#[from] versioning::UnsupportedFormatError),
     #[error("expected integer size")]
     MissingIntegerSize,
+    #[error("expected reserved integer value")]
+    MissingReservedInteger,
     #[error(transparent)]
     InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("expected record count")]
     MissingRecordCount,
     #[error("the integer value {0} was too large")]
-    IntegerTooLarge(u32), // TODO: Make this a panic.
+    IntegerTooLarge(u32),
     #[error("expected record type byte")]
     MissingRecordType,
     #[error(transparent)]
@@ -86,10 +88,18 @@ pub enum ErrorKind {
     MissingTypeSignatureIndex,
     #[error("expected function signature index")]
     MissingFunctionSignatureIndex,
-    #[error("expected end of file")]
-    ExpectedEOF,
     #[error("expected data array byte length")]
     MissingDataLength,
+    #[error("expected flag byte of function definition")]
+    MissingFunctionDefinitionFlags,
+    #[error("reserved bits in function definition flags {0:#02X} must not be set")]
+    InvalidFunctionDefinitionFlags(u8),
+    #[error("expected code block index")]
+    MissingCodeBlockIndex,
+    #[error("expected identifier index to the foreign function's library name")]
+    MissingForeignLibraryName,
+    #[error("expected end of file")]
+    ExpectedEOF,
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
@@ -355,10 +365,10 @@ impl<R: Read> RecordReader<R> {
     }
 
     /// Consumes bytes in the input, returning the parsed record, or `None` if an empty array record is encountered.
-    /// 
+    ///
     /// When an array record is encountered, only the first element of the array is read. Further elements should be read using
     /// the `array_reader`.
-    /// 
+    ///
     /// # Errors
     ///
     /// Returns `Some(Err(_))` when invalid input is encountered, or if an error occurs during reading.
@@ -397,7 +407,7 @@ impl<R: Read> RecordReader<R> {
             });
         }
 
-        fn read_identifier_content(source: &mut BufferWrapper, size: usize) -> Result<Record> {
+        fn read_identifier_content(source: &mut BufferWrapper, size: usize) -> Result<identifier::Identifier> {
             let mut buffer = vec![0u8; size];
             let actual_size = source.read_bytes(&mut buffer)?;
             if actual_size != buffer.len() {
@@ -408,12 +418,13 @@ impl<R: Read> RecordReader<R> {
                 });
             }
 
-            source
-                .wrap_result(identifier::Identifier::from_utf8(buffer))
-                .map(Record::from)
+            source.wrap_result(identifier::Identifier::from_utf8(buffer))
         }
 
-        fn read_identifier<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
+        fn read_identifier<'b>(
+            source: &mut BufferWrapper<'b>,
+            integer_reader: IntegerReader<&'b [u8]>,
+        ) -> Result<identifier::Identifier> {
             let size = integer_reader(source, || ErrorKind::MissingIdentifierLength)?;
             read_identifier_content(source, size)
         }
@@ -449,6 +460,47 @@ impl<R: Read> RecordReader<R> {
             ))
         }
 
+        fn read_function_definition<'b>(
+            source: &mut BufferWrapper<'b>,
+            integer_reader: IntegerReader<&'b [u8]>,
+        ) -> Result<Record> {
+            let mut flags_value = 0u8;
+            if source.read_bytes(std::slice::from_mut(&mut flags_value))? == 0 {
+                return source.fail_with(ErrorKind::MissingRecordType);
+            }
+
+            if flags_value & 0b1111_1100u8 != 0u8 {
+                return source.fail_with(ErrorKind::InvalidFunctionDefinitionFlags(flags_value));
+            }
+
+            let export = if flags_value & 1 == 1 {
+                record::Export::Public
+            } else {
+                record::Export::Private
+            };
+
+            let reserved = (integer_reader)(source, || ErrorKind::MissingReservedInteger)?;
+
+            let signature = (integer_reader)(source, || ErrorKind::MissingFunctionSignatureIndex)?;
+            let symbol = Cow::Owned(read_identifier(source, integer_reader)?);
+
+            let body = if flags_value & 0b10 != 0b10 {
+                record::FunctionBody::Definition(integer_reader(source, || ErrorKind::MissingCodeBlockIndex)?.into())
+            } else {
+                record::FunctionBody::Foreign {
+                    library: integer_reader(source, || ErrorKind::MissingForeignLibraryName)?.into(),
+                    entry_point: Cow::Owned(read_identifier(source, integer_reader)?),
+                }
+            };
+
+            Ok(Record::from(record::FunctionDefinition::new(
+                export,
+                signature.into(),
+                symbol,
+                body,
+            )))
+        }
+
         self.count -= 1;
 
         match record_type {
@@ -461,7 +513,7 @@ impl<R: Read> RecordReader<R> {
                     array_count,
                     array_elements,
                     match array_type {
-                        record::Type::Identifier => read_identifier,
+                        record::Type::Identifier => |src, int_reader| read_identifier(src, int_reader).map(Record::from),
                         record::Type::TypeSignature => read_type_signature,
                         record::Type::Data => |source: &mut BufferWrapper, integer_reader: IntegerReader<_>| {
                             let data_size = integer_reader(source, || ErrorKind::MissingDataLength)?;
@@ -485,9 +537,10 @@ impl<R: Read> RecordReader<R> {
                     None => Ok(None),
                 }
             }
-            record::Type::Identifier => read_identifier_content(content, record_size).map(Some),
+            record::Type::Identifier => read_identifier_content(content, record_size).map(|id| Some(Record::from(id))),
             record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
             record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
+            record::Type::FunctionDefinition => read_function_definition(content, content_integer_reader).map(Some),
             _ => todo!("parse a {:?}", record_type),
         }
     }

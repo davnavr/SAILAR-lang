@@ -271,6 +271,20 @@ impl From<signature::Type> for Record<'_> {
     }
 }
 
+impl From<signature::Function> for Record<'_> {
+    #[inline]
+    fn from(signature: signature::Function) -> Self {
+        Self::FunctionSignature(Cow::Owned(signature))
+    }
+}
+
+impl<'a> From<FunctionDefinition<'a>> for Record<'a> {
+    #[inline]
+    fn from(definition: FunctionDefinition<'a>) -> Self {
+        Self::FunctionDefinition(CowBox::Boxed(Box::new(definition)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
