@@ -228,7 +228,7 @@ impl<R: Read> Reader<R> {
     /// # Examples
     ///
     /// ```
-    /// # use sailar::binary::module::reader::{Reader};
+    /// # use sailar::binary::reader::Reader;
     /// let input = "What happens if nonsense is used as input?";
     /// let reader = Reader::new(input.as_bytes());
     /// assert!(matches!(reader.to_record_reader(), Err(_)));
@@ -314,7 +314,7 @@ impl ArrayRecordReader {
 
     fn read_next<'a>(&'a mut self, integer_reader: IntegerReader<&'a [u8]>) -> Option<Result<Record>> {
         if self.element_count > 0 {
-            let mut wrapper = Wrapper::new(&self.element_buffer[0..(self.element_buffer.len() - self.element_buffer_offset)]);
+            let mut wrapper = Wrapper::new(&self.element_buffer[self.element_buffer_offset..]);
             let record = (self.element_reader)(&mut wrapper, integer_reader);
             let element_size = wrapper.offset;
             self.element_count -= 1;
@@ -355,9 +355,10 @@ impl<R: Read> RecordReader<R> {
     }
 
     /// Consumes bytes in the input, returning the parsed record, or `None` if an empty array record is encountered.
-    ///
-    /// When an array record is encountered, the elements of the array each time this method is called.
-    ///
+    /// 
+    /// When an array record is encountered, only the first element of the array is read. Further elements should be read using
+    /// the `array_reader`.
+    /// 
     /// # Errors
     ///
     /// Returns `Some(Err(_))` when invalid input is encountered, or if an error occurs during reading.
@@ -491,8 +492,6 @@ impl<R: Read> RecordReader<R> {
         }
     }
 
-    // TODO: Return a mini-record reader in a function next_record_reader to allow temporary skipping of invalid records and parsing of records that follow an invalid record
-
     // TODO: Reader could return index of record (e.g. TypeSignature index for TypeSignatures, etc.)
     /// Returns the next record in the module, or `None` if no records remain in the module.
     pub fn next_record(&mut self) -> Option<Result<Record>> {
@@ -605,9 +604,11 @@ mod tests {
         assert!(
             matches!(record_reader.next_record_transposed().unwrap(), Some(Record::Data(bytes)) if bytes.as_ref() == &[0xA, 0xB, 0xC, 0xD, 0xE, 0xF])
         );
+
         assert!(
             matches!(record_reader.next_record_transposed().unwrap(), Some(Record::Data(bytes)) if bytes.as_ref() == &[b'T', b'E', b'S', b'T'])
         );
+
         record_reader.finish().unwrap();
     }
 }
