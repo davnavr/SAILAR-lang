@@ -104,6 +104,8 @@ pub enum ErrorKind {
     MissingCodeBlockIndex,
     #[error("expected identifier index to the foreign function's library name")]
     MissingForeignLibraryName,
+    #[error("expected function template index integer")]
+    MissingFunctionTemplateIndex,
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -531,6 +533,14 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
+        fn read_function_instantiation<'b>(
+            source: &mut BufferWrapper<'b>,
+            integer_reader: IntegerReader<&'b [u8]>,
+        ) -> Result<Record> {
+            let template = (integer_reader)(source, || ErrorKind::MissingFunctionTemplateIndex)?.into();
+            Ok(Record::from(record::FunctionInstantiation::from_template(template)))
+        }
+
         self.count -= 1;
 
         match record_type {
@@ -572,6 +582,7 @@ impl<R: Read> RecordReader<R> {
             record::Type::FunctionSignature => read_function_signature(content, content_integer_reader).map(Some),
             record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
             record::Type::FunctionDefinition => read_function_definition(content, content_integer_reader).map(Some),
+            record::Type::FunctionInstantiation => read_function_instantiation(content, content_integer_reader).map(Some),
             _ => todo!("parse a {:?}", record_type),
         }
     }

@@ -121,15 +121,10 @@ impl<'a> Builder<'a> {
                 }
             }
 
-            // macro_rules! write_array_record {
-            //     ($items: expr, $item_writer: expr) => {{
-            //         out.write_integer($items.len())?;
-            //         for item in $items.iter() {
-            //             ($item_writer)(out, item)?;
-            //         }
-            //         Ok(())
-            //     }};
-            // }
+            fn write_function_instantiation(out: &mut VecWriter, instantiation: &record::FunctionInstantiation) -> Result {
+                out.write_integer(instantiation.template())?;
+                out.write_integer(0usize)
+            }
 
             match record {
                 Record::MetadataField(field) => write_metadata_field(out, field),
@@ -139,15 +134,7 @@ impl<'a> Builder<'a> {
                 Record::Data(bytes) => out.write_all(bytes.as_ref().as_bytes()),
                 Record::CodeBlock(_) => todo!("write code"),
                 Record::FunctionDefinition(definition) => write_function_definition(out, definition.as_ref()),
-                // Record::Array(array) => {
-                //     out.write_all(&[u8::from(array.item_type())])?;
-                //     match array {
-                //         record::Array::HeaderField(fields) => write_array_record!(fields, write_header_field),
-                //         record::Array::Identifier(identifiers) => write_array_record!(identifiers, Writer::write_identifier),
-                //         record::Array::TypeSignature(signatures) => write_array_record!(signatures, write_type_signature),
-                //         record::Array::FunctionSignature(signatures) => write_array_record!(signatures, write_function_signature),
-                //     }
-                // }
+                Record::FunctionInstantiation(instantiation) => write_function_instantiation(out, instantiation.as_ref()),
             }
         }
 

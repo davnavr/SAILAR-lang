@@ -75,3 +75,13 @@ index_type!(
     #[doc("Represents an index to a code block in a module.")]
     CodeBlock
 );
+
+index_type!(
+    #[doc("Represents an index to a function import or definition in a module in that order.")]
+    FunctionTemplate
+);
+
+index_type!(
+    #[doc("Represents an index to a function instantiation in a module.")]
+    FunctionInstantiation
+);

@@ -142,6 +142,22 @@ pub struct FunctionDefinition<'a> {
     body: FunctionBody<'a>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionInstantiation {
+    template: index::FunctionInstantiation,
+}
+
+impl FunctionInstantiation {
+    pub fn from_template(template: index::FunctionInstantiation) -> Self {
+        Self { template }
+    }
+
+    #[inline]
+    pub fn template(&self) -> index::FunctionInstantiation {
+        self.template
+    }
+}
+
 impl<'a> FunctionDefinition<'a> {
     pub fn new(export: Export, signature: index::FunctionSignature, symbol: Cow<'a, Id>, body: FunctionBody<'a>) -> Self {
         Self {
@@ -229,6 +245,8 @@ macro_rules! record_types {
 
 record_types!({
     MetadataField(_field: MetadataField<'a>,) = 0,
+    // Array records are a special case handled by the reading and writing APIs, and so explicit construction is not allowed here.
+    //Array = 1,
     Identifier(_identifier: Cow<'a, Id>,) = 2,
     TypeSignature(_signature: Cow<'a, signature::Type>,) = 3,
     FunctionSignature(_signature: Cow<'a, signature::Function>,) = 4,
@@ -241,7 +259,7 @@ record_types!({
     FunctionDefinition(_definition: CowBox<'a, FunctionDefinition<'a>>,) = 11,
     //StructureDefinition = 12,
     //GlobalDefinition = 13,
-    //FunctionInstantiation = 14,
+    FunctionInstantiation(_instantiation: CowBox<'a, FunctionInstantiation>,) = 14,
     //StructureInstantiation = 15,
     //Namespace = 16,
     //ExceptionClassImport = 17,
@@ -282,6 +300,13 @@ impl<'a> From<FunctionDefinition<'a>> for Record<'a> {
     #[inline]
     fn from(definition: FunctionDefinition<'a>) -> Self {
         Self::FunctionDefinition(CowBox::Boxed(Box::new(definition)))
+    }
+}
+
+impl From<FunctionInstantiation> for Record<'_> {
+    #[inline]
+    fn from(instantiation: FunctionInstantiation) -> Self {
+        Self::FunctionInstantiation(CowBox::Boxed(Box::new(instantiation)))
     }
 }
 

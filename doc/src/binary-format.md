@@ -153,9 +153,11 @@ Entry Point Name|An [identifier](#identifier) that is the name of the function d
 ## Function Instantiation Record
 Allows referring to function definitions and imports, while also allowing generic functions in the future.
 
+TODO: Might rename to Instantiation Record since this structure might be reused by generic structs in the future.
+
 Offset|Name|Notes
 ---|---|---
-`0`|Function Index|An [integer](#integer-size) index used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
+`0`|Template Index|An [integer](#integer-size) index used to refer to a function import or definition, where `0` refers to the first function import, and `x` refers to the first function definition, where `x` is the total number of function imports.
 `L`|Reserved|A reserved [integer](#integer-size), must be set to zero.
 
 # DEPRECATED BELOW
