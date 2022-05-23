@@ -1,8 +1,8 @@
 //! Contains code for working with borrowed data.
 
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter};
 use std::cmp::{Eq, PartialEq};
+use std::fmt::{Debug, Display, Formatter};
 
 /// Trait implemented by objects that can be boxed.
 pub trait ToBox {

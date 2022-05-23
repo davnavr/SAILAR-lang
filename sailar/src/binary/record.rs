@@ -127,17 +127,58 @@ impl<'a> CodeBlock<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FunctionBody<'a> {
-    Defined(index::CodeBlock),
+    Definition(index::CodeBlock),
     Foreign {
         library: index::Identifier,
-        entry_point_name: Cow<'a, Id>,
+        entry_point: Cow<'a, Id>,
     },
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDefinition<'a> {
     export: Export,
+    signature: index::FunctionSignature,
+    symbol: Cow<'a, Id>,
     body: FunctionBody<'a>,
+}
+
+impl<'a> FunctionDefinition<'a> {
+    pub fn new(export: Export, signature: index::FunctionSignature, symbol: Cow<'a, Id>, body: FunctionBody<'a>) -> Self {
+        Self {
+            export,
+            signature,
+            symbol,
+            body,
+        }
+    }
+
+    #[inline]
+    pub fn export(&self) -> Export {
+        self.export
+    }
+
+    #[inline]
+    pub fn signature(&self) -> index::FunctionSignature {
+        self.signature
+    }
+
+    #[inline]
+    pub fn symbol(&self) -> &Id {
+        &self.symbol
+    }
+
+    #[inline]
+    pub fn body(&self) -> &FunctionBody<'a> {
+        &self.body
+    }
+
+    pub fn flag_bits(&self) -> u8 {
+        let mut flags = self.export as u8;
+        if let FunctionBody::Foreign { .. } = &self.body {
+            flags |= 0b10;
+        }
+        flags
+    }
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -160,7 +201,7 @@ macro_rules! record_types {
 
         impl TryFrom<u8> for Type {
             type Error = InvalidTypeError;
-        
+
             fn try_from(value: u8) -> Result<Self, Self::Error> {
                 match value {
                     1 => Ok(Self::Array),

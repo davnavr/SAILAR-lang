@@ -108,6 +108,21 @@ impl<'a> Builder<'a> {
                 Ok(())
             }
 
+            fn write_function_definition(out: &mut VecWriter, definition: &record::FunctionDefinition) -> Result {
+                out.write_all(&[definition.flag_bits()])?;
+                out.write_integer(0usize)?;
+                out.write_integer(definition.signature())?;
+                out.write_identifier(definition.symbol())?;
+
+                match definition.body() {
+                    record::FunctionBody::Definition(index) => out.write_integer(*index),
+                    record::FunctionBody::Foreign { library, entry_point } => {
+                        out.write_integer(*library)?;
+                        out.write_identifier(entry_point)
+                    }
+                }
+            }
+
             // macro_rules! write_array_record {
             //     ($items: expr, $item_writer: expr) => {{
             //         out.write_integer($items.len())?;
@@ -125,6 +140,7 @@ impl<'a> Builder<'a> {
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),
                 Record::Data(bytes) => out.write_all(bytes.as_ref().as_bytes()),
                 Record::CodeBlock(_) => todo!("write code"),
+                Record::FunctionDefinition(definition) => write_function_definition(out, definition.as_ref()),
                 // Record::Array(array) => {
                 //     out.write_all(&[u8::from(array.item_type())])?;
                 //     match array {
