@@ -1,48 +1,77 @@
 //! Types that represent indices used to refer to records in a SAILAR module.
 
 use std::fmt::{Debug, Formatter};
+use std::num::TryFromIntError;
 
-macro_rules! index_implementations {
-    ($index_type: ty) => {
-        impl From<usize> for $index_type {
+macro_rules! index_type {
+    ($(#[$meta:meta])* $name:ident) => {
+        #[derive(Copy, Clone, Eq, Ord, PartialEq, PartialOrd)]
+        #[repr(transparent)]
+        pub struct $name(usize);
+
+        impl From<usize> for $name {
+            #[inline]
             fn from(index: usize) -> Self {
                 Self(index)
             }
         }
 
-        impl From<$index_type> for usize {
-            fn from(index: $index_type) -> usize {
+        impl From<$name> for usize {
+            #[inline]
+            fn from(index: $name) -> usize {
                 index.0
             }
         }
 
-        impl Debug for $index_type {
+        impl TryFrom<u32> for $name {
+            type Error = TryFromIntError;
+
+            #[inline]
+            fn try_from(index: u32) -> Result<Self, TryFromIntError> {
+                usize::try_from(index).map(Self)
+            }
+        }
+
+        impl TryFrom<$name> for u32 {
+            type Error = TryFromIntError;
+
+            #[inline]
+            fn try_from(index: $name) -> Result<u32, TryFromIntError> {
+                u32::try_from(index.0)
+            }
+        }
+
+        impl Debug for $name {
             fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
                 Debug::fmt(&self.0, f)
+            }
+        }
+
+        impl std::hash::Hash for $name {
+            #[inline]
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                state.write_usize(self.0)
             }
         }
     };
 }
 
-/// Represents an index to an identifier in a module.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct Identifier(usize);
+index_type!(
+    #[doc("Represents an index to an identifier in a module.")]
+    Identifier
+);
 
-index_implementations!(Identifier);
+index_type!(
+    #[doc("Represents an index to a function signature in a module.")]
+    FunctionSignature
+);
 
-/// Represents an index to a function signature in a module.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct FunctionSignature(usize);
+index_type!(
+    #[doc("Represents an index to a type signature in a module.")]
+    TypeSignature
+);
 
-index_implementations!(FunctionSignature);
-
-/// Represents an index to a type signature in a module.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct TypeSignature(usize);
-
-index_implementations!(TypeSignature);
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct CodeBlock(usize);
-
-index_implementations!(CodeBlock);
+index_type!(
+    #[doc("Represents an index to a code block in a module.")]
+    CodeBlock
+);
