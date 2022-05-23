@@ -63,29 +63,42 @@ impl TryFrom<u8> for TypeCode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Function {
-    return_types: Box<[index::TypeSignature]>,
-    parameter_types: Box<[index::TypeSignature]>,
+    types: Box<[index::TypeSignature]>,
+    return_type_count: usize,
 }
 
 impl Function {
-    pub fn new<R: Into<Box<[index::TypeSignature]>>, P: Into<Box<[index::TypeSignature]>>>(
-        return_types: R,
-        parameter_types: P,
-    ) -> Self {
+    /// Creates a function signature from a boxed slice of type signature indices, and a specified number of return types.
+    ///
+    /// The return types come first, followed by an inferred number of parameter types.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of return types exceeds the total number of types.
+    pub fn from_boxed_slice(types: Box<[index::TypeSignature]>, return_type_count: usize) -> Self {
+        assert!(return_type_count <= types.len());
+
         Self {
-            return_types: return_types.into(),
-            parameter_types: parameter_types.into(),
+            types,
+            return_type_count,
         }
     }
 
     #[inline]
-    pub fn return_types(&self) -> &[index::TypeSignature] {
-        &self.return_types
+    pub(crate) fn types(&self) -> &[index::TypeSignature] {
+        &self.types
     }
 
-    #[inline]
+    pub(crate) fn return_type_len(&self) -> usize {
+        self.return_type_count
+    }
+
+    pub fn return_types(&self) -> &[index::TypeSignature] {
+        &self.types[0..self.return_type_count]
+    }
+
     pub fn parameter_types(&self) -> &[index::TypeSignature] {
-        &self.parameter_types
+        &self.types[self.return_type_count..]
     }
 }
 

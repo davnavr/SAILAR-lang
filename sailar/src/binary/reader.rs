@@ -54,6 +54,8 @@ pub enum ErrorKind {
     MissingIntegerSize,
     #[error("expected reserved integer value")]
     MissingReservedInteger,
+    #[error("reserved value is invalid")]
+    InvalidReservedValue,
     #[error(transparent)]
     InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("expected record count")]
@@ -86,6 +88,10 @@ pub enum ErrorKind {
     InvalidTypeSignatureTag(#[from] signature::InvalidTypeCode),
     #[error("expected type signature index")]
     MissingTypeSignatureIndex,
+    #[error("expected integer return type count")]
+    MissingReturnTypeCount,
+    #[error("expected integer parameter type count")]
+    MissingParameterTypeCount,
     #[error("expected function signature index")]
     MissingFunctionSignatureIndex,
     #[error("expected data array byte length")]
@@ -460,6 +466,26 @@ impl<R: Read> RecordReader<R> {
             ))
         }
 
+        fn read_function_signature<'b>(
+            source: &mut BufferWrapper<'b>,
+            integer_reader: IntegerReader<&'b [u8]>,
+        ) -> Result<Record> {
+            let return_type_count = (integer_reader)(source, || ErrorKind::MissingReturnTypeCount)?;
+            let parameter_type_count = (integer_reader)(source, || ErrorKind::MissingParameterTypeCount)?;
+            let total_count = return_type_count + parameter_type_count;
+            let mut types = Vec::with_capacity(total_count);
+            for _ in 0..total_count {
+                types.push(binary::index::TypeSignature::from((integer_reader)(source, || {
+                    ErrorKind::MissingTypeSignatureIndex
+                })?));
+            }
+
+            Ok(record::Record::from(signature::Function::from_boxed_slice(
+                types.into_boxed_slice(),
+                return_type_count,
+            )))
+        }
+
         fn read_function_definition<'b>(
             source: &mut BufferWrapper<'b>,
             integer_reader: IntegerReader<&'b [u8]>,
@@ -480,6 +506,10 @@ impl<R: Read> RecordReader<R> {
             };
 
             let reserved = (integer_reader)(source, || ErrorKind::MissingReservedInteger)?;
+
+            if reserved != 0 {
+                return source.fail_with(ErrorKind::InvalidReservedValue);
+            }
 
             let signature = (integer_reader)(source, || ErrorKind::MissingFunctionSignatureIndex)?;
             let symbol = Cow::Owned(read_identifier(source, integer_reader)?);
@@ -539,6 +569,7 @@ impl<R: Read> RecordReader<R> {
             }
             record::Type::Identifier => read_identifier_content(content, record_size).map(|id| Some(Record::from(id))),
             record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
+            record::Type::FunctionSignature => read_function_signature(content, content_integer_reader).map(Some),
             record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
             record::Type::FunctionDefinition => read_function_definition(content, content_integer_reader).map(Some),
             _ => todo!("parse a {:?}", record_type),

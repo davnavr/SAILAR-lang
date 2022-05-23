@@ -98,11 +98,9 @@ impl<'a> Builder<'a> {
             }
 
             fn write_function_signature(out: &mut VecWriter, signature: &signature::Function) -> Result {
-                let return_types = signature.return_types();
-                let parameter_types = signature.parameter_types();
-                out.write_integer(return_types.len())?;
-                out.write_integer(parameter_types.len())?;
-                for index in return_types.iter().chain(parameter_types) {
+                out.write_integer(signature.return_type_len())?;
+                out.write_integer(signature.types().len() - signature.return_type_len())?;
+                for index in signature.types().iter() {
                     out.write_integer(*index)?;
                 }
                 Ok(())

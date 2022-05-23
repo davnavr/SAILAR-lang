@@ -414,30 +414,29 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
         builder.add_record(record::Record::TypeSignature(Cow::Owned(signature)));
     }
 
-    let get_type_signature_indices = |references: &[ast::Reference<'s>], errors: &mut Vec<Error>| -> Box<[_]> {
-        let mut indices = Vec::with_capacity(references.len());
-        let mut failed = false;
-        for r in references.iter() {
-            match directives.type_signatures.get_index_from_reference(r) {
-                Ok(index) if !failed => indices.push(binary::index::TypeSignature::try_from(index).unwrap()),
-                Ok(_) => (),
-                Err(e) => {
-                    errors.push(e);
-                    failed = true;
-                    indices = Vec::default()
+    let get_type_signature_indices =
+        |references: &[ast::Reference<'s>], indices: &mut Vec<binary::index::TypeSignature>, errors: &mut Vec<Error>| {
+            let mut failed = false;
+            for r in references.iter() {
+                match directives.type_signatures.get_index_from_reference(r) {
+                    Ok(index) if !failed => indices.push(binary::index::TypeSignature::try_from(index).unwrap()),
+                    Ok(_) => (),
+                    Err(e) => {
+                        errors.push(e);
+                        failed = true;
+                    }
                 }
             }
-        }
-
-        indices.into_boxed_slice()
-    };
+        };
 
     for signature in directives.function_signatures.iter() {
+        let return_types = signature.return_types();
+        let parameter_types = signature.parameter_types();
+        let mut indices = Vec::with_capacity(return_types.len() + parameter_types.len());
+        get_type_signature_indices(return_types, &mut indices, errors);
+        get_type_signature_indices(parameter_types, &mut indices, errors);
         builder.add_record(record::Record::FunctionSignature(Cow::Owned(
-            binary::signature::Function::new(
-                get_type_signature_indices(signature.return_types(), errors),
-                get_type_signature_indices(signature.parameter_types(), errors),
-            ),
+            binary::signature::Function::from_boxed_slice(indices.into_boxed_slice(), return_types.len()),
         )));
     }
 
