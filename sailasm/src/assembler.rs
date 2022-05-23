@@ -223,6 +223,7 @@ struct Directives<'t, 's> {
     identifiers: SymbolMap<'s, &'t sailar::Id>,
     data_arrays: SymbolMap<'s, &'t Box<[u8]>>,
     type_signatures: SymbolMap<'s, TypeSignatureAssembler<'t, 's>>,
+    function_signatures: SymbolMap<'s, &'t ast::FunctionSignature<'s>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -234,6 +235,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
         identifiers: Default::default(),
         data_arrays: Default::default(),
         type_signatures: Default::default(),
+        function_signatures: Default::default(),
     };
 
     macro_rules! define_symbol {
@@ -318,7 +320,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                         );
                     }
                     ast::Signature::Function(function_signature) => {
-                        todo!("assemble func sig");
+                        directives
+                            .function_signatures
+                            .insert_with_symbol(symbol.as_ref(), function_signature);
                     }
                 }
             }
@@ -329,7 +333,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
-fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'t, '_>) -> Builder<'t> {
+fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directives<'t, 's>) -> Builder<'t> {
     let format_version = match versioning::Format::try_from(directives.format_version) {
         Ok(version) => version,
         Err(e) => {
@@ -408,6 +412,33 @@ fn assemble_directives<'t>(errors: &mut Vec<Error>, mut directives: Directives<'
         };
 
         builder.add_record(record::Record::TypeSignature(Cow::Owned(signature)));
+    }
+
+    let get_type_signature_indices = |references: &[ast::Reference<'s>], errors: &mut Vec<Error>| -> Box<[_]> {
+        let mut indices = Vec::with_capacity(references.len());
+        let mut failed = false;
+        for r in references.iter() {
+            match directives.type_signatures.get_index_from_reference(r) {
+                Ok(index) if !failed => indices.push(binary::index::TypeSignature::try_from(index).unwrap()),
+                Ok(_) => (),
+                Err(e) => {
+                    errors.push(e);
+                    failed = true;
+                    indices = Vec::default()
+                }
+            }
+        }
+
+        indices.into_boxed_slice()
+    };
+
+    for signature in directives.function_signatures.iter() {
+        builder.add_record(record::Record::FunctionSignature(Cow::Owned(
+            binary::signature::Function::new(
+                get_type_signature_indices(signature.return_types(), errors),
+                get_type_signature_indices(signature.parameter_types(), errors),
+            ),
+        )));
     }
 
     builder
