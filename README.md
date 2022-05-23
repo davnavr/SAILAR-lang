@@ -3,6 +3,12 @@
 
 A virtual machine and bytecode format, like Java bytecode, WebAssembly, or CIL, but with registers.
 
+This project aims to eventually provide:
+- Easy compilation to other languages, including LLVM IR, WebAssembly, CIL, and JVM bytecode
+- Reified generics while also not limiting the type system of the source language
+- Bindings to allow generation of modules and bytecode in languages other than Rust (C, C#, and other languages with FFI)
+- A simple debugging information format that allows easy translation to other formats (DWARF, Windows PDBs, etc.)
+
 # NEW NAME NEEDED
 
 This project's name is currently way too similar to [SAIL](https://github.com/rems-project/sail), so a new name to replace SAILAR will be made eventually.
