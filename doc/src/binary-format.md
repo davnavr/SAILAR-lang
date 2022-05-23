@@ -135,8 +135,9 @@ Offset|Bits|Name|Notes
 `0`|`0`|Export|If set, indicates if this structure is visible to other modules.
 `0`|`1`|Foreign|If set, indicates that the body of this function is defined elsewhere. Typically used when dealing with foreign function interface bindings.
 `0`|`2..7`|Reserved|These bits must not be set.
-`1`||Signature|An [integer](#integer-size) that indicates the [function's signature](#function-signatures).
-`1 + L`||[Symbol](#symbols)
+`1`||Reserved|Reserved [integer](#integer-size) that will eventually be used for generic parameter information. Must be set to zero.
+`1 + L`||Signature|An [integer](#integer-size) that indicates the [function's signature](#function-signatures).
+`1 + 2L`||[Symbol](#symbols)
 ?||[Function Body](#function-body)
 
 ### Function Body

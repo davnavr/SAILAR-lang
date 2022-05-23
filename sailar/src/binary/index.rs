@@ -41,3 +41,8 @@ index_implementations!(FunctionSignature);
 pub struct TypeSignature(usize);
 
 index_implementations!(TypeSignature);
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct CodeBlock(usize);
+
+index_implementations!(CodeBlock);

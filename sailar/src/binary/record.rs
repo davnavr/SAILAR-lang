@@ -5,65 +5,12 @@ use crate::helper::borrow::CowBox;
 use crate::{Id, Identifier};
 use std::borrow::Cow;
 
-macro_rules! record_types {
-    ({
-        $($(#[$case_meta:meta])* $case_name:ident$(($($case_argument_name:ident: $case_argument:ty,)*))? = $case_number:literal,)*
-    }) => {
-        /// Indicates what kind of content is contained in a record.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        #[repr(u8)]
-        pub enum Type {
-            Array = 1,
-            $($case_name = $case_number,)*
-        }
-
-        impl TryFrom<u8> for Type {
-            type Error = InvalidTypeError;
-        
-            fn try_from(value: u8) -> Result<Self, Self::Error> {
-                match value {
-                    1 => Ok(Self::Array),
-                    $(_ if value == $case_number => Ok(Self::$case_name),)*
-                    _ => Err(InvalidTypeError { value })
-                }
-            }
-        }
-
-        #[derive(Clone, Debug)]
-        #[non_exhaustive]
-        pub enum Record<'a> {
-            $($(#[$case_meta])* $case_name$(($($case_argument,)*))?,)*
-        }
-
-        impl Record<'_> {
-            pub fn record_type(&self) -> Type {
-                match self {
-                    $(Self::$case_name$(($($case_argument_name,)*))? => Type::$case_name,)*
-                }
-            }
-        }
-    };
-}
-
-record_types!({
-    MetadataField(_field: MetadataField<'a>,) = 0,
-    Identifier(_identifier: Cow<'a, Id>,) = 2,
-    TypeSignature(_signature: Cow<'a, signature::Type>,) = 3,
-    FunctionSignature(_signature: Cow<'a, signature::Function>,) = 4,
-    Data(_bytes: Cow<'a, DataArray>,) = 5,
-    CodeBlock(_code: CowBox<'a, CodeBlock<'a>>,) = 6,
-});
-
-impl From<Type> for u8 {
-    fn from(value: Type) -> u8 {
-        value as u8
-    }
-}
-
-#[derive(Clone, Debug, thiserror::Error)]
-#[error("{value:#02X} is not a valid record type")]
-pub struct InvalidTypeError {
-    value: u8,
+/// Indicates whether a definition in a module can be imported by other modules.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
+pub enum Export {
+    Private = 0,
+    Public = 1,
 }
 
 #[derive(Clone, Debug)]
@@ -175,6 +122,97 @@ impl<'a> CodeBlock<'a> {
 
     pub fn instructions(&self) -> &[crate::instruction::Instruction] {
         &self.instructions
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FunctionBody<'a> {
+    Defined(index::CodeBlock),
+    Foreign {
+        library: index::Identifier,
+        entry_point_name: Cow<'a, Id>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDefinition<'a> {
+    export: Export,
+    body: FunctionBody<'a>,
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("{value:#02X} is not a valid record type")]
+pub struct InvalidTypeError {
+    value: u8,
+}
+
+macro_rules! record_types {
+    ({
+        $($(#[$case_meta:meta])* $case_name:ident$(($($case_argument_name:ident: $case_argument:ty,)*))? = $case_number:literal,)*
+    }) => {
+        /// Indicates what kind of content is contained in a record.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[repr(u8)]
+        pub enum Type {
+            Array = 1,
+            $($case_name = $case_number,)*
+        }
+
+        impl TryFrom<u8> for Type {
+            type Error = InvalidTypeError;
+        
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    1 => Ok(Self::Array),
+                    $(_ if value == $case_number => Ok(Self::$case_name),)*
+                    _ => Err(InvalidTypeError { value })
+                }
+            }
+        }
+
+        #[derive(Clone, Debug)]
+        #[non_exhaustive]
+        pub enum Record<'a> {
+            $($(#[$case_meta])* $case_name$(($($case_argument,)*))?,)*
+        }
+
+        impl Record<'_> {
+            pub fn record_type(&self) -> Type {
+                match self {
+                    $(Self::$case_name$(($($case_argument_name,)*))? => Type::$case_name,)*
+                }
+            }
+        }
+    };
+}
+
+record_types!({
+    MetadataField(_field: MetadataField<'a>,) = 0,
+    Identifier(_identifier: Cow<'a, Id>,) = 2,
+    TypeSignature(_signature: Cow<'a, signature::Type>,) = 3,
+    FunctionSignature(_signature: Cow<'a, signature::Function>,) = 4,
+    Data(_bytes: Cow<'a, DataArray>,) = 5,
+    CodeBlock(_code: CowBox<'a, CodeBlock<'a>>,) = 6,
+    //ModuleImport = 7,
+    //FunctionImport = 8,
+    //StructureImport = 9,
+    //GlobalImport = 10,
+    FunctionDefinition(_definition: CowBox<'a, FunctionDefinition<'a>>,) = 11,
+    //StructureDefinition = 12,
+    //GlobalDefinition = 13,
+    //FunctionInstantiation = 14,
+    //StructureInstantiation = 15,
+    //Namespace = 16,
+    //ExceptionClassImport = 17,
+    //ExceptionClassDefinition = 18,
+    //AnnotationClassImport = 19,
+    //AnnotationClassDefinition = 20,
+    //DebuggingInformation = 21,
+});
+
+impl From<Type> for u8 {
+    fn from(value: Type) -> u8 {
+        value as u8
     }
 }
 
