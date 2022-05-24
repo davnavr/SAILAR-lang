@@ -820,17 +820,19 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                 let mut is_start_of_line = true;
                 loop {
-                    // TODO: Parse statements.
+                    assert!(is_start_of_line, "statements must begin at the start of a line");
+
+                    // TODO: Parse temporary registers.
+                    let temporary_registers = Box::default();
+                    
                     match state.input.peek_next_token() {
                         Some(((Token::Word(instruction_name), _), location)) => {
                             state.input.next_token();
                             end_location = location.end().clone();
 
-                            // TODO: Parse temporary registers.
-                            let temporary_registers = Box::default();
-
                             let instruction = match *instruction_name {
                                 "nop" => ast::Instruction::Nop,
+                                "break" => ast::Instruction::Break,
                                 unknown => {
                                     state.push_error(ErrorKind::UnknownInstruction(Box::from(unknown)), location);
                                     ast::Instruction::Nop
@@ -849,7 +851,9 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             end_location = location.end().clone();
                             is_start_of_line = true;
                         }
-                        Some((_, _)) => {
+                        Some((_, location)) => {
+                            state.push_error(ErrorKind::UnknownToken, location);
+
                             if !is_start_of_line {
                                 state.expect_newline_or_end();
                             }
@@ -900,7 +904,7 @@ mod tests {
 
     #[test]
     fn basic_code_record_example() {
-        let tokens = crate::lexer::tokenize("\n.code ($a0:#1, $a1:#2)\nnop\n\n");
+        let tokens = crate::lexer::tokenize("\n.code ($a0:#1, $a1:#2)\nnop\nbreak\n.data 1\n");
         let tree = crate::parser::parse(&tokens);
         let empty: &[crate::parser::Error] = &[];
         assert_eq!(empty, tree.errors());
