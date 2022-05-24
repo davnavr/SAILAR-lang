@@ -130,10 +130,20 @@ impl IntegerLiteralBase {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum IntegerLiteralType {
+    Unspecified,
+    I8,
+    I16,
+    I32,
+    I64,
+}
+
 #[derive(Clone, PartialEq)]
 pub struct LiteralDigits<'source> {
     base: IntegerLiteralBase,
     digits: &'source str,
+    integer_type: IntegerLiteralType,
 }
 
 impl LiteralDigits<'_> {
@@ -147,6 +157,13 @@ impl LiteralDigits<'_> {
         self.digits
     }
 
+    #[inline]
+    pub fn integer_type(&self) -> IntegerLiteralType {
+        self.integer_type
+    }
+
+    // TODO: Fix, this conversion function may not take into account digit separators.
+    // TODO: Could add check for integer type here
     fn to_integer_radix<T>(
         &self,
         convert: fn(&str, u32) -> Result<T, std::num::ParseIntError>,
@@ -168,7 +185,9 @@ macro_rules! integer_from_digits {
 }
 
 integer_from_digits!(u8);
+integer_from_digits!(u16);
 integer_from_digits!(u32);
+integer_from_digits!(u64);
 
 impl Debug for LiteralDigits<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
@@ -178,37 +197,63 @@ impl Debug for LiteralDigits<'_> {
             IntegerLiteralBase::Decimal => (),
         }
 
-        f.write_str(self.digits)
+        f.write_str(self.digits)?;
+
+        match self.integer_type {
+            IntegerLiteralType::Unspecified => Ok(()),
+            IntegerLiteralType::I8 => f.write_str("i8"),
+            IntegerLiteralType::I16 => f.write_str("i16"),
+            IntegerLiteralType::I32 => f.write_str("i32"),
+            IntegerLiteralType::I64 => f.write_str("i64"),
+        }
     }
 }
 
 fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> LiteralDigits<'s> {
-    let token = lex.slice();
+    let mut token = lex.slice();
     let base;
-    let digits;
 
     match token.get(0..2) {
         Some("0x" | "0X") => {
             base = IntegerLiteralBase::Binary;
-            digits = &token[2..];
+            token = &token[2..];
         }
         Some("0b" | "0B") => {
             base = IntegerLiteralBase::Hexadecimal;
-            digits = &token[2..];
+            token = &token[2..];
         }
         _ => {
             base = IntegerLiteralBase::Decimal;
-            digits = token;
+            token = token;
         }
     }
 
-    LiteralDigits { base, digits }
+    // TODO: Could account for digit separators by spitting on '_' and allocating a String.
+
+    let (digits, integer_type) = match token.rfind(&['u', 's']) {
+        Some(type_index) => token.split_at(type_index),
+        None => (token, ""),
+    };
+
+    LiteralDigits {
+        base,
+        digits,
+        integer_type: match integer_type {
+            "i8" => IntegerLiteralType::I8,
+            "i16" => IntegerLiteralType::I16,
+            "i32" => IntegerLiteralType::I32,
+            "i64" => IntegerLiteralType::I64,
+            "" => IntegerLiteralType::Unspecified,
+            bad => unreachable!("invalid integer literal type {:?}", bad),
+        },
+    }
 }
 
 fn index_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> LiteralDigits<'s> {
     LiteralDigits {
         base: IntegerLiteralBase::Decimal,
         digits: &lex.slice()[1..],
+        integer_type: IntegerLiteralType::Unspecified,
     }
 }
 
@@ -248,7 +293,10 @@ pub enum Token<'s> {
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]
     LiteralString(&'s str),
-    #[regex("(0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*", literal_integer_contents)]
+    #[regex(
+        "((0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*)(i(8|16|32|64))?",
+        literal_integer_contents
+    )]
     LiteralInteger(LiteralDigits<'s>),
     #[regex("#[0-9]+", index_contents)]
     Index(LiteralDigits<'s>),
@@ -312,7 +360,7 @@ mod tests {
 
     #[test]
     fn format_version_is_tokenized() {
-        let output = tokenize(".format major 0\n.format minor 12 ; Comment\n");
+        let output = tokenize(".format major 0\n.format minor 12i8 ; Comment\n");
 
         let expected_tokens = [
             (Token::Directive("format"), 0usize..7),
@@ -321,6 +369,7 @@ mod tests {
                 Token::LiteralInteger(LiteralDigits {
                     base: IntegerLiteralBase::Decimal,
                     digits: "0",
+                    integer_type: IntegerLiteralType::Unspecified,
                 }),
                 14..15,
             ),
@@ -331,10 +380,11 @@ mod tests {
                 Token::LiteralInteger(LiteralDigits {
                     base: IntegerLiteralBase::Decimal,
                     digits: "12",
+                    integer_type: IntegerLiteralType::I8,
                 }),
-                30..32,
+                30..34,
             ),
-            (Token::Newline, 42..43),
+            (Token::Newline, 44..45),
         ];
 
         let expected_locations = [
@@ -381,6 +431,8 @@ mod tests {
             (40, 2, 25),
             (41, 2, 26),
             (42, 2, 27),
+            (43, 2, 28),
+            (44, 2, 29),
         ];
 
         assert_eq!(expected_tokens.as_slice(), output.tokens());

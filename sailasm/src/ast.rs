@@ -423,8 +423,17 @@ pub use crate::lexer::LiteralDigits;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value<'source> {
-    LiteralInteger(LiteralDigits<'source>),
+    LiteralInteger(Located<LiteralDigits<'source>>),
     Register(Reference<'source>),
+}
+
+impl<'source> Value<'source> {
+    pub fn location(&self) -> &LocationRange {
+        match self {
+            Self::LiteralInteger(integer) => integer.location(),
+            Self::Register(register) => register.location(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

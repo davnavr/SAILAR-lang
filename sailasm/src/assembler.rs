@@ -30,6 +30,8 @@ pub enum ErrorKind {
     DuplicateRegisterDefinition(Box<str>),
     #[error("expected {expected} temporary registers to be introduced, but got {actual}")]
     TemporaryRegisterCountMismatch { expected: usize, actual: usize },
+    #[error("invalid integer value: {0}")]
+    InvalidIntegerValue(std::num::ParseIntError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -383,10 +385,6 @@ impl<'t, 's> RegisterMap<'t, 's> {
         self.types.len()
     }
 
-    fn get_type(&self, index: binary::index::Register) -> Option<binary::index::TypeSignature> {
-        self.types.get(usize::from(index)).copied()
-    }
-
     fn get_register_index(&self, reference: &'t ast::Reference<'s>) -> Result<binary::index::Register, Error> {
         // TODO: Remove duplicated code with SymbolMap.
         let location;
@@ -416,20 +414,6 @@ impl<'t, 's> RegisterMap<'t, 's> {
                 location.clone(),
             )
         })
-    }
-
-    fn get_register_indices<F: FnMut(binary::index::Register)>(
-        &self,
-        mut f: F,
-        references: &'t [ast::Reference<'s>],
-        errors: &mut Vec<Error>,
-    ) {
-        for r in references.iter() {
-            match self.get_register_index(r) {
-                Ok(index) => f(index),
-                Err(e) => errors.push(e),
-            }
-        }
     }
 
     fn try_insert(
@@ -595,8 +579,27 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
         register_lookup: &RegisterMap<'t, 's>,
         value: &'t ast::Value<'s>,
     ) -> Result<instruction::Value, Error> {
+        use crate::lexer::IntegerLiteralType;
+
         match value {
-            ast::Value::LiteralInteger(digits) => todo!("integer values not yet supported"),
+            ast::Value::LiteralInteger(integer) => {
+                let digits = integer.item();
+
+                macro_rules! convert_integer {
+                    ($integer_type: ty) => {
+                        <$integer_type>::try_from(digits)
+                            .map(|v| v.into())
+                            .map_err(|e| Error::with_location(ErrorKind::InvalidIntegerValue(e), integer.location().clone()))
+                    };
+                }
+
+                match digits.integer_type() {
+                    IntegerLiteralType::I8 => convert_integer!(u8),
+                    IntegerLiteralType::I16 => convert_integer!(u16),
+                    IntegerLiteralType::Unspecified | IntegerLiteralType::I32 => convert_integer!(u32),
+                    IntegerLiteralType::I64 => convert_integer!(u64),
+                }
+            }
             ast::Value::Register(register) => register_lookup
                 .get_register_index(register)
                 .map(instruction::Value::IndexedRegister),
