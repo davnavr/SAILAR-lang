@@ -530,7 +530,7 @@ impl<R: Read> RecordReader<R> {
                 )?;
 
                 if !flags.contains(instruction::ValueFlags::IS_CONSTANT) {
-                    (integer_reader)(source, || ErrorKind::MissingRegisterIndex).map(instruction::Value::IndexedRegister)
+                    (integer_reader)(source, || ErrorKind::MissingRegisterIndex).map(|i| index::Register::from(i).into())
                 } else {
                     if !flags.contains(instruction::ValueFlags::IS_INTEGER) {
                         return source.fail_with(ErrorKind::InvalidConstantValueKind);

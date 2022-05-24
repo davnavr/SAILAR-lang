@@ -175,7 +175,7 @@ struct State<'tree, 'source> {
     input: SliceInput<'tree, 'source>,
     character_buffer: String,
     reference_buffer: Vec<ast::Reference<'source>>,
-    typed_register_buffer: Vec<ast::TypedRegister<'source>>,
+    typed_register_buffer: Vec<ast::Located<ast::TypedRegister<'source>>>,
     statement_buffer: Vec<ast::Statement<'source>>,
     output: Output<'source>,
 }
@@ -312,14 +312,21 @@ fn parse_reference<'t, 's>(
 
 /// Parses a comma separated list of register symbols with type annotations, appending the parsed registers to the
 /// `typed_register_buffer` of the `state`.
-fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::TypedRegister<'s>]> {
+fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::Located<ast::TypedRegister<'s>>]> {
     state.typed_register_buffer.clear();
 
     loop {
         let register_symbol;
+        let start_location;
         match state.input.peek_next_token() {
-            Some(((Token::Register(name), _), location)) => register_symbol = Some(ast::Symbol::with_range(name, location)),
-            Some(((Token::Underscore, _), _)) => register_symbol = None,
+            Some(((Token::Register(name), _), location)) => {
+                start_location = location.start().clone();
+                register_symbol = Some(ast::Symbol::with_range(name, location));
+            }
+            Some(((Token::Underscore, _), location)) => {
+                register_symbol = None;
+                start_location = location.start().clone();
+            }
             bad => {
                 if !state.typed_register_buffer.is_empty() {
                     state.push_error(
@@ -351,9 +358,13 @@ fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::Typ
         parse_reference(
             state,
             |state, register_type| {
-                state
-                    .typed_register_buffer
-                    .push(ast::TypedRegister::new(register_symbol, register_type));
+                let end_location = register_type.location().end().clone();
+
+                state.typed_register_buffer.push(ast::Located::new(
+                    ast::TypedRegister::new(register_symbol, register_type),
+                    start_location,
+                    end_location,
+                ));
             },
             |state, bad| {
                 state.push_error(
@@ -787,7 +798,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
             Token::Directive("code") => {
                 let symbol = parse_symbol(&mut state);
 
-                let input_registers: Box<[ast::TypedRegister<'source>]>;
+                let input_registers;
                 if state.input.next_token_if(|t| matches!(t, Token::OpenParenthesis)).is_some() {
                     input_registers = parse_typed_register_list(&mut state);
 
@@ -854,14 +865,15 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                                 "nop" => ast::Instruction::Nop,
                                 "break" => ast::Instruction::Break,
                                 unknown => {
-                                    state.push_error(ErrorKind::UnknownInstruction(Box::from(unknown)), location);
+                                    state.push_error(ErrorKind::UnknownInstruction(Box::from(unknown)), location.clone());
                                     ast::Instruction::Nop
                                 }
                             };
 
-                            state
-                                .statement_buffer
-                                .push(ast::Statement::new(temporary_registers, instruction));
+                            state.statement_buffer.push(ast::Statement::new(
+                                temporary_registers,
+                                ast::Located::new(instruction, location.start().clone(), end_location.clone()),
+                            ));
 
                             state.expect_newline_or_end();
                             is_start_of_line = true;
@@ -886,7 +898,14 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         }
                         Some((_, location)) => {
                             end_location = location.end().clone();
-                            state.push_error(if is_start_of_line { ErrorKind::ExpectedInstruction } else { ErrorKind::UnknownToken }, location);
+                            state.push_error(
+                                if is_start_of_line {
+                                    ErrorKind::ExpectedInstruction
+                                } else {
+                                    ErrorKind::UnknownToken
+                                },
+                                location,
+                            );
                             state.input.next_token();
                             state.input.skip_current_line();
                             break;

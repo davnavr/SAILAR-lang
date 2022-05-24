@@ -437,12 +437,12 @@ pub enum Instruction<'source> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Statement<'source> {
-    results: Box<[TypedRegister<'source>]>,
-    instruction: Instruction<'source>,
+    results: Box<[Located<TypedRegister<'source>>]>,
+    instruction: Located<Instruction<'source>>,
 }
 
 impl<'source> Statement<'source> {
-    pub fn new(temporary_registers: Box<[TypedRegister<'source>]>, instruction: Instruction<'source>) -> Self {
+    pub fn new(temporary_registers: Box<[Located<TypedRegister<'source>>]>, instruction: Located<Instruction<'source>>) -> Self {
         Self {
             results: temporary_registers,
             instruction,
@@ -451,26 +451,26 @@ impl<'source> Statement<'source> {
 
     /// The temporary registers defined that contain the results of executing the instruction.
     #[inline]
-    pub fn results(&self) -> &[TypedRegister<'source>] {
+    pub fn results(&self) -> &[Located<TypedRegister<'source>>] {
         &self.results
     }
 
     #[inline]
-    pub fn instruction(&self) -> &Instruction<'source> {
+    pub fn instruction(&self) -> &Located<Instruction<'source>> {
         &self.instruction
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CodeBlock<'source> {
-    input_registers: Box<[TypedRegister<'source>]>,
+    input_registers: Box<[Located<TypedRegister<'source>>]>,
     result_types: Box<[Reference<'source>]>,
     statements: Box<[Statement<'source>]>,
 }
 
 impl<'source> CodeBlock<'source> {
     pub fn new(
-        input_registers: Box<[TypedRegister<'source>]>,
+        input_registers: Box<[Located<TypedRegister<'source>>]>,
         result_types: Box<[Reference<'source>]>,
         statements: Box<[Statement<'source>]>,
     ) -> Self {
@@ -482,7 +482,7 @@ impl<'source> CodeBlock<'source> {
     }
 
     #[inline]
-    pub fn input_registers(&self) -> &[TypedRegister<'source>] {
+    pub fn input_registers(&self) -> &[Located<TypedRegister<'source>>] {
         &self.input_registers
     }
 

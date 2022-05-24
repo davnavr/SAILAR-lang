@@ -34,7 +34,14 @@ pub enum Constant {
 #[non_exhaustive]
 pub enum Value {
     Constant(Constant),
-    IndexedRegister(usize),
+    IndexedRegister(index::Register),
+}
+
+impl From<index::Register> for Value {
+    #[inline]
+    fn from(register: index::Register) -> Self {
+        Self::IndexedRegister(register)
+    }
 }
 
 macro_rules! integer_conversion_impls {

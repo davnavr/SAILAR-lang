@@ -3,10 +3,12 @@
 use crate::ast;
 use crate::parser;
 use sailar::binary;
+use sailar::binary::instruction::{self, Instruction};
 use sailar::binary::record;
 use sailar::binary::Builder;
 use sailar::versioning;
 use std::borrow::Cow;
+use std::collections::hash_map;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ErrorKind {
@@ -24,6 +26,10 @@ pub enum ErrorKind {
     DuplicateMetadataField(&'static str),
     #[error("type signature is recursive")]
     RecursiveTypeSignature,
+    #[error("register ${0} is defined more than once")]
+    DuplicateRegisterDefinition(Box<str>),
+    #[error("expected {expected} temporary registers to be introduced, but got {actual}")]
+    TemporaryRegisterCountMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -216,6 +222,8 @@ struct TypeSignatureAssembler<'t, 's> {
     references: Box<[&'t ast::Reference<'s>]>,
 }
 
+type TypeSignatureMap<'t, 's> = SymbolMap<'s, TypeSignatureAssembler<'t, 's>>;
+
 struct Directives<'t, 's> {
     format_version: FormatVersion,
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
@@ -223,8 +231,9 @@ struct Directives<'t, 's> {
     identifiers: SymbolMap<'s, &'t sailar::Id>,
     #[allow(clippy::borrowed_box)]
     data_arrays: SymbolMap<'s, &'t Box<[u8]>>,
-    type_signatures: SymbolMap<'s, TypeSignatureAssembler<'t, 's>>,
+    type_signatures: TypeSignatureMap<'t, 's>,
     function_signatures: SymbolMap<'s, &'t ast::FunctionSignature<'s>>,
+    code_blocks: SymbolMap<'s, &'t ast::CodeBlock<'s>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -237,6 +246,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
         data_arrays: Default::default(),
         type_signatures: Default::default(),
         function_signatures: Default::default(),
+        code_blocks: Default::default(),
     };
 
     macro_rules! define_symbol {
@@ -328,12 +338,83 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                 }
             }
             ast::Directive::Code(symbol, code) => {
-                todo!("assemble code")
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
+                }
+
+                directives.code_blocks.insert_with_symbol(symbol.as_ref(), code);
             }
         }
     }
 
     directives
+}
+
+struct RegisterSymbol<'t, 's>(&'t ast::Symbol<'s>);
+
+impl std::cmp::PartialEq for RegisterSymbol<'_, '_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.item() == other.0.item()
+    }
+}
+
+impl std::cmp::Eq for RegisterSymbol<'_, '_> {}
+
+impl std::hash::Hash for RegisterSymbol<'_, '_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.item().hash(state);
+    }
+}
+
+#[derive(Default)]
+struct RegisterMap<'t, 's> {
+    types: Vec<binary::index::TypeSignature>,
+    lookup: rustc_hash::FxHashMap<RegisterSymbol<'t, 's>, binary::index::Register>,
+}
+
+impl<'t, 's> RegisterMap<'t, 's> {
+    fn clear(&mut self) {
+        self.types.clear();
+        self.lookup.clear();
+    }
+
+    fn len(&self) -> usize {
+        self.types.len()
+    }
+
+    fn get_type(&self, index: binary::index::Register) -> Option<binary::index::TypeSignature> {
+        self.types.get(usize::from(index)).copied()
+    }
+
+    //fn get_register_index(&self, reference: &'t ast::Reference<'s>)
+
+    fn try_insert(
+        &mut self,
+        symbol: Option<&'t ast::Symbol<'s>>,
+        value_type: binary::index::TypeSignature,
+    ) -> Result<binary::index::Register, Error> {
+        let index = binary::index::Register::from(self.types.len());
+        if let Some(symbol) = symbol {
+            match self.lookup.entry(RegisterSymbol(symbol)) {
+                hash_map::Entry::Vacant(vacant) => {
+                    vacant.insert(index);
+                }
+                hash_map::Entry::Occupied(occupied) => {
+                    return Err(Error::with_location(
+                        ErrorKind::DuplicateRegisterDefinition(Box::from(symbol.item().as_str())),
+                        occupied.key().0.location().clone(),
+                    ));
+                }
+            }
+        }
+
+        self.types.push(value_type);
+        Ok(index)
+    }
+
+    fn get_register_types(&self) -> Box<[binary::index::TypeSignature]> {
+        self.types.clone().into_boxed_slice()
+    }
 }
 
 /// The second pass of the assembler, produces record definitions in the module for every directive.
@@ -415,11 +496,11 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
             },
         };
 
-        builder.add_record(record::Record::TypeSignature(Cow::Owned(signature)));
+        builder.add_record(record::Record::from(signature));
     }
 
     let get_type_signature_indices =
-        |references: &[ast::Reference<'s>], indices: &mut Vec<binary::index::TypeSignature>, errors: &mut Vec<Error>| {
+        |references: &'t [ast::Reference<'s>], indices: &mut Vec<binary::index::TypeSignature>, errors: &mut Vec<Error>| {
             let mut failed = false;
             for r in references.iter() {
                 match directives.type_signatures.get_index_from_reference(r) {
@@ -439,8 +520,92 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
         let mut indices = Vec::with_capacity(return_types.len() + parameter_types.len());
         get_type_signature_indices(return_types, &mut indices, errors);
         get_type_signature_indices(parameter_types, &mut indices, errors);
-        builder.add_record(record::Record::FunctionSignature(Cow::Owned(
-            binary::signature::Function::from_boxed_slice(indices.into_boxed_slice(), return_types.len()),
+        builder.add_record(record::Record::from(binary::signature::Function::from_boxed_slice(
+            indices.into_boxed_slice(),
+            return_types.len(),
+        )));
+    }
+
+    let mut register_lookup = RegisterMap::default();
+    let mut instruction_buffer = Vec::default();
+
+    fn define_typed_registers<'t, 's>(
+        register_lookup: &mut RegisterMap<'t, 's>,
+        type_signatures: &TypeSignatureMap<'t, 's>,
+        errors: &mut Vec<Error>,
+        registers: &'t [ast::Located<ast::TypedRegister<'s>>],
+    ) {
+        for r in registers.iter() {
+            match type_signatures.get_index_from_reference(r.item().value_type()) {
+                Ok(value_type) => {
+                    if let Err(e) = register_lookup.try_insert(r.item().symbol(), value_type.into()) {
+                        errors.push(e);
+                    }
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+    }
+
+    for code_block in directives.code_blocks.iter() {
+        register_lookup.clear();
+        instruction_buffer.clear();
+
+        define_typed_registers(
+            &mut register_lookup,
+            &directives.type_signatures,
+            errors,
+            code_block.input_registers(),
+        );
+
+        let input_count = register_lookup.len();
+
+        for result_type in code_block.result_types().iter() {
+            if let Err(e) = directives.type_signatures.get_index_from_reference(result_type) {
+                errors.push(e)
+            }
+        }
+
+        let result_count = register_lookup.len() - input_count;
+
+        for statement in code_block.statements().iter() {
+            let (instruction, expected_temporary_count) = match statement.instruction().item() {
+                ast::Instruction::Nop => (Instruction::Nop, 0),
+                ast::Instruction::Break => (Instruction::Break, 0),
+                ast::Instruction::Ret(return_values) => {
+                    // TODO: Create a helper closure that calls register_lookup.get_register_index
+                    todo!("0")
+                }
+            };
+
+            let actual_temporary_count = statement.results().len();
+            if expected_temporary_count != actual_temporary_count {
+                errors.push(Error::with_location(
+                    ErrorKind::TemporaryRegisterCountMismatch {
+                        expected: expected_temporary_count,
+                        actual: actual_temporary_count,
+                    },
+                    if statement.results().is_empty() {
+                        statement.instruction().location().clone()
+                    } else {
+                        ast::LocationRange::new(
+                            statement.results().first().unwrap().location().start().clone(),
+                            statement.results().last().unwrap().location().end().clone(),
+                        )
+                    },
+                ));
+            }
+
+            define_typed_registers(&mut register_lookup, &directives.type_signatures, errors, statement.results());
+
+            instruction_buffer.push(instruction);
+        }
+
+        builder.add_record(record::Record::from(record::CodeBlock::from_types(
+            register_lookup.get_register_types().into(),
+            input_count,
+            result_count,
+            instruction_buffer.clone().into_boxed_slice().into(),
         )));
     }
 

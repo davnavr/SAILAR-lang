@@ -94,3 +94,9 @@ index_type!(
     #[doc("Represents an index to a function instantiation in a module.")]
     FunctionInstantiation
 );
+
+index_type!(
+    #[doc("Represents an index referring to a register in a code block.")]
+    #[doc("Indices start first with the input registers followed by temporary registers.")]
+    Register
+);
