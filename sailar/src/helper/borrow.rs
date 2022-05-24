@@ -9,15 +9,15 @@ pub trait ToBox {
     fn to_box(&self) -> Box<Self>;
 }
 
-impl<C: Clone> ToBox for C {
+impl<T: Clone> ToBox for T {
     fn to_box(&self) -> Box<Self> {
         Box::new(self.clone())
     }
 }
 
-impl<T: Copy> ToBox for [T] {
+impl<T: Clone> ToBox for [T] {
     fn to_box(&self) -> Box<Self> {
-        Box::from(self)
+        std::borrow::ToOwned::to_owned(self).into_boxed_slice()
     }
 }
 

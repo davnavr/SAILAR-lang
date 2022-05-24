@@ -1,5 +1,6 @@
 //! Low-level API for building SAILAR binary modules.
 
+use crate::binary::instruction::{self, Instruction};
 use crate::binary::reader;
 use crate::binary::record::{self, Record};
 use crate::binary::signature;
@@ -106,6 +107,56 @@ impl<'a> Builder<'a> {
                 Ok(())
             }
 
+            fn write_code_value(out: &mut VecWriter, value: &instruction::Value) -> Result {
+                let flags = value.flags();
+                out.write_all(&[flags.bits()])?;
+                match value {
+                    instruction::Value::IndexedRegister(index) => out.write_integer(*index),
+                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => match integer {
+                        _ if flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) => Ok(()),
+                        instruction::ConstantInteger::I8(byte) => out.write_all(std::slice::from_ref(byte)),
+                        instruction::ConstantInteger::I16(ref bytes) => out.write_all(bytes),
+                        instruction::ConstantInteger::I32(ref bytes) => out.write_all(bytes),
+                        instruction::ConstantInteger::I64(ref bytes) => out.write_all(bytes),
+                    },
+                }
+            }
+
+            fn write_code_block(out: &mut VecWriter, block: &record::CodeBlock) -> Result {
+                out.write_integer(block.input_count())?;
+                out.write_integer(block.result_count())?;
+                out.write_integer(block.temporary_count())?;
+                for index in block.register_types().iter() {
+                    out.write_integer(*index)?;
+                }
+
+                out.write_integer(block.instructions().len())?;
+                for instruction in block.instructions().iter() {
+                    out.write_all(&[u8::from(instruction.opcode())])?;
+                    match instruction {
+                        Instruction::Nop | Instruction::Break => (),
+                        Instruction::Ret(values) => {
+                            for v in values.iter() {
+                                write_code_value(out, v)?;
+                            }
+                        }
+                        Instruction::Call(callee, arguments) => {
+                            out.write_integer(*callee)?;
+                            for a in arguments.iter() {
+                                write_code_value(out, a)?;
+                            }
+                        }
+                        Instruction::AddI(operands) | Instruction::SubI(operands) => {
+                            out.write_all(&[u8::from(operands.overflow_behavior())])?;
+                            write_code_value(out, operands.x_value())?;
+                            write_code_value(out, operands.y_value())?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+
             fn write_function_definition(out: &mut VecWriter, definition: &record::FunctionDefinition) -> Result {
                 out.write_all(&[definition.flag_bits()])?;
                 out.write_integer(0usize)?;
@@ -132,7 +183,7 @@ impl<'a> Builder<'a> {
                 Record::TypeSignature(signature) => write_type_signature(out, signature),
                 Record::FunctionSignature(signature) => write_function_signature(out, signature),
                 Record::Data(bytes) => out.write_all(bytes.as_ref().as_bytes()),
-                Record::CodeBlock(_) => todo!("write code"),
+                Record::CodeBlock(block) => write_code_block(out, block),
                 Record::FunctionDefinition(definition) => write_function_definition(out, definition.as_ref()),
                 Record::FunctionInstantiation(instantiation) => write_function_instantiation(out, instantiation.as_ref()),
             }

@@ -99,13 +99,49 @@ pub struct CodeBlock<'a> {
     register_types: CowBox<'a, [index::TypeSignature]>,
     input_count: usize,
     result_count: usize,
-    instructions: Cow<'a, [instruction::Instruction]>,
+    instructions: CowBox<'a, [instruction::Instruction]>,
 }
 
 impl<'a> CodeBlock<'a> {
+    /// Creates a code block with the specified register types, indicating the types of the input, result, and temporary registers in that order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of input and result registers exceeds the total number of register types.
+    pub fn from_types(
+        register_types: CowBox<'a, [index::TypeSignature]>,
+        input_count: usize,
+        result_count: usize,
+        instructions: CowBox<'a, [instruction::Instruction]>,
+    ) -> Self {
+        assert!(register_types.len() >= input_count + result_count);
+
+        Self {
+            register_types,
+            input_count,
+            result_count,
+            instructions,
+        }
+    }
+
     #[inline]
-    fn register_types(&self) -> &[index::TypeSignature] {
+    pub(crate) fn register_types(&self) -> &[index::TypeSignature] {
         std::borrow::Borrow::borrow(&self.register_types)
+    }
+
+    #[inline]
+    pub fn input_count(&self) -> usize {
+        self.input_count
+    }
+
+    #[inline]
+    pub fn result_count(&self) -> usize {
+        self.result_count
+    }
+
+    #[inline]
+    pub fn temporary_count(&self) -> usize {
+        self.register_types().len() - self.input_count - self.result_count
     }
 
     pub fn input_types(&self) -> &[index::TypeSignature] {
@@ -120,6 +156,7 @@ impl<'a> CodeBlock<'a> {
         &self.register_types()[self.input_count + self.result_count..]
     }
 
+    #[inline]
     pub fn instructions(&self) -> &[instruction::Instruction] {
         &self.instructions
     }
@@ -293,6 +330,13 @@ impl From<signature::Function> for Record<'_> {
     #[inline]
     fn from(signature: signature::Function) -> Self {
         Self::FunctionSignature(Cow::Owned(signature))
+    }
+}
+
+impl<'a> From<CodeBlock<'a>> for Record<'a> {
+    #[inline]
+    fn from(block: CodeBlock<'a>) -> Self {
+        Self::CodeBlock(CowBox::Boxed(Box::new(block)))
     }
 }
 

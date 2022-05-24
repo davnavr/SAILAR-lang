@@ -1,8 +1,11 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
 use crate::binary;
+use crate::binary::index;
+use crate::binary::instruction::{self, Instruction, Opcode};
 use crate::binary::record;
 use crate::binary::signature;
+use crate::helper::borrow::CowBox;
 use crate::identifier;
 use crate::versioning;
 use std::borrow::Cow;
@@ -106,6 +109,32 @@ pub enum ErrorKind {
     MissingForeignLibraryName,
     #[error("expected function template index integer")]
     MissingFunctionTemplateIndex,
+    #[error("expected integer number of temporary registers")]
+    MissingTemporaryRegisterCount,
+    #[error("expected integer count of instructions in code block")]
+    MissingInstructionCount,
+    #[error("expected opcode byte for instruction")]
+    MissingInstructionOpcode,
+    #[error(transparent)]
+    InvalidInstructionOpcode(#[from] instruction::InvalidOpcodeError),
+    #[error("expected flag byte for value in instruction")]
+    MissingInstructionValueFlags,
+    #[error("{0:#02X} is not a valid value flags combination")]
+    InvalidInstructionValuesFlags(u8),
+    #[error("expected integer register index")]
+    MissingRegisterIndex,
+    #[error("expected integer count of values for instruction")]
+    MissingInstructionValueCount,
+    #[error("missing function index for call instruction")]
+    MissingInstructionCalleeIndex,
+    #[error("unknown constant value kind")]
+    InvalidConstantValueKind,
+    #[error("expected {expected} bytes for constant value, but got {actual} ")]
+    UnexpectedEndOfConstantInteger { expected: usize, actual: usize },
+    #[error("expected integer overflow byte")]
+    MissingInstructionOverflowValue,
+    #[error(transparent)]
+    InvalidInstructionOverflowValue(#[from] instruction::InvalidOverflowBehaviorError),
     #[error("expected end of file")]
     ExpectedEOF,
     #[error(transparent)]
@@ -477,14 +506,144 @@ impl<R: Read> RecordReader<R> {
             let total_count = return_type_count + parameter_type_count;
             let mut types = Vec::with_capacity(total_count);
             for _ in 0..total_count {
-                types.push(binary::index::TypeSignature::from((integer_reader)(source, || {
+                types.push(index::TypeSignature::from((integer_reader)(source, || {
                     ErrorKind::MissingTypeSignatureIndex
                 })?));
             }
 
-            Ok(record::Record::from(signature::Function::from_boxed_slice(
+            Ok(Record::from(signature::Function::from_boxed_slice(
                 types.into_boxed_slice(),
                 return_type_count,
+            )))
+        }
+
+        fn read_code_block<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
+            let read_code_value = |source: &mut BufferWrapper<'b>| -> Result<instruction::Value> {
+                let mut flag_value = 0u8;
+                if source.read_bytes(std::slice::from_mut(&mut flag_value))? == 0 {
+                    return source.fail_with(ErrorKind::MissingInstructionValueFlags);
+                }
+
+                let flags = source.wrap_result(
+                    instruction::ValueFlags::from_bits(flag_value)
+                        .ok_or(ErrorKind::InvalidInstructionValuesFlags(flag_value)),
+                )?;
+
+                if !flags.contains(instruction::ValueFlags::IS_CONSTANT) {
+                    (integer_reader)(source, || ErrorKind::MissingRegisterIndex).map(instruction::Value::IndexedRegister)
+                } else {
+                    if !flags.contains(instruction::ValueFlags::IS_INTEGER) {
+                        return source.fail_with(ErrorKind::InvalidConstantValueKind);
+                    }
+
+                    let embedded_constant_size = (flags & instruction::ValueFlags::INTEGER_SIZE_MASK).bits() >> 2;
+
+                    Ok(if flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) {
+                        if flags.contains(instruction::ValueFlags::INTEGER_EMBEDDED_ONE) {
+                            match embedded_constant_size {
+                                0 => instruction::Value::from(1u8),
+                                1 => instruction::Value::from(1u16),
+                                2 => instruction::Value::from(1u32),
+                                3 => instruction::Value::from(1u64),
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            match embedded_constant_size {
+                                0 => instruction::Value::from(0u8),
+                                1 => instruction::Value::from(0u16),
+                                2 => instruction::Value::from(0u32),
+                                3 => instruction::Value::from(0u64),
+                                _ => unreachable!(),
+                            }
+                        }
+                    } else {
+                        fn read_constant_bytes<const N: usize, T>(
+                            source: &mut BufferWrapper,
+                            conversion: fn([u8; N]) -> T,
+                        ) -> Result<T> {
+                            let mut bytes = [0u8; N];
+                            let actual_size = source.read_bytes(&mut bytes)?;
+                            if actual_size != N {
+                                return source.fail_with(ErrorKind::UnexpectedEndOfConstantInteger {
+                                    expected: N,
+                                    actual: actual_size,
+                                });
+                            }
+                            Ok(conversion(bytes))
+                        }
+
+                        match embedded_constant_size {
+                            0 => instruction::Value::from(read_constant_bytes(source, u8::from_le_bytes)?),
+                            1 => instruction::Value::from(read_constant_bytes(source, u16::from_le_bytes)?),
+                            2 => instruction::Value::from(read_constant_bytes(source, u32::from_le_bytes)?),
+                            3 => instruction::Value::from(read_constant_bytes(source, u64::from_le_bytes)?),
+                            _ => unreachable!(),
+                        }
+                    })
+                }
+            };
+
+            let read_many_code_values = |source: &mut BufferWrapper<'b>| -> Result<Box<[instruction::Value]>> {
+                let count = (integer_reader)(source, || ErrorKind::MissingInstructionValueCount)?;
+                let mut values = Vec::with_capacity(count);
+                for _ in 0..count {
+                    values.push(read_code_value(source)?);
+                }
+                Ok(values.into_boxed_slice())
+            };
+
+            let read_integer_arithmteic = |source: &mut BufferWrapper<'b>| -> Result<Box<instruction::IntegerArithmetic>> {
+                let mut overflow_value = 0u8;
+                if source.read_bytes(std::slice::from_mut(&mut overflow_value))? == 0 {
+                    return Err(source.wrap_error(ErrorKind::MissingInstructionOverflowValue));
+                }
+
+                Ok(Box::new(instruction::IntegerArithmetic::new(
+                    source.wrap_result(instruction::OverflowBehavior::try_from(overflow_value))?,
+                    read_code_value(source)?,
+                    read_code_value(source)?,
+                )))
+            };
+
+            let read_instruction = |source: &mut BufferWrapper<'b>| -> Result<Instruction> {
+                let mut opcode_value = 0u8;
+                if source.read_bytes(std::slice::from_mut(&mut opcode_value))? == 0 {
+                    return source.fail_with(ErrorKind::MissingInstructionOpcode);
+                }
+
+                Ok(match source.wrap_result(Opcode::try_from(opcode_value))? {
+                    Opcode::Nop => Instruction::Nop,
+                    Opcode::Break => Instruction::Break,
+                    Opcode::Ret => Instruction::Ret(read_many_code_values(source)?),
+                    Opcode::Call => Instruction::Call(
+                        (integer_reader)(source, || ErrorKind::MissingInstructionCalleeIndex)?.into(),
+                        read_many_code_values(source)?,
+                    ),
+                    Opcode::AddI => Instruction::AddI(read_integer_arithmteic(source)?),
+                    Opcode::SubI => Instruction::SubI(read_integer_arithmteic(source)?),
+                })
+            };
+
+            let input_count = (integer_reader)(source, || ErrorKind::MissingParameterTypeCount)?;
+            let result_count = (integer_reader)(source, || ErrorKind::MissingReturnTypeCount)?;
+            let temporary_count = (integer_reader)(source, || ErrorKind::MissingTemporaryRegisterCount)?;
+            let register_count = input_count + result_count + temporary_count;
+            let mut register_types = Vec::<index::TypeSignature>::with_capacity(register_count);
+            for _ in 0..register_count {
+                register_types.push((integer_reader)(source, || ErrorKind::MissingTypeSignatureIndex)?.into());
+            }
+
+            let instruction_count = (integer_reader)(source, || ErrorKind::MissingInstructionCount)?;
+            let mut instructions = Vec::with_capacity(instruction_count);
+            for _ in 0..instruction_count {
+                instructions.push(read_instruction(source)?);
+            }
+
+            Ok(Record::from(record::CodeBlock::from_types(
+                CowBox::Boxed(register_types.into_boxed_slice()),
+                input_count,
+                result_count,
+                CowBox::Boxed(instructions.into_boxed_slice()),
             )))
         }
 
@@ -581,6 +740,7 @@ impl<R: Read> RecordReader<R> {
             record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
             record::Type::FunctionSignature => read_function_signature(content, content_integer_reader).map(Some),
             record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
+            record::Type::CodeBlock => read_code_block(content, content_integer_reader).map(Some),
             record::Type::FunctionDefinition => read_function_definition(content, content_integer_reader).map(Some),
             record::Type::FunctionInstantiation => read_function_instantiation(content, content_integer_reader).map(Some),
             _ => todo!("parse a {:?}", record_type),

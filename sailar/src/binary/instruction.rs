@@ -79,33 +79,35 @@ integer_conversion_impls!(I64, i64);
 bitflags::bitflags! {
     #[repr(transparent)]
     pub struct ValueFlags: u8 {
-        const REGISTER = 0;
-        const CONSTANT = 0b0000_0001;
-        const INTEGER = 0b0000_0010;
+        const IS_REGISTER = 0;
+        const IS_CONSTANT = 0b0000_0001;
+        const IS_INTEGER = 0b0000_0010;
         const INTEGER_SIZE_MASK = 0b0000_1100;
         const INTEGER_SIZE_1 = 0;
         const INTEGER_SIZE_2 = 0b0000_0100;
         const INTEGER_SIZE_4 = 0b0000_1000;
         const INTEGER_SIZE_8 = 0b0000_1100;
-        const INTEGER_EMBEDDED = 0b0001_0000;
+        const INTEGER_IS_EMBEDDED = 0b0001_0000;
         const INTEGER_EMBEDDED_ONE = 0b0010_0000;
     }
 }
 
 impl Value {
+    /// Gets a flags value describing this value. If the value contains an embedded integer vlaue of `0` or `1`, the flags
+    /// contain the embedded value.
     pub fn flags(&self) -> ValueFlags {
         match self {
-            Self::IndexedRegister(_) => ValueFlags::REGISTER,
+            Self::IndexedRegister(_) => ValueFlags::IS_REGISTER,
             Self::Constant(Constant::Integer(integer)) => {
-                let mut integer_flags = ValueFlags::CONSTANT | ValueFlags::INTEGER;
+                let mut integer_flags = ValueFlags::IS_CONSTANT | ValueFlags::IS_INTEGER;
 
                 macro_rules! unsigned_integer_flag {
                     ($value: expr, $size: ident) => {{
                         integer_flags |= ValueFlags::$size;
 
                         match $value {
-                            0 => integer_flags |= ValueFlags::INTEGER_EMBEDDED,
-                            1 => integer_flags |= ValueFlags::INTEGER_EMBEDDED | ValueFlags::INTEGER_EMBEDDED_ONE,
+                            0 => integer_flags |= ValueFlags::INTEGER_IS_EMBEDDED,
+                            1 => integer_flags |= ValueFlags::INTEGER_IS_EMBEDDED | ValueFlags::INTEGER_EMBEDDED_ONE,
                             _ => (),
                         }
                     }};
@@ -261,7 +263,7 @@ instruction_set! {{
     /// call <function> (<argument0>, <argument1>, ...) ; Call function with no return values
     /// ```
     /// Transfers control flow to the specified `function`, providing the specified values as arguments.
-    Call(_callee: u32, _arguments: Box<[Value]>,) = 7,
+    Call(_callee: index::FunctionInstantiation, _arguments: Box<[Value]>,) = 7,
     //CallIndr = 8,
     //CallRet = 9,
     /// ```text
@@ -331,23 +333,23 @@ mod tests {
 
         assert_flags_eq!(
             1i32,
-            CONSTANT,
-            INTEGER,
+            IS_CONSTANT,
+            IS_INTEGER,
             INTEGER_SIZE_4,
-            INTEGER_EMBEDDED,
+            INTEGER_IS_EMBEDDED,
             INTEGER_EMBEDDED_ONE
         );
 
-        assert_flags_eq!(0i16, CONSTANT, INTEGER, INTEGER_SIZE_2, INTEGER_EMBEDDED);
-        assert_flags_eq!(10u32, CONSTANT, INTEGER, INTEGER_SIZE_4);
-        assert_flags_eq!(42u64, CONSTANT, INTEGER, INTEGER_SIZE_8);
+        assert_flags_eq!(0i16, IS_CONSTANT, IS_INTEGER, INTEGER_SIZE_2, INTEGER_IS_EMBEDDED);
+        assert_flags_eq!(10u32, IS_CONSTANT, IS_INTEGER, INTEGER_SIZE_4);
+        assert_flags_eq!(42u64, IS_CONSTANT, IS_INTEGER, INTEGER_SIZE_8);
 
         assert_flags_eq!(
             1u64,
-            CONSTANT,
-            INTEGER,
+            IS_CONSTANT,
+            IS_INTEGER,
             INTEGER_SIZE_8,
-            INTEGER_EMBEDDED,
+            INTEGER_IS_EMBEDDED,
             INTEGER_EMBEDDED_ONE
         );
     }
