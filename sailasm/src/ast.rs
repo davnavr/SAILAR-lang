@@ -442,6 +442,14 @@ pub struct Statement<'source> {
 }
 
 impl<'source> Statement<'source> {
+    pub fn new(temporary_registers: Box<[TypedRegister<'source>]>, instruction: Instruction<'source>) -> Self {
+        Self {
+            results: temporary_registers,
+            instruction,
+        }
+    }
+
+    /// The temporary registers defined that contain the results of executing the instruction.
     #[inline]
     pub fn results(&self) -> &[TypedRegister<'source>] {
         &self.results

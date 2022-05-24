@@ -826,9 +826,20 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             state.input.next_token();
                             end_location = location.end().clone();
 
-                            match instruction_name {
-                                _ => state.push_error(ErrorKind::UnknownInstruction(Box::from(*instruction_name)), location),
-                            }
+                            // TODO: Parse temporary registers.
+                            let temporary_registers = Box::default();
+
+                            let instruction = match *instruction_name {
+                                "nop" => ast::Instruction::Nop,
+                                unknown => {
+                                    state.push_error(ErrorKind::UnknownInstruction(Box::from(unknown)), location);
+                                    ast::Instruction::Nop
+                                }
+                            };
+
+                            state
+                                .statement_buffer
+                                .push(ast::Statement::new(temporary_registers, instruction));
 
                             state.expect_newline_or_end();
                             is_start_of_line = true;
