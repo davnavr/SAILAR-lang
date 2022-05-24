@@ -327,6 +327,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     }
                 }
             }
+            ast::Directive::Code(symbol, code) => {
+                todo!("assemble code")
+            }
         }
     }
 

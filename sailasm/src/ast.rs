@@ -401,6 +401,10 @@ pub struct TypedRegister<'source> {
 }
 
 impl<'source> TypedRegister<'source> {
+    pub fn new(symbol: Option<Symbol<'source>>, value_type: Reference<'source>) -> Self {
+        Self { symbol, value_type }
+    }
+
     /// Gets the symbol used to refer to this register in the code block, or `None` if only a type is defined for this
     /// register.
     #[inline]
@@ -424,6 +428,7 @@ pub enum Value<'source> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Instruction<'source> {
     Nop,
     Break,
@@ -453,6 +458,35 @@ pub struct CodeBlock<'source> {
     input_registers: Box<[TypedRegister<'source>]>,
     result_types: Box<[Reference<'source>]>,
     statements: Box<[Statement<'source>]>,
+}
+
+impl<'source> CodeBlock<'source> {
+    pub fn new(
+        input_registers: Box<[TypedRegister<'source>]>,
+        result_types: Box<[Reference<'source>]>,
+        statements: Box<[Statement<'source>]>,
+    ) -> Self {
+        Self {
+            input_registers,
+            result_types,
+            statements,
+        }
+    }
+
+    #[inline]
+    pub fn input_registers(&self) -> &[TypedRegister<'source>] {
+        &self.input_registers
+    }
+
+    #[inline]
+    pub fn result_types(&self) -> &[Reference<'source>] {
+        &self.result_types
+    }
+
+    #[inline]
+    pub fn statements(&self) -> &[Statement<'source>] {
+        &self.statements
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -503,31 +537,31 @@ pub enum Directive<'source> {
     /// .sig type u16
     /// .signature function (@parameter_type_1, @parameter_type_2) -> (@return_type_1, @return_type_2)
     /// .signature function () -> ()
-    /// .sig func (3)
+    /// .sig func (#3)
     ///
     /// ; Referred to by numeric index or by symbol
     /// .signature @my_type type s64
-    /// .signature @my_pointer_type type rawptr 0
-    /// .signature @my_function_signature (@my_type, 1) -> (1)
-    /// .sig @shorter_function_signature func (0, 1) -> (2)
+    /// .signature @my_pointer_type type rawptr #0
+    /// .signature @my_function_signature (@my_type, #1) -> (#1)
+    /// .sig @shorter_function_signature func (#0, #1) -> (#2)
     /// ```
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
     /// fields, globals, function return values, and function parameters.
     Signature(Option<Symbol<'source>>, Located<Signature<'source>>),
-    ///// ```text
-    ///// ; Referred to by numeric index
-    ///// .code ($a0:@my_argument_type, $a1:@my_other_type) -> (@my_return_type)
-    ///// nop
-    ///// $r0:@my_other_type, $r1:@my_other_other_type = call @my_function ($a0, $a1)
-    ///// $r2:@some_integer = addi $r0, 3
-    ///// ret
-    ///// 
-    ///// ; Referred to by numeric index or by symbol
-    ///// .code @my_code_block ($a0:12, $a1:34) -> (5, 6)
-    ///// ; Insert instructions here...
-    ///// ret
-    ///// ```
-    //Code(Option<Symbol<'source>>, CodeBlock<'source>),
+    /// ```text
+    /// ; Referred to by numeric index
+    /// .code ($a0:@my_argument_type, $a1:@my_other_type) -> (@my_return_type)
+    /// nop
+    /// $r0:@my_other_type, $r1:@my_other_other_type = call @my_function ($a0, $a1)
+    /// $r2:@some_integer = addi $r0, 3
+    /// ret
+    ///
+    /// ; Referred to by numeric index or by symbol
+    /// .code @my_code_block ($a0:#12, $a1:#34) -> (#5, #6)
+    /// ; Insert instructions here...
+    /// ret
+    /// ```
+    Code(Option<Symbol<'source>>, CodeBlock<'source>),
 }
 
 #[cfg(test)]

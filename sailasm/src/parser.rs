@@ -56,6 +56,14 @@ pub enum ErrorKind {
     InvalidPointeeType,
     #[error("expected list of type symbols or indices for argument and return types")]
     ExpectedFunctionSignatureTypeList,
+    #[error("expected register symbol and/or type")]
+    ExpectedRegisterDeclaration,
+    #[error("expected type for register")]
+    ExpectedRegisterType,
+    #[error("expected return types of code block")]
+    ExpectedCodeBlockReturnTypes,
+    #[error("expected closing parenthesis")]
+    ExpectedClosingParenthesis,
     #[error("{0} is not a known instruction")]
     UnknownInstruction(Box<str>),
 }
@@ -163,6 +171,8 @@ struct State<'tree, 'source> {
     input: SliceInput<'tree, 'source>,
     character_buffer: String,
     reference_buffer: Vec<ast::Reference<'source>>,
+    typed_register_buffer: Vec<ast::TypedRegister<'source>>,
+    statement_buffer: Vec<ast::Statement<'source>>,
     output: Output<'source>,
 }
 
@@ -175,9 +185,9 @@ impl<'tree, 'source> State<'tree, 'source> {
         self.output.errors.push(Error::new(error, location));
     }
 
-    fn expect_newline_or_end(&mut self) {
+    fn expect_newline_or_end(&mut self) -> ast::Location {
         match self.input.peek_next_token() {
-            Some(((Token::Newline, _), _)) | None => (),
+            Some(((Token::Newline, _), location)) => location.end().clone(),
             Some((_, location)) => {
                 let start_location = location.start();
                 let mut end_location = location.end().clone();
@@ -188,9 +198,12 @@ impl<'tree, 'source> State<'tree, 'source> {
 
                 self.push_error(
                     ErrorKind::ExpectedNewLineOrEndOfFile,
-                    ast::LocationRange::new(start_location.clone(), end_location),
+                    ast::LocationRange::new(start_location.clone(), end_location.clone()),
                 );
+
+                end_location
             }
+            None => self.locations().get_last().unwrap(),
         }
     }
 }
@@ -293,12 +306,76 @@ fn parse_reference<'t, 's>(
     }
 }
 
+/// Parses a comma separated list of register symbols with type annotations, appending the parsed registers to the
+/// `typed_register_buffer` of the `state`.
+fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::TypedRegister<'s>]> {
+    state.typed_register_buffer.clear();
+
+    loop {
+        let register_symbol;
+        match state.input.peek_next_token() {
+            Some(((Token::Register(name), _), location)) => register_symbol = Some(ast::Symbol::with_range(name, location)),
+            Some(((Token::Underscore, _), _)) => register_symbol = None,
+            bad => {
+                state.push_error(
+                    ErrorKind::ExpectedRegisterDeclaration,
+                    token_location_or_last(bad.as_ref(), state.locations()),
+                );
+
+                break;
+            }
+        }
+
+        state.input.next_token();
+
+        match state.input.peek_next_token() {
+            Some(((Token::Colon, _), _)) => {
+                state.input.next_token();
+            }
+            bad => {
+                state.push_error(
+                    ErrorKind::ExpectedRegisterType,
+                    token_location_or_last(bad.as_ref(), state.locations()),
+                );
+
+                break;
+            }
+        }
+
+        parse_reference(
+            state,
+            |state, register_type| {
+                state
+                    .typed_register_buffer
+                    .push(ast::TypedRegister::new(register_symbol, register_type));
+            },
+            |state, bad| {
+                state.push_error(
+                    ErrorKind::ExpectedRegisterType,
+                    token_location_or_last(bad.as_ref(), state.locations()),
+                )
+            },
+        );
+
+        if let Some(((Token::Comma, _), _)) = state.input.peek_next_token() {
+            state.input.next_token();
+            continue;
+        } else {
+            break;
+        }
+    }
+
+    state.typed_register_buffer.clone().into_boxed_slice()
+}
+
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     let mut state = State {
         input: SliceInput::new(input.tokens(), input.locations()),
         character_buffer: String::default(),
         reference_buffer: Vec::default(),
+        typed_register_buffer: Vec::default(),
+        statement_buffer: Vec::default(),
         output: Output::default(),
     };
 
@@ -552,8 +629,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             bad => {
                                 state.push_error(
                                     ErrorKind::InvalidTypeSignature,
-                                    bad.map(|(_, location)| location)
-                                        .unwrap_or_else(|| location.end().into()),
+                                    bad.map(|(_, location)| location).unwrap_or_else(|| location.end().into()),
                                 );
                                 state.input.skip_current_line();
                                 continue;
@@ -702,6 +778,93 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                 state.expect_newline_or_end();
             }
+            Token::Directive("code") => {
+                let symbol = parse_symbol(&mut state);
+
+                let input_registers: Box<[ast::TypedRegister<'source>]>;
+                if state.input.next_token_if(|t| matches!(t, Token::OpenParenthesis)).is_some() {
+                    input_registers = parse_typed_register_list(&mut state);
+
+                    match state.input.peek_next_token() {
+                        Some(((Token::CloseParenthesis, _), _)) => {
+                            state.input.next_token();
+                        }
+                        bad => state.push_error(
+                            ErrorKind::ExpectedClosingParenthesis,
+                            token_location_or_last(bad.as_ref(), state.locations()),
+                        ),
+                    }
+                } else {
+                    input_registers = Box::default();
+                };
+
+                let result_types = match state.input.peek_next_token() {
+                    Some(((Token::ResultSymbol, _), _)) => {
+                        state.input.next_token();
+                        todo!("parse result things")
+                    }
+                    Some(((Token::Newline, _), _)) | None => {
+                        // Do not consume newline token or EOF, as following call expects a newline or EOF.
+                        Box::default()
+                    }
+                    Some((_, location)) => {
+                        state.push_error(ErrorKind::ExpectedCodeBlockReturnTypes, location);
+                        state.input.next_token();
+                        Box::default()
+                    }
+                };
+
+                let mut end_location = state.expect_newline_or_end();
+
+                state.statement_buffer.clear();
+
+                let mut is_start_of_line = true;
+                loop {
+                    // TODO: Parse statements.
+                    match state.input.peek_next_token() {
+                        Some(((Token::Word(instruction_name), _), location)) => {
+                            state.input.next_token();
+                            end_location = location.end().clone();
+
+                            match instruction_name {
+                                _ => state.push_error(ErrorKind::UnknownInstruction(Box::from(*instruction_name)), location),
+                            }
+
+                            state.expect_newline_or_end();
+                            is_start_of_line = true;
+                        }
+                        Some(((Token::Newline, _), location)) => {
+                            state.input.next_token();
+                            end_location = location.end().clone();
+                            is_start_of_line = true;
+                        }
+                        Some((_, _)) => {
+                            if !is_start_of_line {
+                                state.expect_newline_or_end();
+                            }
+
+                            break;
+                        }
+                        None => {
+                            state.input.next_token();
+                            break;
+                        }
+                    }
+                }
+
+                state.output.tree.push(ast::Located::new(
+                    ast::Directive::Code(
+                        symbol,
+                        ast::CodeBlock::new(
+                            input_registers,
+                            result_types,
+                            state.statement_buffer.clone().into_boxed_slice(),
+                        ),
+                    ),
+                    start_location.start().clone(),
+                    end_location,
+                ));
+            }
             Token::Directive(unknown) => {
                 state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);
                 state.input.skip_current_line();
@@ -719,6 +882,14 @@ mod tests {
     #[test]
     fn data_record_allows_bytes_on_newline() {
         let tokens = crate::lexer::tokenize("\n.data 1 2\n3 4\n.identifier \"test\"\n");
+        let tree = crate::parser::parse(&tokens);
+        let empty: &[crate::parser::Error] = &[];
+        assert_eq!(empty, tree.errors());
+    }
+
+    #[test]
+    fn basic_code_record_example() {
+        let tokens = crate::lexer::tokenize("\n.code ($a0:#1, $a1:#2)\nnop\n\n");
         let tree = crate::parser::parse(&tokens);
         let empty: &[crate::parser::Error] = &[];
         assert_eq!(empty, tree.errors());

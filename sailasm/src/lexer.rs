@@ -231,6 +231,12 @@ pub enum Token<'s> {
     OpenParenthesis,
     #[token(")")]
     CloseParenthesis,
+    #[token("_")]
+    Underscore,
+    #[token(":")]
+    Colon,
+    #[token("=")]
+    EqualsSign,
     /// Indicates the return types of a function.
     #[token("->")]
     ResultSymbol,
@@ -245,7 +251,9 @@ pub enum Token<'s> {
     #[regex("(0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*", literal_integer_contents)]
     LiteralInteger(LiteralDigits<'s>),
     #[regex("#[0-9]+", index_contents)]
-    Index(LiteralDigits<'s>), // TODO: IMPORTANT, parser should use Index case instead of LiteralInteger for indices (caused by coflict since a integer literal in a instruction could be a register index or a constant).
+    Index(LiteralDigits<'s>),
+    #[regex(r"\$[a-zA-Z_0-9]+", symbol)]
+    Register(&'s sailar::Id),
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
     #[error]
