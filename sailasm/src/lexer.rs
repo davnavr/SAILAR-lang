@@ -182,7 +182,7 @@ impl Debug for LiteralDigits<'_> {
     }
 }
 
-fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option<LiteralDigits<'s>> {
+fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> LiteralDigits<'s> {
     let token = lex.slice();
     let base;
     let digits;
@@ -202,7 +202,14 @@ fn literal_integer_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Option
         }
     }
 
-    Some(LiteralDigits { base, digits })
+    LiteralDigits { base, digits }
+}
+
+fn index_contents<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> LiteralDigits<'s> {
+    LiteralDigits {
+        base: IntegerLiteralBase::Decimal,
+        digits: &lex.slice()[1..],
+    }
 }
 
 fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
@@ -237,6 +244,8 @@ pub enum Token<'s> {
     LiteralString(&'s str),
     #[regex("(0[Bb][01][01_]*)|(0[Xx][0-9a-fA-F][0-9a-fA-F_]*)|[0-9][0-9_]*", literal_integer_contents)]
     LiteralInteger(LiteralDigits<'s>),
+    #[regex("#[0-9]+", index_contents)]
+    Index(LiteralDigits<'s>), // TODO: IMPORTANT, parser should use Index case instead of LiteralInteger for indices (caused by coflict since a integer literal in a instruction could be a register index or a constant).
     #[regex(r"\n|\r|(\r\n)")]
     Newline,
     #[error]

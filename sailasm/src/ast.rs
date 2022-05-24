@@ -393,6 +393,68 @@ pub enum Signature<'source> {
     Function(FunctionSignature<'source>),
 }
 
+/// Describes a register and the type of the value it contains in a code block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedRegister<'source> {
+    symbol: Option<Symbol<'source>>,
+    value_type: Reference<'source>,
+}
+
+impl<'source> TypedRegister<'source> {
+    /// Gets the symbol used to refer to this register in the code block, or `None` if only a type is defined for this
+    /// register.
+    #[inline]
+    pub fn symbol(&self) -> Option<&Symbol<'source>> {
+        self.symbol.as_ref()
+    }
+
+    /// Gets the type of the value contained in this register.
+    #[inline]
+    pub fn value_type(&self) -> &Reference<'source> {
+        &self.value_type
+    }
+}
+
+pub use crate::lexer::LiteralDigits;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value<'source> {
+    LiteralInteger(LiteralDigits<'source>),
+    Register(Reference<'source>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Instruction<'source> {
+    Nop,
+    Break,
+    Ret(Box<[Value<'source>]>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Statement<'source> {
+    results: Box<[TypedRegister<'source>]>,
+    instruction: Instruction<'source>,
+}
+
+impl<'source> Statement<'source> {
+    #[inline]
+    pub fn results(&self) -> &[TypedRegister<'source>] {
+        &self.results
+    }
+
+    #[inline]
+    pub fn instruction(&self) -> &Instruction<'source> {
+        &self.instruction
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CodeBlock<'source> {
+    input_registers: Box<[TypedRegister<'source>]>,
+    result_types: Box<[Reference<'source>]>,
+    statements: Box<[Statement<'source>]>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'source> {
     /// ```text
@@ -452,6 +514,20 @@ pub enum Directive<'source> {
     /// Defines a record containing a type signature or a function signature. Used to indicate the types of registers, struct
     /// fields, globals, function return values, and function parameters.
     Signature(Option<Symbol<'source>>, Located<Signature<'source>>),
+    ///// ```text
+    ///// ; Referred to by numeric index
+    ///// .code ($a0:@my_argument_type, $a1:@my_other_type) -> (@my_return_type)
+    ///// nop
+    ///// $r0:@my_other_type, $r1:@my_other_other_type = call @my_function ($a0, $a1)
+    ///// $r2:@some_integer = addi $r0, 3
+    ///// ret
+    ///// 
+    ///// ; Referred to by numeric index or by symbol
+    ///// .code @my_code_block ($a0:12, $a1:34) -> (5, 6)
+    ///// ; Insert instructions here...
+    ///// ret
+    ///// ```
+    //Code(Option<Symbol<'source>>, CodeBlock<'source>),
 }
 
 #[cfg(test)]

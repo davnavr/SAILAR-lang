@@ -56,6 +56,8 @@ pub enum ErrorKind {
     InvalidPointeeType,
     #[error("expected list of type symbols or indices for argument and return types")]
     ExpectedFunctionSignatureTypeList,
+    #[error("{0} is not a known instruction")]
+    UnknownInstruction(Box<str>),
 }
 
 #[derive(Clone, Debug, thiserror::Error, PartialEq)]
@@ -283,7 +285,7 @@ fn parse_reference<'t, 's>(
         Some(((Token::Symbol(symbol), _), location)) => {
             success(state, ast::Reference::Symbol(ast::Located::with_range(*symbol, location)))
         }
-        Some(((Token::LiteralInteger(digits), _), location)) => match u32::try_from(digits) {
+        Some(((Token::Index(digits), _), location)) => match u32::try_from(digits) {
             Ok(index) => success(state, ast::Reference::Index(ast::Located::with_range(index, location))),
             Err(e) => state.push_error(ErrorKind::InvalidIntegerLiteral(e), location),
         },
