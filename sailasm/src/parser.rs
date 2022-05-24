@@ -5,7 +5,7 @@ use crate::lexer::{self, Token};
 use std::iter::Iterator;
 use std::ops::Range;
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum ErrorKind {
     #[error("unknown token")]
@@ -42,6 +42,8 @@ pub enum ErrorKind {
     InvalidIdentifierLiteral(#[from] sailar::identifier::InvalidError),
     #[error("invalid byte literal: {0}")]
     InvalidByteLiteral(std::num::ParseIntError),
+    #[error("expected byte literals in data declaration")]
+    ExpectedDataByteLiteral,
     #[error("expected kind of signature")]
     ExpectedSignatureKind,
     #[error("{0} is not a valid signature kind")]
@@ -56,7 +58,7 @@ pub enum ErrorKind {
     ExpectedFunctionSignatureTypeList,
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq)]
 #[error("{kind}")]
 pub struct Error {
     kind: Box<ErrorKind>,
@@ -447,8 +449,21 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 let mut end_location = start_location.end().clone();
                 let mut data_start_location = end_location.clone();
                 let mut data_location_updated = false;
+                let mut is_start_of_line = false;
 
-                while let Some(((Token::LiteralInteger(digits), _), location)) = state.input.next_token() {
+                while let Some(((token, _), location)) = state.input.peek_next_token() {
+                    match token {
+                        Token::Newline => is_start_of_line = true,
+                        Token::Directive(_) if is_start_of_line => {
+                            break;
+                        }
+                        Token::LiteralInteger(digits) => match u8::try_from(digits) {
+                            Ok(byte) => data.push(byte),
+                            Err(e) => state.push_error(ErrorKind::InvalidByteLiteral(e), location.clone()),
+                        },
+                        _ => state.push_error(ErrorKind::ExpectedDataByteLiteral, location.clone()),
+                    }
+
                     if !data_location_updated {
                         data_start_location = location.start().clone();
                         data_location_updated = true;
@@ -456,13 +471,12 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
 
                     end_location = location.end().clone();
 
-                    match u8::try_from(digits) {
-                        Ok(byte) => data.push(byte),
-                        Err(e) => state.push_error(ErrorKind::InvalidByteLiteral(e), location),
-                    }
+                    state.input.next_token();
                 }
 
-                state.expect_newline_or_end();
+                if !is_start_of_line {
+                    state.expect_newline_or_end();
+                }
 
                 state.output.tree.push(ast::Located::new(
                     ast::Directive::Data(
@@ -696,4 +710,15 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     }
 
     state.output
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn data_record_allows_bytes_on_newline() {
+        let tokens = crate::lexer::tokenize("\n.data 1 2\n3 4\n.identifier \"test\"\n");
+        let tree = crate::parser::parse(&tokens);
+        let empty: &[crate::parser::Error] = &[];
+        assert_eq!(empty, tree.errors());
+    }
 }

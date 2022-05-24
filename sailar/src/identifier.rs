@@ -150,7 +150,7 @@ impl From<&Id> for Identifier {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum InvalidError {
     #[error("identifiers cannot be empty")]
