@@ -68,6 +68,8 @@ pub enum ErrorKind {
     UnknownInstruction(Box<str>),
     #[error("expected instruction")]
     ExpectedInstruction,
+    #[error("expected register or constant value")]
+    ExpectedInstructionValue,
     #[error("expected '=' before instruction")]
     ExpectedStatementEqualsSign,
 }
@@ -178,6 +180,7 @@ struct State<'tree, 'source> {
     typed_register_buffer: Vec<ast::Located<ast::TypedRegister<'source>>>,
     statement_buffer: Vec<ast::Statement<'source>>,
     output: Output<'source>,
+    instruction_value_buffer: Vec<ast::Value<'source>>,
 }
 
 impl<'tree, 'source> State<'tree, 'source> {
@@ -216,11 +219,8 @@ fn token_location_or_else(token: Option<&LocatedToken>, default: impl FnOnce() -
     token.map(|(_, location)| location.clone()).unwrap_or_else(default)
 }
 
-// TODO: Make this obsolete.
 fn token_location_or_last(token: Option<&LocatedToken>, locations: &lexer::OffsetMap) -> ast::LocationRange {
-    token
-        .map(|(_, location)| location.clone())
-        .unwrap_or_else(|| locations.get_last().unwrap().into())
+    token_location_or_else(token, || locations.get_last().unwrap().into())
 }
 
 fn parse_literal_integer<'t, 's>(
@@ -385,6 +385,59 @@ fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::Loc
     state.typed_register_buffer.clone().into_boxed_slice()
 }
 
+fn parse_instruction_value<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Value<'s>> {
+    match state.input.peek_next_token() {
+        Some(((Token::Register(register), _), location)) => {
+            state.input.next_token();
+            Some(ast::Value::Register(ast::Reference::Symbol(ast::Symbol::with_range(
+                register, location,
+            ))))
+        }
+        Some(((Token::LiteralInteger(integer), _), location)) => {
+            state.input.next_token();
+            Some(ast::Value::LiteralInteger(ast::Located::with_range(
+                integer.clone(),
+                location,
+            )))
+        }
+        _ => None,
+    }
+}
+
+fn parse_instruction_value_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::Value<'s>]> {
+    state.instruction_value_buffer.clear();
+
+    loop {
+        if let Some(value) = parse_instruction_value(state) {
+            state.instruction_value_buffer.push(value);
+
+            if state.input.next_token_if(|t| matches!(t, Token::Comma)).is_none() {
+                break;
+            }
+        } else if !state.instruction_value_buffer.is_empty() {
+            let location = match state.input.peek_next_token() {
+                Some(((token, _), location)) => {
+                    match token {
+                        Token::Newline => (),
+                        _ => {
+                            state.input.next_token();
+                        }
+                    }
+
+                    location.clone()
+                }
+                None => state.locations().get_last().unwrap().into(),
+            };
+
+            state.push_error(ErrorKind::ExpectedInstructionValue, location);
+        } else {
+            break;
+        }
+    }
+
+    state.instruction_value_buffer.clone().into_boxed_slice()
+}
+
 /// Transfers a sequence of tokens into an abstract syntax tree.
 pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
     let mut state = State {
@@ -393,6 +446,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
         reference_buffer: Vec::default(),
         typed_register_buffer: Vec::default(),
         statement_buffer: Vec::default(),
+        instruction_value_buffer: Vec::default(),
         output: Output::default(),
     };
 
@@ -818,7 +872,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 let result_types = match state.input.peek_next_token() {
                     Some(((Token::ResultSymbol, _), _)) => {
                         state.input.next_token();
-                        todo!("parse result things")
+                        todo!("parse result types of code block")
                     }
                     Some(((Token::Newline, _), _)) | None => {
                         // Do not consume newline token or EOF, as following call expects a newline or EOF.
@@ -864,6 +918,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             let instruction = match *instruction_name {
                                 "nop" => ast::Instruction::Nop,
                                 "break" => ast::Instruction::Break,
+                                "ret" => ast::Instruction::Ret(parse_instruction_value_list(&mut state)),
                                 unknown => {
                                     state.push_error(ErrorKind::UnknownInstruction(Box::from(unknown)), location.clone());
                                     ast::Instruction::Nop
