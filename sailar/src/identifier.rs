@@ -61,14 +61,21 @@ impl Id {
     }
 
     /// Creates a reference to an identfier from a string, without any validation checks.
+    /// 
     /// # Safety
+    /// 
     /// Callers should ensure that the string does not contain any interior null bytes and must not be empty.
     pub unsafe fn from_str_unchecked(identifier: &str) -> &Id {
         // Safety: Representation of Id allows safe transmute here.
         std::mem::transmute::<&str, &Id>(identifier)
     }
 
-    pub fn from_str(identifier: &str) -> Result<&Id, InvalidError> {
+    /// Attempts to create a reference to an identifier string.
+    /// 
+    /// # Errors
+    /// 
+    /// If the string is empty or contains a `NUL` character, then an error is returned.
+    pub fn try_from_str(identifier: &str) -> Result<&Id, InvalidError> {
         if identifier.is_empty() {
             Err(InvalidError::Empty)
         } else if identifier.chars().any(|c| c == '\0') {
@@ -80,7 +87,7 @@ impl Id {
     }
 
     pub fn from_byte_slice(bytes: &[u8]) -> Result<&Id, ParseError> {
-        Ok(Id::from_str(std::str::from_utf8(bytes)?)?)
+        Ok(Id::try_from_str(std::str::from_utf8(bytes)?)?)
     }
 }
 
@@ -92,7 +99,7 @@ impl Identifier {
 
     #[inline]
     pub fn from_string(identifier: String) -> Result<Self, InvalidError> {
-        Id::from_str(&identifier)?;
+        Id::try_from_str(&identifier)?;
         Ok(Self(identifier))
     }
 
@@ -102,8 +109,8 @@ impl Identifier {
     }
 
     #[inline]
-    pub fn from_str(identifier: &str) -> Result<Self, InvalidError> {
-        Id::from_str(identifier)?;
+    pub fn try_from_str(identifier: &str) -> Result<Self, InvalidError> {
+        Id::try_from_str(identifier)?;
         Ok(Self(identifier.to_owned()))
     }
 
@@ -157,7 +164,7 @@ impl<'a> TryFrom<&'a str> for &'a Id {
 
     #[inline]
     fn try_from(identifier: &'a str) -> Result<&'a Id, InvalidError> {
-        Id::from_str(identifier)
+        Id::try_from_str(identifier)
     }
 }
 
@@ -184,7 +191,7 @@ impl TryFrom<&str> for Identifier {
 
     #[inline]
     fn try_from(identifier: &str) -> Result<Self, InvalidError> {
-        Self::from_str(identifier)
+        Self::try_from_str(identifier)
     }
 }
 

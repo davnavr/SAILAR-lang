@@ -2,7 +2,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use sailar::Identifier;
 
     let library = {
-        let mut module = sailar::ModuleDefinition::new(Identifier::from_str("Library")?, Default::default());
+        let mut module = sailar::ModuleDefinition::new(Identifier::try_from_str("Library")?, Default::default());
 
         // TODO: Add helper function.
 

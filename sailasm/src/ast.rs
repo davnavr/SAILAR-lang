@@ -291,7 +291,7 @@ impl<'source> LiteralString<'source> {
     pub fn try_into_identifier(self) -> Result<Identifier<'source>, sailar::identifier::InvalidError> {
         match self.actual_contents {
             Some(actual_contents) => sailar::Identifier::try_from(actual_contents).map(Cow::Owned),
-            None => sailar::Id::from_str(self.original_contents).map(Cow::Borrowed),
+            None => sailar::Id::try_from_str(self.original_contents).map(Cow::Borrowed),
         }
     }
 }

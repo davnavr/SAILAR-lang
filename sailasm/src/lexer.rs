@@ -210,7 +210,7 @@ fn directive<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> &'s str {
 }
 
 fn symbol<'s>(lex: &mut logos::Lexer<'s, Token<'s>>) -> Result<&'s sailar::Id, sailar::identifier::InvalidError> {
-    sailar::Id::from_str(&lex.slice()[1..])
+    sailar::Id::try_from_str(&lex.slice()[1..])
 }
 
 #[derive(Logos, Debug, PartialEq)]
