@@ -350,6 +350,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
     directives
 }
 
+#[repr(transparent)]
 struct RegisterSymbol<'t, 's>(&'t ast::Symbol<'s>);
 
 impl std::cmp::PartialEq for RegisterSymbol<'_, '_> {
@@ -386,7 +387,50 @@ impl<'t, 's> RegisterMap<'t, 's> {
         self.types.get(usize::from(index)).copied()
     }
 
-    //fn get_register_index(&self, reference: &'t ast::Reference<'s>)
+    fn get_register_index(&self, reference: &'t ast::Reference<'s>) -> Result<binary::index::Register, Error> {
+        // TODO: Remove duplicated code with SymbolMap.
+        let location;
+        let result = match reference {
+            ast::Reference::Index(index) => {
+                location = index.location();
+                usize::try_from(*index.item())
+                    .ok()
+                    .filter(|i| *i < self.len())
+                    .map(binary::index::Register::from)
+            }
+            ast::Reference::Symbol(symbol) => {
+                location = symbol.location();
+                self.lookup.get(&RegisterSymbol(symbol)).copied()
+            }
+        };
+
+        result.ok_or_else(|| {
+            Error::with_location(
+                UnresolvedReferenceError {
+                    item_name: "register",
+                    symbol: match reference {
+                        ast::Reference::Index(index) => UnresolvedReferenceKind::Index(*index.item()),
+                        ast::Reference::Symbol(symbol) => UnresolvedReferenceKind::Symbol(Box::from(symbol.item().as_str())),
+                    },
+                },
+                location.clone(),
+            )
+        })
+    }
+
+    fn get_register_indices<F: FnMut(binary::index::Register)>(
+        &self,
+        mut f: F,
+        references: &'t [ast::Reference<'s>],
+        errors: &mut Vec<Error>,
+    ) {
+        for r in references.iter() {
+            match self.get_register_index(r) {
+                Ok(index) => f(index),
+                Err(e) => errors.push(e),
+            }
+        }
+    }
 
     fn try_insert(
         &mut self,
@@ -547,6 +591,33 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
         }
     }
 
+    fn get_instruction_value<'t, 's>(
+        register_lookup: &RegisterMap<'t, 's>,
+        value: &'t ast::Value<'s>,
+    ) -> Result<instruction::Value, Error> {
+        match value {
+            ast::Value::LiteralInteger(digits) => todo!("integer values not yet supported"),
+            ast::Value::Register(register) => register_lookup
+                .get_register_index(register)
+                .map(instruction::Value::IndexedRegister),
+        }
+    }
+
+    fn get_many_instruction_values<'t, 's>(
+        register_lookup: &RegisterMap<'t, 's>,
+        errors: &mut Vec<Error>,
+        values: &'t [ast::Value<'s>],
+    ) -> Box<[instruction::Value]> {
+        let mut converted_values = Vec::with_capacity(values.len());
+        for value in values.iter() {
+            match get_instruction_value(register_lookup, value) {
+                Ok(v) => converted_values.push(v),
+                Err(e) => errors.push(e),
+            }
+        }
+        converted_values.into_boxed_slice()
+    }
+
     for code_block in directives.code_blocks.iter() {
         register_lookup.clear();
         instruction_buffer.clear();
@@ -572,10 +643,10 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
             let (instruction, expected_temporary_count) = match statement.instruction().item() {
                 ast::Instruction::Nop => (Instruction::Nop, 0),
                 ast::Instruction::Break => (Instruction::Break, 0),
-                ast::Instruction::Ret(return_values) => {
-                    // TODO: Create a helper closure that calls register_lookup.get_register_index
-                    todo!("0")
-                }
+                ast::Instruction::Ret(return_values) => (
+                    Instruction::Ret(get_many_instruction_values(&register_lookup, errors, return_values.as_ref())),
+                    0,
+                ),
             };
 
             let actual_temporary_count = statement.results().len();
