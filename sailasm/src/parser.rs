@@ -491,7 +491,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                                         state.push_error(
                                             ErrorKind::InvalidPointeeType,
                                             token
-                                                .map(|(_, l)| l.clone())
+                                                .map(|(_, l)| l)
                                                 .unwrap_or_else(|| pointer_type_location.end().clone().into()),
                                         )
                                     },
@@ -536,7 +536,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             bad => {
                                 state.push_error(
                                     ErrorKind::InvalidTypeSignature,
-                                    bad.map(|(_, location)| location.clone())
+                                    bad.map(|(_, location)| location)
                                         .unwrap_or_else(|| location.end().into()),
                                 );
                                 state.input.skip_current_line();
@@ -691,7 +691,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 state.input.skip_current_line();
                 continue;
             }
-            Token::Unknown | _ => state.push_error(ErrorKind::UnknownToken, start_location),
+            _ => state.push_error(ErrorKind::UnknownToken, start_location),
         }
     }
 

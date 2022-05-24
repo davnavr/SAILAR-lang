@@ -221,6 +221,7 @@ struct Directives<'t, 's> {
     module_identifier: Option<(&'t sailar::Id, Box<[usize]>)>,
     symbols: SymbolSet<'s>,
     identifiers: SymbolMap<'s, &'t sailar::Id>,
+    #[allow(clippy::borrowed_box)]
     data_arrays: SymbolMap<'s, &'t Box<[u8]>>,
     type_signatures: SymbolMap<'s, TypeSignatureAssembler<'t, 's>>,
     function_signatures: SymbolMap<'s, &'t ast::FunctionSignature<'s>>,
