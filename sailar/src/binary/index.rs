@@ -5,7 +5,7 @@ use std::num::TryFromIntError;
 
 macro_rules! index_type {
     ($(#[$meta:meta])* $name:ident) => {
-        #[derive(Copy, Clone, Eq, Ord, PartialEq, PartialOrd)]
+        #[derive(Copy, Clone, Ord, PartialOrd)]
         #[repr(transparent)]
         pub struct $name(usize);
 
@@ -53,6 +53,15 @@ macro_rules! index_type {
                 state.write_usize(self.0)
             }
         }
+
+        impl std::cmp::PartialEq for $name {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                self.0 == other.0
+            }
+        }
+
+        impl std::cmp::Eq for $name {}
     };
 }
 
