@@ -66,6 +66,10 @@ pub enum ErrorKind {
     ExpectedClosingParenthesis,
     #[error("{0} is not a known instruction")]
     UnknownInstruction(Box<str>),
+    #[error("expected instruction")]
+    ExpectedInstruction,
+    #[error("expected '=' before instruction")]
+    ExpectedStatementEqualsSign,
 }
 
 #[derive(Clone, Debug, thiserror::Error, PartialEq)]
@@ -317,10 +321,12 @@ fn parse_typed_register_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::Typ
             Some(((Token::Register(name), _), location)) => register_symbol = Some(ast::Symbol::with_range(name, location)),
             Some(((Token::Underscore, _), _)) => register_symbol = None,
             bad => {
-                state.push_error(
-                    ErrorKind::ExpectedRegisterDeclaration,
-                    token_location_or_last(bad.as_ref(), state.locations()),
-                );
+                if !state.typed_register_buffer.is_empty() {
+                    state.push_error(
+                        ErrorKind::ExpectedRegisterDeclaration,
+                        token_location_or_last(bad.as_ref(), state.locations()),
+                    );
+                }
 
                 break;
             }
@@ -822,9 +828,23 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 loop {
                     assert!(is_start_of_line, "statements must begin at the start of a line");
 
-                    // TODO: Parse temporary registers.
-                    let temporary_registers = Box::default();
-                    
+                    let temporary_registers = parse_typed_register_list(&mut state);
+
+                    if !temporary_registers.is_empty() {
+                        match state.input.peek_next_token() {
+                            Some(((Token::EqualsSign, _), location)) => {
+                                state.input.next_token();
+                                end_location = location.end().clone();
+                            }
+                            bad => {
+                                state.push_error(
+                                    ErrorKind::ExpectedStatementEqualsSign,
+                                    token_location_or_last(bad.as_ref(), state.locations()),
+                                );
+                            }
+                        }
+                    }
+
                     match state.input.peek_next_token() {
                         Some(((Token::Word(instruction_name), _), location)) => {
                             state.input.next_token();
@@ -847,20 +867,35 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                             is_start_of_line = true;
                         }
                         Some(((Token::Newline, _), location)) => {
+                            if !temporary_registers.is_empty() {
+                                state.push_error(ErrorKind::ExpectedInstruction, location.clone());
+                            }
+
                             state.input.next_token();
                             end_location = location.end().clone();
                             is_start_of_line = true;
                         }
-                        Some((_, location)) => {
-                            state.push_error(ErrorKind::UnknownToken, location);
-
+                        Some(((Token::Directive(_), _), location)) => {
                             if !is_start_of_line {
+                                end_location = location.end().clone();
+                                state.input.next_token();
                                 state.expect_newline_or_end();
                             }
 
                             break;
                         }
+                        Some((_, location)) => {
+                            end_location = location.end().clone();
+                            state.push_error(if is_start_of_line { ErrorKind::ExpectedInstruction } else { ErrorKind::UnknownToken }, location);
+                            state.input.next_token();
+                            state.input.skip_current_line();
+                            break;
+                        }
                         None => {
+                            if !temporary_registers.is_empty() {
+                                state.push_error(ErrorKind::ExpectedInstruction, state.locations().get_last().unwrap());
+                            }
+
                             state.input.next_token();
                             break;
                         }
@@ -904,7 +939,7 @@ mod tests {
 
     #[test]
     fn basic_code_record_example() {
-        let tokens = crate::lexer::tokenize("\n.code ($a0:#1, $a1:#2)\nnop\nbreak\n.data 1\n");
+        let tokens = crate::lexer::tokenize("\n.code ($a0:#1, $a1:#2)\nnop\nbreak\n$t0:@thing, $t1:#1 = nop\n.data 1\n");
         let tree = crate::parser::parse(&tokens);
         let empty: &[crate::parser::Error] = &[];
         assert_eq!(empty, tree.errors());
