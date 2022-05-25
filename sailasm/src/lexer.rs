@@ -287,6 +287,8 @@ pub enum Token<'s> {
     ResultSymbol,
     #[regex(r"\.[a-zA-Z]+", directive)]
     Directive(&'s str),
+    #[regex(r"/[a-zA-Z]+", directive)]
+    NestedDirective(&'s str),
     #[regex(r"@[a-zA-Z_0-9]+", symbol)]
     Symbol(&'s sailar::Id),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]

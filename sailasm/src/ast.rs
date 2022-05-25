@@ -510,10 +510,10 @@ pub use sailar::binary::record::Export;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FunctionBody<'source> {
-    //Defined(Vec<Reference<'source>>),
+    Defined(Box<[Reference<'source>]>),
     Foreign {
         function_name: Located<LiteralString<'source>>,
-        library: Located<LiteralString<'source>>,
+        library: Reference<'source>,
     },
 }
 
@@ -523,6 +523,22 @@ pub struct FunctionDefinition<'source> {
     identifier: Located<Identifier<'source>>,
     signature: Reference<'source>,
     body: FunctionBody<'source>,
+}
+
+impl<'source> FunctionDefinition<'source> {
+    pub fn new(
+        access_modifier: Export,
+        identifier: Located<Identifier<'source>>,
+        signature: Reference<'source>,
+        body: FunctionBody<'source>,
+    ) -> Self {
+        Self {
+            access_modifier,
+            identifier,
+            signature,
+            body,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -601,12 +617,21 @@ pub enum Directive<'source> {
     Code(Option<Symbol<'source>>, CodeBlock<'source>),
     /// ```text
     /// .define function @my_function public "MyFunction" signature @my_signature
-    /// /body @my_code_block ; Experimental syntax, may eventually be expanded to allow multiple bodies for many functions.
-    /// 
-    /// .define function private "MyForeignFunction" signature @my_signature foreign "foreign_function_name" from "library"
+    /// /body @my_code_block
+    ///
+    /// .define function private "MyForeignFunction" signature @my_signature foreign "foreign_function_name" from @library_name
+    ///
+    /// .def func "MyOtherFunction" signature #0
     /// ```
-    /// Defines a function definition.
+    /// Defines a function in the module.
     FunctionDefinition(Option<Symbol<'source>>, FunctionDefinition<'source>),
+    ///// ```text
+    ///// .instantiate @my_first_instantiation function definition @my_function_definition
+    ///// .instantiate function import @my_function_import
+    ///// .inst @my_second_instantiation func imp #2
+    ///// .inst func def #4
+    ///// ```
+    //FunctionInstantiation(Option<Symbol<'source>>)
 }
 
 #[cfg(test)]

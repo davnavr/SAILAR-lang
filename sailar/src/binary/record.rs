@@ -13,6 +13,13 @@ pub enum Export {
     Public = 1,
 }
 
+impl Default for Export {
+    #[inline]
+    fn default() -> Self {
+        Self::Private
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum MetadataField<'a> {

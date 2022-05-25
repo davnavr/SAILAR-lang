@@ -18,8 +18,10 @@ pub enum ErrorKind {
     InvalidIntegerLiteral(std::num::ParseIntError),
     #[error("expected end of line or file")]
     ExpectedNewLineOrEndOfFile,
-    #[error("unknown directive \".{0}\"")]
+    #[error("unknown directive .{0}")]
     UnknownDirective(Box<str>),
+    #[error("unknown nested directive /{0}")]
+    UnknownNestedDirective(Box<str>),
     #[error("{0} is not a valid format version kind")]
     InvalidFormatVersionKind(Box<str>),
     #[error("expected format version kind")]
@@ -72,6 +74,16 @@ pub enum ErrorKind {
     ExpectedInstructionValue,
     #[error("expected '=' before instruction")]
     ExpectedStatementEqualsSign,
+    #[error("expected definition kind (e.g. function, struct, global)")]
+    ExpectedDefinitionKind,
+    #[error("{0} is not a valid definition kind")]
+    InvalidDefinitionKind(Box<str>),
+    #[error("expected function signature")]
+    ExpectedFunctionSignature,
+    #[error("expected foreign function body or /body directives")]
+    ExpectedFunctionDefinitionBody,
+    #[error("expected identifier string indicating name of foreign function")]
+    ExpectedForeignFunctionIdentifier,
 }
 
 #[derive(Clone, Debug, thiserror::Error, PartialEq)]
@@ -436,6 +448,20 @@ fn parse_instruction_value_list<'t, 's>(state: &mut State<'t, 's>) -> Box<[ast::
     }
 
     state.instruction_value_buffer.clone().into_boxed_slice()
+}
+
+fn parse_access_modifier<'t, 's>(state: &mut State<'t, 's>) -> ast::Export {
+    match state.input.peek_next_token() {
+        Some(((Token::Word("public"), _), _)) => {
+            state.input.next_token();
+            ast::Export::Public
+        }
+        Some(((Token::Word("private"), _), _)) => {
+            state.input.next_token();
+            ast::Export::Private
+        }
+        _ => ast::Export::default(),
+    }
 }
 
 /// Transfers a sequence of tokens into an abstract syntax tree.
@@ -989,8 +1015,161 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                     end_location,
                 ));
             }
+            Token::Directive("define" | "def") => {
+                let symbol = parse_symbol(&mut state);
+
+                match state.input.next_token() {
+                    Some(((Token::Word("function" | "func"), _), _)) => {
+                        let access_modifier = parse_access_modifier(&mut state);
+
+                        parse_literal_identifier(
+                            &mut state,
+                            move |state, identifier| {
+                                match state.input.peek_next_token() {
+                                    Some(((Token::Word("signature"), _), _)) => {
+                                        state.input.next_token();
+                                    }
+                                    bad => {
+                                        state.push_error(
+                                            ErrorKind::ExpectedFunctionSignature,
+                                            token_location_or_last(bad.as_ref(), state.locations()),
+                                        );
+                                        state.input.skip_current_line();
+                                        return;
+                                    }
+                                }
+
+                                parse_reference(
+                                    state,
+                                    |state, signature| match state.input.peek_next_token() {
+                                        Some(((Token::Newline, _), location)) => {
+                                            let mut end_location = location.end().clone();
+
+                                            state.input.next_token();
+                                            state.reference_buffer.clear();
+
+                                            loop {
+                                                match state.input.peek_next_token() {
+                                                    Some(((Token::NestedDirective("body"), _), location)) => {
+                                                        state.input.next_token();
+                                                        end_location = location.end().clone();
+
+                                                        parse_reference(
+                                                            state,
+                                                            |state, entry_block| {
+                                                                state.reference_buffer.push(entry_block);
+                                                            },
+                                                            |state, bad| {
+                                                                state.push_error(
+                                                                    ErrorKind::ExpectedReference,
+                                                                    token_location_or_last(bad.as_ref(), state.locations()),
+                                                                )
+                                                            },
+                                                        );
+
+                                                        state.input.skip_current_line();
+                                                    }
+                                                    Some(((Token::Newline, _), location)) => {
+                                                        state.input.next_token();
+                                                        end_location = location.end().clone();
+                                                    }
+                                                    Some(((Token::Directive(_), _), _)) => {
+                                                        break;
+                                                    }
+                                                    Some(((unknown, _), location)) => {
+                                                        let error = match unknown {
+                                                            Token::NestedDirective(bad) => {
+                                                                ErrorKind::UnknownNestedDirective(Box::from(*bad))
+                                                            }
+                                                            _ => ErrorKind::ExpectedFunctionDefinitionBody,
+                                                        };
+
+                                                        state.push_error(error, location);
+                                                        state.input.next_token();
+                                                        state.input.skip_current_line();
+                                                    }
+                                                    None => {
+                                                        state.input.next_token();
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
+                                            state.output.tree.push(ast::Located::new(
+                                                ast::Directive::FunctionDefinition(
+                                                    symbol,
+                                                    ast::FunctionDefinition::new(
+                                                        access_modifier,
+                                                        identifier,
+                                                        signature,
+                                                        ast::FunctionBody::Defined(
+                                                            state.reference_buffer.clone().into_boxed_slice(),
+                                                        ),
+                                                    ),
+                                                ),
+                                                start_location.start().clone(),
+                                                end_location,
+                                            ));
+                                        }
+                                        Some(((Token::Word("foreign"), _), _)) => {
+                                            state.input.next_token();
+
+                                            parse_literal_identifier(
+                                                state,
+                                                |state, function_name| todo!("foreign function bodies are not yet supported"),
+                                                |state, bad| {
+                                                    state.push_error(
+                                                        ErrorKind::ExpectedForeignFunctionIdentifier,
+                                                        token_location_or_last(bad.as_ref(), state.locations()),
+                                                    );
+                                                    state.input.skip_current_line();
+                                                },
+                                            );
+                                        }
+                                        bad => {
+                                            state.push_error(
+                                                ErrorKind::ExpectedFunctionDefinitionBody,
+                                                token_location_or_last(bad.as_ref(), state.locations()),
+                                            );
+                                            state.input.skip_current_line();
+                                        }
+                                    },
+                                    |state, bad| {
+                                        state.push_error(
+                                            ErrorKind::ExpectedReference,
+                                            token_location_or_last(bad.as_ref(), state.locations()),
+                                        );
+                                        state.input.skip_current_line();
+                                    },
+                                );
+                            },
+                            |state, bad| {
+                                state.push_error(
+                                    ErrorKind::ExpectedIdentifierLiteral,
+                                    token_location_or_last(bad.as_ref(), state.locations()),
+                                )
+                            },
+                        );
+                    }
+                    bad => {
+                        let error = match bad {
+                            Some(((Token::Word(unknown), _), _)) => ErrorKind::InvalidDefinitionKind(Box::from(*unknown)),
+                            _ => ErrorKind::ExpectedDefinitionKind,
+                        };
+
+                        state.push_error(error, token_location_or_last(bad.as_ref(), state.locations()));
+                        state.input.skip_current_line();
+                        continue;
+                    }
+                }
+            }
             Token::Directive(unknown) => {
                 state.push_error(ErrorKind::UnknownDirective(Box::from(*unknown)), start_location);
+                state.input.skip_current_line();
+                continue;
+            }
+            Token::NestedDirective(unknown) => {
+                state.push_error(ErrorKind::UnknownNestedDirective(Box::from(*unknown)), start_location);
                 state.input.skip_current_line();
                 continue;
             }

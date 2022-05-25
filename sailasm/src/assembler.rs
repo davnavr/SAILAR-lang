@@ -346,6 +346,13 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
 
                 directives.code_blocks.insert_with_symbol(symbol.as_ref(), code);
             }
+            ast::Directive::FunctionDefinition(symbol, definition) => {
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
+                }
+
+                // TODO: Assemble function definitions.
+            }
         }
     }
 
