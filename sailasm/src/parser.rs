@@ -84,6 +84,12 @@ pub enum ErrorKind {
     ExpectedFunctionDefinitionBody,
     #[error("expected identifier string indicating name of foreign function")]
     ExpectedForeignFunctionIdentifier,
+    #[error("{0} is not a valid instantiation kind")]
+    InvalidInstantiationKind(Box<str>),
+    #[error("expected instantiation kind")]
+    ExpectedInstantiationKind,
+    #[error("expected definition or import")]
+    ExpectedDefinitionOrImport,
 }
 
 #[derive(Clone, Debug, thiserror::Error, PartialEq)]
@@ -461,6 +467,37 @@ fn parse_access_modifier<'t, 's>(state: &mut State<'t, 's>) -> ast::Export {
             ast::Export::Private
         }
         _ => ast::Export::default(),
+    }
+}
+
+fn parse_definition_or_import<'t, 's>(
+    state: &mut State<'t, 's>,
+    success: impl FnOnce(&mut State<'t, 's>, ast::DefinitionOrImport<'s>),
+) {
+    match state.input.next_token() {
+        Some(((Token::Word(kind @ ("definition" | "def" | "import" | "imp")), _), _)) => parse_reference(
+            state,
+            |state, reference| {
+                let symbol = match *kind {
+                    "import" | "imp" => ast::DefinitionOrImport::Import(reference),
+                    _ => ast::DefinitionOrImport::Definition(reference),
+                };
+
+                success(state, symbol);
+            },
+            |state, bad| {
+                state.push_error(
+                    ErrorKind::ExpectedReference,
+                    token_location_or_last(bad.as_ref(), state.locations()),
+                );
+            },
+        ),
+        bad => {
+            state.push_error(
+                ErrorKind::ExpectedDefinitionOrImport,
+                token_location_or_last(bad.as_ref(), state.locations()),
+            );
+        }
     }
 }
 
@@ -1160,6 +1197,34 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                         state.push_error(error, token_location_or_last(bad.as_ref(), state.locations()));
                         state.input.skip_current_line();
                         continue;
+                    }
+                }
+            }
+            Token::Directive("instantiate" | "inst") => {
+                let symbol = parse_symbol(&mut state);
+
+                match state.input.next_token() {
+                    Some(((Token::Word("function" | "func"), _), location)) => {
+                        let start_location = location.start().clone();
+                        parse_definition_or_import(&mut state, |state, instantiation| {
+                            state.expect_newline_or_end();
+                            let end_location = instantiation.location().end().clone();
+                            state.output.tree.push(ast::Located::new(
+                                ast::Directive::FunctionInstantiation(symbol, instantiation),
+                                start_location,
+                                end_location,
+                            ));
+                        })
+                    }
+                    bad => {
+                        let error = if let Some(((Token::Word(unknown), _), _)) = bad {
+                            ErrorKind::InvalidInstantiationKind(Box::from(*unknown))
+                        } else {
+                            ErrorKind::ExpectedInstantiationKind
+                        };
+
+                        state.push_error(error, token_location_or_last(bad.as_ref(), state.locations()));
+                        state.input.skip_current_line();
                     }
                 }
             }

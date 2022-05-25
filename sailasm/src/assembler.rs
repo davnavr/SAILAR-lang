@@ -371,6 +371,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     .function_definitions
                     .insert_with_symbol(symbol.as_ref(), definition);
             }
+            ast::Directive::FunctionInstantiation(symbol, instantiation) => {
+                todo!("func inst not yet supported")
+            }
         }
     }
 

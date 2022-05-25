@@ -562,6 +562,21 @@ impl<'source> FunctionDefinition<'source> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum DefinitionOrImport<'source> {
+    Definition(Reference<'source>),
+    Import(Reference<'source>),
+}
+
+impl<'source> DefinitionOrImport<'source> {
+    pub fn location(&self) -> &LocationRange {
+        match self {
+            Self::Definition(definition) => definition.location(),
+            Self::Import(import) => import.location(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'source> {
     /// ```text
     /// .array
@@ -645,13 +660,13 @@ pub enum Directive<'source> {
     /// ```
     /// Defines a function in the module.
     FunctionDefinition(Option<Symbol<'source>>, FunctionDefinition<'source>),
-    ///// ```text
-    ///// .instantiate @my_first_instantiation function definition @my_function_definition
-    ///// .instantiate function import @my_function_import
-    ///// .inst @my_second_instantiation func imp #2
-    ///// .inst func def #4
-    ///// ```
-    //FunctionInstantiation(Option<Symbol<'source>>)
+    /// ```text
+    /// .instantiate @my_first_instantiation function definition @my_function_definition
+    /// .instantiate function import @my_function_import
+    /// .inst @my_second_instantiation func imp #2
+    /// .inst func def #4
+    /// ```
+    FunctionInstantiation(Option<Symbol<'source>>, DefinitionOrImport<'source>),
 }
 
 #[cfg(test)]
