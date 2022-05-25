@@ -135,6 +135,12 @@ impl NamedItem for &ast::CodeBlock<'_> {
     }
 }
 
+impl NamedItem for &ast::FunctionDefinition<'_> {
+    fn item_name() -> &'static str {
+        "function definition"
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct UnresolvedReferenceError {
     item_name: &'static str,
@@ -251,6 +257,7 @@ struct Directives<'t, 's> {
     function_signatures: SymbolMap<'s, &'t ast::FunctionSignature<'s>>,
     code_blocks: SymbolMap<'s, &'t ast::CodeBlock<'s>>,
     function_definitions: SymbolMap<'s, &'t ast::FunctionDefinition<'s>>,
+    function_instantiations: SymbolMap<'s, &'t ast::DefinitionOrImport<'s>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -265,6 +272,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
         function_signatures: Default::default(),
         code_blocks: Default::default(),
         function_definitions: Default::default(),
+        function_instantiations: Default::default(),
     };
 
     macro_rules! define_symbol {
@@ -372,7 +380,13 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     .insert_with_symbol(symbol.as_ref(), definition);
             }
             ast::Directive::FunctionInstantiation(symbol, instantiation) => {
-                todo!("func inst not yet supported")
+                if let Some(symbol) = symbol {
+                    define_symbol!(symbol);
+                }
+
+                directives
+                    .function_instantiations
+                    .insert_with_symbol(symbol.as_ref(), instantiation);
             }
         }
     }
@@ -753,6 +767,25 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
             Cow::Borrowed(definition.identifier().item().as_ref()),
             body,
         )))
+    }
+
+    for instantiation in directives.function_instantiations.iter() {
+        let template_index = match instantiation {
+            ast::DefinitionOrImport::Definition(definition) => {
+                directives.function_definitions.get_index_from_reference(definition)
+                // + number of function imports
+            }
+            ast::DefinitionOrImport::Import(import) => todo!("instantiation of function imports is not yet supported"),
+        };
+
+        match template_index {
+            Ok(index) => {
+                builder.add_record(record::Record::from(record::FunctionInstantiation::from_template(
+                    binary::index::FunctionInstantiation::from(index),
+                )));
+            }
+            Err(e) => errors.push(e),
+        }
     }
 
     builder
