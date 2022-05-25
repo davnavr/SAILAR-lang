@@ -136,12 +136,14 @@ impl<'a> Builder<'a> {
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
                         Instruction::Ret(values) => {
+                            out.write_integer(values.len())?;
                             for v in values.iter() {
                                 write_code_value(out, v)?;
                             }
                         }
                         Instruction::Call(callee, arguments) => {
                             out.write_integer(*callee)?;
+                            out.write_integer(arguments.len())?;
                             for a in arguments.iter() {
                                 write_code_value(out, a)?;
                             }
