@@ -506,6 +506,25 @@ impl<'source> CodeBlock<'source> {
     }
 }
 
+pub use sailar::binary::record::Export;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FunctionBody<'source> {
+    //Defined(Vec<Reference<'source>>),
+    Foreign {
+        function_name: Located<LiteralString<'source>>,
+        library: Located<LiteralString<'source>>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDefinition<'source> {
+    access_modifier: Export,
+    identifier: Located<Identifier<'source>>,
+    signature: Reference<'source>,
+    body: FunctionBody<'source>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Directive<'source> {
     /// ```text
@@ -578,7 +597,16 @@ pub enum Directive<'source> {
     /// ; Insert instructions here...
     /// ret
     /// ```
+    /// Defines a code block containing instructions.
     Code(Option<Symbol<'source>>, CodeBlock<'source>),
+    /// ```text
+    /// .define function @my_function public "MyFunction" signature @my_signature
+    /// /body @my_code_block ; Experimental syntax, may eventually be expanded to allow multiple bodies for many functions.
+    /// 
+    /// .define function private "MyForeignFunction" signature @my_signature foreign "foreign_function_name" from "library"
+    /// ```
+    /// Defines a function definition.
+    FunctionDefinition(Option<Symbol<'source>>, FunctionDefinition<'source>),
 }
 
 #[cfg(test)]

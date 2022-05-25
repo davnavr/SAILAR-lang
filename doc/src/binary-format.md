@@ -140,6 +140,8 @@ Offset|Bits|Name|Notes
 `1 + 2L`||[Symbol](#symbols)
 ?||[Function Body](#function-body)
 
+TODO: Move reserved generic parameter count to be with a Defined function body (before the index to the code block).
+
 ### Function Body
 If the `Foreign` bit is not set, then the function body is simply a [length integer index](#integer-size) to a [code block](#code-block).
 
