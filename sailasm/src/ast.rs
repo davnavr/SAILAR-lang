@@ -539,6 +539,26 @@ impl<'source> FunctionDefinition<'source> {
             body,
         }
     }
+
+    #[inline]
+    pub fn access_modifier(&self) -> Export {
+        self.access_modifier
+    }
+
+    #[inline]
+    pub fn identifier(&self) -> &Located<Identifier<'source>> {
+        &self.identifier
+    }
+
+    #[inline]
+    pub fn signature(&self) -> &Reference<'source> {
+        &self.signature
+    }
+
+    #[inline]
+    pub fn body(&self) -> &FunctionBody<'source> {
+        &self.body
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -32,6 +32,8 @@ pub enum ErrorKind {
     TemporaryRegisterCountMismatch { expected: usize, actual: usize },
     #[error("invalid integer value: {0}")]
     InvalidIntegerValue(std::num::ParseIntError),
+    #[error("non-foreign function definition defines {0} entry blocks, but only 1 is currently supported")]
+    UnsupportedFunctionEntryCount(usize),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -118,6 +120,18 @@ trait NamedItem {
 impl NamedItem for TypeSignatureAssembler<'_, '_> {
     fn item_name() -> &'static str {
         "type signature"
+    }
+}
+
+impl NamedItem for &ast::FunctionSignature<'_> {
+    fn item_name() -> &'static str {
+        "function signature"
+    }
+}
+
+impl NamedItem for &ast::CodeBlock<'_> {
+    fn item_name() -> &'static str {
+        "code block"
     }
 }
 
@@ -236,6 +250,7 @@ struct Directives<'t, 's> {
     type_signatures: TypeSignatureMap<'t, 's>,
     function_signatures: SymbolMap<'s, &'t ast::FunctionSignature<'s>>,
     code_blocks: SymbolMap<'s, &'t ast::CodeBlock<'s>>,
+    function_definitions: SymbolMap<'s, &'t ast::FunctionDefinition<'s>>,
 }
 
 /// The first pass of the assembler, iterates through all directives and adds all unknown symbols to a table.
@@ -249,6 +264,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
         type_signatures: Default::default(),
         function_signatures: Default::default(),
         code_blocks: Default::default(),
+        function_definitions: Default::default(),
     };
 
     macro_rules! define_symbol {
@@ -351,7 +367,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     define_symbol!(symbol);
                 }
 
-                // TODO: Assemble function definitions.
+                directives
+                    .function_definitions
+                    .insert_with_symbol(symbol.as_ref(), definition);
             }
         }
     }
@@ -688,6 +706,50 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
             result_count,
             instruction_buffer.clone().into_boxed_slice().into(),
         )));
+    }
+
+    // TODO: Have lookup for module symbols to prevent duplicates.
+    for definition in directives.function_definitions.iter() {
+        let signature = match directives
+            .function_signatures
+            .get_index_from_reference(definition.signature())
+        {
+            Ok(index) => index,
+            Err(e) => {
+                errors.push(e);
+                continue;
+            }
+        };
+
+        let body = match definition.body() {
+            ast::FunctionBody::Defined(blocks) => match blocks.first() {
+                Some(entry_block) if blocks.len() == 1 => match directives.code_blocks.get_index_from_reference(entry_block) {
+                    Ok(index) => record::FunctionBody::Definition(index.into()),
+                    Err(e) => {
+                        errors.push(e);
+                        continue;
+                    }
+                },
+                _ => {
+                    errors.push(Error::with_location(
+                        ErrorKind::UnsupportedFunctionEntryCount(blocks.len()),
+                        definition.identifier().location().clone(),
+                    ));
+
+                    continue;
+                }
+            },
+            ast::FunctionBody::Foreign { function_name, library } => {
+                todo!("foreign function assemble")
+            }
+        };
+
+        builder.add_record(record::Record::from(record::FunctionDefinition::new(
+            definition.access_modifier(),
+            signature.into(),
+            Cow::Borrowed(definition.identifier().item().as_ref()),
+            body,
+        )))
     }
 
     builder
