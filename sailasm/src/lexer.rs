@@ -290,7 +290,7 @@ pub enum Token<'s> {
     #[regex(r"/[a-zA-Z]+", directive)]
     NestedDirective(&'s str),
     #[regex(r"@[a-zA-Z_0-9]+", symbol)]
-    Symbol(&'s sailar::Id),
+    Label(&'s sailar::Id),
     #[regex(r"[a-zA-Z][a-zA-Z_0-9]*")]
     Word(&'s str),
     #[regex("\"[a-zA-Z0-9_ \\?\\\\/!\\*\\+\\.]*\"", literal_string_contents)]

@@ -301,11 +301,11 @@ fn parse_literal_identifier<'t, 's>(
     );
 }
 
-fn parse_symbol<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Symbol<'s>> {
+fn parse_label<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Symbol<'s>> {
     state.input.peek_next_token().and_then(|token| match token {
-        ((Token::Symbol(symbol), _), location) => {
+        ((Token::Label(label), _), location) => {
             state.input.next_token();
-            Some(ast::Located::with_range(*symbol, location))
+            Some(ast::Located::with_range(*label, location))
         }
         _ => None,
     })
@@ -317,8 +317,8 @@ fn parse_reference<'t, 's>(
     exhausted: impl FnOnce(&mut State<'t, 's>, Option<LocatedToken<'t, 's>>),
 ) {
     match state.input.next_token() {
-        Some(((Token::Symbol(symbol), _), location)) => {
-            success(state, ast::Reference::Symbol(ast::Located::with_range(*symbol, location)))
+        Some(((Token::Label(label), _), location)) => {
+            success(state, ast::Reference::Label(ast::Located::with_range(*label, location)))
         }
         Some(((Token::Index(digits), _), location)) => match u32::try_from(digits) {
             Ok(index) => success(state, ast::Reference::Index(ast::Located::with_range(index, location))),
@@ -407,7 +407,7 @@ fn parse_instruction_value<'t, 's>(state: &mut State<'t, 's>) -> Option<ast::Val
     match state.input.peek_next_token() {
         Some(((Token::Register(register), _), location)) => {
             state.input.next_token();
-            Some(ast::Value::Register(ast::Reference::Symbol(ast::Symbol::with_range(
+            Some(ast::Value::Register(ast::Reference::Label(ast::Symbol::with_range(
                 register, location,
             ))))
         }
@@ -635,7 +635,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 }
             },
             Token::Directive("identifier" | "ident") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
 
                 parse_literal_identifier(
                     &mut state,
@@ -657,7 +657,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 )
             }
             Token::Directive("data") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
                 let mut data = Vec::default();
                 let mut end_location = start_location.end().clone();
                 let mut data_start_location = end_location.clone();
@@ -701,7 +701,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 ));
             }
             Token::Directive("signature" | "sig") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
 
                 match state.input.next_token() {
                     Some(((Token::Word("type"), _), location)) => {
@@ -913,7 +913,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 state.expect_newline_or_end();
             }
             Token::Directive("code") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
 
                 let input_registers;
                 if state.input.next_token_if(|t| matches!(t, Token::OpenParenthesis)).is_some() {
@@ -1053,7 +1053,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 ));
             }
             Token::Directive("define" | "def") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
 
                 match state.input.next_token() {
                     Some(((Token::Word("function" | "func"), _), _)) => {
@@ -1201,7 +1201,7 @@ pub fn parse<'source>(input: &lexer::Output<'source>) -> Output<'source> {
                 }
             }
             Token::Directive("instantiate" | "inst") => {
-                let symbol = parse_symbol(&mut state);
+                let symbol = parse_label(&mut state);
 
                 match state.input.next_token() {
                     Some(((Token::Word("function" | "func"), _), location)) => {

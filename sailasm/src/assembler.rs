@@ -110,7 +110,7 @@ impl<'s> SymbolSet<'s> {
 #[derive(Clone, Debug)]
 enum UnresolvedReferenceKind {
     Index(u32),
-    Symbol(Box<str>),
+    Label(Box<str>),
 }
 
 trait NamedItem {
@@ -144,15 +144,15 @@ impl NamedItem for &ast::FunctionDefinition<'_> {
 #[derive(Clone, Debug)]
 pub struct UnresolvedReferenceError {
     item_name: &'static str,
-    symbol: UnresolvedReferenceKind,
+    label: UnresolvedReferenceKind,
 }
 
 impl std::fmt::Display for UnresolvedReferenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "a {} corresponding to the ", self.item_name)?;
-        match &self.symbol {
+        match &self.label {
             UnresolvedReferenceKind::Index(index) => write!(f, "index {}", index)?,
-            UnresolvedReferenceKind::Symbol(symbol) => write!(f, "symbol @{}", symbol)?,
+            UnresolvedReferenceKind::Label(label) => write!(f, "label @{}", label)?,
         }
         write!(f, " could not be found")
     }
@@ -205,9 +205,9 @@ impl<'s, T: NamedItem> SymbolMap<'s, T> {
                 location = index.location();
                 usize::try_from(*index.item()).ok().filter(|i| *i < self.len())
             }
-            ast::Reference::Symbol(symbol) => {
-                location = symbol.location();
-                self.get_index_from_symbol(symbol.item())
+            ast::Reference::Label(label) => {
+                location = label.location();
+                self.get_index_from_symbol(label.item())
             }
         };
 
@@ -215,9 +215,9 @@ impl<'s, T: NamedItem> SymbolMap<'s, T> {
             Error::with_location(
                 UnresolvedReferenceError {
                     item_name: T::item_name(),
-                    symbol: match reference {
+                    label: match reference {
                         ast::Reference::Index(index) => UnresolvedReferenceKind::Index(*index.item()),
-                        ast::Reference::Symbol(symbol) => UnresolvedReferenceKind::Symbol(Box::from(symbol.item().as_str())),
+                        ast::Reference::Label(label) => UnresolvedReferenceKind::Label(Box::from(label.item().as_str())),
                     },
                 },
                 location.clone(),
@@ -238,7 +238,7 @@ impl<T> Default for SymbolMap<'_, T> {
 // TODO: Allow deciding whether duplicate records should be removed and whether records should be in source order.
 
 struct TypeSignatureAssembler<'t, 's> {
-    symbol: &'t Option<ast::Symbol<'s>>,
+    label: &'t Option<ast::Symbol<'s>>,
     signature: &'t ast::TypeSignature<'s>,
     signature_location: &'t ast::LocationRange,
     references: Box<[&'t ast::Reference<'s>]>,
@@ -334,8 +334,8 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
 
                 directives.data_arrays.insert_with_symbol(symbol.as_ref(), data.item());
             }
-            ast::Directive::Signature(symbol, signature) => {
-                if let Some(symbol) = symbol {
+            ast::Directive::Signature(label, signature) => {
+                if let Some(symbol) = label {
                     define_symbol!(symbol);
                 }
 
@@ -344,9 +344,9 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                 match signature.item() {
                     ast::Signature::Type(type_signature) => {
                         directives.type_signatures.insert_with_symbol(
-                            symbol.as_ref(),
+                            label.as_ref(),
                             TypeSignatureAssembler {
-                                symbol,
+                                label,
                                 signature: type_signature,
                                 signature_location: location,
                                 references: match type_signature {
@@ -359,7 +359,7 @@ fn get_record_definitions<'t, 's>(errors: &mut Vec<Error>, input: &'t parser::Ou
                     ast::Signature::Function(function_signature) => {
                         directives
                             .function_signatures
-                            .insert_with_symbol(symbol.as_ref(), function_signature);
+                            .insert_with_symbol(label.as_ref(), function_signature);
                     }
                 }
             }
@@ -438,9 +438,9 @@ impl<'t, 's> RegisterMap<'t, 's> {
                     .filter(|i| *i < self.len())
                     .map(binary::index::Register::from)
             }
-            ast::Reference::Symbol(symbol) => {
-                location = symbol.location();
-                self.lookup.get(&RegisterSymbol(symbol)).copied()
+            ast::Reference::Label(label) => {
+                location = label.location();
+                self.lookup.get(&RegisterSymbol(label)).copied()
             }
         };
 
@@ -448,9 +448,9 @@ impl<'t, 's> RegisterMap<'t, 's> {
             Error::with_location(
                 UnresolvedReferenceError {
                     item_name: "register",
-                    symbol: match reference {
+                    label: match reference {
                         ast::Reference::Index(index) => UnresolvedReferenceKind::Index(*index.item()),
-                        ast::Reference::Symbol(symbol) => UnresolvedReferenceKind::Symbol(Box::from(symbol.item().as_str())),
+                        ast::Reference::Label(label) => UnresolvedReferenceKind::Label(Box::from(label.item().as_str())),
                     },
                 },
                 location.clone(),
@@ -533,8 +533,8 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
                         ));
                     }
                 }
-                ast::Reference::Symbol(symbol) => match assembler.symbol {
-                    Some(self_symbol) if symbol.item() == self_symbol.item() => errors.push(Error::new(
+                ast::Reference::Label(label) => match assembler.label {
+                    Some(self_symbol) if label.item() == self_symbol.item() => errors.push(Error::new(
                         ErrorKind::RecursiveTypeSignature,
                         Some(assembler.signature_location.clone()),
                     )),

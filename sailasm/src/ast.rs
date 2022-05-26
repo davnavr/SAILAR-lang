@@ -181,18 +181,18 @@ impl<N> From<Located<N>> for (N, LocationRange) {
 
 pub type Symbol<'source> = Located<&'source sailar::Id>;
 
-/// Represents a symbol or numeric index used to refer to something.
+/// Represents a label or numeric index used to refer to something.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Reference<'source> {
     Index(Located<u32>),
-    Symbol(Symbol<'source>),
+    Label(Symbol<'source>),
 }
 
 impl Reference<'_> {
     pub fn location(&self) -> &LocationRange {
         match self {
             Self::Index(index) => index.location(),
-            Self::Symbol(symbol) => symbol.location(),
+            Self::Label(label) => label.location(),
         }
     }
 }
@@ -606,15 +606,15 @@ pub enum Directive<'source> {
     /// Specifies information about the module.
     Metadata(Metadata<'source>),
     /// ```text
-    /// .identifier "no symbol" ; Referred to by numeric index
-    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by symbol
+    /// .identifier "no label" ; Referred to by numeric index
+    /// .identifier @my_identifier "with symbol" ; Referred to by numeric index or by label
     /// .ident "shorter_syntax"
     /// ```
     /// Defines a record containing a reusable identifier string.
     Identifier(Option<Symbol<'source>>, Located<Identifier<'source>>),
     /// ```text
     /// .data 0x68 0x65 0x6C 0x6C 0x6F ; Referred to by numeric index
-    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by symbol
+    /// .data @my_data 0x74 0x65 0x73 0x74 ; Referred to by numeric index or by label
     /// ```
     /// Defines a record containing arbitrary data. Used to declare constant values such as string literals.
     Data(Option<Symbol<'source>>, Located<Box<[u8]>>),
@@ -626,7 +626,7 @@ pub enum Directive<'source> {
     /// .signature function () -> ()
     /// .sig func (#3)
     ///
-    /// ; Referred to by numeric index or by symbol
+    /// ; Referred to by numeric index or by label
     /// .signature @my_type type s64
     /// .signature @my_pointer_type type rawptr #0
     /// .signature @my_function_signature (@my_type, #1) -> (#1)
@@ -643,7 +643,7 @@ pub enum Directive<'source> {
     /// $r2:@some_integer = addi $r0, 3
     /// ret
     ///
-    /// ; Referred to by numeric index or by symbol
+    /// ; Referred to by numeric index or by label
     /// .code @my_code_block ($a0:#12, $a1:#34) -> (#5, #6)
     /// ; Insert instructions here...
     /// ret
