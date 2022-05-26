@@ -525,8 +525,7 @@ impl<R: Read> RecordReader<R> {
                 }
 
                 let flags = source.wrap_result(
-                    instruction::ValueFlags::from_bits(flag_value)
-                        .ok_or(ErrorKind::InvalidInstructionValuesFlags(flag_value)),
+                    instruction::ValueFlags::from_bits(flag_value).ok_or(ErrorKind::InvalidInstructionValuesFlags(flag_value)),
                 )?;
 
                 if !flags.contains(instruction::ValueFlags::IS_CONSTANT) {

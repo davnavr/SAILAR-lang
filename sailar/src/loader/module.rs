@@ -17,7 +17,9 @@ impl Module {
         &self.identifiers
     }
 
-    pub(crate) fn from_record_iter<R: std::iter::Iterator<Item = binary::reader::Result<Record>>>(records: R) -> Result<Self, ()> {
+    pub(crate) fn from_record_iter<R: std::iter::Iterator<Item = binary::reader::Result<Record>>>(
+        records: R,
+    ) -> Result<Self, ()> {
         todo!("process records")
     }
 }

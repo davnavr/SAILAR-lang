@@ -61,9 +61,9 @@ impl Id {
     }
 
     /// Creates a reference to an identfier from a string, without any validation checks.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Callers should ensure that the string does not contain any interior null bytes and must not be empty.
     pub unsafe fn from_str_unchecked(identifier: &str) -> &Id {
         // Safety: Representation of Id allows safe transmute here.
@@ -71,9 +71,9 @@ impl Id {
     }
 
     /// Attempts to create a reference to an identifier string.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// If the string is empty or contains a `NUL` character, then an error is returned.
     pub fn try_from_str(identifier: &str) -> Result<&Id, InvalidError> {
         if identifier.is_empty() {
