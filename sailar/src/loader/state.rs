@@ -29,11 +29,12 @@ impl State {
         })
     }
 
-    pub fn force_load_module<S: crate::loader::Source>(&self, source: S) -> ModuleLoadResult<S::Error> {
-        let module = Module::from_source(source).map_err(ModuleLoadError::SourceError)?;
+    pub fn force_load_module<S: crate::loader::Source>(self: &Arc<Self>, source: S) -> ModuleLoadResult<S::Error> {
+        let mut module = Module::from_source(source).map_err(ModuleLoadError::SourceError)?;
 
         // TODO: Check module lookup to see if module with same name is already loaded
 
+        module.set_loader(self);
         let allocated_module = Arc::new(module);
         self.modules.lock().unwrap().push(allocated_module.clone());
         Ok(allocated_module)
