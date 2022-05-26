@@ -25,9 +25,10 @@ impl<'state> State<'state> {
     pub fn force_load_module<S: crate::loader::Source>(&self, source: S) -> ModuleLoadResult<'state, S::Error> {
         let module = Module::from_source(source).map_err(ModuleLoadError::SourceError)?;
 
-        // TODO: Check module lookup for name
+        // TODO: Check module lookup to see if module with same name is already loaded
 
-        
+        let mut module_list = self.modules.lock().unwrap();
+        Ok(module_list.push_get(module))
     }
 }
 

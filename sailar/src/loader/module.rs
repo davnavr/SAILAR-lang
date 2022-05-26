@@ -12,10 +12,10 @@ pub struct Module {
 }
 
 impl Module {
-    pub(crate) fn from_source<S: crate::loader::Source>(source: S) -> Result<Self, S::Error> {
-        let mut module = Self {
+    pub(crate) fn from_source<S: crate::loader::Source>(source: S) -> Result<Box<Self>, S::Error> {
+        let mut module = Box::new(Self {
             identifiers: Vec::default(),
-        };
+        });
 
         source.iter_records(|record| todo!("record {:?}", record))?;
 
