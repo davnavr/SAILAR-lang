@@ -1,6 +1,5 @@
 //! Module for managing loader state.
 
-use crate::identifier;
 use crate::loader::Module;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};

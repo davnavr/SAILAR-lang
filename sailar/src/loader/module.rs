@@ -1,8 +1,9 @@
 //! Module for interacting with SAILAR binary modules.
 
 use crate::binary::record;
-use crate::identifier::Identifier;
+use crate::identifier::Id;
 use crate::loader;
+use std::borrow::Cow;
 use std::sync::{Arc, Weak};
 
 pub type Record = record::Record<'static>;
@@ -12,7 +13,7 @@ pub type Record = record::Record<'static>;
 #[derive(Debug)]
 pub struct Module {
     loader: Weak<loader::State>,
-    identifiers: Vec<Identifier>,
+    identifiers: Vec<Cow<'static, Id>>,
 }
 
 impl Module {
@@ -22,7 +23,10 @@ impl Module {
             identifiers: Vec::default(),
         };
 
-        source.iter_records(|record| todo!("record {:?}", record))?;
+        source.iter_records(|record| match record {
+            Record::Identifier(identifier) => module.identifiers.push(identifier),
+            bad => todo!("unsupported {:?}", bad),
+        })?;
 
         Ok(module)
     }
@@ -52,7 +56,7 @@ impl Module {
     }
 
     #[inline]
-    pub fn identifiers(&self) -> &[Identifier] {
+    pub fn identifiers(&self) -> &[Cow<'static, Id>] {
         &self.identifiers
     }
 }
