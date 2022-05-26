@@ -13,7 +13,7 @@ impl<E, I: std::iter::Iterator<Item = Result<Record, E>>> Source for I {
     type Error = E;
 
     #[inline]
-    fn iter_records<F: FnMut(Record)>(self, f: F) -> Result<(), E> {
+    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), E> {
         for value in self {
             match value {
                 Ok(record) => f(record),
@@ -28,9 +28,14 @@ impl<E, I: std::iter::Iterator<Item = Result<Record, E>>> Source for I {
 impl<S: std::io::Read> Source for binary::reader::Reader<S> {
     type Error = binary::reader::Error;
 
-    fn iter_records<F: FnMut(Record)>(self, f: F) -> Result<(), Self::Error> {
+    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), Self::Error> {
         let (_, _, mut record_reader) = self.to_record_reader()?;
-        record_reader.iter_records(f)?;
+        while let Some(value) = record_reader.next_record() {
+            match value {
+                Ok(record) => f(record),
+                Err(e) => return Err(e),
+            }
+        }
         record_reader.finish()
     }
 }
