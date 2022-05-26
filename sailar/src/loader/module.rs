@@ -3,7 +3,8 @@
 use crate::binary::record;
 use crate::identifier::Id;
 use crate::loader;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
+use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
 pub type Record = record::Record<'static>;
@@ -42,6 +43,19 @@ impl std::cmp::Eq for ModuleIdentifier {}
 impl std::hash::Hash for ModuleIdentifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.as_ref().hash(state)
+    }
+}
+
+impl Borrow<Option<record::ModuleIdentifier<'static>>> for ModuleIdentifier {
+    fn borrow(&self) -> &Option<record::ModuleIdentifier<'static>> {
+        &self.0.module_identifier
+    }
+}
+
+impl Debug for ModuleIdentifier {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let id: &Option<_> = self.borrow();
+        f.debug_tuple("ModuleIdentifier").field(id).finish()
     }
 }
 
@@ -106,8 +120,8 @@ impl Module {
         &self.identifiers
     }
 
-    /// Gets an optional referene to the module's identifier.
-    /// 
+    /// Gets an optional reference to the module's identifier.
+    ///
     /// For a shared reference to the module's identifier, use [`module_identifier`].
     #[inline]
     pub fn get_module_identifier(&self) -> Option<&record::ModuleIdentifier<'static>> {
