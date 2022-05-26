@@ -5,6 +5,7 @@
 pub mod binary;
 pub mod helper;
 pub mod identifier;
+pub mod loader;
 pub mod versioning;
 
 pub use identifier::{Id, Identifier};
