@@ -1,10 +1,10 @@
 //! Module for managing loader state.
 
-use crate::loader::Module;
+use crate::loader::{Module, ModuleIdentifier};
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 
-//type ModuleLookup<'s> = elsa::FrozenMap<ModuleIdentifierReference, Arc<Module>, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
+//type ModuleLookup<'s> = elsa::FrozenMap<ModuleIdentifier, Arc<Module>, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]

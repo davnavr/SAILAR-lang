@@ -20,7 +20,7 @@ impl Default for Export {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct ModuleIdentifier<'a> {
     name: Cow<'a, Id>,
