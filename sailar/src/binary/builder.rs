@@ -65,10 +65,10 @@ impl<'a> Builder<'a> {
             fn write_metadata_field(out: &mut VecWriter, field: &record::MetadataField) -> Result {
                 out.write_identifier(field.field_name())?;
                 match field {
-                    record::MetadataField::ModuleIdentifier { name, version } => {
-                        out.write_identifier(name.as_ref())?;
-                        out.write_integer(version.len())?;
-                        for number in version.iter() {
+                    record::MetadataField::ModuleIdentifier(identifier) => {
+                        out.write_identifier(identifier.name())?;
+                        out.write_integer(identifier.version().len())?;
+                        for number in identifier.version().iter() {
                             out.write_integer(*number)?;
                         }
                         Ok(())

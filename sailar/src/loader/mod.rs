@@ -7,4 +7,4 @@ mod state;
 pub use module::Module;
 pub use source::Source;
 
-pub use state::{State, ModuleLoadResult, ModuleLoadError};
+pub use state::{ModuleLoadError, ModuleLoadResult, State};

@@ -14,6 +14,7 @@ pub type Record = record::Record<'static>;
 pub struct Module {
     loader: Weak<loader::State>,
     identifiers: Vec<Cow<'static, Id>>,
+    module_identifier: Option<record::ModuleIdentifier<'static>>,
 }
 
 impl Module {
@@ -21,10 +22,15 @@ impl Module {
         let mut module = Self {
             loader: Default::default(),
             identifiers: Vec::default(),
+            module_identifier: None,
         };
 
+        // TODO: How to error on duplicate module identifier?
         source.iter_records(|record| match record {
             Record::Identifier(identifier) => module.identifiers.push(identifier),
+            Record::MetadataField(field) => match field {
+                record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(identifier),
+            },
             bad => todo!("unsupported {:?}", bad),
         })?;
 
@@ -36,16 +42,16 @@ impl Module {
     }
 
     /// Gets a weak reference to the loader.
-    /// 
+    ///
     /// Since this reference is most likely to exist, consider using [`loader`] instead.
     pub fn loader_weak(&self) -> &Weak<loader::State> {
         &self.loader
     }
 
     /// Gets a reference to the loader.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the loader was dropped. Code that uses the SAILAR loader should ensure that the loader outlives all loaded
     /// modules.
     pub fn loader(&self) -> Arc<loader::State> {
@@ -58,5 +64,10 @@ impl Module {
     #[inline]
     pub fn identifiers(&self) -> &[Cow<'static, Id>] {
         &self.identifiers
+    }
+
+    #[inline]
+    pub fn module_identifier(&self) -> Option<&record::ModuleIdentifier<'static>> {
+        self.module_identifier.as_ref()
     }
 }

@@ -508,10 +508,9 @@ fn assemble_directives<'t, 's>(errors: &mut Vec<Error>, mut directives: Directiv
     let mut builder = Builder::with_format_version(actual_format_version);
 
     if let Some((name, version_numbers)) = directives.module_identifier.take() {
-        builder.add_record(record::Record::MetadataField(record::MetadataField::ModuleIdentifier {
-            name: Cow::Borrowed(name),
-            version: sailar::helper::borrow::CowBox::Boxed(version_numbers),
-        }))
+        builder.add_record(record::Record::MetadataField(record::MetadataField::ModuleIdentifier(
+            record::ModuleIdentifier::new(Cow::Borrowed(name), sailar::helper::borrow::CowBox::Boxed(version_numbers)),
+        )))
     }
 
     for id in directives.identifiers.iter() {

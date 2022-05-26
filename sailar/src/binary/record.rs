@@ -22,17 +22,37 @@ impl Default for Export {
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
+pub struct ModuleIdentifier<'a> {
+    name: Cow<'a, Id>,
+    version: CowBox<'a, [usize]>,
+}
+
+impl<'a> ModuleIdentifier<'a> {
+    pub fn new(name: Cow<'a, Id>, version: CowBox<'a, [usize]>) -> Self {
+        Self { name, version }
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Id {
+        &self.name
+    }
+
+    #[inline]
+    pub fn version(&self) -> &[usize] {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum MetadataField<'a> {
-    ModuleIdentifier {
-        name: Cow<'a, Id>,
-        version: CowBox<'a, [usize]>,
-    },
+    ModuleIdentifier(ModuleIdentifier<'a>),
 }
 
 impl MetadataField<'_> {
     pub fn field_name(&self) -> &'static Id {
         let name = match self {
-            Self::ModuleIdentifier { .. } => "id",
+            Self::ModuleIdentifier(_) => "id",
         };
 
         // Safety: all above names are assumed to be valid.

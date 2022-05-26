@@ -42,8 +42,6 @@ impl State {
 
 impl Debug for State {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("State")
-            .field("modules", &self.modules)
-            .finish()
+        f.debug_struct("State").field("modules", &self.modules).finish()
     }
 }
