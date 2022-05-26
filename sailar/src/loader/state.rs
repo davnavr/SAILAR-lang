@@ -7,9 +7,11 @@ use std::sync::Mutex;
 
 type ModuleLookup<'s> = elsa::FrozenMap<&'s identifier::Id, &'s Module, std::hash::BuildHasherDefault<rustc_hash::FxHasher>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ModuleLoadError<E> {
-
+    #[error(transparent)]
+    SourceError(E),
 }
 
 pub type ModuleLoadResult<'state, E> = Result<&'state Module, ModuleLoadError<E>>;
@@ -20,8 +22,12 @@ pub struct State<'state> {
 }
 
 impl<'state> State<'state> {
-    pub fn force_load_module<S: crate::loader::Source>(source: S) -> ModuleLoadResult<'state, S::Error> {
+    pub fn force_load_module<S: crate::loader::Source>(&self, source: S) -> ModuleLoadResult<'state, S::Error> {
+        let module = Module::from_source(source).map_err(ModuleLoadError::SourceError)?;
 
+        // TODO: Check module lookup for name
+
+        
     }
 }
 

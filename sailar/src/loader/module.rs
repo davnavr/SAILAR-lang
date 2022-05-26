@@ -12,14 +12,18 @@ pub struct Module {
 }
 
 impl Module {
+    pub(crate) fn from_source<S: crate::loader::Source>(source: S) -> Result<Self, S::Error> {
+        let mut module = Self {
+            identifiers: Vec::default(),
+        };
+
+        source.iter_records(|record| todo!("record {:?}", record))?;
+
+        Ok(module)
+    }
+
     #[inline]
     pub fn identifiers(&self) -> &[Identifier] {
         &self.identifiers
-    }
-
-    pub(crate) fn from_record_iter<R: std::iter::Iterator<Item = binary::reader::Result<Record>>>(
-        records: R,
-    ) -> Result<Self, ()> {
-        todo!("process records")
     }
 }
