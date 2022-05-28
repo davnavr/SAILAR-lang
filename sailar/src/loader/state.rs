@@ -35,7 +35,7 @@ impl State {
         let module = Module::from_source(source, self).map_err(ModuleLoadError::SourceError)?;
 
         if !module.is_anonymous() {
-            match self.module_lookup.lock().unwrap().entry(module.module_identifier()) {
+            match self.module_lookup.lock().unwrap().entry(module.module_identifier_shared()) {
                 hash_map::Entry::Occupied(existing) => return Err(ModuleLoadError::DuplicateModule(existing.key().clone())),
                 hash_map::Entry::Vacant(vacant) => {
                     vacant.insert(module.clone());

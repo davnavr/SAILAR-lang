@@ -11,6 +11,7 @@ use std::sync::{Arc, Weak};
 pub type Record = record::Record<'static>;
 
 #[derive(Clone)]
+#[repr(transparent)]
 pub struct ModuleIdentifier(Arc<Module>);
 
 impl ModuleIdentifier {
@@ -24,7 +25,7 @@ impl ModuleIdentifier {
     }
 
     pub fn as_ref(&self) -> Option<&record::ModuleIdentifier<'static>> {
-        self.0.get_module_identifier()
+        self.0.module_identifier_ref()
     }
 
     #[inline]
@@ -140,14 +141,14 @@ impl Module {
 
     /// Gets an optional reference to the module's identifier.
     ///
-    /// For a shared reference to the module's identifier, use [`module_identifier`].
+    /// For a shared reference to the module's identifier, use [`module_identifier_shared`].
     #[inline]
-    pub fn get_module_identifier(&self) -> Option<&record::ModuleIdentifier<'static>> {
+    pub fn module_identifier_ref(&self) -> Option<&record::ModuleIdentifier<'static>> {
         self.module_identifier.as_ref()
     }
 
     /// Gets a shared, optional reference to the module's identifier.
-    pub fn module_identifier(self: &Arc<Self>) -> ModuleIdentifier {
+    pub fn module_identifier_shared(self: &Arc<Self>) -> ModuleIdentifier {
         ModuleIdentifier(self.clone())
     }
 }
