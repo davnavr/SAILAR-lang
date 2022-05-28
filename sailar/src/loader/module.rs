@@ -151,4 +151,14 @@ impl Module {
     pub fn module_identifier_shared(self: &Arc<Self>) -> ModuleIdentifier {
         ModuleIdentifier(self.clone())
     }
+
+    #[inline]
+    pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
+        &self.function_definitions
+    }
+
+    #[inline]
+    pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
+        &self.function_instantiations
+    }
 }
