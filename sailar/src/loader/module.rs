@@ -3,9 +3,10 @@
 use crate::binary::record;
 use crate::identifier::Id;
 use crate::loader;
+use crate::loader::function;
 use std::borrow::{Borrow, Cow};
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 pub type Record = record::Record<'static>;
 
@@ -64,30 +65,47 @@ pub struct Module {
     loader: Weak<loader::State>,
     identifiers: Vec<Cow<'static, Id>>,
     module_identifier: Option<record::ModuleIdentifier<'static>>,
+    function_definitions: Vec<Arc<function::Definition>>,
+    function_instantiations: Vec<Arc<function::Instantiation>>,
+    // TODO: Have lookup for exported functions
 }
 
 impl Module {
-    pub(crate) fn from_source<S: loader::Source>(source: S) -> Result<Self, S::Error> {
-        let mut module = Self {
-            loader: Default::default(),
-            identifiers: Vec::default(),
-            module_identifier: None,
-        };
+    pub(crate) fn from_source<S: loader::Source>(source: S, loader: &Arc<loader::State>) -> Result<Arc<Self>, S::Error> {
+        let mut error = None;
 
-        // TODO: How to error on duplicate module identifier?
-        source.iter_records(|record| match record {
-            Record::Identifier(identifier) => module.identifiers.push(identifier),
-            Record::MetadataField(field) => match field {
-                record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(identifier),
-            },
-            bad => todo!("unsupported {:?}", bad),
-        })?;
+        let module = Arc::new_cyclic(|module_weak| {
+            let mut module = Self {
+                loader: Arc::downgrade(loader),
+                identifiers: Vec::default(),
+                module_identifier: None,
+                function_definitions: Vec::default(),
+                function_instantiations: Vec::default(),
+            };
 
-        Ok(module)
-    }
+            // TODO: How to error on duplicate module identifier?
+            let result = source.iter_records(|record| match record {
+                Record::MetadataField(field) => match field {
+                    record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(identifier),
+                },
+                Record::Identifier(identifier) => module.identifiers.push(identifier),
+                Record::FunctionDefinition(definition) => module
+                    .function_definitions
+                    .push(function::Definition::new(definition, module_weak.clone())),
+                bad => todo!("unsupported {:?}", bad),
+            });
 
-    pub(crate) fn set_loader(&mut self, loader: &Arc<loader::State>) {
-        self.loader = Arc::downgrade(loader);
+            if let Err(e) = result {
+                error = Some(e);
+            }
+
+            module
+        });
+
+        match error {
+            None => Ok(module),
+            Some(e) => Err(e),
+        }
     }
 
     /// Indicates if the module has an identifier (a name and version).

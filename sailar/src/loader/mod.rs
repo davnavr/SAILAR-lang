@@ -4,6 +4,8 @@ mod module;
 mod source;
 mod state;
 
+pub mod function;
+
 pub use module::{Module, ModuleIdentifier};
 pub use source::Source;
 pub use state::{ModuleLoadError, ModuleLoadResult, State};

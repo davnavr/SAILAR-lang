@@ -32,21 +32,19 @@ impl State {
     }
 
     pub fn force_load_module<S: crate::loader::Source>(self: &Arc<Self>, source: S) -> ModuleLoadResult<S::Error> {
-        let mut module = Module::from_source(source).map_err(ModuleLoadError::SourceError)?;
-        module.set_loader(self);
+        let module = Module::from_source(source, self).map_err(ModuleLoadError::SourceError)?;
 
-        let allocated_module = Arc::new(module);
-        if !allocated_module.is_anonymous() {
-            match self.module_lookup.lock().unwrap().entry(allocated_module.module_identifier()) {
+        if !module.is_anonymous() {
+            match self.module_lookup.lock().unwrap().entry(module.module_identifier()) {
                 hash_map::Entry::Occupied(existing) => return Err(ModuleLoadError::DuplicateModule(existing.key().clone())),
                 hash_map::Entry::Vacant(vacant) => {
-                    vacant.insert(allocated_module.clone());
+                    vacant.insert(module.clone());
                 }
             }
         }
 
-        self.modules.lock().unwrap().push(allocated_module.clone());
-        Ok(allocated_module)
+        self.modules.lock().unwrap().push(module.clone());
+        Ok(module)
     }
 }
 
