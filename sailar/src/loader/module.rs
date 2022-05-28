@@ -6,7 +6,7 @@ use crate::loader;
 use crate::loader::function;
 use std::borrow::{Borrow, Cow};
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
 pub type Record = record::Record<'static>;
 
@@ -67,7 +67,7 @@ pub struct Module {
     module_identifier: Option<record::ModuleIdentifier<'static>>,
     function_definitions: Vec<Arc<function::Definition>>,
     function_instantiations: Vec<Arc<function::Instantiation>>,
-    // TODO: Have lookup for exported functions
+    //function_exports: rustc_hash::HashSet<Arc<function::Symbol>> // TODO: Have lookup for exported functions
 }
 
 impl Module {

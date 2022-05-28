@@ -21,3 +21,12 @@ impl Definition {
         Arc::new(Self { definition, module })
     }
 }
+
+#[derive(Clone)]
+pub struct Symbol(Arc<Definition>);
+
+impl Symbol {
+    pub fn as_ref(&self) -> Option<&crate::Id> {
+        todo!("if something is marked as export (public), make a symbol mandatory, but allow symbol to be omitted if somethng is marked as private")
+    }
+}
