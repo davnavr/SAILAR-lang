@@ -93,6 +93,9 @@ impl Module {
                 Record::FunctionDefinition(definition) => module
                     .function_definitions
                     .push(function::Definition::new(definition, module_weak.clone())),
+                Record::FunctionInstantiation(instantiation) => module
+                    .function_instantiations
+                    .push(function::Instantiation::new(instantiation, module_weak.clone())),
                 bad => todo!("unsupported {:?}", bad),
             });
 

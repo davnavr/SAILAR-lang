@@ -4,10 +4,37 @@ use crate::binary::record;
 use crate::helper::borrow::CowBox;
 use crate::identifier::Id;
 use crate::loader;
+use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
+#[derive(Clone, Debug)]
+pub enum Template {
+    Definition(Arc<Definition>),
+    //Import()
+}
+
+impl Template {
+    pub fn as_definition(&self) -> Result<&Arc<Definition>, std::convert::Infallible> {
+        match self {
+            Self::Definition(definition) => Ok(definition),
+        }
+    }
+}
+
+type InstantiationRecord = CowBox<'static, record::FunctionInstantiation>;
+
 #[derive(Debug)]
-pub struct Instantiation;
+pub struct Instantiation {
+    instantiation: InstantiationRecord,
+    //template: Mutex<Template>,
+    module: Weak<loader::Module>,
+}
+
+impl Instantiation {
+    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<loader::Module>) -> Arc<Self> {
+        Arc::new(Self { instantiation, module })
+    }
+}
 
 type DefinitionRecord = CowBox<'static, record::FunctionDefinition<'static>>;
 
@@ -55,3 +82,15 @@ impl std::cmp::PartialEq for Symbol {
 }
 
 impl std::cmp::Eq for Symbol {}
+
+impl std::hash::Hash for Symbol {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
+    }
+}
+
+impl Debug for Symbol {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_tuple("Symbol").field(&self.as_ref()).finish()
+    }
+}
