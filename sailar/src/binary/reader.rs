@@ -190,6 +190,14 @@ impl<R: Read> Wrapper<R> {
         }
     }
 
+    fn into_boxed_wrapper<'a>(self) -> Wrapper<Box<dyn Read + 'a>> where R: 'a {
+        Wrapper {
+            source: Box::new(self.source),
+            previous_offset: self.previous_offset,
+            offset: self.offset,
+        }
+    }
+
     fn wrap_error<E: Into<ErrorKind>>(&self, error: E) -> Error {
         Error::new(error, self.previous_offset)
     }
@@ -268,6 +276,10 @@ impl<R: Read> Reader<R> {
         Self {
             source: Wrapper::new(source),
         }
+    }
+
+    pub fn into_boxed_reader<'a>(self) -> Reader<Box<dyn Read + 'a>> where R: 'a {
+        Reader { source: self.source.into_boxed_wrapper() }
     }
 
     /// Reads the magic number, format version, and integer size.

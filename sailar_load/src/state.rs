@@ -1,5 +1,6 @@
 //! Module for managing loader state.
 
+use crate::resolver::{self, Resolver};
 use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::sync::Mutex;
@@ -13,14 +14,29 @@ struct ModuleArena<'s> {
 pub struct State<'s> {
     // Each individual module will cache its imported modules, so accessing this lookup should rarely happen
     module_lookup: Mutex<ModuleArena<'s>>,
+    resolver: Mutex<resolver::BoxedResolver<'s>>,
 }
 
 impl<'s> State<'s> {
-    pub fn new() -> Self {
+    pub fn with_resolver<R>(resolver: R) -> Self
+    where
+        R: Resolver<'s> + Send + 's,
+        R::Error: std::error::Error,
+    {
         Self {
             module_lookup: Default::default(),
+            resolver: Mutex::new(resolver::boxed(resolver)),
         }
     }
+
+    /// Creates a new [`State`] with no loaded modules and no import resolver. New modules can only be loaded by calling
+    /// [`force_load_modules`].
+    #[inline]
+    pub fn new() -> Self {
+        Self::with_resolver(resolver::unsuccessful())
+    }
+
+    //pub fn with_resolver(resolver: &dyn )
 
     pub fn force_load_module<S: crate::Source>(&'s self, source: S) -> Result<Option<&'s crate::Module<'s>>, S::Error> {
         let mut module_identifier = None;

@@ -10,6 +10,6 @@ mod state;
 pub mod resolver;
 
 pub use module::{Module, ModuleIdentifier};
+pub use resolver::Resolver;
 pub use source::Source;
 pub use state::State;
-pub use resolver::Resolver;
