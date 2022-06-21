@@ -1,4 +1,4 @@
-//! Module for loading, validating, and resolving modules and their imports.
+//! Library for loading, validating, and resolving modules and their imports.
 //!
 //! The types provided by this module are thread-safe, to allow dependents such as interpreters to use multiple threads.
 

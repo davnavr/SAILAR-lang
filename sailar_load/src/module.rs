@@ -1,8 +1,7 @@
 //! Module for interacting with SAILAR binary modules.
 
-use crate::binary::record;
-use crate::identifier::Id;
-use crate::loader;
+use sailar::binary::record;
+use sailar::identifier::Id;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 
@@ -11,7 +10,7 @@ pub type Record = record::Record<'static>;
 pub type ModuleIdentifier = record::ModuleIdentifier<'static>;
 
 pub struct Module<'s> {
-    loader: &'s loader::State<'s>,
+    loader: &'s crate::State<'s>,
     identifiers: Vec<Cow<'static, Id>>,
     pub(super) module_identifier: Option<&'s ModuleIdentifier>,
     //function_definitions: Vec<Arc<function::Definition>>,
@@ -20,7 +19,11 @@ pub struct Module<'s> {
 }
 
 impl<'s> Module<'s> {
-    pub(crate) fn from_source<S: loader::Source>(source: S, loader: &'s loader::State<'s>, module_identifier: &mut Option<ModuleIdentifier>) -> Result<Box<Self>, S::Error> {
+    pub(crate) fn from_source<S: crate::Source>(
+        source: S,
+        loader: &'s crate::State<'s>,
+        module_identifier: &mut Option<ModuleIdentifier>,
+    ) -> Result<Box<Self>, S::Error> {
         let mut module = Box::new(Self {
             loader,
             identifiers: Vec::default(),
@@ -33,6 +36,7 @@ impl<'s> Module<'s> {
         source.iter_records(|record| match record {
             Record::MetadataField(field) => match field {
                 record::MetadataField::ModuleIdentifier(identifier) => *module_identifier = Some(identifier),
+                bad => todo!("unknown metadata field {:?}", bad),
             },
             Record::Identifier(identifier) => module.identifiers.push(identifier),
             // Record::FunctionDefinition(definition) => module
@@ -43,7 +47,7 @@ impl<'s> Module<'s> {
             //     .push(function::Instantiation::new(instantiation, module_weak.clone())),
             bad => todo!("unsupported {:?}", bad),
         })?;
-        
+
         Ok(module)
     }
 
@@ -53,7 +57,7 @@ impl<'s> Module<'s> {
     }
 
     #[inline]
-    pub fn loader(&'s self) -> &'s loader::State {
+    pub fn loader(&'s self) -> &'s crate::State {
         self.loader
     }
 

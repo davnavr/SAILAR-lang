@@ -2,6 +2,7 @@
 members = [
     "sailar",
     "sailar_c",
+    "sailar_load",
     "sailasm",
     "sailas",
     "sailas_wasm",
