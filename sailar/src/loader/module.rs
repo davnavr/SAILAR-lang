@@ -3,165 +3,87 @@
 use crate::binary::record;
 use crate::identifier::Id;
 use crate::loader;
-use crate::loader::function;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Weak};
 
 pub type Record = record::Record<'static>;
 
-#[derive(Clone)]
-#[repr(transparent)]
-pub struct ModuleIdentifier(Arc<Module>);
+pub type ModuleIdentifier = record::ModuleIdentifier<'static>;
 
-impl ModuleIdentifier {
-    pub fn name(&self) -> Option<&Id> {
-        self.as_ref().map(|identifier| identifier.name())
-    }
-
-    /// Gets the version number specified in the module's identifier, or `None` if the module is anonymous.
-    pub fn version(&self) -> Option<&[usize]> {
-        self.as_ref().map(|identifier| identifier.version())
-    }
-
-    pub fn as_ref(&self) -> Option<&record::ModuleIdentifier<'static>> {
-        self.0.module_identifier_ref()
-    }
-
-    #[inline]
-    pub fn module(&self) -> &Arc<Module> {
-        &self.0
-    }
-}
-
-impl std::cmp::PartialEq for ModuleIdentifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_ref() == other.as_ref()
-    }
-}
-
-impl std::cmp::Eq for ModuleIdentifier {}
-
-impl std::hash::Hash for ModuleIdentifier {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_ref().hash(state)
-    }
-}
-
-impl Borrow<Option<record::ModuleIdentifier<'static>>> for ModuleIdentifier {
-    fn borrow(&self) -> &Option<record::ModuleIdentifier<'static>> {
-        &self.0.module_identifier
-    }
-}
-
-impl Debug for ModuleIdentifier {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        let id: &Option<_> = self.borrow();
-        f.debug_tuple("ModuleIdentifier").field(id).finish()
-    }
-}
-
-#[derive(Debug)]
-pub struct Module {
-    loader: Weak<loader::State>,
+pub struct Module<'s> {
+    loader: &'s loader::State<'s>,
     identifiers: Vec<Cow<'static, Id>>,
-    module_identifier: Option<record::ModuleIdentifier<'static>>,
-    function_definitions: Vec<Arc<function::Definition>>,
-    function_instantiations: Vec<Arc<function::Instantiation>>,
+    pub(super) module_identifier: Option<&'s ModuleIdentifier>,
+    //function_definitions: Vec<Arc<function::Definition>>,
+    //function_instantiations: Vec<Arc<function::Instantiation>>,
     //function_exports: rustc_hash::HashSet<Arc<function::Symbol>> // TODO: Have lookup for exported functions
 }
 
-impl Module {
-    pub(crate) fn from_source<S: loader::Source>(source: S, loader: &Arc<loader::State>) -> Result<Arc<Self>, S::Error> {
-        let mut error = None;
-
-        let module = Arc::new_cyclic(|module_weak| {
-            let mut module = Self {
-                loader: Arc::downgrade(loader),
-                identifiers: Vec::default(),
-                module_identifier: None,
-                function_definitions: Vec::default(),
-                function_instantiations: Vec::default(),
-            };
-
-            // TODO: How to error on duplicate module identifier?
-            let result = source.iter_records(|record| match record {
-                Record::MetadataField(field) => match field {
-                    record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(identifier),
-                },
-                Record::Identifier(identifier) => module.identifiers.push(identifier),
-                Record::FunctionDefinition(definition) => module
-                    .function_definitions
-                    .push(function::Definition::new(definition, module_weak.clone())),
-                Record::FunctionInstantiation(instantiation) => module
-                    .function_instantiations
-                    .push(function::Instantiation::new(instantiation, module_weak.clone())),
-                bad => todo!("unsupported {:?}", bad),
-            });
-
-            if let Err(e) = result {
-                error = Some(e);
-            }
-
-            module
+impl<'s> Module<'s> {
+    pub(crate) fn from_source<S: loader::Source>(source: S, loader: &'s loader::State<'s>, module_identifier: &mut Option<ModuleIdentifier>) -> Result<Box<Self>, S::Error> {
+        let mut module = Box::new(Self {
+            loader,
+            identifiers: Vec::default(),
+            module_identifier: None,
+            //function_definitions: Vec::default(),
+            //function_instantiations: Vec::default(),
         });
 
-        match error {
-            None => Ok(module),
-            Some(e) => Err(e),
-        }
+        // TODO: How to error on more than one module identifier?
+        source.iter_records(|record| match record {
+            Record::MetadataField(field) => match field {
+                record::MetadataField::ModuleIdentifier(identifier) => *module_identifier = Some(identifier),
+            },
+            Record::Identifier(identifier) => module.identifiers.push(identifier),
+            // Record::FunctionDefinition(definition) => module
+            //     .function_definitions
+            //     .push(function::Definition::new(definition, module_weak.clone())),
+            // Record::FunctionInstantiation(instantiation) => module
+            //     .function_instantiations
+            //     .push(function::Instantiation::new(instantiation, module_weak.clone())),
+            bad => todo!("unsupported {:?}", bad),
+        })?;
+        
+        Ok(module)
     }
 
     /// Indicates if the module has an identifier (a name and version).
-    pub fn is_anonymous(&self) -> bool {
+    pub fn is_anonymous(&'s self) -> bool {
         self.module_identifier.is_none()
     }
 
-    /// Gets a weak reference to the loader.
-    ///
-    /// Since this reference is most likely to exist, consider using [`loader`] instead.
-    pub fn loader_weak(&self) -> &Weak<loader::State> {
-        &self.loader
-    }
-
-    /// Gets a reference to the loader.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the loader was dropped. Code that uses the SAILAR loader should ensure that the loader outlives all loaded
-    /// modules.
-    pub fn loader(&self) -> Arc<loader::State> {
-        match self.loader.upgrade() {
-            Some(loader) => loader,
-            None => panic!("loader was dropped"),
-        }
+    #[inline]
+    pub fn loader(&'s self) -> &'s loader::State {
+        self.loader
     }
 
     #[inline]
-    pub fn identifiers(&self) -> &[Cow<'static, Id>] {
+    pub fn identifiers(&'s self) -> &'s [Cow<'static, Id>] {
         &self.identifiers
     }
 
     /// Gets an optional reference to the module's identifier.
-    ///
-    /// For a shared reference to the module's identifier, use [`module_identifier_shared`].
     #[inline]
-    pub fn module_identifier_ref(&self) -> Option<&record::ModuleIdentifier<'static>> {
-        self.module_identifier.as_ref()
+    pub fn module_identifier(&'s self) -> Option<&'s ModuleIdentifier> {
+        self.module_identifier
     }
 
-    /// Gets a shared, optional reference to the module's identifier.
-    pub fn module_identifier_shared(self: &Arc<Self>) -> ModuleIdentifier {
-        ModuleIdentifier(self.clone())
-    }
+    // #[inline]
+    // pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
+    //     &self.function_definitions
+    // }
 
-    #[inline]
-    pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
-        &self.function_definitions
-    }
+    // #[inline]
+    // pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
+    //     &self.function_instantiations
+    // }
+}
 
-    #[inline]
-    pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
-        &self.function_instantiations
+impl Debug for Module<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Module")
+            .field("identifiers", &self.identifiers)
+            .field("module_identifier", &self.module_identifier)
+            .finish()
     }
 }

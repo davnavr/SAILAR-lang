@@ -131,15 +131,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "elsa"
-version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b4b5d23ed6b6948d68240aafa4ac98e568c9a020efd9d4201a6288bc3006e09"
-dependencies = [
- "stable_deref_trait",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,7 +296,6 @@ name = "sailar"
 version = "0.1.0"
 dependencies = [
  "bitflags",
- "elsa",
  "rustc-hash",
  "sha2",
  "thiserror",
@@ -359,12 +349,6 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
-
-[[package]]
-name = "stable_deref_trait"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "strsim"
