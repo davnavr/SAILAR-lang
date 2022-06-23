@@ -1,6 +1,6 @@
 //! Contains types that model the structure of signatures in the SAILAR binary format.
 
-use crate::binary::index;
+use crate::index;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]

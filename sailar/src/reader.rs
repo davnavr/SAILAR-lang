@@ -1,12 +1,13 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
 use crate::binary;
-use crate::binary::index;
-use crate::binary::instruction::{self, Instruction, Opcode};
-use crate::binary::record;
-use crate::binary::signature;
 use crate::helper::borrow::CowBox;
 use crate::identifier;
+use crate::index;
+use crate::instruction::{self, Instruction, Opcode};
+use crate::num::VarIntSize;
+use crate::record;
+use crate::signature;
 use crate::versioning;
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -36,8 +37,8 @@ impl Display for InvalidMagicError {
         write!(
             f,
             "expected magic {:?}, but got {:?}",
-            binary::buffer::ByteDebug::from(binary::MAGIC),
-            binary::buffer::ByteDebug::from(self.actual_bytes()),
+            crate::helper::buffer::ByteDebug::from(binary::MAGIC),
+            crate::helper::buffer::ByteDebug::from(self.actual_bytes()),
         )
     }
 }
@@ -60,7 +61,7 @@ pub enum ErrorKind {
     #[error("reserved value is invalid")]
     InvalidReservedValue,
     #[error(transparent)]
-    InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
+    InvalidIntegerSize(#[from] crate::num::InvalidVarIntSize),
     #[error("expected record count")]
     MissingRecordCount,
     #[error("the integer value {0} was too large")]
@@ -190,7 +191,10 @@ impl<R: Read> Wrapper<R> {
         }
     }
 
-    fn into_boxed_wrapper<'a>(self) -> Wrapper<Box<dyn Read + 'a>> where R: 'a {
+    fn into_boxed_wrapper<'a>(self) -> Wrapper<Box<dyn Read + 'a>>
+    where
+        R: 'a,
+    {
         Wrapper {
             source: Box::new(self.source),
             previous_offset: self.previous_offset,
@@ -235,9 +239,9 @@ type BufferWrapper<'b> = Wrapper<&'b [u8]>;
 
 type IntegerReader<R> = for<'a> fn(&'a mut Wrapper<R>, fn() -> ErrorKind) -> Result<usize>;
 
-fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> {
+fn select_integer_reader<R: Read>(size: VarIntSize) -> IntegerReader<R> {
     match size {
-        binary::VarIntSize::One => |source, error| {
+        VarIntSize::One => |source, error| {
             let mut value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut value))? == 1 {
                 Ok(usize::from(value))
@@ -245,7 +249,7 @@ fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> 
                 source.fail_with(error())
             }
         },
-        binary::VarIntSize::Two => |source, error| {
+        VarIntSize::Two => |source, error| {
             let mut buffer = [0u8; 2];
             if source.read_bytes(&mut buffer)? == 2 {
                 Ok(usize::from(u16::from_le_bytes(buffer)))
@@ -253,7 +257,7 @@ fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> 
                 source.fail_with(error())
             }
         },
-        binary::VarIntSize::Four => |source, error| {
+        VarIntSize::Four => |source, error| {
             let mut buffer = [0u8; 4];
             if source.read_bytes(&mut buffer)? == 4 {
                 let value = u32::from_le_bytes(buffer);
@@ -278,8 +282,13 @@ impl<R: Read> Reader<R> {
         }
     }
 
-    pub fn into_boxed_reader<'a>(self) -> Reader<Box<dyn Read + 'a>> where R: 'a {
-        Reader { source: self.source.into_boxed_wrapper() }
+    pub fn into_boxed_reader<'a>(self) -> Reader<Box<dyn Read + 'a>>
+    where
+        R: 'a,
+    {
+        Reader {
+            source: self.source.into_boxed_wrapper(),
+        }
     }
 
     /// Reads the magic number, format version, and integer size.
@@ -292,7 +301,7 @@ impl<R: Read> Reader<R> {
     /// let reader = Reader::new(input.as_bytes());
     /// assert!(matches!(reader.to_record_reader(), Err(_)));
     /// ```
-    pub fn to_record_reader(mut self) -> Result<(versioning::SupportedFormat, binary::VarIntSize, RecordReader<R>)> {
+    pub fn to_record_reader(mut self) -> Result<(versioning::SupportedFormat, VarIntSize, RecordReader<R>)> {
         {
             let mut magic_buffer = [0u8; binary::MAGIC.len()];
             let magic_length = self.source.read_bytes(&mut magic_buffer)?;
@@ -302,7 +311,7 @@ impl<R: Read> Reader<R> {
         }
 
         let format_version: versioning::SupportedFormat;
-        let integer_size: binary::VarIntSize;
+        let integer_size: VarIntSize;
 
         {
             let mut values = [0u8; 3];
@@ -323,7 +332,7 @@ impl<R: Read> Reader<R> {
                 return self.source.fail_with(ErrorKind::MissingIntegerSize);
             }
 
-            integer_size = self.source.wrap_result(binary::VarIntSize::try_from(values[2]))?;
+            integer_size = self.source.wrap_result(VarIntSize::try_from(values[2]))?;
         }
 
         let integer_reader = select_integer_reader(integer_size);
@@ -389,14 +398,14 @@ impl ArrayRecordReader {
 pub struct RecordReader<R> {
     count: usize,
     source: Wrapper<R>,
-    integer_size: binary::VarIntSize,
+    integer_size: VarIntSize,
     integer_reader: IntegerReader<R>,
     array_reader: Option<ArrayRecordReader>,
     buffer: Vec<u8>,
 }
 
 impl<R: Read> RecordReader<R> {
-    fn new(source: Wrapper<R>, integer_size: binary::VarIntSize, integer_reader: IntegerReader<R>, count: usize) -> Self {
+    fn new(source: Wrapper<R>, integer_size: VarIntSize, integer_reader: IntegerReader<R>, count: usize) -> Self {
         Self {
             count,
             source,

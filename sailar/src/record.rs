@@ -1,8 +1,10 @@
 //! Types that represent records in a SAILAR module binary.
 
-use crate::binary::{index, instruction, signature};
 use crate::helper::borrow::CowBox;
-use crate::{Id, Identifier};
+use crate::identifier::{Id, Identifier};
+use crate::index;
+use crate::instruction;
+use crate::signature;
 use std::borrow::Cow;
 
 /// Indicates whether a definition in a module can be imported by other modules.
@@ -385,6 +387,6 @@ impl From<FunctionInstantiation> for Record<'_> {
 mod tests {
     #[test]
     fn size_of_record_is_acceptable() {
-        assert!(std::mem::size_of::<crate::binary::record::Record>() <= 72)
+        assert!(std::mem::size_of::<crate::record::Record>() <= 72)
     }
 }

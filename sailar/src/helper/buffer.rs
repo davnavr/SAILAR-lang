@@ -3,7 +3,7 @@
 use std::fmt::{Debug, Formatter, Write as _};
 
 #[repr(transparent)]
-pub(crate) struct ByteDebug<'a>(&'a [u8]);
+pub struct ByteDebug<'a>(&'a [u8]);
 
 impl<'a> From<&'a [u8]> for ByteDebug<'a> {
     fn from(bytes: &'a [u8]) -> Self {
@@ -37,7 +37,7 @@ impl Debug for ByteDebug<'_> {
     }
 }
 
-pub(crate) fn hex_dump<W: std::fmt::Write>(bytes: &[u8], out: &mut W) -> std::fmt::Result {
+pub fn hex_dump<W: std::fmt::Write>(bytes: &[u8], out: &mut W) -> std::fmt::Result {
     //00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ........ ........
     const HEX_LENGTH: usize = 48;
     const ASCII_LENGTH: usize = 17;

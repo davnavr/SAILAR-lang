@@ -1,6 +1,6 @@
 //! Module for interacting with SAILAR binary modules.
 
-use sailar::binary::record;
+use sailar::record;
 use sailar::identifier::Id;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};

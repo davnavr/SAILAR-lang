@@ -1,7 +1,7 @@
 //! Contains the trait used to read the contents of a module during loading.
 
 use crate::module::Record;
-use sailar::binary::reader::{self, Reader};
+use sailar::reader::{self, Reader};
 use std::io::Read;
 
 pub trait Source {

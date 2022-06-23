@@ -1,6 +1,6 @@
 //! Representation of the SAILAR instruction set encoding.
 
-use crate::binary::index;
+use crate::index;
 use std::fmt::{Debug, Formatter};
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from

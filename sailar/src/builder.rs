@@ -1,11 +1,11 @@
 //! Low-level API for building SAILAR binary modules.
 
-use crate::binary::instruction::{self, Instruction};
-use crate::binary::reader;
-use crate::binary::record::{self, Record};
-use crate::binary::signature;
-use crate::binary::writer;
+use crate::instruction::{self, Instruction};
+use crate::reader;
+use crate::record::{self, Record};
+use crate::signature;
 use crate::versioning;
+use crate::writer;
 use std::io::{Read, Write};
 
 /// Allows the writing the contents of a SAILAR module to a destination.
@@ -56,7 +56,7 @@ impl<'a> Builder<'a> {
         out.write_all(&[
             self.format_version.major,
             self.format_version.minor,
-            crate::binary::VarIntSize::Four.into(),
+            crate::num::VarIntSize::Four.into(),
         ])?;
 
         out.write_integer(self.records.len())?;

@@ -1,7 +1,7 @@
 //! Module for the resolution of SAILAR modules.
 
 use crate::ModuleIdentifier;
-use sailar::binary::reader::Reader;
+use sailar::reader::Reader;
 use std::io::Read;
 
 /// Trait for retrieving SAILAR modules from module identifiers, used to resolve module imports.

@@ -1,18 +1,6 @@
-//! Contains types to abstract over the binary representation of the SAILAR format.
+//! Contains a binary representation of the SAILAR format.
 
-mod buffer;
-mod num;
-mod writer;
-
-pub mod builder;
-pub mod index;
-pub mod instruction;
-pub mod reader;
-pub mod record;
-pub mod signature;
-
-pub use builder::Builder;
-pub use num::{InvalidVarIntSize, VarIntSize};
+use crate::helper::buffer;
 
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";

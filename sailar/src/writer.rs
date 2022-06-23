@@ -1,5 +1,6 @@
 //! Low-level internal API for writing the contents of a SAILAR binary module.
 
+use crate::identifier::Id;
 use std::io::Write;
 
 pub type Result = std::io::Result<()>;
@@ -23,7 +24,7 @@ impl<W: Write> Writer<W> {
         }
     }
 
-    pub fn write_identifier(&mut self, identifier: &crate::Id) -> Result {
+    pub fn write_identifier(&mut self, identifier: &Id) -> Result {
         let bytes = identifier.as_bytes();
         self.write_integer(bytes.len())?;
         self.write_all(bytes)
