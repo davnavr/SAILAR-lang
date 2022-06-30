@@ -10,15 +10,55 @@ use std::borrow::Cow;
 /// Indicates whether a definition in a module can be imported by other modules.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
-pub enum Export {
-    Private = 0,
-    Public = 1,
+pub enum ExportKind {
+    /// The definition is not exported and does not have a symbol.
+    Hidden = 0,
+    /// The definition has a symbol, but is not exported.
+    Private = 1,
+    /// The definition has a symbol and can be imported by other modules.
+    Export = 2,
 }
 
-impl Default for Export {
+impl Default for ExportKind {
     #[inline]
     fn default() -> Self {
-        Self::Private
+        Self::Hidden
+    }
+}
+
+/// Assigns a symbol to a definition and indicates if it is exported.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Export<'a> {
+    /// The definition is not exported.
+    Hidden,
+    /// The definition has a symbol, but is not exported.
+    Private(Cow<'a, Id>),
+    /// The definition is exported.
+    Export(Cow<'a, Id>),
+}
+
+impl Export<'_> {
+    pub fn kind(&self) -> ExportKind {
+        match self {
+            Self::Hidden => ExportKind::Hidden,
+            Self::Private(_) => ExportKind::Private,
+            Self::Export(_) => ExportKind::Export,
+        }
+    }
+
+    /// Gets the symbol of the definition.
+    pub fn symbol(&self) -> Option<&Id> {
+        match self {
+            Self::Hidden => None,
+            Self::Private(symbol) | Self::Export(symbol) => Some(std::convert::AsRef::as_ref(symbol))
+        }
+    }
+}
+
+impl Default for Export<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::Hidden
     }
 }
 
@@ -201,14 +241,6 @@ pub enum FunctionBody<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDefinition<'a> {
-    export: Export,
-    signature: index::FunctionSignature,
-    symbol: Cow<'a, Id>,
-    body: FunctionBody<'a>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInstantiation {
     template: index::FunctionInstantiation,
 }
@@ -224,29 +256,30 @@ impl FunctionInstantiation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDefinition<'a> {
+    export: Export<'a>,
+    signature: index::FunctionSignature,
+    body: FunctionBody<'a>,
+}
+
 impl<'a> FunctionDefinition<'a> {
-    pub fn new(export: Export, signature: index::FunctionSignature, symbol: Cow<'a, Id>, body: FunctionBody<'a>) -> Self {
+    pub fn new(export: Export<'a>, signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
         Self {
             export,
             signature,
-            symbol,
             body,
         }
     }
 
     #[inline]
-    pub fn export(&self) -> Export {
-        self.export
+    pub fn export(&self) -> &Export<'a> {
+        &self.export
     }
 
     #[inline]
     pub fn signature(&self) -> index::FunctionSignature {
         self.signature
-    }
-
-    #[inline]
-    pub fn symbol(&self) -> &Id {
-        &self.symbol
     }
 
     #[inline]

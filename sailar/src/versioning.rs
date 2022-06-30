@@ -30,9 +30,11 @@ pub struct SupportedFormat(Format);
 
 impl SupportedFormat {
     /// The minimum version of the format supported by this API.
-    pub const MINIMUM: Self = Self(Format::new(0, 18));
+    pub const MINIMUM: Self = Self(Format::new(0, 19));
+    
     /// The maximum version of the format that is supported.
     pub const MAXIMUM: Self = Self::MINIMUM;
+
     pub const CURRENT: Self = Self::MINIMUM;
 
     #[inline]
