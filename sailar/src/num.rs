@@ -193,6 +193,23 @@ impl VarU28 {
     }
 }
 
+macro_rules! integer_trait_impl {
+    ($trait: ty) => {
+        impl $trait for VarU28 {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                <u32 as $trait>::fmt(&self.get(), f)
+            }
+        }
+    };
+}
+
+integer_trait_impl!(std::fmt::Debug);
+integer_trait_impl!(std::fmt::Display);
+integer_trait_impl!(std::fmt::Binary);
+integer_trait_impl!(std::fmt::UpperHex);
+integer_trait_impl!(std::fmt::LowerHex);
+integer_trait_impl!(std::fmt::Octal);
+
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum VarIntSize {
