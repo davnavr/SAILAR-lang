@@ -14,9 +14,13 @@
 //! 
 //! For simplicity, the SAILAR binary format currently only allows a maximum length of `4` for all integers.
 
-// TODO: Read and write functions for UTF-8 style variable width integers
-
 use std::num::NonZeroU32;
+
+#[derive(Debug, thiserror::Error)]
+#[error("integers of byte length {length} are not supported by SAILAR")]
+pub struct IntegerLengthError {
+    length: u8,
+}
 
 /// An unsigned integer represented in a SAILAR binary as a 1, 2, 3, or 4 byte long integer.
 /// 
@@ -116,9 +120,53 @@ impl VarU28 {
 
     /// The maximum value that can be encoded in 4 bytes.
     pub const MAX_4: Self = Self::MAX;
+
+    /// Gets the number of bytes needed to contain this integer value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// assert_eq!(VarU28::from_u8(1).byte_length(), 1);
+    /// assert_eq!(VarU28::MAX_1.byte_length(), 1);
+    /// assert_eq!(VarU28::from_u8(u8::MAX).byte_length(), 2);
+    /// assert_eq!(VarU28::from_u16(u16::MAX).byte_length(), 3);
+    /// assert_eq!(VarU28::MAX, 4);
+    /// ```
+    pub fn byte_length(self) -> std::num::NonZeroU8 {
+        unsafe {
+            // Safety: All byte lengths are never zero
+            std::num::NonZeroU8::new_unchecked(
+                if self <= Self::MAX_1 {
+                    1u8
+                } else if self <= Self::MAX_2 {
+                    2
+                } else if self <= Self::MAX_3 {
+                    3
+                } else if self <= Self::MAX_4 {
+                    4
+                } else {
+                    unreachable!()
+                }
+            )
+        }
+    }
+
+    pub fn read_from<R: std::io::Read>(mut source: R) -> std::io::Result<Result<Self, IntegerLengthError>> {
+        let leading_byte = {
+            let mut buffer = [0u8];
+            source.read_exact(&mut buffer)?;
+            buffer[0]
+        };
+
+        match leading_byte.leading_ones() {
+            1 => unsafe {
+                // Safety: All byte-sized integers are valid.
+                Ok(Ok(Self::new_unchecked(leading_byte.into())))
+            },
+            byte_length => Ok(Err(IntegerLengthError { length: byte_length.try_into().unwrap() }))
+        }
+    }
 }
-
-
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
