@@ -49,6 +49,7 @@ impl VarU28 {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::MAX.get() >> VarU28::BITS, 0);
     /// ```
     pub const MAX: Self = unsafe {
@@ -86,6 +87,7 @@ impl VarU28 {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::MIN < VarU28::MAX_1);
     /// ```
     pub const MAX_1: Self = Self::from_u8(0x7F);
@@ -102,6 +104,7 @@ impl VarU28 {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::MAX_2 < VarU28::MAX_3);
     /// ```
     pub const MAX_2: Self = Self::from_u16(0x3FF);
@@ -111,6 +114,7 @@ impl VarU28 {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::MAX_3 < VarU28::MAX_4);
     /// ```
     pub const MAX_3: Self = unsafe {
@@ -126,6 +130,7 @@ impl VarU28 {
     /// # Examples
     ///
     /// ```
+    /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::from_u8(1).byte_length(), 1);
     /// assert_eq!(VarU28::MAX_1.byte_length(), 1);
     /// assert_eq!(VarU28::from_u8(u8::MAX).byte_length(), 2);
