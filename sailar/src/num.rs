@@ -88,7 +88,7 @@ impl VarU28 {
     ///
     /// ```
     /// # use sailar::num::VarU28;
-    /// assert_eq!(VarU28::MIN < VarU28::MAX_1);
+    /// assert!(VarU28::MIN < VarU28::MAX_1);
     /// ```
     pub const MAX_1: Self = Self::from_u8(0x7F);
 
@@ -105,7 +105,7 @@ impl VarU28 {
     ///
     /// ```
     /// # use sailar::num::VarU28;
-    /// assert_eq!(VarU28::MAX_2 < VarU28::MAX_3);
+    /// assert!(VarU28::MAX_2 < VarU28::MAX_3);
     /// ```
     pub const MAX_2: Self = Self::from_u16(0x3FF);
 
@@ -115,7 +115,7 @@ impl VarU28 {
     ///
     /// ```
     /// # use sailar::num::VarU28;
-    /// assert_eq!(VarU28::MAX_3 < VarU28::MAX_4);
+    /// assert!(VarU28::MAX_3 < VarU28::MAX_4);
     /// ```
     pub const MAX_3: Self = unsafe {
         // Safety: 28-bit integer can contain 24-bit integer
@@ -131,11 +131,11 @@ impl VarU28 {
     ///
     /// ```
     /// # use sailar::num::VarU28;
-    /// assert_eq!(VarU28::from_u8(1).byte_length(), 1);
-    /// assert_eq!(VarU28::MAX_1.byte_length(), 1);
-    /// assert_eq!(VarU28::from_u8(u8::MAX).byte_length(), 2);
-    /// assert_eq!(VarU28::from_u16(u16::MAX).byte_length(), 3);
-    /// assert_eq!(VarU28::MAX, 4);
+    /// assert_eq!(VarU28::from_u8(1).byte_length().get(), 1);
+    /// assert_eq!(VarU28::MAX_1.byte_length().get(), 1);
+    /// assert_eq!(VarU28::from_u8(u8::MAX).byte_length().get(), 2);
+    /// assert_eq!(VarU28::from_u16(u16::MAX).byte_length().get(), 3);
+    /// assert_eq!(VarU28::MAX.byte_length().get(), 4);
     /// ```
     pub fn byte_length(self) -> std::num::NonZeroU8 {
         unsafe {
@@ -193,7 +193,7 @@ impl VarU28 {
     }
 }
 
-macro_rules! integer_trait_impl {
+macro_rules! integer_format_trait_impl {
     ($trait: ty) => {
         impl $trait for VarU28 {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -203,12 +203,42 @@ macro_rules! integer_trait_impl {
     };
 }
 
-integer_trait_impl!(std::fmt::Debug);
-integer_trait_impl!(std::fmt::Display);
-integer_trait_impl!(std::fmt::Binary);
-integer_trait_impl!(std::fmt::UpperHex);
-integer_trait_impl!(std::fmt::LowerHex);
-integer_trait_impl!(std::fmt::Octal);
+integer_format_trait_impl!(std::fmt::Debug);
+integer_format_trait_impl!(std::fmt::Display);
+integer_format_trait_impl!(std::fmt::Binary);
+integer_format_trait_impl!(std::fmt::UpperHex);
+integer_format_trait_impl!(std::fmt::LowerHex);
+integer_format_trait_impl!(std::fmt::Octal);
+
+macro_rules! other_from_integer_trait_impl {
+    ($destination: ty) => {
+        impl From<VarU28> for $destination {
+            fn from(value: VarU28) -> Self {
+                Self::from(value.get())
+            }
+        }
+    };
+}
+
+other_from_integer_trait_impl!(u32);
+other_from_integer_trait_impl!(i64);
+other_from_integer_trait_impl!(u64);
+other_from_integer_trait_impl!(i128);
+other_from_integer_trait_impl!(u128);
+
+macro_rules! integer_from_other_trait_impl {
+    ($source: ty, $constructor: ident) => {
+        impl From<$source> for VarU28 {
+            #[inline]
+            fn from(value: $source) -> Self {
+                Self::$constructor(value)
+            }
+        }
+    };
+}
+
+integer_from_other_trait_impl!(u8, from_u8);
+integer_from_other_trait_impl!(u16, from_u16);
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
