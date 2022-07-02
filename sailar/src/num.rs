@@ -39,6 +39,7 @@ impl VarU28 {
         Self(NonZeroU32::new_unchecked(1u32 | (value << 1)))
     }
 
+    /// The smallest value that can be encoded.
     pub const MIN: Self = unsafe {
         // Safety: 0 is a valid value
         Self::new_unchecked(0)
@@ -59,13 +60,30 @@ impl VarU28 {
 
     pub const BITS: u32 = 28u32;
 
+    /// Gets the value of this integer.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use sailar::num::VarU28;
+    /// assert_eq!(VarU28::from_u16(99).get(), 99);
+    /// ```
     pub const fn get(self) -> u32 {
         self.0.get() >> 1
     }
 
     /// Creates a new unsigned integer, returning `None` if the value is too large to be represented in 28 bits.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use sailar::num::VarU28;
+    /// assert_eq!(VarU28::new(99), Some(VarU28::from_u16(99)));
+    /// assert_eq!(VarU28::new(0x1000_0000), None);
+    /// assert_eq!(VarU28::new(u32::MAX), None);
+    /// ```
     pub const fn new(value: u32) -> Option<Self> {
-        if value & Self::MAX.get() == 0 {
+        if value & !Self::MAX.get() != 0 {
             None
         } else {
             unsafe {
@@ -75,6 +93,7 @@ impl VarU28 {
         }
     }
 
+    /// Creates an unsigned integer from an unsigned byte value.
     pub const fn from_u8(value: u8) -> Self {
         unsafe {
             // Safety: Single byte can always be encoded
@@ -92,6 +111,7 @@ impl VarU28 {
     /// ```
     pub const MAX_1: Self = Self::from_u8(0x7F);
 
+    /// Creates an unsigned integer from an unsigned 16-bit integer.
     pub const fn from_u16(value: u16) -> Self {
         unsafe {
             // Safety: 28-bit integer can contain 16-bit integer
