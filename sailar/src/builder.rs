@@ -209,7 +209,7 @@ impl Default for Builder<'_> {
 
 impl Builder<'static> {
     pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
-        let (format_version, _, mut reader) = source.to_record_reader()?;
+        let (format_version, mut reader) = source.to_record_reader()?;
         let mut records = Vec::with_capacity(reader.record_count());
 
         while let Some(record) = reader.next_record() {
