@@ -154,6 +154,15 @@ impl VarU28 {
         }
     }
 
+    /// Reads a variable-length integer value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use sailar::num::VarU28;
+    /// assert!(matches!(VarU28::read_from([42u8].as_slice()), Ok(Ok(n)) if n.get() == 42));
+    /// assert!(matches!(VarU28::read_from([0x80u8].as_slice()), Err(_)));
+    /// ```
     pub fn read_from<R: std::io::Read>(mut source: R) -> std::io::Result<Result<Self, IntegerLengthError>> {
         let leading_byte = {
             let mut buffer = [0u8];
