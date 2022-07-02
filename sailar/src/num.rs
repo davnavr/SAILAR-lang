@@ -71,9 +71,9 @@ impl VarU28 {
     pub const BITS: u32 = 28u32;
 
     /// Gets the value of this integer.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::from_u16(99).get(), 99);
@@ -83,9 +83,9 @@ impl VarU28 {
     }
 
     /// Creates a new unsigned integer, returning `None` if the value is too large to be represented in 28 bits.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use sailar::num::VarU28;
     /// assert_eq!(VarU28::new(99), Some(VarU28::from_u16(99)));
@@ -185,9 +185,9 @@ impl VarU28 {
     }
 
     /// Reads a variable-length integer value.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use sailar::num::VarU28;
     /// assert!(matches!(VarU28::read_from([42u8].as_slice()), Ok(Ok(n)) if n.get() == 42));
@@ -232,9 +232,9 @@ impl VarU28 {
     }
 
     /// Writes a variable-length integer value.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use sailar::num::VarU28;
     /// let mut buffer = [0u8; 4];
