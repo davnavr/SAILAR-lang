@@ -1,11 +1,12 @@
 //! Types that represent indices used to refer to records in a SAILAR module.
 
+use crate::num::{IntegerEncodingError, VarU28};
 use std::fmt::{Debug, Formatter};
 use std::num::TryFromIntError;
 
 macro_rules! index_type {
     ($(#[$meta:meta])* $name:ident) => {
-        #[derive(Copy, Clone, Ord, PartialOrd)]
+        #[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
         #[repr(transparent)]
         pub struct $name(usize);
 
@@ -23,21 +24,21 @@ macro_rules! index_type {
             }
         }
 
-        impl TryFrom<u32> for $name {
+        impl TryFrom<VarU28> for $name {
             type Error = TryFromIntError;
 
             #[inline]
-            fn try_from(index: u32) -> Result<Self, TryFromIntError> {
-                usize::try_from(index).map(Self)
+            fn try_from(index: VarU28) -> Result<Self, Self::Error> {
+                Ok(Self(usize::try_from(index)?))
             }
         }
 
-        impl TryFrom<$name> for u32 {
-            type Error = TryFromIntError;
+        impl TryFrom<$name> for VarU28 {
+            type Error = IntegerEncodingError;
 
             #[inline]
-            fn try_from(index: $name) -> Result<u32, TryFromIntError> {
-                u32::try_from(index.0)
+            fn try_from(index: $name) -> Result<VarU28, Self::Error> {
+                VarU28::try_from(index.0)
             }
         }
 
@@ -46,22 +47,6 @@ macro_rules! index_type {
                 Debug::fmt(&self.0, f)
             }
         }
-
-        impl std::hash::Hash for $name {
-            #[inline]
-            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                state.write_usize(self.0)
-            }
-        }
-
-        impl std::cmp::PartialEq for $name {
-            #[inline]
-            fn eq(&self, other: &Self) -> bool {
-                self.0 == other.0
-            }
-        }
-
-        impl std::cmp::Eq for $name {}
     };
 }
 

@@ -18,9 +18,17 @@ impl<W: Write> Writer<W> {
         Self { destination }
     }
 
-    pub fn write_length<I: TryInto<VarU28, Error = crate::num::IntegerEncodingError>>(&mut self, value: I) -> Result {
+    pub fn write_unsigned_integer<I: Into<VarU28>>(&mut self, value: I) -> Result {
+        value.into().write_to(&mut self.destination)
+    }
+
+    pub fn write_length<I>(&mut self, value: I) -> Result
+    where
+        I: TryInto<VarU28>,
+        I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
         match value.try_into() {
-            Ok(value) => value.write_to(&mut self.destination),
+            Ok(value) => self.write_unsigned_integer(value),
             Err(err) => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, err)),
         }
     }

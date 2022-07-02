@@ -4,6 +4,7 @@ use crate::helper::borrow::CowBox;
 use crate::identifier::{Id, Identifier};
 use crate::index;
 use crate::instruction;
+use crate::num::VarU28;
 use crate::signature;
 use std::borrow::Cow;
 
@@ -50,7 +51,7 @@ impl Export<'_> {
     pub fn symbol(&self) -> Option<&Id> {
         match self {
             Self::Hidden => None,
-            Self::Private(symbol) | Self::Export(symbol) => Some(std::convert::AsRef::as_ref(symbol))
+            Self::Private(symbol) | Self::Export(symbol) => Some(std::convert::AsRef::as_ref(symbol)),
         }
     }
 }
@@ -66,11 +67,11 @@ impl Default for Export<'_> {
 #[non_exhaustive]
 pub struct ModuleIdentifier<'a> {
     name: Cow<'a, Id>,
-    version: CowBox<'a, [usize]>,
+    version: CowBox<'a, [VarU28]>,
 }
 
 impl<'a> ModuleIdentifier<'a> {
-    pub fn new(name: Cow<'a, Id>, version: CowBox<'a, [usize]>) -> Self {
+    pub fn new(name: Cow<'a, Id>, version: CowBox<'a, [VarU28]>) -> Self {
         Self { name, version }
     }
 
@@ -80,7 +81,7 @@ impl<'a> ModuleIdentifier<'a> {
     }
 
     #[inline]
-    pub fn version(&self) -> &[usize] {
+    pub fn version(&self) -> &[VarU28] {
         &self.version
     }
 }
@@ -265,11 +266,7 @@ pub struct FunctionDefinition<'a> {
 
 impl<'a> FunctionDefinition<'a> {
     pub fn new(export: Export<'a>, signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
-        Self {
-            export,
-            signature,
-            body,
-        }
+        Self { export, signature, body }
     }
 
     #[inline]
@@ -288,7 +285,7 @@ impl<'a> FunctionDefinition<'a> {
     }
 
     pub fn flag_bits(&self) -> u8 {
-        let mut flags = self.export as u8;
+        let mut flags = 0u8; //self.export as u8;
         if let FunctionBody::Foreign { .. } = &self.body {
             flags |= 0b10;
         }

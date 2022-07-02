@@ -14,7 +14,7 @@
 //!
 //! For simplicity, the SAILAR binary format currently only allows a maximum length of `4` for all integers.
 
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, TryFromIntError};
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("integers of byte length {length} are not supported by SAILAR")]
@@ -22,12 +22,13 @@ pub struct IntegerLengthError {
     length: u8,
 }
 
+/// Error type used when an attempt to store an integer value that is too large as a [`VarU28`] fails.
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("integer too large to be encoded")]
 pub struct IntegerEncodingError(());
 
-impl From<std::num::TryFromIntError> for IntegerEncodingError {
-    fn from(_: std::num::TryFromIntError) -> Self {
+impl From<TryFromIntError> for IntegerEncodingError {
+    fn from(_: TryFromIntError) -> Self {
         Self(())
     }
 }
@@ -323,7 +324,7 @@ impl TryFrom<u32> for VarU28 {
     }
 }
 
-macro_rules! integer_try_from_trait_impl {
+macro_rules! integer_try_from_other_trait_impl {
     ($source: ty) => {
         impl TryFrom<$source> for VarU28 {
             type Error = IntegerEncodingError;
@@ -335,12 +336,32 @@ macro_rules! integer_try_from_trait_impl {
     };
 }
 
-integer_try_from_trait_impl!(i8);
-integer_try_from_trait_impl!(i16);
-integer_try_from_trait_impl!(i32);
-integer_try_from_trait_impl!(u64);
-integer_try_from_trait_impl!(i64);
-integer_try_from_trait_impl!(u128);
-integer_try_from_trait_impl!(i128);
-integer_try_from_trait_impl!(usize);
-integer_try_from_trait_impl!(isize);
+integer_try_from_other_trait_impl!(i8);
+integer_try_from_other_trait_impl!(i16);
+integer_try_from_other_trait_impl!(i32);
+integer_try_from_other_trait_impl!(u64);
+integer_try_from_other_trait_impl!(i64);
+integer_try_from_other_trait_impl!(u128);
+integer_try_from_other_trait_impl!(i128);
+integer_try_from_other_trait_impl!(usize);
+integer_try_from_other_trait_impl!(isize);
+
+macro_rules! other_try_from_integer_trait_impl {
+    ($destination: ty) => {
+        impl TryFrom<VarU28> for $destination {
+            type Error = TryFromIntError;
+
+            #[inline]
+            fn try_from(value: VarU28) -> Result<Self, Self::Error> {
+                <$destination>::try_from(value.get())
+            }
+        }
+    };
+}
+
+other_try_from_integer_trait_impl!(u8);
+other_try_from_integer_trait_impl!(i8);
+other_try_from_integer_trait_impl!(u16);
+other_try_from_integer_trait_impl!(i16);
+other_try_from_integer_trait_impl!(usize);
+other_try_from_integer_trait_impl!(isize);
