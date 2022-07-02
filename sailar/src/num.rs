@@ -16,10 +16,20 @@
 
 use std::num::NonZeroU32;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 #[error("integers of byte length {length} are not supported by SAILAR")]
 pub struct IntegerLengthError {
     length: u8,
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("integer too large to be encoded")]
+pub struct IntegerEncodingError(());
+
+impl From<std::num::TryFromIntError> for IntegerEncodingError {
+    fn from(_: std::num::TryFromIntError) -> Self {
+        Self(())
+    }
 }
 
 /// An unsigned integer represented in a SAILAR binary as a 1, 2, 3, or 4 byte long integer.
@@ -304,3 +314,33 @@ macro_rules! integer_from_other_trait_impl {
 
 integer_from_other_trait_impl!(u8, from_u8);
 integer_from_other_trait_impl!(u16, from_u16);
+
+impl TryFrom<u32> for VarU28 {
+    type Error = IntegerEncodingError;
+
+    fn try_from(value: u32) -> Result<Self, IntegerEncodingError> {
+        Self::new(value).ok_or(IntegerEncodingError(()))
+    }
+}
+
+macro_rules! integer_try_from_trait_impl {
+    ($source: ty) => {
+        impl TryFrom<$source> for VarU28 {
+            type Error = IntegerEncodingError;
+
+            fn try_from(value: $source) -> Result<Self, IntegerEncodingError> {
+                Self::try_from(u32::try_from(value)?)
+            }
+        }
+    };
+}
+
+integer_try_from_trait_impl!(i8);
+integer_try_from_trait_impl!(i16);
+integer_try_from_trait_impl!(i32);
+integer_try_from_trait_impl!(u64);
+integer_try_from_trait_impl!(i64);
+integer_try_from_trait_impl!(u128);
+integer_try_from_trait_impl!(i128);
+integer_try_from_trait_impl!(usize);
+integer_try_from_trait_impl!(isize);
