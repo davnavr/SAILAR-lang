@@ -149,7 +149,7 @@ impl VarU28 {
             } else if self <= Self::MAX_4 {
                 4
             } else {
-                unreachable!()
+                unreachable!("value above maximum is not valid")
             })
         }
     }
@@ -198,6 +198,42 @@ impl VarU28 {
             byte_length => Ok(Err(IntegerLengthError {
                 length: byte_length.try_into().unwrap(),
             })),
+        }
+    }
+
+    /// Writes a variable-length integer value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use sailar::num::VarU28;
+    /// let mut buffer = [0u8; 4];
+    /// VarU28::from_u8(86).write_to(buffer.as_mut_slice()).unwrap();
+    /// assert_eq!(buffer[0], 86);
+    /// VarU28::from_u8(128).write_to(buffer.as_mut_slice()).unwrap();
+    /// assert_eq!(&buffer[..2], &[0x80, 0x01]);
+    /// ```
+    pub fn write_to<W: std::io::Write>(self, mut destination: W) -> std::io::Result<()> {
+        let value = self.get();
+        match self.byte_length().get() {
+            1 => destination.write_all(&[value as u8]),
+            2 => {
+                let value = value as u16;
+                let mut buffer = (value << 1).to_le_bytes();
+                buffer[0] = (value.to_le_bytes()[0] & 0x3Fu8) | 0x80u8;
+                destination.write_all(&buffer)
+            }
+            3 => {
+                let mut buffer = (value << 2).to_le_bytes();
+                buffer[0] = (value.to_le_bytes()[0] & 0x1Fu8) | 0b1100_0000u8;
+                destination.write_all(&buffer[..3])
+            }
+            4 => {
+                let mut buffer = (value << 3).to_le_bytes();
+                buffer[0] = (value.to_le_bytes()[0] & 0xFu8) | 0b1110_0000u8;
+                destination.write_all(&buffer)
+            }
+            _ => unreachable!("unsupported byte length"),
         }
     }
 }
