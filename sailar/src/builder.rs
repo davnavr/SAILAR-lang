@@ -1,5 +1,6 @@
 //! Low-level API for building SAILAR binary modules.
 
+use crate::binary::RawModule;
 use crate::instruction::{self, Instruction};
 use crate::reader;
 use crate::record::{self, Record};
@@ -198,12 +199,14 @@ impl<'a> Builder<'a> {
 
         Ok(())
     }
-}
 
-impl Default for Builder<'_> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+    pub fn to_raw_module(&self) ->RawModule {
+        unsafe {
+            // Safety: Writer implementation is assumed to produce syntactically valid modules
+            let mut contents = Vec::default();
+            self.write_to(&mut contents).unwrap();
+            RawModule::from_vec_unchecked(contents)
+        }
     }
 }
 
@@ -221,5 +224,24 @@ impl Builder<'static> {
 
     pub fn read_from<R: Read>(source: R) -> reader::Result<Self> {
         Self::from_reader(reader::Reader::new(source))
+    }
+}
+
+impl Default for Builder<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<&Builder<'_>> for RawModule {
+    fn from(builder: &Builder<'_>) -> Self {
+        builder.to_raw_module()
+    }
+}
+
+impl From<Builder<'_>> for RawModule {
+    fn from(builder: Builder<'_>) -> Self {
+        builder.to_raw_module()
     }
 }
