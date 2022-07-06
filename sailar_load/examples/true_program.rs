@@ -10,10 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program: Vec<record::Record<'static>> = {
         let mut builder = builder::Builder::new();
 
-        static program_version: &'static [VarU28] = &[VarU28::from_u8(1), VarU28::from_u8(0)];
+        static PROGRAM_VERSION: &'static [VarU28] = &[VarU28::from_u8(1), VarU28::from_u8(0)];
 
         builder.add_record(record::MetadataField::ModuleIdentifier(
-            record::ModuleIdentifier::new_borrowed(Id::try_from_str("true")?, program_version),
+            record::ModuleIdentifier::new_borrowed(Id::try_from_str("true")?, PROGRAM_VERSION),
         ));
 
         let integer_type = {
@@ -22,12 +22,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let main_signature = {
-            builder.add_record(signature::Function::new([].as_slice(), [integer_type].as_slice()));
+            builder.add_record(signature::Function::new([].as_slice(), vec![integer_type]));
             index::FunctionSignature::from(0)
         };
 
         let main_code = {
-            //builder.add_record(record::CodeBlock::from_types(register_types: CowBox<'a, [index::TypeSignature]>, input_count: usize, result_count: usize, instructions: CowBox<'a, [instruction::Instruction]>))
+            let instructions = vec![];
+
+            builder.add_record(record::CodeBlock::new(
+                [].as_slice(),
+                [].as_slice(),
+                vec![integer_type],
+                instructions,
+            ));
             index::CodeBlock::from(0)
         };
 

@@ -197,7 +197,8 @@ pub struct CodeBlock<'a> {
 }
 
 impl<'a> CodeBlock<'a> {
-    /// Creates a code block with the specified register types, indicating the types of the input, result, and temporary registers in that order.
+    /// Creates a code block with the specified register types, indicating the types of the input registers, results, and
+    /// temporary registers in that order.
     ///
     /// # Panics
     ///
@@ -216,6 +217,33 @@ impl<'a> CodeBlock<'a> {
             result_count,
             instructions,
         }
+    }
+
+    pub fn new<A, R, T, I>(input_types: A, result_types: R, temporary_types: T, instructions: I) -> Self
+    where
+        A: Into<CowBox<'a, [index::TypeSignature]>>,
+        R: Into<CowBox<'a, [index::TypeSignature]>>,
+        T: Into<CowBox<'a, [index::TypeSignature]>>,
+        I: Into<CowBox<'a, [instruction::Instruction]>>
+    {
+        let input_types: CowBox<'a, [_]> = input_types.into();
+        let result_types: CowBox<'a, [_]> = result_types.into();
+        let temporary_types: CowBox<'a, [_]> = temporary_types.into();
+        let input_count = input_types.len();
+        let result_count = result_types.len();
+        let register_types = {
+            if result_types.is_empty() && temporary_types.is_empty() {
+                input_types
+            } else if input_types.is_empty() && temporary_types.is_empty() {
+                result_types
+            } else if input_types.is_empty() && result_types.is_empty() {
+                temporary_types
+            } else {
+                CowBox::Boxed(input_types.iter().copied().chain(result_types.iter().copied()).chain(temporary_types.iter().copied()).collect())
+            }
+        };
+
+        Self::from_types(register_types, input_count, result_count, instructions.into())
     }
 
     #[inline]
@@ -242,6 +270,8 @@ impl<'a> CodeBlock<'a> {
         &self.register_types()[0..self.input_count]
     }
 
+    /// The types of the results of this [`CodeBlock`]. These are the types of the values that are expected to be used in the
+    /// block's `ret` instruction, and should be empty if the block branches to another block instead.
     pub fn result_types(&self) -> &[index::TypeSignature] {
         &self.register_types()[self.input_count..self.input_count + self.result_count]
     }
