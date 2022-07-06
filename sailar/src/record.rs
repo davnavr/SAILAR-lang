@@ -306,16 +306,16 @@ impl FunctionBody<'_> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInstantiation {
-    template: index::FunctionInstantiation,
+    template: index::FunctionTemplate,
 }
 
 impl FunctionInstantiation {
-    pub fn from_template(template: index::FunctionInstantiation) -> Self {
+    pub fn from_template(template: index::FunctionTemplate) -> Self {
         Self { template }
     }
 
     #[inline]
-    pub fn template(&self) -> index::FunctionInstantiation {
+    pub fn template(&self) -> index::FunctionTemplate {
         self.template
     }
 }

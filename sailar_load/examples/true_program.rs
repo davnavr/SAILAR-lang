@@ -38,13 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             index::CodeBlock::from(0)
         };
 
-        let main_definition = {
-            builder.add_record(record::FunctionDefinition::new(
-                record::Export::new_export_borrowed(Id::try_from_str("main")?),
-                main_signature,
-                record::FunctionBody::Definition(main_code),
-            ));
-        };
+        builder.add_record(record::FunctionDefinition::new(
+            record::Export::new_export_borrowed(Id::try_from_str("main")?),
+            main_signature,
+            record::FunctionBody::Definition(main_code),
+        ));
+
+        builder.add_record(record::FunctionInstantiation::from_template(index::FunctionTemplate::from(0)));
 
         builder.into_records()
     };
