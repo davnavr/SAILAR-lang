@@ -225,13 +225,14 @@ impl<R: Read> Wrapper<R> {
     }
 
     fn read_to_wrapped_buffer<'b>(&mut self, buffer: &'b mut [u8]) -> Result<(usize, Wrapper<&'b [u8]>)> {
+        let file_offset = self.offset;
         let count = self.read_bytes(buffer)?;
         Ok((
             count,
             Wrapper {
                 source: buffer,
-                offset: self.offset,
-                previous_offset: self.offset,
+                offset: file_offset,
+                previous_offset: file_offset,
             },
         ))
     }
@@ -239,7 +240,10 @@ impl<R: Read> Wrapper<R> {
     fn read_unsigned_integer(&mut self, error: fn() -> ErrorKind) -> Result<VarU28> {
         self.previous_offset = self.offset;
         match VarU28::read_from(&mut self.source) {
-            Ok(Ok(value)) => Ok(value),
+            Ok(Ok(value)) => {
+                self.offset += usize::from(value.byte_length().get());
+                Ok(value)
+            }
             Ok(Err(err)) => Err(self.wrap_error(err)),
             Err(_) => Err(self.wrap_error(error())),
         }
@@ -363,6 +367,7 @@ impl ArrayRecordReader {
             let element_size = wrapper.offset - start_offset;
             self.element_count -= 1;
             self.element_buffer_offset += element_size;
+            self.file_offset += element_size;
             Some(record)
         } else {
             None
@@ -671,10 +676,11 @@ impl<R: Read> RecordReader<R> {
             record::Type::Array => {
                 let array_type = read_record_type(content)?;
                 let array_count = content.read_unsigned_integer_try_into(|| ErrorKind::MissingRecordArrayCount)?;
+                let array_content_offset = content.offset;
                 let array_elements = content.source.to_vec().into_boxed_slice();
 
                 let array_reader = self.array_reader.insert(ArrayRecordReader::new(
-                    content.offset,
+                    array_content_offset,
                     array_count,
                     array_elements,
                     match array_type {
@@ -802,8 +808,8 @@ mod tests {
             1, // Number of records
             1,
             14,
-            5,
-            2,
+            5, // Element type
+            2, // Element count
             6,
             0xA,
             0xB,
