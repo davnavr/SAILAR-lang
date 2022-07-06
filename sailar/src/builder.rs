@@ -9,9 +9,7 @@ use crate::versioning;
 use crate::writer;
 use std::io::{Read, Write};
 
-/// Allows the writing the contents of a SAILAR module to a destination.
-///
-/// For simplicty and to avoid edge cases, modules produced by `Writer` always default to an integer size of 4 bytes.
+/// Allows writing the contents of a SAILAR module to a destination.
 #[derive(Clone, Debug)]
 pub struct Builder<'a> {
     format_version: versioning::SupportedFormat,
@@ -36,8 +34,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn add_record<R: Into<Record<'a>>>(&mut self, record: R) {
-        let record = record.into();
-        self.records.push(record);
+        self.records.push(record.into());
     }
 
     #[inline]
@@ -200,7 +197,18 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
-    pub fn to_raw_module(&self) ->RawModule {
+    /// Retrieves the binary contents of the SAILAR module.
+    /// 
+    /// # Example
+    /// 
+    /// ```
+    /// # use sailar::builder::Builder;
+    /// let builder = Builder::new();
+    /// // Insert code that adds records to the module here.
+    /// let raw_contents = builder.to_raw_module();
+    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &raw_contents[0..7]);
+    /// ```
+    pub fn to_raw_module(&self) -> RawModule {
         unsafe {
             // Safety: Writer implementation is assumed to produce syntactically valid modules
             let mut contents = Vec::default();
