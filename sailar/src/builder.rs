@@ -33,12 +33,14 @@ impl<'a> Builder<'a> {
         &self.format_version
     }
 
+    /// Appends a record to this module.
     pub fn add_record<R: Into<Record<'a>>>(&mut self, record: R) {
         self.records.push(record.into());
     }
 
+    /// Retrieves the records that are currently in this module.
     #[inline]
-    pub fn records(&self) -> &[record::Record<'a>] {
+    pub fn records(&self) -> &[Record<'a>] {
         &self.records
     }
 
@@ -200,6 +202,11 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
+    /// Converts `self` into a vector containing the module's records.
+    pub fn into_records(self) -> Vec<Record<'a>> {
+        self.records
+    }
+
     /// Retrieves the binary contents of the SAILAR module.
     ///
     /// # Example
@@ -209,7 +216,7 @@ impl<'a> Builder<'a> {
     /// let builder = Builder::new();
     /// // Insert code that adds records to the module here.
     /// let raw_contents = builder.to_raw_module();
-    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &raw_contents[0..7]);
+    /// assert_eq!(sailar::binary::MAGIC.as_slice(), &raw_contents[0..6]);
     /// ```
     pub fn to_raw_module(&self) -> RawModule {
         unsafe {
@@ -254,5 +261,11 @@ impl From<&Builder<'_>> for RawModule {
 impl From<Builder<'_>> for RawModule {
     fn from(builder: Builder<'_>) -> Self {
         builder.to_raw_module()
+    }
+}
+
+impl<'a> Extend<Record<'a>> for Builder<'a> {
+    fn extend<T: IntoIterator<Item = Record<'a>>>(&mut self, iter: T) {
+        self.records.extend(iter)
     }
 }
