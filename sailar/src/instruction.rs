@@ -322,7 +322,9 @@ mod tests {
 
     #[test]
     fn instruction_size_is_acceptable() {
-        assert!(std::mem::size_of::<Instruction>() <= 24);
+        let instruction_byte_size = std::mem::size_of::<Instruction>();
+        dbg!(instruction_byte_size);
+        assert!(instruction_byte_size <= 32);
     }
 
     #[test]
