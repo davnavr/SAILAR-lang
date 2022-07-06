@@ -5,7 +5,7 @@ use crate::helper::buffer;
 /// The magic number that is the start of all SAILAR module files.
 pub const MAGIC: &[u8; 6] = b"SAILAR";
 
-/// Represents an array of bytes that make up a syntactically correct and valid SAILAR module.
+/// Represents an array of bytes that make up a syntactically correct SAILAR module.
 #[derive(Clone)]
 pub struct RawModule {
     contents: Vec<u8>,
@@ -21,6 +21,11 @@ impl RawModule {
         Self { contents }
     }
 
+    pub fn into_vec(self) -> Vec<u8> {
+        self.contents
+    }
+
+    /// Gets the binary contents of the module.
     pub fn bytes(&self) -> &[u8] {
         &self.contents
     }
