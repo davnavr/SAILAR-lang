@@ -181,12 +181,16 @@ struct Wrapper<R> {
 }
 
 impl<R: Read> Wrapper<R> {
-    fn new(source: R) -> Self {
+    fn with_file_offset(source: R, file_offset: usize) -> Self {
         Self {
             source,
-            offset: 0,
-            previous_offset: 0,
+            offset: file_offset,
+            previous_offset: file_offset,
         }
+    }
+
+    fn new(source: R) -> Self {
+        Self::with_file_offset(source, 0)
     }
 
     fn into_boxed_wrapper<'a>(self) -> Wrapper<Box<dyn Read + 'a>>
@@ -325,6 +329,7 @@ impl<R: Read> From<R> for Reader<R> {
 type RecordContentReader = for<'c, 'b> fn(&'c mut Wrapper<&'b [u8]>) -> Result<Record>;
 
 struct ArrayRecordReader {
+    file_offset: usize,
     element_count: usize,
     element_reader: RecordContentReader,
     element_buffer: Box<[u8]>,
@@ -332,8 +337,9 @@ struct ArrayRecordReader {
 }
 
 impl ArrayRecordReader {
-    fn new(count: usize, buffer: Box<[u8]>, reader: RecordContentReader) -> Self {
+    fn new(file_offset: usize, count: usize, buffer: Box<[u8]>, reader: RecordContentReader) -> Self {
         Self {
+            file_offset,
             element_count: count,
             element_reader: reader,
             element_buffer: buffer,
@@ -351,9 +357,10 @@ impl ArrayRecordReader {
 
     fn read_next(&mut self) -> Option<Result<Record>> {
         if self.element_count > 0 {
-            let mut wrapper = Wrapper::new(&self.element_buffer[self.element_buffer_offset..]);
+            let mut wrapper = Wrapper::with_file_offset(&self.element_buffer[self.element_buffer_offset..], self.file_offset);
+            let start_offset = wrapper.offset;
             let record = (self.element_reader)(&mut wrapper);
-            let element_size = wrapper.offset;
+            let element_size = wrapper.offset - start_offset;
             self.element_count -= 1;
             self.element_buffer_offset += element_size;
             Some(record)
@@ -667,6 +674,7 @@ impl<R: Read> RecordReader<R> {
                 let array_elements = content.source.to_vec().into_boxed_slice();
 
                 let array_reader = self.array_reader.insert(ArrayRecordReader::new(
+                    content.offset,
                     array_count,
                     array_elements,
                     match array_type {
