@@ -34,6 +34,15 @@ pub enum CowBox<'a, B: ?Sized> {
     Boxed(Box<B>),
 }
 
+impl<'a, B: ?Sized + ToBox> CowBox<'a, B> {
+    pub fn into_boxed(self) -> Box<B> {
+        match self {
+            Self::Boxed(b) => b,
+            Self::Borrowed(b) => ToBox::to_box(b),
+        }
+    }
+}
+
 impl<'a, B: ?Sized> From<&'a B> for CowBox<'a, B> {
     fn from(borrowed: &'a B) -> Self {
         Self::Borrowed(borrowed)
@@ -43,6 +52,12 @@ impl<'a, B: ?Sized> From<&'a B> for CowBox<'a, B> {
 impl<B: ?Sized> From<Box<B>> for CowBox<'_, B> {
     fn from(owned: Box<B>) -> Self {
         Self::Boxed(owned)
+    }
+}
+
+impl<T> From<Vec<T>> for CowBox<'_, [T]> {
+    fn from(v: Vec<T>) -> Self {
+        Self::Boxed(v.into_boxed_slice())
     }
 }
 

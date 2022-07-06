@@ -1,5 +1,6 @@
 //! Contains types that model the structure of signatures in the SAILAR binary format.
 
+use crate::helper::borrow::CowBox;
 use crate::index;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -82,6 +83,26 @@ impl Function {
             types,
             return_type_count,
         }
+    }
+
+    pub fn new<'a, P, R>(parameter_types: P, return_types: R) -> Self
+    where
+        P: Into<CowBox<'a, [index::TypeSignature]>>,
+        R: Into<CowBox<'a, [index::TypeSignature]>>,
+    {
+        let parameter_types: CowBox<'a, _> = Into::into(parameter_types);
+        let return_types: CowBox<'a, [index::TypeSignature]> = Into::into(return_types);
+        let return_type_count = return_types.len();
+        let types = 
+        if parameter_types.is_empty() {
+            return_types.into_boxed()
+        } else if return_types.is_empty() {
+            parameter_types.into_boxed()
+        } else {
+            return_types.iter().copied().chain(parameter_types.iter().copied()).collect()
+        };
+
+        Self::from_boxed_slice(types, return_type_count)
     }
 
     #[inline]

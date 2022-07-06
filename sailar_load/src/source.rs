@@ -41,7 +41,7 @@ impl<S: Read> Source for ReaderSource<S> {
     type Error = reader::Error;
 
     fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), Self::Error> {
-        let (_, _, mut record_reader) = self.0.to_record_reader()?;
+        let (_, mut record_reader) = self.0.to_record_reader()?;
         while let Some(value) = record_reader.next_record() {
             match value {
                 Ok(record) => f(record),

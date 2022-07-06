@@ -44,7 +44,15 @@ pub enum Export<'a> {
     Export(Cow<'a, Id>),
 }
 
-impl Export<'_> {
+impl<'a> Export<'a> {
+    pub fn new_export_owned(symbol: Identifier) -> Self {
+        Self::Export(Cow::Owned(symbol))
+    }
+
+    pub fn new_export_borrowed(symbol: &'a Id) -> Self {
+        Self::Export(Cow::Borrowed(symbol))
+    }
+
     pub fn kind(&self) -> ExportKind {
         match self {
             Self::Hidden => ExportKind::Hidden,
@@ -80,6 +88,14 @@ pub struct ModuleIdentifier<'a> {
 impl<'a> ModuleIdentifier<'a> {
     pub fn new(name: Cow<'a, Id>, version: CowBox<'a, [VarU28]>) -> Self {
         Self { name, version }
+    }
+
+    pub fn new_owned<V: Into<Box<[VarU28]>>>(name: Identifier, version: V) -> Self {
+        Self::new(Cow::Owned(name), CowBox::Boxed(version.into()))
+    }
+
+    pub fn new_borrowed(name: &'a Id, version: &'a [VarU28]) -> Self {
+        Self::new(Cow::Borrowed(name), CowBox::Borrowed(version))
     }
 
     #[inline]
@@ -424,6 +440,12 @@ record_types!({
 impl From<Type> for u8 {
     fn from(value: Type) -> u8 {
         value as u8
+    }
+}
+
+impl<'a> From<MetadataField<'a>> for Record<'a> {
+    fn from(metadata: MetadataField<'a>) -> Self {
+        Self::MetadataField(metadata)
     }
 }
 
