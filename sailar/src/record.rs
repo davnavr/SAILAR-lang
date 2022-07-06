@@ -69,6 +69,7 @@ impl Default for Export<'_> {
     }
 }
 
+/// Specifies the name and version of the module.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct ModuleIdentifier<'a> {
@@ -92,6 +93,7 @@ impl<'a> ModuleIdentifier<'a> {
     }
 }
 
+/// Contains information describing the module.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum MetadataField<'a> {

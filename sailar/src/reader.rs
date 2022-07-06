@@ -407,8 +407,7 @@ impl<R: Read> RecordReader<R> {
         let record_type = read_record_type(&mut self.source)?;
         let record_size = self.source.read_unsigned_integer_try_into(|| ErrorKind::MissingRecordSize)?;
 
-        // TODO: Is repeated stack allocations really ok here? Since self.buffer already exists, why not use it? Maybe shrink this to 32 or something?
-        const STACK_BUFFER_LENGTH: usize = 512;
+        const STACK_BUFFER_LENGTH: usize = 16;
         let mut stack_buffer: [u8; STACK_BUFFER_LENGTH];
 
         let content_buffer = if record_size <= STACK_BUFFER_LENGTH {
