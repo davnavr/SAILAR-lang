@@ -1,38 +1,101 @@
 //! Types that represent records in a SAILAR module binary.
 
-use crate::binary::{index, instruction, signature};
 use crate::helper::borrow::CowBox;
-use crate::{Id, Identifier};
+use crate::identifier::{Id, Identifier};
+use crate::index;
+use crate::instruction;
+use crate::num::VarU28;
+use crate::signature;
 use std::borrow::Cow;
 
 /// Indicates whether a definition in a module can be imported by other modules.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
-pub enum Export {
-    Private = 0,
-    Public = 1,
+pub enum ExportKind {
+    /// The definition is not exported and does not have a symbol.
+    Hidden = 0,
+    /// The definition has a symbol, but is not exported.
+    Private = 1,
+    /// The definition has a symbol and can be imported by other modules.
+    Export = 2,
 }
 
-impl Default for Export {
+impl Default for ExportKind {
     #[inline]
     fn default() -> Self {
-        Self::Private
+        Self::Hidden
+    }
+}
+
+/// Assigns a symbol to a definition and indicates if it is exported.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Export<'a> {
+    /// The definition is not exported.
+    Hidden,
+    /// The definition has a symbol, but is not exported.
+    Private(Cow<'a, Id>),
+    /// The definition is exported.
+    Export(Cow<'a, Id>),
+}
+
+impl Export<'_> {
+    pub fn kind(&self) -> ExportKind {
+        match self {
+            Self::Hidden => ExportKind::Hidden,
+            Self::Private(_) => ExportKind::Private,
+            Self::Export(_) => ExportKind::Export,
+        }
+    }
+
+    /// Gets the symbol of the definition.
+    pub fn symbol(&self) -> Option<&Id> {
+        match self {
+            Self::Hidden => None,
+            Self::Private(symbol) | Self::Export(symbol) => Some(std::convert::AsRef::as_ref(symbol)),
+        }
+    }
+}
+
+impl Default for Export<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::Hidden
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct ModuleIdentifier<'a> {
+    name: Cow<'a, Id>,
+    version: CowBox<'a, [VarU28]>,
+}
+
+impl<'a> ModuleIdentifier<'a> {
+    pub fn new(name: Cow<'a, Id>, version: CowBox<'a, [VarU28]>) -> Self {
+        Self { name, version }
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Id {
+        &self.name
+    }
+
+    #[inline]
+    pub fn version(&self) -> &[VarU28] {
+        &self.version
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum MetadataField<'a> {
-    ModuleIdentifier {
-        name: Cow<'a, Id>,
-        version: CowBox<'a, [usize]>,
-    },
+    ModuleIdentifier(ModuleIdentifier<'a>),
 }
 
 impl MetadataField<'_> {
     pub fn field_name(&self) -> &'static Id {
         let name = match self {
-            Self::ModuleIdentifier { .. } => "id",
+            Self::ModuleIdentifier(_) => "id",
         };
 
         // Safety: all above names are assumed to be valid.
@@ -179,14 +242,6 @@ pub enum FunctionBody<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDefinition<'a> {
-    export: Export,
-    signature: index::FunctionSignature,
-    symbol: Cow<'a, Id>,
-    body: FunctionBody<'a>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInstantiation {
     template: index::FunctionInstantiation,
 }
@@ -202,19 +257,21 @@ impl FunctionInstantiation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDefinition<'a> {
+    export: Export<'a>,
+    signature: index::FunctionSignature,
+    body: FunctionBody<'a>,
+}
+
 impl<'a> FunctionDefinition<'a> {
-    pub fn new(export: Export, signature: index::FunctionSignature, symbol: Cow<'a, Id>, body: FunctionBody<'a>) -> Self {
-        Self {
-            export,
-            signature,
-            symbol,
-            body,
-        }
+    pub fn new(export: Export<'a>, signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
+        Self { export, signature, body }
     }
 
     #[inline]
-    pub fn export(&self) -> Export {
-        self.export
+    pub fn export(&self) -> &Export<'a> {
+        &self.export
     }
 
     #[inline]
@@ -223,17 +280,12 @@ impl<'a> FunctionDefinition<'a> {
     }
 
     #[inline]
-    pub fn symbol(&self) -> &Id {
-        &self.symbol
-    }
-
-    #[inline]
     pub fn body(&self) -> &FunctionBody<'a> {
         &self.body
     }
 
     pub fn flag_bits(&self) -> u8 {
-        let mut flags = self.export as u8;
+        let mut flags = 0u8; //self.export as u8;
         if let FunctionBody::Foreign { .. } = &self.body {
             flags |= 0b10;
         }
@@ -365,6 +417,6 @@ impl From<FunctionInstantiation> for Record<'_> {
 mod tests {
     #[test]
     fn size_of_record_is_acceptable() {
-        assert!(std::mem::size_of::<crate::binary::record::Record>() <= 72)
+        assert!(std::mem::size_of::<crate::record::Record>() <= 72)
     }
 }

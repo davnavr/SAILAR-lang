@@ -1,11 +1,11 @@
 //! Low-level API for building SAILAR binary modules.
 
-use crate::binary::instruction::{self, Instruction};
-use crate::binary::reader;
-use crate::binary::record::{self, Record};
-use crate::binary::signature;
-use crate::binary::writer;
+use crate::instruction::{self, Instruction};
+use crate::reader;
+use crate::record::{self, Record};
+use crate::signature;
 use crate::versioning;
+use crate::writer;
 use std::io::{Read, Write};
 
 /// Allows the writing the contents of a SAILAR module to a destination.
@@ -52,24 +52,18 @@ impl<'a> Builder<'a> {
         let out = &mut wrapper;
 
         out.write_all(crate::binary::MAGIC)?;
-
-        out.write_all(&[
-            self.format_version.major,
-            self.format_version.minor,
-            crate::binary::VarIntSize::Four.into(),
-        ])?;
-
-        out.write_integer(self.records.len())?;
+        out.write_all(&[self.format_version.major, self.format_version.minor])?;
+        out.write_length(self.records.len())?;
 
         fn write_record_content(out: &mut VecWriter, record: &Record) -> Result {
             fn write_metadata_field(out: &mut VecWriter, field: &record::MetadataField) -> Result {
                 out.write_identifier(field.field_name())?;
                 match field {
-                    record::MetadataField::ModuleIdentifier { name, version } => {
-                        out.write_identifier(name.as_ref())?;
-                        out.write_integer(version.len())?;
-                        for number in version.iter() {
-                            out.write_integer(*number)?;
+                    record::MetadataField::ModuleIdentifier(identifier) => {
+                        out.write_identifier(identifier.name())?;
+                        out.write_length(identifier.version().len())?;
+                        for number in identifier.version().iter() {
+                            out.write_unsigned_integer(*number)?;
                         }
                         Ok(())
                     }
@@ -78,7 +72,7 @@ impl<'a> Builder<'a> {
 
             fn write_type_signature(out: &mut VecWriter, signature: &signature::Type) -> Result {
                 use signature::Type;
-                out.write_all(&[u8::from(signature.code())])?;
+                out.write_all(&[u8::from(signature.code())])?; // TODO: Make type tag a VarU28?
                 match signature {
                     Type::U8
                     | Type::S8
@@ -93,16 +87,16 @@ impl<'a> Builder<'a> {
                     | Type::F32
                     | Type::F64
                     | Type::RawPtr(None) => Ok(()),
-                    Type::RawPtr(Some(index)) => out.write_integer(*index),
-                    Type::FuncPtr(index) => out.write_integer(*index),
+                    Type::RawPtr(Some(index)) => out.write_length(*index),
+                    Type::FuncPtr(index) => out.write_length(*index),
                 }
             }
 
             fn write_function_signature(out: &mut VecWriter, signature: &signature::Function) -> Result {
-                out.write_integer(signature.return_type_len())?;
-                out.write_integer(signature.types().len() - signature.return_type_len())?;
+                out.write_length(signature.return_type_len())?;
+                out.write_length(signature.types().len() - signature.return_type_len())?;
                 for index in signature.types().iter() {
-                    out.write_integer(*index)?;
+                    out.write_length(*index)?;
                 }
                 Ok(())
             }
@@ -111,7 +105,7 @@ impl<'a> Builder<'a> {
                 let flags = value.flags();
                 out.write_all(&[flags.bits()])?;
                 match value {
-                    instruction::Value::IndexedRegister(index) => out.write_integer(*index),
+                    instruction::Value::IndexedRegister(index) => out.write_length(*index),
                     instruction::Value::Constant(instruction::Constant::Integer(integer)) => match integer {
                         _ if flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) => Ok(()),
                         instruction::ConstantInteger::I8(byte) => out.write_all(std::slice::from_ref(byte)),
@@ -123,27 +117,27 @@ impl<'a> Builder<'a> {
             }
 
             fn write_code_block(out: &mut VecWriter, block: &record::CodeBlock) -> Result {
-                out.write_integer(block.input_count())?;
-                out.write_integer(block.result_count())?;
-                out.write_integer(block.temporary_count())?;
+                out.write_length(block.input_count())?;
+                out.write_length(block.result_count())?;
+                out.write_length(block.temporary_count())?;
                 for index in block.register_types().iter() {
-                    out.write_integer(*index)?;
+                    out.write_length(*index)?;
                 }
 
-                out.write_integer(block.instructions().len())?;
+                out.write_length(block.instructions().len())?;
                 for instruction in block.instructions().iter() {
                     out.write_all(&[u8::from(instruction.opcode())])?;
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
                         Instruction::Ret(values) => {
-                            out.write_integer(values.len())?;
+                            out.write_length(values.len())?;
                             for v in values.iter() {
                                 write_code_value(out, v)?;
                             }
                         }
                         Instruction::Call(callee, arguments) => {
-                            out.write_integer(*callee)?;
-                            out.write_integer(arguments.len())?;
+                            out.write_length(*callee)?;
+                            out.write_length(arguments.len())?;
                             for a in arguments.iter() {
                                 write_code_value(out, a)?;
                             }
@@ -161,22 +155,22 @@ impl<'a> Builder<'a> {
 
             fn write_function_definition(out: &mut VecWriter, definition: &record::FunctionDefinition) -> Result {
                 out.write_all(&[definition.flag_bits()])?;
-                out.write_integer(0usize)?;
-                out.write_integer(definition.signature())?;
-                out.write_identifier(definition.symbol())?;
+                out.write_length(0usize)?;
+                out.write_length(definition.signature())?;
+                out.write_identifier(todo!())?;
 
                 match definition.body() {
-                    record::FunctionBody::Definition(index) => out.write_integer(*index),
+                    record::FunctionBody::Definition(index) => out.write_length(*index),
                     record::FunctionBody::Foreign { library, entry_point } => {
-                        out.write_integer(*library)?;
+                        out.write_length(*library)?;
                         out.write_identifier(entry_point)
                     }
                 }
             }
 
             fn write_function_instantiation(out: &mut VecWriter, instantiation: &record::FunctionInstantiation) -> Result {
-                out.write_integer(instantiation.template())?;
-                out.write_integer(0usize)
+                out.write_length(instantiation.template())?;
+                out.write_length(0usize)
             }
 
             match record {
@@ -198,7 +192,7 @@ impl<'a> Builder<'a> {
             let mut record_content = VecWriter::new(&mut content_buffer);
             write_record_content(&mut record_content, record)?;
             out.write_all(&[u8::from(record.record_type())])?;
-            out.write_integer(content_buffer.len())?;
+            out.write_length(content_buffer.len())?;
             out.write_all(&content_buffer)?;
         }
 
@@ -215,7 +209,7 @@ impl Default for Builder<'_> {
 
 impl Builder<'static> {
     pub fn from_reader<R: Read>(source: reader::Reader<R>) -> reader::Result<Self> {
-        let (format_version, _, mut reader) = source.to_record_reader()?;
+        let (format_version, mut reader) = source.to_record_reader()?;
         let mut records = Vec::with_capacity(reader.record_count());
 
         while let Some(record) = reader.next_record() {

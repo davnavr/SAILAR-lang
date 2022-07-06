@@ -1,12 +1,13 @@
 //! Low-level API to read the binary contents of a SAILAR module.
 
 use crate::binary;
-use crate::binary::index;
-use crate::binary::instruction::{self, Instruction, Opcode};
-use crate::binary::record;
-use crate::binary::signature;
 use crate::helper::borrow::CowBox;
 use crate::identifier;
+use crate::index;
+use crate::instruction::{self, Instruction, Opcode};
+use crate::num::VarU28;
+use crate::record;
+use crate::signature;
 use crate::versioning;
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -36,8 +37,8 @@ impl Display for InvalidMagicError {
         write!(
             f,
             "expected magic {:?}, but got {:?}",
-            binary::buffer::ByteDebug::from(binary::MAGIC),
-            binary::buffer::ByteDebug::from(self.actual_bytes()),
+            crate::helper::buffer::ByteDebug::from(binary::MAGIC),
+            crate::helper::buffer::ByteDebug::from(self.actual_bytes()),
         )
     }
 }
@@ -53,18 +54,16 @@ pub enum ErrorKind {
     MissingFormatVersion,
     #[error(transparent)]
     UnuspportedFormatVersion(#[from] versioning::UnsupportedFormatError),
-    #[error("expected integer size")]
-    MissingIntegerSize,
     #[error("expected reserved integer value")]
     MissingReservedInteger,
     #[error("reserved value is invalid")]
     InvalidReservedValue,
-    #[error(transparent)]
-    InvalidIntegerSize(#[from] binary::InvalidVarIntSize),
     #[error("expected record count")]
     MissingRecordCount,
-    #[error("the integer value {0} was too large")]
-    IntegerTooLarge(u32),
+    #[error(transparent)]
+    IntegerLengthTooLarge(#[from] crate::num::IntegerLengthError),
+    #[error(transparent)]
+    IntegerConversionError(#[from] std::num::TryFromIntError),
     #[error("expected record type byte")]
     MissingRecordType,
     #[error(transparent)]
@@ -190,6 +189,17 @@ impl<R: Read> Wrapper<R> {
         }
     }
 
+    fn into_boxed_wrapper<'a>(self) -> Wrapper<Box<dyn Read + 'a>>
+    where
+        R: 'a,
+    {
+        Wrapper {
+            source: Box::new(self.source),
+            previous_offset: self.previous_offset,
+            offset: self.offset,
+        }
+    }
+
     fn wrap_error<E: Into<ErrorKind>>(&self, error: E) -> Error {
         Error::new(error, self.previous_offset)
     }
@@ -221,41 +231,27 @@ impl<R: Read> Wrapper<R> {
             },
         ))
     }
+
+    fn read_unsigned_integer(&mut self, error: fn() -> ErrorKind) -> Result<VarU28> {
+        self.previous_offset = self.offset;
+        match VarU28::read_from(&mut self.source) {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(err)) => Err(self.wrap_error(err)),
+            Err(_) => Err(self.wrap_error(error())),
+        }
+    }
+
+    fn read_unsigned_integer_try_into<T>(&mut self, error: fn() -> ErrorKind) -> Result<T>
+    where
+        T: TryFrom<VarU28>,
+        T::Error: Into<ErrorKind>,
+    {
+        let value = self.read_unsigned_integer(error)?;
+        self.wrap_result(T::try_from(value))
+    }
 }
 
 type BufferWrapper<'b> = Wrapper<&'b [u8]>;
-
-type IntegerReader<R> = for<'a> fn(&'a mut Wrapper<R>, fn() -> ErrorKind) -> Result<usize>;
-
-fn select_integer_reader<R: Read>(size: binary::VarIntSize) -> IntegerReader<R> {
-    match size {
-        binary::VarIntSize::One => |source, error| {
-            let mut value = 0u8;
-            if source.read_bytes(std::slice::from_mut(&mut value))? == 1 {
-                Ok(usize::from(value))
-            } else {
-                source.fail_with(error())
-            }
-        },
-        binary::VarIntSize::Two => |source, error| {
-            let mut buffer = [0u8; 2];
-            if source.read_bytes(&mut buffer)? == 2 {
-                Ok(usize::from(u16::from_le_bytes(buffer)))
-            } else {
-                source.fail_with(error())
-            }
-        },
-        binary::VarIntSize::Four => |source, error| {
-            let mut buffer = [0u8; 4];
-            if source.read_bytes(&mut buffer)? == 4 {
-                let value = u32::from_le_bytes(buffer);
-                usize::try_from(value).map_err(|_| source.wrap_error(ErrorKind::IntegerTooLarge(value)))
-            } else {
-                source.fail_with(error())
-            }
-        },
-    }
-}
 
 /// Allows the reading of the contents of a SAILAR module from a source.
 #[derive(Debug)]
@@ -270,17 +266,26 @@ impl<R: Read> Reader<R> {
         }
     }
 
-    /// Reads the magic number, format version, and integer size.
+    pub fn into_boxed_reader<'a>(self) -> Reader<Box<dyn Read + 'a>>
+    where
+        R: 'a,
+    {
+        Reader {
+            source: self.source.into_boxed_wrapper(),
+        }
+    }
+
+    /// Reads the magic number and format version, returning a [`RecordReader`] to read the contents of the module.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use sailar::binary::reader::Reader;
+    /// # use sailar::reader::Reader;
     /// let input = "What happens if nonsense is used as input?";
     /// let reader = Reader::new(input.as_bytes());
     /// assert!(matches!(reader.to_record_reader(), Err(_)));
     /// ```
-    pub fn to_record_reader(mut self) -> Result<(versioning::SupportedFormat, binary::VarIntSize, RecordReader<R>)> {
+    pub fn to_record_reader(mut self) -> Result<(versioning::SupportedFormat, RecordReader<R>)> {
         {
             let mut magic_buffer = [0u8; binary::MAGIC.len()];
             let magic_length = self.source.read_bytes(&mut magic_buffer)?;
@@ -289,39 +294,24 @@ impl<R: Read> Reader<R> {
             }
         }
 
-        let format_version: versioning::SupportedFormat;
-        let integer_size: binary::VarIntSize;
-
-        {
-            let mut values = [0u8; 3];
+        let format_version = {
+            let mut values = [0u8; 2];
             let value_count = self.source.read_bytes(&mut values)?;
 
             if value_count < 2 {
                 return self.source.fail_with(ErrorKind::MissingFormatVersion);
             }
 
-            format_version = self
-                .source
+            self.source
                 .wrap_result(versioning::SupportedFormat::try_from(versioning::Format {
                     major: values[0],
                     minor: values[1],
-                }))?;
+                }))?
+        };
 
-            if value_count < 3 {
-                return self.source.fail_with(ErrorKind::MissingIntegerSize);
-            }
+        let record_count = self.source.read_unsigned_integer_try_into(|| ErrorKind::MissingRecordCount)?;
 
-            integer_size = self.source.wrap_result(binary::VarIntSize::try_from(values[2]))?;
-        }
-
-        let integer_reader = select_integer_reader(integer_size);
-        let record_count = integer_reader(&mut self.source, || ErrorKind::MissingRecordCount)?;
-
-        Ok((
-            format_version,
-            integer_size,
-            RecordReader::new(self.source, integer_size, integer_reader, record_count),
-        ))
+        Ok((format_version, RecordReader::new(self.source, record_count)))
     }
 }
 
@@ -332,7 +322,7 @@ impl<R: Read> From<R> for Reader<R> {
     }
 }
 
-type RecordContentReader = for<'c, 'b> fn(&'c mut Wrapper<&'b [u8]>, IntegerReader<&'b [u8]>) -> Result<Record>;
+type RecordContentReader = for<'c, 'b> fn(&'c mut Wrapper<&'b [u8]>) -> Result<Record>;
 
 struct ArrayRecordReader {
     element_count: usize,
@@ -359,10 +349,10 @@ impl ArrayRecordReader {
     //     self.element_buffer = buffer.into_boxed_slice();
     // }
 
-    fn read_next<'a>(&'a mut self, integer_reader: IntegerReader<&'a [u8]>) -> Option<Result<Record>> {
+    fn read_next<'a>(&'a mut self) -> Option<Result<Record>> {
         if self.element_count > 0 {
             let mut wrapper = Wrapper::new(&self.element_buffer[self.element_buffer_offset..]);
-            let record = (self.element_reader)(&mut wrapper, integer_reader);
+            let record = (self.element_reader)(&mut wrapper);
             let element_size = wrapper.offset;
             self.element_count -= 1;
             self.element_buffer_offset += element_size;
@@ -377,19 +367,15 @@ impl ArrayRecordReader {
 pub struct RecordReader<R> {
     count: usize,
     source: Wrapper<R>,
-    integer_size: binary::VarIntSize,
-    integer_reader: IntegerReader<R>,
     array_reader: Option<ArrayRecordReader>,
     buffer: Vec<u8>,
 }
 
 impl<R: Read> RecordReader<R> {
-    fn new(source: Wrapper<R>, integer_size: binary::VarIntSize, integer_reader: IntegerReader<R>, count: usize) -> Self {
+    fn new(source: Wrapper<R>, count: usize) -> Self {
         Self {
             count,
             source,
-            integer_size,
-            integer_reader,
             array_reader: None,
             buffer: Vec::default(),
         }
@@ -419,8 +405,9 @@ impl<R: Read> RecordReader<R> {
         }
 
         let record_type = read_record_type(&mut self.source)?;
-        let record_size = (self.integer_reader)(&mut self.source, || ErrorKind::MissingRecordSize)?;
+        let record_size = self.source.read_unsigned_integer_try_into(|| ErrorKind::MissingRecordSize)?;
 
+        // TODO: Is repeated stack allocations really ok here? Since self.buffer already exists, why not use it? Maybe shrink this to 32 or something?
         const STACK_BUFFER_LENGTH: usize = 512;
         let mut stack_buffer: [u8; STACK_BUFFER_LENGTH];
 
@@ -435,7 +422,6 @@ impl<R: Read> RecordReader<R> {
 
         let (actual_content_size, mut record_content) = self.source.read_to_wrapped_buffer(content_buffer)?;
         let content = &mut record_content;
-        let content_integer_reader: IntegerReader<&[u8]> = select_integer_reader(self.integer_size);
 
         if actual_content_size != record_size {
             return self.source.fail_with(ErrorKind::UnexpectedEndOfRecord {
@@ -458,15 +444,12 @@ impl<R: Read> RecordReader<R> {
             source.wrap_result(identifier::Identifier::from_utf8(buffer))
         }
 
-        fn read_identifier<'b>(
-            source: &mut BufferWrapper<'b>,
-            integer_reader: IntegerReader<&'b [u8]>,
-        ) -> Result<identifier::Identifier> {
-            let size = integer_reader(source, || ErrorKind::MissingIdentifierLength)?;
-            read_identifier_content(source, size)
+        fn read_identifier<'b>(source: &mut BufferWrapper<'b>) -> Result<identifier::Identifier> {
+            let length = source.read_unsigned_integer_try_into(|| ErrorKind::MissingIdentifierLength)?;
+            read_identifier_content(source, length)
         }
 
-        fn read_type_signature<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
+        fn read_type_signature<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
             let mut tag_value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut tag_value))? == 0 {
                 return source.fail_with(ErrorKind::MissingRecordType);
@@ -487,28 +470,23 @@ impl<R: Read> RecordReader<R> {
                     signature::TypeCode::F32 => signature::Type::F32,
                     signature::TypeCode::F64 => signature::Type::F64,
                     signature::TypeCode::VoidPtr => signature::Type::RawPtr(None),
-                    signature::TypeCode::RawPtr => {
-                        signature::Type::RawPtr(Some(integer_reader(source, || ErrorKind::MissingTypeSignatureIndex)?.into()))
-                    }
-                    signature::TypeCode::FuncPtr => {
-                        signature::Type::FuncPtr(integer_reader(source, || ErrorKind::MissingFunctionSignatureIndex)?.into())
-                    }
+                    signature::TypeCode::RawPtr => signature::Type::RawPtr(Some(
+                        source.read_unsigned_integer_try_into(|| ErrorKind::MissingTypeSignatureIndex)?,
+                    )),
+                    signature::TypeCode::FuncPtr => signature::Type::FuncPtr(
+                        source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?,
+                    ),
                 },
             ))
         }
 
-        fn read_function_signature<'b>(
-            source: &mut BufferWrapper<'b>,
-            integer_reader: IntegerReader<&'b [u8]>,
-        ) -> Result<Record> {
-            let return_type_count = (integer_reader)(source, || ErrorKind::MissingReturnTypeCount)?;
-            let parameter_type_count = (integer_reader)(source, || ErrorKind::MissingParameterTypeCount)?;
+        fn read_function_signature<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
+            let return_type_count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingReturnTypeCount)?;
+            let parameter_type_count: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingParameterTypeCount)?;
             let total_count = return_type_count + parameter_type_count;
-            let mut types = Vec::with_capacity(total_count);
+            let mut types = Vec::<index::TypeSignature>::with_capacity(total_count);
             for _ in 0..total_count {
-                types.push(index::TypeSignature::from((integer_reader)(source, || {
-                    ErrorKind::MissingTypeSignatureIndex
-                })?));
+                types.push(source.read_unsigned_integer_try_into(|| ErrorKind::MissingTypeSignatureIndex)?);
             }
 
             Ok(Record::from(signature::Function::from_boxed_slice(
@@ -517,7 +495,7 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
-        fn read_code_block<'b>(source: &mut BufferWrapper<'b>, integer_reader: IntegerReader<&'b [u8]>) -> Result<Record> {
+        fn read_code_block<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
             let read_code_value = |source: &mut BufferWrapper<'b>| -> Result<instruction::Value> {
                 let mut flag_value = 0u8;
                 if source.read_bytes(std::slice::from_mut(&mut flag_value))? == 0 {
@@ -525,12 +503,13 @@ impl<R: Read> RecordReader<R> {
                 }
 
                 let flags = source.wrap_result(
-                    instruction::ValueFlags::from_bits(flag_value)
-                        .ok_or(ErrorKind::InvalidInstructionValuesFlags(flag_value)),
+                    instruction::ValueFlags::from_bits(flag_value).ok_or(ErrorKind::InvalidInstructionValuesFlags(flag_value)),
                 )?;
 
                 if !flags.contains(instruction::ValueFlags::IS_CONSTANT) {
-                    (integer_reader)(source, || ErrorKind::MissingRegisterIndex).map(|i| index::Register::from(i).into())
+                    Ok(source
+                        .read_unsigned_integer_try_into::<index::Register>(|| ErrorKind::MissingRegisterIndex)?
+                        .into())
                 } else {
                     if !flags.contains(instruction::ValueFlags::IS_INTEGER) {
                         return source.fail_with(ErrorKind::InvalidConstantValueKind);
@@ -584,7 +563,7 @@ impl<R: Read> RecordReader<R> {
             };
 
             let read_many_code_values = |source: &mut BufferWrapper<'b>| -> Result<Box<[instruction::Value]>> {
-                let count = (integer_reader)(source, || ErrorKind::MissingInstructionValueCount)?;
+                let count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingInstructionValueCount)?;
                 let mut values = Vec::with_capacity(count);
                 for _ in 0..count {
                     values.push(read_code_value(source)?);
@@ -616,7 +595,7 @@ impl<R: Read> RecordReader<R> {
                     Opcode::Break => Instruction::Break,
                     Opcode::Ret => Instruction::Ret(read_many_code_values(source)?),
                     Opcode::Call => Instruction::Call(
-                        (integer_reader)(source, || ErrorKind::MissingInstructionCalleeIndex)?.into(),
+                        source.read_unsigned_integer_try_into(|| ErrorKind::MissingInstructionCalleeIndex)?,
                         read_many_code_values(source)?,
                     ),
                     Opcode::AddI => Instruction::AddI(read_integer_arithmteic(source)?),
@@ -624,16 +603,16 @@ impl<R: Read> RecordReader<R> {
                 })
             };
 
-            let input_count = (integer_reader)(source, || ErrorKind::MissingParameterTypeCount)?;
-            let result_count = (integer_reader)(source, || ErrorKind::MissingReturnTypeCount)?;
-            let temporary_count = (integer_reader)(source, || ErrorKind::MissingTemporaryRegisterCount)?;
+            let input_count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingParameterTypeCount)?;
+            let result_count: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingReturnTypeCount)?;
+            let temporary_count: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingTemporaryRegisterCount)?;
             let register_count = input_count + result_count + temporary_count;
             let mut register_types = Vec::<index::TypeSignature>::with_capacity(register_count);
             for _ in 0..register_count {
-                register_types.push((integer_reader)(source, || ErrorKind::MissingTypeSignatureIndex)?.into());
+                register_types.push(source.read_unsigned_integer_try_into(|| ErrorKind::MissingTypeSignatureIndex)?);
             }
 
-            let instruction_count = (integer_reader)(source, || ErrorKind::MissingInstructionCount)?;
+            let instruction_count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingInstructionCount)?;
             let mut instructions = Vec::with_capacity(instruction_count);
             for _ in 0..instruction_count {
                 instructions.push(read_instruction(source)?);
@@ -647,10 +626,7 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
-        fn read_function_definition<'b>(
-            source: &mut BufferWrapper<'b>,
-            integer_reader: IntegerReader<&'b [u8]>,
-        ) -> Result<Record> {
+        fn read_function_definition<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
             let mut flags_value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut flags_value))? == 0 {
                 return source.fail_with(ErrorKind::MissingRecordType);
@@ -661,43 +637,38 @@ impl<R: Read> RecordReader<R> {
             }
 
             let export = if flags_value & 1 == 1 {
-                record::Export::Public
+                //record::Export::Public
+                todo!()
             } else {
-                record::Export::Private
+                //record::Export::Private
+                todo!()
             };
 
-            let reserved = (integer_reader)(source, || ErrorKind::MissingReservedInteger)?;
+            let reserved: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingReservedInteger)?;
 
-            if reserved != 0 {
+            if reserved != 0usize {
                 return source.fail_with(ErrorKind::InvalidReservedValue);
             }
 
-            let signature = (integer_reader)(source, || ErrorKind::MissingFunctionSignatureIndex)?;
-            let symbol = Cow::Owned(read_identifier(source, integer_reader)?);
+            let signature = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?;
+            //let symbol = Cow::Owned(read_identifier(source, integer_reader)?);
 
             let body = if flags_value & 0b10 != 0b10 {
-                record::FunctionBody::Definition(integer_reader(source, || ErrorKind::MissingCodeBlockIndex)?.into())
+                record::FunctionBody::Definition(source.read_unsigned_integer_try_into(|| ErrorKind::MissingCodeBlockIndex)?)
             } else {
                 record::FunctionBody::Foreign {
-                    library: integer_reader(source, || ErrorKind::MissingForeignLibraryName)?.into(),
-                    entry_point: Cow::Owned(read_identifier(source, integer_reader)?),
+                    library: source.read_unsigned_integer_try_into(|| ErrorKind::MissingForeignLibraryName)?,
+                    entry_point: Cow::Owned(read_identifier(source)?),
                 }
             };
 
-            Ok(Record::from(record::FunctionDefinition::new(
-                export,
-                signature.into(),
-                symbol,
-                body,
-            )))
+            Ok(Record::from(record::FunctionDefinition::new(export, signature, body)))
         }
 
-        fn read_function_instantiation<'b>(
-            source: &mut BufferWrapper<'b>,
-            integer_reader: IntegerReader<&'b [u8]>,
-        ) -> Result<Record> {
-            let template = (integer_reader)(source, || ErrorKind::MissingFunctionTemplateIndex)?.into();
-            Ok(Record::from(record::FunctionInstantiation::from_template(template)))
+        fn read_function_instantiation<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
+            source
+                .read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionTemplateIndex)
+                .map(|index| Record::from(record::FunctionInstantiation::from_template(index)))
         }
 
         self.count -= 1;
@@ -705,17 +676,17 @@ impl<R: Read> RecordReader<R> {
         match record_type {
             record::Type::Array => {
                 let array_type = read_record_type(content)?;
-                let array_count = content_integer_reader(content, || ErrorKind::MissingRecordArrayCount)?;
+                let array_count = content.read_unsigned_integer_try_into(|| ErrorKind::MissingRecordArrayCount)?;
                 let array_elements = content.source.to_vec().into_boxed_slice();
 
                 let array_reader = self.array_reader.insert(ArrayRecordReader::new(
                     array_count,
                     array_elements,
                     match array_type {
-                        record::Type::Identifier => |src, int_reader| read_identifier(src, int_reader).map(Record::from),
+                        record::Type::Identifier => |src| read_identifier(src).map(Record::from),
                         record::Type::TypeSignature => read_type_signature,
-                        record::Type::Data => |source: &mut BufferWrapper, integer_reader: IntegerReader<_>| {
-                            let data_size = integer_reader(source, || ErrorKind::MissingDataLength)?;
+                        record::Type::Data => |source: &mut BufferWrapper| {
+                            let data_size = source.read_unsigned_integer_try_into(|| ErrorKind::MissingDataLength)?;
                             let mut buffer = vec![0u8; data_size];
                             let actual_size = source.read_bytes(&mut buffer)?;
                             if actual_size < data_size {
@@ -731,18 +702,18 @@ impl<R: Read> RecordReader<R> {
                     },
                 ));
 
-                match array_reader.read_next(content_integer_reader) {
+                match array_reader.read_next() {
                     Some(first_element) => first_element.map(Some),
                     None => Ok(None),
                 }
             }
             record::Type::Identifier => read_identifier_content(content, record_size).map(|id| Some(Record::from(id))),
-            record::Type::TypeSignature => read_type_signature(content, content_integer_reader).map(Some),
-            record::Type::FunctionSignature => read_function_signature(content, content_integer_reader).map(Some),
+            record::Type::TypeSignature => read_type_signature(content).map(Some),
+            record::Type::FunctionSignature => read_function_signature(content).map(Some),
             record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
-            record::Type::CodeBlock => read_code_block(content, content_integer_reader).map(Some),
-            record::Type::FunctionDefinition => read_function_definition(content, content_integer_reader).map(Some),
-            record::Type::FunctionInstantiation => read_function_instantiation(content, content_integer_reader).map(Some),
+            record::Type::CodeBlock => read_code_block(content).map(Some),
+            record::Type::FunctionDefinition => read_function_definition(content).map(Some),
+            record::Type::FunctionInstantiation => read_function_instantiation(content).map(Some),
             _ => todo!("parse a {:?}", record_type),
         }
     }
@@ -753,7 +724,7 @@ impl<R: Read> RecordReader<R> {
         match self.array_reader {
             None => (),
             Some(ref mut array_reader) => {
-                let element = array_reader.read_next(select_integer_reader(self.integer_size));
+                let element = array_reader.read_next();
                 if element.is_some() {
                     return element;
                 } else {
@@ -833,7 +804,6 @@ mod tests {
             b'R',
             versioning::SupportedFormat::CURRENT.major,
             versioning::SupportedFormat::CURRENT.minor,
-            0,
             1, // Number of records
             1,
             14,
@@ -854,7 +824,7 @@ mod tests {
         ];
 
         let reader = Reader::new(module.as_slice());
-        let (_, _, mut record_reader) = reader.to_record_reader().unwrap();
+        let (_, mut record_reader) = reader.to_record_reader().unwrap();
 
         assert!(
             matches!(record_reader.next_record_transposed().unwrap(), Some(Record::Data(bytes)) if bytes.as_ref() == &[0xA, 0xB, 0xC, 0xD, 0xE, 0xF])

@@ -1,5 +1,7 @@
 //! Low-level internal API for writing the contents of a SAILAR binary module.
 
+use crate::identifier::Id;
+use crate::num::VarU28;
 use std::io::Write;
 
 pub type Result = std::io::Result<()>;
@@ -16,16 +18,24 @@ impl<W: Write> Writer<W> {
         Self { destination }
     }
 
-    pub fn write_integer<V: Into<usize>>(&mut self, value: V) -> Result {
-        match u32::try_from(value.into()) {
-            Ok(value) => self.write_all(&value.to_le_bytes()),
-            Err(err) => unreachable!("integer too large: {}", err),
+    pub fn write_unsigned_integer<I: Into<VarU28>>(&mut self, value: I) -> Result {
+        value.into().write_to(&mut self.destination)
+    }
+
+    pub fn write_length<I>(&mut self, value: I) -> Result
+    where
+        I: TryInto<VarU28>,
+        I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        match value.try_into() {
+            Ok(value) => self.write_unsigned_integer(value),
+            Err(err) => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, err)),
         }
     }
 
-    pub fn write_identifier(&mut self, identifier: &crate::Id) -> Result {
+    pub fn write_identifier(&mut self, identifier: &Id) -> Result {
         let bytes = identifier.as_bytes();
-        self.write_integer(bytes.len())?;
+        self.write_length(bytes.len())?;
         self.write_all(bytes)
     }
 }

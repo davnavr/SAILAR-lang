@@ -3,6 +3,7 @@
 use std::borrow::Borrow;
 use std::cmp::{Eq, PartialEq};
 use std::fmt::{Debug, Display, Formatter};
+use std::hash::Hash;
 
 /// Trait implemented by objects that can be boxed.
 pub trait ToBox {
@@ -125,3 +126,9 @@ impl<B: ?Sized + PartialEq> PartialEq for CowBox<'_, B> {
 }
 
 impl<B: ?Sized + Eq> Eq for CowBox<'_, B> {}
+
+impl<B: ?Sized + Hash> Hash for CowBox<'_, B> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
+    }
+}
