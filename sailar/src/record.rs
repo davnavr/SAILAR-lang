@@ -20,6 +20,12 @@ pub enum ExportKind {
     Export = 2,
 }
 
+impl ExportKind {
+    pub const fn bits(self) -> u8 {
+        self as u8
+    }
+}
+
 impl Default for ExportKind {
     #[inline]
     fn default() -> Self {
@@ -241,6 +247,15 @@ pub enum FunctionBody<'a> {
     },
 }
 
+impl FunctionBody<'_> {
+    pub fn is_foreign(&self) -> bool {
+        match self {
+            Self::Definition(_) => false,
+            Self::Foreign { .. } => true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionInstantiation {
     template: index::FunctionInstantiation,
@@ -254,6 +269,44 @@ impl FunctionInstantiation {
     #[inline]
     pub fn template(&self) -> index::FunctionInstantiation {
         self.template
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(transparent)]
+pub struct FunctionDefinitionFlags(u16);
+
+impl FunctionDefinitionFlags {
+    pub fn try_from_bits(value: VarU28) -> Option<Self> {
+        let bits = u16::try_from(value).ok()?;
+        if (bits & 0xFFF0 != 0) || (bits & 0b1100 == 0b1100) || (bits & 0b10 == 0b10) {
+            None
+        } else {
+            Some(Self(bits))
+        }
+    }
+
+    pub const fn value(self) -> VarU28 {
+        VarU28::from_u16(self.0)
+    }
+
+    pub const fn is_body_foreign(self) -> bool {
+        self.0 & 1 == 1
+    }
+
+    pub const fn export_kind(self) -> ExportKind {
+        match (self.0 >> 2) & 0b11 {
+            0b00 => ExportKind::Hidden,
+            0b01 => ExportKind::Private,
+            0b10 => ExportKind::Export,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<FunctionDefinitionFlags> for VarU28 {
+    fn from(flags: FunctionDefinitionFlags) -> Self {
+        flags.value()
     }
 }
 
@@ -284,12 +337,13 @@ impl<'a> FunctionDefinition<'a> {
         &self.body
     }
 
-    pub fn flag_bits(&self) -> u8 {
-        let mut flags = 0u8; //self.export as u8;
-        if let FunctionBody::Foreign { .. } = &self.body {
-            flags |= 0b10;
-        }
-        flags
+    pub fn flags(&self) -> FunctionDefinitionFlags {
+        // Bit 0 indicates whether body is foreign
+        let mut flags = if self.body.is_foreign() { 1u16 } else { 0 };
+        // Bit 1 will be used to indicate if a generic parameter count is present
+        // Bits 2 to 3 contains the export kind
+        flags |= u16::from(self.export().kind().bits()) << 2u8;
+        FunctionDefinitionFlags(flags)
     }
 }
 

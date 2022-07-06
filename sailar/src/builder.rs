@@ -152,10 +152,13 @@ impl<'a> Builder<'a> {
             }
 
             fn write_function_definition(out: &mut VecWriter, definition: &record::FunctionDefinition) -> Result {
-                out.write_all(&[definition.flag_bits()])?;
-                out.write_length(0usize)?;
+                out.write_unsigned_integer(definition.flags())?;
+
+                if let Some(symbol) = definition.export().symbol() {
+                    out.write_identifier(symbol)?;
+                }
+
                 out.write_length(definition.signature())?;
-                out.write_identifier(todo!())?;
 
                 match definition.body() {
                     record::FunctionBody::Definition(index) => out.write_length(*index),
@@ -198,9 +201,9 @@ impl<'a> Builder<'a> {
     }
 
     /// Retrieves the binary contents of the SAILAR module.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// # use sailar::builder::Builder;
     /// let builder = Builder::new();

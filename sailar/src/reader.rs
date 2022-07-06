@@ -100,8 +100,8 @@ pub enum ErrorKind {
     MissingDataLength,
     #[error("expected flag byte of function definition")]
     MissingFunctionDefinitionFlags,
-    #[error("reserved bits in function definition flags {0:#02X} must not be set")]
-    InvalidFunctionDefinitionFlags(u8),
+    #[error("{0:#02X} is not a valid function definition flags combination")]
+    InvalidFunctionDefinitionFlags(VarU28),
     #[error("expected code block index")]
     MissingCodeBlockIndex,
     #[error("expected identifier index to the foreign function's library name")]
@@ -349,7 +349,7 @@ impl ArrayRecordReader {
     //     self.element_buffer = buffer.into_boxed_slice();
     // }
 
-    fn read_next<'a>(&'a mut self) -> Option<Result<Record>> {
+    fn read_next(&mut self) -> Option<Result<Record>> {
         if self.element_count > 0 {
             let mut wrapper = Wrapper::new(&self.element_buffer[self.element_buffer_offset..]);
             let record = (self.element_reader)(&mut wrapper);
@@ -444,12 +444,12 @@ impl<R: Read> RecordReader<R> {
             source.wrap_result(identifier::Identifier::from_utf8(buffer))
         }
 
-        fn read_identifier<'b>(source: &mut BufferWrapper<'b>) -> Result<identifier::Identifier> {
+        fn read_identifier(source: &mut BufferWrapper<'_>) -> Result<identifier::Identifier> {
             let length = source.read_unsigned_integer_try_into(|| ErrorKind::MissingIdentifierLength)?;
             read_identifier_content(source, length)
         }
 
-        fn read_type_signature<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
+        fn read_type_signature(source: &mut BufferWrapper<'_>) -> Result<Record> {
             let mut tag_value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut tag_value))? == 0 {
                 return source.fail_with(ErrorKind::MissingRecordType);
@@ -480,7 +480,7 @@ impl<R: Read> RecordReader<R> {
             ))
         }
 
-        fn read_function_signature<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
+        fn read_function_signature(source: &mut BufferWrapper<'_>) -> Result<Record> {
             let return_type_count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingReturnTypeCount)?;
             let parameter_type_count: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingParameterTypeCount)?;
             let total_count = return_type_count + parameter_type_count;
@@ -495,8 +495,8 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
-        fn read_code_block<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
-            let read_code_value = |source: &mut BufferWrapper<'b>| -> Result<instruction::Value> {
+        fn read_code_block(source: &mut BufferWrapper<'_>) -> Result<Record> {
+            let read_code_value = |source: &mut BufferWrapper<'_>| -> Result<instruction::Value> {
                 let mut flag_value = 0u8;
                 if source.read_bytes(std::slice::from_mut(&mut flag_value))? == 0 {
                     return source.fail_with(ErrorKind::MissingInstructionValueFlags);
@@ -562,7 +562,7 @@ impl<R: Read> RecordReader<R> {
                 }
             };
 
-            let read_many_code_values = |source: &mut BufferWrapper<'b>| -> Result<Box<[instruction::Value]>> {
+            let read_many_code_values = |source: &mut BufferWrapper<'_>| -> Result<Box<[instruction::Value]>> {
                 let count = source.read_unsigned_integer_try_into(|| ErrorKind::MissingInstructionValueCount)?;
                 let mut values = Vec::with_capacity(count);
                 for _ in 0..count {
@@ -571,7 +571,7 @@ impl<R: Read> RecordReader<R> {
                 Ok(values.into_boxed_slice())
             };
 
-            let read_integer_arithmteic = |source: &mut BufferWrapper<'b>| -> Result<Box<instruction::IntegerArithmetic>> {
+            let read_integer_arithmteic = |source: &mut BufferWrapper<'_>| -> Result<Box<instruction::IntegerArithmetic>> {
                 let mut overflow_value = 0u8;
                 if source.read_bytes(std::slice::from_mut(&mut overflow_value))? == 0 {
                     return Err(source.wrap_error(ErrorKind::MissingInstructionOverflowValue));
@@ -584,7 +584,7 @@ impl<R: Read> RecordReader<R> {
                 )))
             };
 
-            let read_instruction = |source: &mut BufferWrapper<'b>| -> Result<Instruction> {
+            let read_instruction = |source: &mut BufferWrapper<'_>| -> Result<Instruction> {
                 let mut opcode_value = 0u8;
                 if source.read_bytes(std::slice::from_mut(&mut opcode_value))? == 0 {
                     return source.fail_with(ErrorKind::MissingInstructionOpcode);
@@ -626,34 +626,22 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
-        fn read_function_definition<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
-            let mut flags_value = 0u8;
-            if source.read_bytes(std::slice::from_mut(&mut flags_value))? == 0 {
-                return source.fail_with(ErrorKind::MissingRecordType);
-            }
+        fn read_function_definition(source: &mut BufferWrapper<'_>) -> Result<Record> {
+            let flag_bits = source.read_unsigned_integer(|| ErrorKind::MissingFunctionDefinitionFlags)?;
+            let flags = source.wrap_result(
+                record::FunctionDefinitionFlags::try_from_bits(flag_bits)
+                    .ok_or(ErrorKind::InvalidFunctionDefinitionFlags(flag_bits)),
+            )?;
 
-            if flags_value & 0b1111_1100u8 != 0u8 {
-                return source.fail_with(ErrorKind::InvalidFunctionDefinitionFlags(flags_value));
-            }
-
-            let export = if flags_value & 1 == 1 {
-                //record::Export::Public
-                todo!()
-            } else {
-                //record::Export::Private
-                todo!()
+            let export = match flags.export_kind() {
+                record::ExportKind::Hidden => record::Export::Hidden,
+                record::ExportKind::Private => record::Export::Private(Cow::Owned(read_identifier(source)?)),
+                record::ExportKind::Export => record::Export::Export(Cow::Owned(read_identifier(source)?)),
             };
 
-            let reserved: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingReservedInteger)?;
-
-            if reserved != 0usize {
-                return source.fail_with(ErrorKind::InvalidReservedValue);
-            }
-
             let signature = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?;
-            //let symbol = Cow::Owned(read_identifier(source, integer_reader)?);
 
-            let body = if flags_value & 0b10 != 0b10 {
+            let body = if !flags.is_body_foreign() {
                 record::FunctionBody::Definition(source.read_unsigned_integer_try_into(|| ErrorKind::MissingCodeBlockIndex)?)
             } else {
                 record::FunctionBody::Foreign {
@@ -665,7 +653,7 @@ impl<R: Read> RecordReader<R> {
             Ok(Record::from(record::FunctionDefinition::new(export, signature, body)))
         }
 
-        fn read_function_instantiation<'b>(source: &mut BufferWrapper<'b>) -> Result<Record> {
+        fn read_function_instantiation(source: &mut BufferWrapper<'_>) -> Result<Record> {
             source
                 .read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionTemplateIndex)
                 .map(|index| Record::from(record::FunctionInstantiation::from_template(index)))
