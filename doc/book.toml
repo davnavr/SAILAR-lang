@@ -1,2 +1,4 @@
 [book]
-title = "SAILAR Language Specification"
+title = "SAILAR Language Documentation"
+description = "A somewhat informal description of the SAILAR language"
+language = "en"

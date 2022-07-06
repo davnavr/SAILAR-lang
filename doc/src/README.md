@@ -1,3 +1,3 @@
-# SAILAR Language Specification
+# SAILAR Language
 
 Insert description here
