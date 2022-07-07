@@ -8,6 +8,7 @@ pub mod function;
 pub mod module;
 pub mod resolver;
 pub mod source;
+pub mod symbol;
 
 pub use resolver::Resolver;
 pub use source::Source;
