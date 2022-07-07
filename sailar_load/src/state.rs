@@ -22,21 +22,21 @@ pub struct State {
 }
 
 impl State {
-    pub fn with_resolver<R>(resolver: R) -> Self
+    pub fn with_resolver<R>(resolver: R) -> Arc<Self>
     where
         R: Resolver + Send + 'static,
         R::Error: std::error::Error,
     {
-        Self {
+        Arc::new(Self {
             modules: Default::default(),
             resolver: Mutex::new(resolver::boxed(resolver)),
-        }
+        })
     }
 
     /// Creates a new [`State`] with no loaded modules and no import resolver. New modules can only be loaded by calling
     /// [`force_load_modules`].
     #[inline]
-    pub fn new() -> Self {
+    pub fn new() -> Arc<Self> {
         Self::with_resolver(resolver::unsuccessful())
     }
 

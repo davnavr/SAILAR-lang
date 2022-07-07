@@ -7,7 +7,7 @@ use sailar::signature;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A program that returns an exit code of 0 (success).
-    let program: Vec<record::Record<'static>> = {
+    let mut program: Vec<record::Record<'static>> = {
         let mut builder = builder::Builder::new();
 
         static PROGRAM_VERSION: &'static [VarU28] = &[VarU28::from_u8(1), VarU28::from_u8(0)];
@@ -49,7 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.into_records()
     };
 
-    println!("{:?}", program);
+    let state = sailar_load::State::new();
+    let module = state.force_load_module(sailar_load::source::RecordIteratorSource::new(program.drain(..)))?;
 
     Ok(())
 }

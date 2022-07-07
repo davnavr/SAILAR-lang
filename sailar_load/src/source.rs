@@ -13,13 +13,33 @@ pub trait Source {
 impl<E, I: std::iter::Iterator<Item = Result<Record, E>>> Source for I {
     type Error = E;
 
-    #[inline]
     fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), E> {
         for value in self {
             match value {
                 Ok(record) => f(record),
                 Err(e) => return Err(e),
             }
+        }
+
+        Ok(())
+    }
+}
+
+#[repr(transparent)]
+pub struct RecordIteratorSource<I>(I);
+
+impl<I> RecordIteratorSource<I> {
+    pub fn new(iterator: I) -> Self {
+        Self(iterator)
+    }
+}
+
+impl<I: std::iter::Iterator<Item = Record>> Source for RecordIteratorSource<I> {
+    type Error = std::convert::Infallible;
+
+    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), Self::Error> {
+        for value in self.0 {
+            f(value);
         }
 
         Ok(())
