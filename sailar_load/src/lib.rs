@@ -4,7 +4,7 @@
 
 mod state;
 
-// pub mod function;
+pub mod function;
 pub mod module;
 pub mod resolver;
 pub mod source;

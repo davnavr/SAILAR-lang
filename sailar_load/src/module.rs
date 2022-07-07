@@ -1,5 +1,6 @@
 //! Module for interacting with SAILAR binary modules.
 
+use crate::function;
 use sailar::identifier::Id;
 use sailar::record;
 use std::borrow::Cow;
@@ -14,38 +15,50 @@ pub struct Module {
     loader: Weak<crate::State>,
     identifiers: Vec<Cow<'static, Id>>,
     module_identifier: Option<Arc<ModuleIdentifier>>,
-    //function_definitions: Vec<Arc<function::Definition>>,
+    function_definitions: Vec<Arc<function::Definition>>,
     //function_instantiations: Vec<Arc<function::Instantiation>>,
     //function_exports: rustc_hash::HashSet<Arc<function::Symbol>> // TODO: Have lookup for exported functions
 }
 
 impl Module {
     pub(crate) fn from_source<S: crate::Source>(source: S, loader: Weak<crate::State>) -> Result<Arc<Self>, S::Error> {
-        let mut module = Box::new(Self {
-            loader,
-            identifiers: Vec::default(),
-            module_identifier: None,
-            //function_definitions: Vec::default(),
-            //function_instantiations: Vec::default(),
+        let mut error = None;
+        let module = Arc::new_cyclic(|this| {
+            let mut module = Self {
+                loader,
+                identifiers: Vec::default(),
+                module_identifier: None,
+                function_definitions: Vec::default(),
+                //function_instantiations: Vec::default(),
+            };
+
+            error = source
+                .iter_records(|record| match record {
+                    Record::MetadataField(field) => match field {
+                        record::MetadataField::ModuleIdentifier(identifier) => {
+                            module.module_identifier = Some(Arc::new(identifier))
+                        }
+                        bad => todo!("unknown metadata field {:?}", bad),
+                    },
+                    Record::Identifier(identifier) => module.identifiers.push(identifier),
+                    Record::FunctionDefinition(definition) => module
+                        .function_definitions
+                        .push(function::Definition::new(definition, this.clone())),
+                    // Record::FunctionInstantiation(instantiation) => module
+                    //     .function_instantiations
+                    //     .push(function::Instantiation::new(instantiation, module_weak.clone())),
+                    bad => todo!("unsupported {:?}", bad),
+                })
+                .err();
+
+            module
         });
 
-        // TODO: How to error on more than one module identifier?
-        source.iter_records(|record| match record {
-            Record::MetadataField(field) => match field {
-                record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(Arc::new(identifier)),
-                bad => todo!("unknown metadata field {:?}", bad),
-            },
-            Record::Identifier(identifier) => module.identifiers.push(identifier),
-            // Record::FunctionDefinition(definition) => module
-            //     .function_definitions
-            //     .push(function::Definition::new(definition, module_weak.clone())),
-            // Record::FunctionInstantiation(instantiation) => module
-            //     .function_instantiations
-            //     .push(function::Instantiation::new(instantiation, module_weak.clone())),
-            bad => todo!("unsupported {:?}", bad),
-        })?;
-
-        Ok(Arc::from(module))
+        if let Some(e) = error {
+            Err(e)
+        } else {
+            Ok(module)
+        }
     }
 
     /// Indicates if the module has an identifier (a name and version).

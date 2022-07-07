@@ -1,9 +1,9 @@
 //! Module for interacting with SAILAR function definitions and instantiations.
 
-use crate::binary::record;
-use crate::helper::borrow::CowBox;
-use crate::identifier::Id;
-use crate::loader;
+use crate::module::Module;
+use sailar::helper::borrow::CowBox;
+use sailar::identifier::Id;
+use sailar::record;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
@@ -27,12 +27,16 @@ type InstantiationRecord = CowBox<'static, record::FunctionInstantiation>;
 pub struct Instantiation {
     instantiation: InstantiationRecord,
     //template: Mutex<Template>,
-    module: Weak<loader::Module>,
+    module: Weak<Module>,
 }
 
 impl Instantiation {
-    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<loader::Module>) -> Arc<Self> {
+    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<Module>) -> Arc<Self> {
         Arc::new(Self { instantiation, module })
+    }
+
+    pub fn module(&self) -> &Weak<Module> {
+        &self.module
     }
 }
 
@@ -41,17 +45,20 @@ type DefinitionRecord = CowBox<'static, record::FunctionDefinition<'static>>;
 #[derive(Debug)]
 pub struct Definition {
     definition: DefinitionRecord,
-    module: Weak<loader::Module>,
+    module: Weak<Module>,
 }
 
 impl Definition {
-    pub(crate) fn new(definition: DefinitionRecord, module: Weak<loader::Module>) -> Arc<Self> {
+    pub(crate) fn new(definition: DefinitionRecord, module: Weak<Module>) -> Arc<Self> {
         Arc::new(Self { definition, module })
     }
 
-    // TODO: if something is marked as export (public), make a symbol mandatory, but allow symbol to be omitted if somethng is marked as private
-    pub fn symbol_ref(&self) -> Option<&Id> {
-        Some(self.definition.symbol())
+    pub fn module(&self) -> &Weak<Module> {
+        &self.module
+    }
+
+    pub fn symbol(&self) -> Option<&Id> {
+        self.definition.export().symbol()
     }
 
     pub fn symbol_shared(self: &Arc<Self>) -> Symbol {
@@ -71,7 +78,7 @@ impl Symbol {
 
     #[inline]
     pub fn as_ref(&self) -> Option<&Id> {
-        self.0.symbol_ref()
+        self.0.symbol()
     }
 }
 
