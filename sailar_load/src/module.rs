@@ -2,6 +2,7 @@
 
 use crate::function;
 use crate::symbol::{DuplicateSymbolError, Symbol};
+use crate::type_system;
 use sailar::identifier::Id;
 use sailar::record;
 use std::borrow::Cow;
@@ -42,9 +43,10 @@ impl SymbolLookup {
 }
 
 pub struct Module {
-    loader: Weak<crate::State>,
-    identifiers: Vec<Cow<'static, Id>>,
+    loader: Weak<crate::State>, // TODO: Have this be a reference to a module import resolver instead?
     module_identifier: Option<Arc<ModuleIdentifier>>,
+    identifiers: Vec<Cow<'static, Id>>,
+    type_signatures: Vec<Arc<type_system::Signature>>,
     symbols: SymbolLookup,
     function_definitions: Vec<Arc<function::Definition>>,
     //function_instantiations: Vec<Arc<function::Instantiation>>,
@@ -56,8 +58,9 @@ impl Module {
         let module = Arc::new_cyclic(|this| {
             let mut module = Self {
                 loader,
-                identifiers: Vec::default(),
                 module_identifier: None,
+                identifiers: Vec::default(),
+                type_signatures: Vec::default(),
                 symbols: SymbolLookup {
                     lookup: Default::default(),
                 },
@@ -74,9 +77,15 @@ impl Module {
                         bad => todo!("unknown metadata field {:?}", bad),
                     },
                     Record::Identifier(identifier) => module.identifiers.push(identifier),
+                    Record::TypeSignature(signature) => module
+                        .type_signatures
+                        .push(crate::type_system::Signature::new(signature.into_owned(), this.clone())),
                     Record::FunctionDefinition(definition) => {
                         let function = function::Definition::new(definition, this.clone());
-                        module.symbols.try_insert(function.to_symbol()).expect("TODO: handle duplicate symbol error");
+                        module
+                            .symbols
+                            .try_insert(function.to_symbol())
+                            .expect("TODO: handle duplicate symbol error");
                         module.function_definitions.push(function);
                     }
                     // Record::FunctionInstantiation(instantiation) => module
@@ -130,8 +139,11 @@ impl Module {
 impl Debug for Module {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Module")
-            .field("identifiers", &self.identifiers)
             .field("module_identifier", &self.module_identifier)
+            .field("identifiers", &self.identifiers)
+            .field("type_signatures", &self.type_signatures)
+            //.field("symbols", &self.symbols)
+            .field("function_definitions", &self.function_definitions)
             .finish()
     }
 }

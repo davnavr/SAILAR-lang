@@ -1,4 +1,4 @@
-//! Manipulation of SAILAR module symbols.
+//! Module for interacting with SAILAR module symbols.
 
 use sailar::identifier::Id;
 use sailar::record;

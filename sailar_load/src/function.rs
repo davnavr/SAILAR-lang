@@ -41,7 +41,6 @@ impl Instantiation {
 
 type DefinitionRecord = CowBox<'static, record::FunctionDefinition<'static>>;
 
-#[derive(Debug)]
 pub struct Definition {
     definition: DefinitionRecord,
     module: Weak<module::Module>,
@@ -62,6 +61,12 @@ impl Definition {
 
     pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
         Symbol::new(self.clone())
+    }
+}
+
+impl Debug for Definition {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Definition").field("definition", &self.definition).finish()
     }
 }
 

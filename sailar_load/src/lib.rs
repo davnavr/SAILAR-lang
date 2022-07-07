@@ -9,6 +9,7 @@ pub mod module;
 pub mod resolver;
 pub mod source;
 pub mod symbol;
+pub mod type_system;
 
 pub use resolver::Resolver;
 pub use source::Source;
