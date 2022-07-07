@@ -27,6 +27,10 @@ impl SymbolLookup {
         self.lookup.get_key_value(symbol).map(|(k, _)| k)
     }
 
+    pub fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = &Symbol> {
+        self.lookup.keys()
+    }
+
     fn try_insert<S: Into<Symbol>>(&mut self, symbol: Option<S>) -> Result<(), DuplicateSymbolError> {
         if let Some(s) = symbol {
             match self.lookup.entry(s.into()) {
@@ -42,11 +46,18 @@ impl SymbolLookup {
     }
 }
 
+impl Debug for SymbolLookup {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
 pub struct Module {
     loader: Weak<crate::State>, // TODO: Have this be a reference to a module import resolver instead?
     module_identifier: Option<Arc<ModuleIdentifier>>,
     identifiers: Vec<Cow<'static, Id>>,
     type_signatures: Vec<Arc<type_system::Signature>>,
+    function_signatures: Vec<Arc<function::Signature>>,
     symbols: SymbolLookup,
     function_definitions: Vec<Arc<function::Definition>>,
     //function_instantiations: Vec<Arc<function::Instantiation>>,
@@ -61,6 +72,7 @@ impl Module {
                 module_identifier: None,
                 identifiers: Vec::default(),
                 type_signatures: Vec::default(),
+                function_signatures: Vec::default(),
                 symbols: SymbolLookup {
                     lookup: Default::default(),
                 },
@@ -80,6 +92,9 @@ impl Module {
                     Record::TypeSignature(signature) => module
                         .type_signatures
                         .push(crate::type_system::Signature::new(signature.into_owned(), this.clone())),
+                    Record::FunctionSignature(signature) => module
+                        .function_signatures
+                        .push(function::Signature::new(signature, this.clone())),
                     Record::FunctionDefinition(definition) => {
                         let function = function::Definition::new(definition, this.clone());
                         module
@@ -142,7 +157,7 @@ impl Debug for Module {
             .field("module_identifier", &self.module_identifier)
             .field("identifiers", &self.identifiers)
             .field("type_signatures", &self.type_signatures)
-            //.field("symbols", &self.symbols)
+            .field("symbols", &self.symbols)
             .field("function_definitions", &self.function_definitions)
             .finish()
     }

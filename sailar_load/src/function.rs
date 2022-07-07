@@ -3,6 +3,8 @@
 use crate::module;
 use sailar::helper::borrow::CowBox;
 use sailar::record;
+use sailar::signature;
+use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
@@ -20,9 +22,35 @@ impl Template {
     }
 }
 
+type SignatureRecord = Cow<'static, signature::Function>;
+
+pub struct Signature {
+    signature: SignatureRecord,
+    module: Weak<module::Module>,
+}
+
+impl Signature {
+    pub(crate) fn new(signature: SignatureRecord, module: Weak<module::Module>) -> Arc<Self> {
+        Arc::new(Self { signature, module })
+    }
+
+    pub fn record(&self) -> &signature::Function {
+        &self.signature
+    }
+
+    pub fn module(&self) -> &Weak<module::Module> {
+        &self.module
+    }
+}
+
+impl Debug for Signature {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Signature").field("record", &self.signature).finish()
+    }
+}
+
 type InstantiationRecord = CowBox<'static, record::FunctionInstantiation>;
 
-#[derive(Debug)]
 pub struct Instantiation {
     instantiation: InstantiationRecord,
     //template: Mutex<Template>,
@@ -34,8 +62,18 @@ impl Instantiation {
         Arc::new(Self { instantiation, module })
     }
 
+    pub fn record(&self) -> &record::FunctionInstantiation {
+        &self.instantiation
+    }
+
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
+    }
+}
+
+impl Debug for Instantiation {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Instantiation").field("record", &self.instantiation).finish()
     }
 }
 
@@ -55,7 +93,7 @@ impl Definition {
         &self.module
     }
 
-    pub fn record(&self) -> &DefinitionRecord {
+    pub fn record(&self) -> &record::FunctionDefinition<'static> {
         &self.definition
     }
 
