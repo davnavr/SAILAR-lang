@@ -4,26 +4,23 @@ use sailar::identifier::Id;
 use sailar::record;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
+use std::sync::{Arc, Weak};
 
 pub type Record = record::Record<'static>;
 
 pub type ModuleIdentifier = record::ModuleIdentifier<'static>;
 
-pub struct Module<'s> {
-    loader: &'s crate::State<'s>,
+pub struct Module {
+    loader: Weak<crate::State>,
     identifiers: Vec<Cow<'static, Id>>,
-    pub(super) module_identifier: Option<&'s ModuleIdentifier>,
+    module_identifier: Option<Arc<ModuleIdentifier>>,
     //function_definitions: Vec<Arc<function::Definition>>,
     //function_instantiations: Vec<Arc<function::Instantiation>>,
     //function_exports: rustc_hash::HashSet<Arc<function::Symbol>> // TODO: Have lookup for exported functions
 }
 
-impl<'s> Module<'s> {
-    pub(crate) fn from_source<S: crate::Source>(
-        source: S,
-        loader: &'s crate::State<'s>,
-        module_identifier: &mut Option<ModuleIdentifier>,
-    ) -> Result<Box<Self>, S::Error> {
+impl Module {
+    pub(crate) fn from_source<S: crate::Source>(source: S, loader: Weak<crate::State>) -> Result<Arc<Self>, S::Error> {
         let mut module = Box::new(Self {
             loader,
             identifiers: Vec::default(),
@@ -35,7 +32,7 @@ impl<'s> Module<'s> {
         // TODO: How to error on more than one module identifier?
         source.iter_records(|record| match record {
             Record::MetadataField(field) => match field {
-                record::MetadataField::ModuleIdentifier(identifier) => *module_identifier = Some(identifier),
+                record::MetadataField::ModuleIdentifier(identifier) => module.module_identifier = Some(Arc::new(identifier)),
                 bad => todo!("unknown metadata field {:?}", bad),
             },
             Record::Identifier(identifier) => module.identifiers.push(identifier),
@@ -48,42 +45,37 @@ impl<'s> Module<'s> {
             bad => todo!("unsupported {:?}", bad),
         })?;
 
-        Ok(module)
+        Ok(Arc::from(module))
     }
 
     /// Indicates if the module has an identifier (a name and version).
-    pub fn is_anonymous(&'s self) -> bool {
+    pub fn is_anonymous(&self) -> bool {
         self.module_identifier.is_none()
     }
 
-    #[inline]
-    pub fn loader(&'s self) -> &'s crate::State {
-        self.loader
+    pub fn loader(&self) -> &Weak<crate::State> {
+        &self.loader
     }
 
-    #[inline]
-    pub fn identifiers(&'s self) -> &'s [Cow<'static, Id>] {
+    pub fn identifiers(&self) -> &[Cow<'static, Id>] {
         &self.identifiers
     }
 
-    /// Gets an optional reference to the module's identifier.
-    #[inline]
-    pub fn module_identifier(&'s self) -> Option<&'s ModuleIdentifier> {
-        self.module_identifier
+    /// Gets an optional weak reference to the module's identifier, indicating its name and version.
+    pub fn module_identifier(&self) -> Option<&Arc<ModuleIdentifier>> {
+        self.module_identifier.as_ref()
     }
 
-    // #[inline]
     // pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
     //     &self.function_definitions
     // }
 
-    // #[inline]
     // pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
     //     &self.function_instantiations
     // }
 }
 
-impl Debug for Module<'_> {
+impl Debug for Module {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Module")
             .field("identifiers", &self.identifiers)

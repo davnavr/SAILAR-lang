@@ -1,11 +1,12 @@
 //! Module for the resolution of SAILAR modules.
 
-use crate::ModuleIdentifier;
+use crate::module::ModuleIdentifier;
 use sailar::reader::Reader;
 use std::io::Read;
+use std::sync::Arc;
 
 /// Trait for retrieving SAILAR modules from module identifiers, used to resolve module imports.
-pub trait Resolver<'a> {
+pub trait Resolver {
     type Source: Read;
     type Error;
 
@@ -13,8 +14,10 @@ pub trait Resolver<'a> {
     ///
     /// Returns `Ok(Some)` when a module is successfully retrieved, `Ok(None)` if no corresponding module was found, or `Err` if
     /// an error occured while retrieving the module.
-    fn load_from_identifier(&mut self, module_identifier: &ModuleIdentifier)
-        -> Result<Option<Reader<Self::Source>>, Self::Error>;
+    fn load_from_identifier(
+        &mut self,
+        module_identifier: &Arc<ModuleIdentifier>,
+    ) -> Result<Option<Reader<Self::Source>>, Self::Error>;
 }
 
 /// A module import resolver that never successfully retrieves a module.
@@ -31,11 +34,11 @@ pub fn unsuccessful() -> Unsuccessful {
     Unsuccessful
 }
 
-impl Resolver<'_> for Unsuccessful {
+impl Resolver for Unsuccessful {
     type Source = std::io::Empty;
     type Error = std::convert::Infallible;
 
-    fn load_from_identifier(&mut self, _: &ModuleIdentifier) -> Result<Option<Reader<Self::Source>>, Self::Error> {
+    fn load_from_identifier(&mut self, _: &Arc<ModuleIdentifier>) -> Result<Option<Reader<Self::Source>>, Self::Error> {
         Ok(None)
     }
 }
@@ -43,17 +46,17 @@ impl Resolver<'_> for Unsuccessful {
 #[repr(transparent)]
 struct BoxedResolverInternals<R>(R);
 
-impl<'a, R> Resolver<'a> for BoxedResolverInternals<R>
+impl<R> Resolver for BoxedResolverInternals<R>
 where
-    R: Resolver<'a> + 'a,
-    R::Error: std::error::Error + 'a,
+    R: Resolver + Send + 'static,
+    R::Error: std::error::Error,
 {
-    type Source = Box<dyn std::io::Read + 'a>;
-    type Error = Box<dyn std::error::Error + 'a>;
+    type Source = Box<dyn std::io::Read>;
+    type Error = Box<dyn std::error::Error>;
 
     fn load_from_identifier(
         &mut self,
-        module_identifier: &ModuleIdentifier,
+        module_identifier: &Arc<ModuleIdentifier>,
     ) -> Result<Option<Reader<Self::Source>>, Self::Error> {
         match self.0.load_from_identifier(module_identifier) {
             Ok(None) => Ok(None),
@@ -63,13 +66,13 @@ where
     }
 }
 
-pub type BoxedResolver<'a> =
-    Box<dyn (Resolver<'a, Source = Box<dyn std::io::Read + 'a>, Error = Box<dyn std::error::Error + 'a>>) + Send + 'a>;
+pub type BoxedResolver =
+    Box<dyn (Resolver<Source = Box<dyn std::io::Read>, Error = Box<dyn std::error::Error>>) + Send + 'static>;
 
-pub fn boxed<'a, R>(resolver: R) -> BoxedResolver<'a>
+pub fn boxed<R>(resolver: R) -> BoxedResolver
 where
-    R: Resolver<'a> + Send + 'a,
-    R::Error: std::error::Error + 'a,
+    R: Resolver + Send + 'static,
+    R::Error: std::error::Error,
 {
     Box::new(BoxedResolverInternals(resolver))
 }
