@@ -1,10 +1,12 @@
 //! Module for interacting with SAILAR function definitions and instantiations.
 
+use crate::error;
 use crate::module;
+use crate::type_system;
 use sailar::helper::borrow::CowBox;
 use sailar::record;
 use sailar::signature;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
@@ -26,12 +28,17 @@ type SignatureRecord = Cow<'static, signature::Function>;
 
 pub struct Signature {
     signature: SignatureRecord,
+    types: lazy_init::Lazy<Result<Box<[Arc<type_system::Signature>]>, error::TypeSignatureNotFoundError>>,
     module: Weak<module::Module>,
 }
 
 impl Signature {
     pub(crate) fn new(signature: SignatureRecord, module: Weak<module::Module>) -> Arc<Self> {
-        Arc::new(Self { signature, module })
+        Arc::new(Self {
+            signature,
+            types: Default::default(),
+            module,
+        })
     }
 
     pub fn record(&self) -> &signature::Function {
@@ -40,6 +47,24 @@ impl Signature {
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
+    }
+
+    /// Returns the function signature's return types and parameter types.
+    pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::TypeSignatureNotFoundError> {
+        self.types
+            .get_or_create(|| match self.module.upgrade() {
+                Some(module) => {
+                    let mut types = Vec::with_capacity(self.signature.types().len());
+                    for index in self.signature.types().iter().copied() {
+                        types.push(module.get_type_signature(index)?.clone());
+                    }
+                    Ok(types.into_boxed_slice())
+                }
+                None => todo!("handle missing module"),
+            })
+            .as_ref()
+            .map(|types| types.borrow())
+            .map_err(|err| err.clone())
     }
 }
 

@@ -4,6 +4,7 @@
 
 mod state;
 
+pub mod error;
 pub mod function;
 pub mod module;
 pub mod resolver;

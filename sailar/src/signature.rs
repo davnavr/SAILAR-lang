@@ -105,8 +105,8 @@ impl Function {
         Self::from_boxed_slice(types, return_type_count)
     }
 
-    #[inline]
-    pub(crate) fn types(&self) -> &[index::TypeSignature] {
+    /// The function signature's return types followed by the parameter types.
+    pub fn types(&self) -> &[index::TypeSignature] {
         &self.types
     }
 

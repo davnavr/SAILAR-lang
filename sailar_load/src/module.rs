@@ -1,9 +1,11 @@
 //! Module for interacting with SAILAR binary modules.
 
+use crate::error;
 use crate::function;
 use crate::symbol::{DuplicateSymbolError, Symbol};
 use crate::type_system;
 use sailar::identifier::Id;
+use sailar::index;
 use sailar::record;
 use std::borrow::Cow;
 use std::collections::hash_map;
@@ -133,18 +135,31 @@ impl Module {
         &self.symbols
     }
 
-    pub fn identifiers(&self) -> &[Cow<'static, Id>] {
-        &self.identifiers
-    }
-
     /// Gets an optional weak reference to the module's identifier, indicating its name and version.
     pub fn module_identifier(&self) -> Option<&Arc<ModuleIdentifier>> {
         self.module_identifier.as_ref()
     }
 
-    // pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
-    //     &self.function_definitions
-    // }
+    pub fn identifiers(&self) -> &[Cow<'static, Id>] {
+        &self.identifiers
+    }
+
+    pub fn type_signatures(&self) -> &[Arc<type_system::Signature>] {
+        &self.type_signatures
+    }
+
+    pub fn get_type_signature<'a>(
+        self: &'a Arc<Self>,
+        index: index::TypeSignature,
+    ) -> Result<&'a Arc<type_system::Signature>, error::TypeSignatureNotFoundError> {
+        self.type_signatures
+            .get(usize::from(index))
+            .ok_or_else(|| error::TypeSignatureNotFoundError::new(index, self.clone()))
+    }
+
+    pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
+        &self.function_definitions
+    }
 
     // pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
     //     &self.function_instantiations
