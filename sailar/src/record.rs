@@ -246,8 +246,7 @@ impl<'a> CodeBlock<'a> {
         Self::from_types(register_types, input_count, result_count, instructions.into())
     }
 
-    #[inline]
-    pub(crate) fn register_types(&self) -> &[index::TypeSignature] {
+    pub fn register_types(&self) -> &[index::TypeSignature] {
         std::borrow::Borrow::borrow(&self.register_types)
     }
 

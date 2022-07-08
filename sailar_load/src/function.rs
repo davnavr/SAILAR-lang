@@ -6,7 +6,7 @@ use crate::type_system;
 use sailar::helper::borrow::CowBox;
 use sailar::record;
 use sailar::signature;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
@@ -28,7 +28,7 @@ type SignatureRecord = Cow<'static, signature::Function>;
 
 pub struct Signature {
     signature: SignatureRecord,
-    types: lazy_init::Lazy<Result<Box<[Arc<type_system::Signature>]>, error::LoaderError>>,
+    types: type_system::LazySignatureList,
     module: Weak<module::Module>,
 }
 
@@ -52,17 +52,7 @@ impl Signature {
     /// Returns the function signature's return types and parameter types.
     pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.types
-            .get_or_create(|| {
-                let module = module::Module::upgrade_weak(&self.module)?;
-                let mut types = Vec::with_capacity(self.signature.types().len());
-                for index in self.signature.types().iter().copied() {
-                    types.push(module.get_type_signature(index)?.clone());
-                }
-                Ok(types.into_boxed_slice())
-            })
-            .as_ref()
-            .map(|types| types.borrow())
-            .map_err(Clone::clone)
+            .get_or_initialize(&self.module, self.signature.types().iter().copied())
     }
 
     pub fn return_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
@@ -72,7 +62,10 @@ impl Signature {
 
 impl Debug for Signature {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Signature").field("record", &self.signature).finish()
+        f.debug_struct("Signature")
+            .field("record", &self.signature)
+            .field("types", &self.types)
+            .finish()
     }
 }
 

@@ -11,7 +11,7 @@ type Record = record::CodeBlock<'static>;
 
 pub struct Code {
     record: Box<Record>,
-    register_types: lazy_init::Lazy<Result<Box<[Arc<type_system::Signature>]>, error::LoaderError>>,
+    register_types: type_system::LazySignatureList,
     module: Weak<module::Module>,
 }
 
@@ -30,6 +30,11 @@ impl Code {
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
+    }
+
+    pub fn register_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
+        self.register_types
+            .get_or_initialize(&self.module, self.record.register_types().iter().copied())
     }
 }
 
