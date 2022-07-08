@@ -28,7 +28,7 @@ type SignatureRecord = Cow<'static, signature::Function>;
 
 pub struct Signature {
     signature: SignatureRecord,
-    types: lazy_init::Lazy<Result<Box<[Arc<type_system::Signature>]>, error::TypeSignatureNotFoundError>>,
+    types: lazy_init::Lazy<Result<Box<[Arc<type_system::Signature>]>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
@@ -50,7 +50,7 @@ impl Signature {
     }
 
     /// Returns the function signature's return types and parameter types.
-    pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::TypeSignatureNotFoundError> {
+    pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.types
             .get_or_create(|| match self.module.upgrade() {
                 Some(module) => {
@@ -64,7 +64,7 @@ impl Signature {
             })
             .as_ref()
             .map(|types| types.borrow())
-            .map_err(|err| err.clone())
+            .map_err(Clone::clone)
     }
 }
 

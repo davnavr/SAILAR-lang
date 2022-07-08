@@ -7,7 +7,7 @@ use crate::type_system;
 use sailar::identifier::Id;
 use sailar::index;
 use sailar::record;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
@@ -140,6 +140,13 @@ impl Module {
         self.module_identifier.as_ref()
     }
 
+    fn get_with_index_check<T, I: error::IndexType>(self: &Arc<Self>, index: I, slice: &[T]) -> Result<&T, error::LoaderError> {
+        slice.get(index.into()).ok_or_else(|| {
+            let maximum = if slice.is_empty() { None } else { Some(slice.len() - 1) };
+            error::InvalidModuleError::new(error::InvalidIndexError::new(index, maximum), self.clone()).into()
+        })
+    }
+
     pub fn identifiers(&self) -> &[Cow<'static, Id>] {
         &self.identifiers
     }
@@ -151,10 +158,8 @@ impl Module {
     pub fn get_type_signature<'a>(
         self: &'a Arc<Self>,
         index: index::TypeSignature,
-    ) -> Result<&'a Arc<type_system::Signature>, error::TypeSignatureNotFoundError> {
-        self.type_signatures
-            .get(usize::from(index))
-            .ok_or_else(|| error::TypeSignatureNotFoundError::new(index, self.clone()))
+    ) -> Result<&'a Arc<type_system::Signature>, error::LoaderError> {
+        self.get_with_index_check(index, &self.type_signatures)
     }
 
     pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
@@ -188,4 +193,42 @@ impl std::cmp::Eq for Module {}
 
 pub(crate) fn module_weak_eq(a: &Weak<Module>, b: &Weak<Module>) -> bool {
     a.ptr_eq(b) || a.upgrade().zip(b.upgrade()).map_or(false, |(a, b)| a == b)
+}
+
+/// Helper struct for displaying the name and version of a [`Module`] using [`Display`].
+///
+/// [`Display`]: std::fmt::Display
+#[repr(transparent)]
+pub struct Display<'a>(&'a Module);
+
+impl<'a, T: Borrow<Module>> From<&'a T> for Display<'a> {
+    fn from(reference: &'a T) -> Self {
+        Self(reference.borrow())
+    }
+}
+
+impl Debug for Display<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Debug::fmt(&self.0.module_identifier(), f)
+    }
+}
+
+impl std::fmt::Display for Display<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        if let Some(identifier) = self.0.module_identifier() {
+            Debug::fmt(identifier.name(), f)?;
+            for (i, number) in identifier.version().iter().enumerate() {
+                if i == 0 {
+                    f.write_str(", ")?;
+                } else {
+                    std::fmt::Write::write_char(f, '.')?;
+                }
+
+                std::fmt::Display::fmt(number, f)?;
+            }
+            Ok(())
+        } else {
+            write!(f, "<anonymous>@{:p}", self.0)
+        }
+    }
 }
