@@ -20,6 +20,7 @@ macro_rules! index_type_impl {
 }
 
 index_type_impl!(index::TypeSignature, "type signature");
+index_type_impl!(index::FunctionTemplate, "function template");
 
 /// The error type used when an index in a module is not valid.
 #[derive(Clone, Debug, thiserror::Error)]

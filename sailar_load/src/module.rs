@@ -64,7 +64,8 @@ pub struct Module {
     function_signatures: Vec<Arc<function::Signature>>,
     code_blocks: Vec<Arc<code_block::Code>>,
     function_definitions: Vec<Arc<function::Definition>>,
-    //function_instantiations: Vec<Arc<function::Instantiation>>,
+    //function_imports: Vec<Arc<function::Import>>,
+    function_instantiations: Vec<Arc<function::Instantiation>>,
 }
 
 impl Module {
@@ -82,7 +83,7 @@ impl Module {
                 function_signatures: Vec::default(),
                 code_blocks: Vec::default(),
                 function_definitions: Vec::default(),
-                //function_instantiations: Vec::default(),
+                function_instantiations: Vec::default(),
             };
 
             error = source
@@ -111,9 +112,9 @@ impl Module {
                             .expect("TODO: handle duplicate symbol error");
                         module.function_definitions.push(function);
                     }
-                    // Record::FunctionInstantiation(instantiation) => module
-                    //     .function_instantiations
-                    //     .push(function::Instantiation::new(instantiation, module_weak.clone())),
+                    Record::FunctionInstantiation(instantiation) => module
+                        .function_instantiations
+                        .push(function::Instantiation::new(instantiation.into_boxed(), this.clone())),
                     bad => todo!("unsupported {:?}", bad),
                 })
                 .err();
@@ -155,11 +156,14 @@ impl Module {
         self.module_identifier.as_ref()
     }
 
+    fn fail_index_check<I: error::IndexType>(self: &Arc<Self>, index: I, maximum: Option<usize>) -> error::LoaderError {
+        error::InvalidModuleError::new(error::InvalidIndexError::new(index, maximum), self.clone()).into()
+    }
+
     fn get_with_index_check<T, I: error::IndexType>(self: &Arc<Self>, index: I, slice: &[T]) -> Result<&T, error::LoaderError> {
-        slice.get(index.into()).ok_or_else(|| {
-            let maximum = if slice.is_empty() { None } else { Some(slice.len() - 1) };
-            error::InvalidModuleError::new(error::InvalidIndexError::new(index, maximum), self.clone()).into()
-        })
+        slice
+            .get(index.into())
+            .ok_or_else(|| self.fail_index_check(index, if slice.is_empty() { None } else { Some(slice.len() - 1) }))
     }
 
     pub fn identifiers(&self) -> &[Cow<'static, Id>] {
@@ -185,9 +189,29 @@ impl Module {
         &self.function_definitions
     }
 
-    // pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
-    //     &self.function_instantiations
-    // }
+    pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
+        &self.function_instantiations
+    }
+
+    pub fn get_function_template(
+        self: &Arc<Self>,
+        index: index::FunctionTemplate,
+    ) -> Result<function::Template, error::LoaderError> {
+        let i = usize::from(index);
+        // TODO: Update when there are function imports.
+        if let Some(definition) = self.function_definitions.get(i) {
+            Ok(function::Template::Definition(definition.clone()))
+        } else {
+            Err(self.fail_index_check(
+                index,
+                if self.function_definitions.is_empty() {
+                    None
+                } else {
+                    Some(self.function_definitions.len() - 1)
+                },
+            ))
+        }
+    }
 }
 
 impl Debug for Module {

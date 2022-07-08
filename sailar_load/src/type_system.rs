@@ -55,7 +55,7 @@ impl LazySignatureList {
                 Ok(loaded.into_boxed_slice())
             })
             .as_ref()
-            .map(|types| std::borrow::Borrow::borrow(types))
+            .map(std::borrow::Borrow::borrow)
             .map_err(Clone::clone)
     }
 }

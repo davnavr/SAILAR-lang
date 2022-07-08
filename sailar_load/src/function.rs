@@ -6,11 +6,11 @@ use crate::type_system;
 use sailar::helper::borrow::CowBox;
 use sailar::record;
 use sailar::signature;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Template {
     Definition(Arc<Definition>),
     //Import()
@@ -21,6 +21,20 @@ impl Template {
         match self {
             Self::Definition(definition) => Ok(definition),
         }
+    }
+}
+
+impl Debug for Template {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Definition(definition) => f.debug_tuple("Definition").field(&DefinitionDebug(definition)).finish(),
+        }
+    }
+}
+
+impl From<Arc<Definition>> for Template {
+    fn from(definition: Arc<Definition>) -> Self {
+        Self::Definition(definition)
     }
 }
 
@@ -69,17 +83,21 @@ impl Debug for Signature {
     }
 }
 
-type InstantiationRecord = CowBox<'static, record::FunctionInstantiation>;
+type InstantiationRecord = record::FunctionInstantiation;
 
 pub struct Instantiation {
-    instantiation: InstantiationRecord,
-    //template: Mutex<Template>,
+    instantiation: Box<InstantiationRecord>,
+    template: lazy_init::Lazy<Result<Template, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Instantiation {
-    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<module::Module>) -> Arc<Self> {
-        Arc::new(Self { instantiation, module })
+    pub(crate) fn new(instantiation: Box<InstantiationRecord>, module: Weak<module::Module>) -> Arc<Self> {
+        Arc::new(Self {
+            instantiation,
+            template: Default::default(),
+            module,
+        })
     }
 
     pub fn record(&self) -> &record::FunctionInstantiation {
@@ -89,11 +107,24 @@ impl Instantiation {
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
     }
+
+    pub fn template(&self) -> Result<&Template, error::LoaderError> {
+        self.template
+            .get_or_create(|| {
+                module::Module::upgrade_weak(&self.module)
+                    .and_then(|module| module.get_function_template(self.record().template()))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
 }
 
 impl Debug for Instantiation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Instantiation").field("record", &self.instantiation).finish()
+        f.debug_struct("Instantiation")
+            .field("record", &self.instantiation)
+            .field("template", &self.template)
+            .finish()
     }
 }
 
@@ -120,6 +151,10 @@ impl Definition {
     pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
         Symbol::new(self.clone())
     }
+
+    pub fn to_template(self: &Arc<Self>) -> Template {
+        Template::from(self.clone())
+    }
 }
 
 impl Debug for Definition {
@@ -129,3 +164,21 @@ impl Debug for Definition {
 }
 
 crate::symbol_wrapper!(pub struct Symbol(Definition));
+
+/// Helepr struct that provides a shortened [`Debug`] representation of [`Definition`].
+#[repr(transparent)]
+pub struct DefinitionDebug<'a>(&'a Definition);
+
+impl<'a, T: Borrow<Definition>> From<&'a T> for DefinitionDebug<'a> {
+    fn from(reference: &'a T) -> Self {
+        Self(reference.borrow())
+    }
+}
+
+impl Debug for DefinitionDebug<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Definition")
+            .field("export", &self.0.definition.export())
+            .finish()
+    }
+}
