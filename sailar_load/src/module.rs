@@ -189,6 +189,13 @@ impl Module {
         &self.function_definitions
     }
 
+    pub fn get_function_definition<'a>(
+        self: &'a Arc<Self>,
+        index: index::TypeSignature,
+    ) -> Result<&'a Arc<function::Definition>, error::LoaderError> {
+        self.get_with_index_check(index, &self.function_definitions)
+    }
+
     pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
         &self.function_instantiations
     }
