@@ -185,6 +185,17 @@ impl Module {
         &self.function_signatures
     }
 
+    pub fn code_blocks(&self) -> &[Arc<code_block::Code>] {
+        &self.code_blocks
+    }
+
+    pub fn get_code_block<'a>(
+        self: &'a Arc<Self>,
+        index: index::CodeBlock,
+    ) -> Result<&'a Arc<code_block::Code>, error::LoaderError> {
+        self.get_with_index_check(index, &self.code_blocks)
+    }
+
     pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
         &self.function_definitions
     }

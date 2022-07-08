@@ -130,14 +130,26 @@ impl Debug for Instantiation {
 
 type DefinitionRecord = CowBox<'static, record::FunctionDefinition<'static>>;
 
+/// Represents a function body.
+#[derive(Clone, Debug)]
+pub enum Body {
+    Defined(Arc<crate::code_block::Code>),
+}
+
+/// Represents a function definition
 pub struct Definition {
     definition: DefinitionRecord,
+    body: lazy_init::Lazy<Result<Body, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Definition {
     pub(crate) fn new(definition: DefinitionRecord, module: Weak<module::Module>) -> Arc<Self> {
-        Arc::new(Self { definition, module })
+        Arc::new(Self {
+            definition,
+            body: Default::default(),
+            module,
+        })
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
@@ -146,6 +158,20 @@ impl Definition {
 
     pub fn record(&self) -> &record::FunctionDefinition<'static> {
         &self.definition
+    }
+
+    pub fn body(&self) -> Result<Body, error::LoaderError> {
+        self.body
+            .get_or_create(|| match self.definition.body() {
+                record::FunctionBody::Definition(code) => {
+                    let module = module::Module::upgrade_weak(&self.module)?;
+                    Ok(Body::Defined(module.get_code_block(*code)?.clone()))
+                }
+                record::FunctionBody::Foreign { .. } => todo!("foreign function bodies not yet supported"),
+            })
+            .as_ref()
+            .cloned()
+            .map_err(Clone::clone)
     }
 
     pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
@@ -159,7 +185,10 @@ impl Definition {
 
 impl Debug for Definition {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Definition").field("definition", &self.definition).finish()
+        f.debug_struct("Definition")
+            .field("definition", &self.definition)
+            .field("body", &self.body)
+            .finish()
     }
 }
 

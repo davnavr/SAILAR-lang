@@ -50,11 +50,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let state = sailar_load::State::new();
-    let module = state.force_load_module(sailar_load::source::RecordIteratorSource::new(program.drain(..)))?.unwrap();
+    let module = state
+        .force_load_module(sailar_load::source::RecordIteratorSource::new(program.drain(..)))?
+        .unwrap();
 
     println!("{:?}", module);
 
     let main = module.get_function_definition(0usize.into())?;
+    let code = main.body()?;
 
     println!("{:?}", main);
 
