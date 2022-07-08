@@ -102,9 +102,19 @@ pub enum Instruction {
     Nop,
 }
 
+impl Instruction {
+    pub fn is_terminator(&self) -> bool {
+        match self {
+            // => true,
+            _ => false,
+        }
+    }
+}
+
 pub struct Code {
     record: Box<Record>,
     register_types: type_system::LazySignatureList,
+    instructions: lazy_init::Lazy<Result<Vec<Instruction>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
@@ -113,6 +123,7 @@ impl Code {
         Arc::new(Self {
             record,
             register_types: Default::default(),
+            instructions: Default::default(),
             module,
         })
     }
@@ -143,6 +154,43 @@ impl Code {
     pub fn temporary_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.register_types()
             .map(|types| &types[self.record.input_count() + self.record.result_count()..])
+    }
+
+    fn validate_body(self: &Arc<Self>) -> Result<Vec<Instruction>, error::LoaderError> {
+        let module = module::Module::upgrade_weak(&self.module)?;
+        let instruction_count = self.record.instructions().len();
+        let mut instructions = Vec::with_capacity(instruction_count);
+
+        for (index, op) in self.record.instructions().iter().enumerate() {
+            instructions.push(match op {
+                UnvalidatedInstruction::Nop => Instruction::Nop,
+                bad => todo!("support {:?}", bad),
+            });
+        }
+
+        match instructions.last() {
+            Some(terminator) if terminator.is_terminator() => (),
+            Some(_) => {
+                return Err(InvalidInstructionError::new(
+                    InvalidInstructionKind::ExpectedTerminator,
+                    instruction_count - 1,
+                    self.record.instructions().last().unwrap().clone(),
+                    self.clone(),
+                )
+                .into())
+            }
+            None => todo!("error for empty block")
+        }
+
+        Ok(instructions)
+    }
+
+    pub fn instructions<'a>(self: &'a Arc<Self>) -> Result<&'a [Instruction], error::LoaderError> {
+        self.instructions
+            .get_or_create(|| self.validate_body())
+            .as_ref()
+            .map(|instructions| instructions.as_slice())
+            .map_err(Clone::clone)
     }
 }
 
