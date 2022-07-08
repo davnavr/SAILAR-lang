@@ -64,6 +64,10 @@ impl Signature {
             .map(|types| types.borrow())
             .map_err(Clone::clone)
     }
+
+    pub fn return_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
+        self.types().map(|types| &types[0..self.record().return_types().len()])
+    }
 }
 
 impl Debug for Signature {

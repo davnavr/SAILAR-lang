@@ -1,5 +1,6 @@
 //! Module for interacting with SAILAR binary modules.
 
+use crate::code_block;
 use crate::error;
 use crate::function;
 use crate::symbol::{DuplicateSymbolError, Symbol};
@@ -57,10 +58,11 @@ impl Debug for SymbolLookup {
 pub struct Module {
     loader: Weak<crate::State>, // TODO: Have this be a reference to a module import resolver instead?
     module_identifier: Option<Arc<ModuleIdentifier>>,
+    symbols: SymbolLookup,
     identifiers: Vec<Cow<'static, Id>>,
     type_signatures: Vec<Arc<type_system::Signature>>,
     function_signatures: Vec<Arc<function::Signature>>,
-    symbols: SymbolLookup,
+    code_blocks: Vec<Arc<code_block::Code>>,
     function_definitions: Vec<Arc<function::Definition>>,
     //function_instantiations: Vec<Arc<function::Instantiation>>,
 }
@@ -72,12 +74,13 @@ impl Module {
             let mut module = Self {
                 loader,
                 module_identifier: None,
-                identifiers: Vec::default(),
-                type_signatures: Vec::default(),
-                function_signatures: Vec::default(),
                 symbols: SymbolLookup {
                     lookup: Default::default(),
                 },
+                identifiers: Vec::default(),
+                type_signatures: Vec::default(),
+                function_signatures: Vec::default(),
+                code_blocks: Vec::default(),
                 function_definitions: Vec::default(),
                 //function_instantiations: Vec::default(),
             };
@@ -97,6 +100,9 @@ impl Module {
                     Record::FunctionSignature(signature) => module
                         .function_signatures
                         .push(function::Signature::new(signature, this.clone())),
+                    Record::CodeBlock(code) => module
+                        .code_blocks
+                        .push(code_block::Code::new(code.into_boxed(), this.clone())),
                     Record::FunctionDefinition(definition) => {
                         let function = function::Definition::new(definition, this.clone());
                         module
@@ -122,12 +128,16 @@ impl Module {
         }
     }
 
+    /// Attempts to upgrade a [`Weak`] pointer to a [`Module`], returning a [`LoaderError`] if the module was dropped.
+    ///
+    /// [`Weak`]: std::sync::Weak
+    /// [`LoaderError`]: error::LoaderError
     pub(crate) fn upgrade_weak(this: &Weak<Self>) -> Result<Arc<Self>, error::LoaderError> {
         this.upgrade()
             .ok_or_else(|| error::LoaderError::new(error::DroppedError::new(())))
     }
 
-    /// Indicates if the module has an identifier (a name and version).
+    /// Returns `false` if the module has an identifier (a name and version); otherwise, `true`.
     pub fn is_anonymous(&self) -> bool {
         self.module_identifier.is_none()
     }
@@ -167,6 +177,10 @@ impl Module {
         self.get_with_index_check(index, &self.type_signatures)
     }
 
+    pub fn function_signatures(&self) -> &[Arc<function::Signature>] {
+        &self.function_signatures
+    }
+
     pub fn function_definitions(&self) -> &[Arc<function::Definition>] {
         &self.function_definitions
     }
@@ -180,9 +194,10 @@ impl Debug for Module {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Module")
             .field("module_identifier", &self.module_identifier)
+            .field("symbols", &self.symbols)
             .field("identifiers", &self.identifiers)
             .field("type_signatures", &self.type_signatures)
-            .field("symbols", &self.symbols)
+            .field("function_signatures", &self.function_signatures)
             .field("function_definitions", &self.function_definitions)
             .finish()
     }

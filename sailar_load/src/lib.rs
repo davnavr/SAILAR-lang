@@ -4,6 +4,7 @@
 
 mod state;
 
+pub mod code_block;
 pub mod error;
 pub mod function;
 pub mod module;
