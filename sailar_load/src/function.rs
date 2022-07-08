@@ -52,15 +52,13 @@ impl Signature {
     /// Returns the function signature's return types and parameter types.
     pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.types
-            .get_or_create(|| match self.module.upgrade() {
-                Some(module) => {
-                    let mut types = Vec::with_capacity(self.signature.types().len());
-                    for index in self.signature.types().iter().copied() {
-                        types.push(module.get_type_signature(index)?.clone());
-                    }
-                    Ok(types.into_boxed_slice())
+            .get_or_create(|| {
+                let module = module::Module::upgrade_weak(&self.module)?;
+                let mut types = Vec::with_capacity(self.signature.types().len());
+                for index in self.signature.types().iter().copied() {
+                    types.push(module.get_type_signature(index)?.clone());
                 }
-                None => todo!("handle missing module"),
+                Ok(types.into_boxed_slice())
             })
             .as_ref()
             .map(|types| types.borrow())

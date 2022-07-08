@@ -122,6 +122,11 @@ impl Module {
         }
     }
 
+    pub(crate) fn upgrade_weak(this: &Weak<Self>) -> Result<Arc<Self>, error::LoaderError> {
+        this.upgrade()
+            .ok_or_else(|| error::LoaderError::new(error::DroppedError::new(())))
+    }
+
     /// Indicates if the module has an identifier (a name and version).
     pub fn is_anonymous(&self) -> bool {
         self.module_identifier.is_none()

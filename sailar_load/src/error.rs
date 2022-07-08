@@ -5,46 +5,6 @@ use sailar::index;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-macro_rules! index_not_found_error {
-    ($(#[$meta:meta])* $vis:vis struct $name:ident($index:ty);) => {
-        $(#[$meta])*
-        $vis struct $name {
-            index: $index,
-            module: Arc<Module>,
-        }
-
-        impl $name {
-            pub(crate) fn new(index: $index, module: Arc<Module>) -> Self {
-                Self { index, module }
-            }
-
-            pub fn index(&self) -> $index {
-                self.index
-            }
-
-            /// Gets the module that was used to resolve the index.
-            pub fn module(&self) -> &Arc<Module> {
-                &self.module
-            }
-        }
-    };
-}
-
-index_not_found_error! {
-    #[derive(Clone, Debug, thiserror::Error)]
-    pub struct TypeSignatureNotFoundError(index::TypeSignature);
-}
-
-impl Display for TypeSignatureNotFoundError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "a type signature corresponding to the index {:?} could not be found in module",
-            self.index
-        )
-    }
-}
-
 pub(crate) trait IndexType: Into<usize> + Copy {
     fn kind() -> &'static str;
 }
@@ -153,7 +113,13 @@ impl Display for InvalidModuleError {
 /// the code.
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("weak reference to data is no longer valid")]
-pub struct DroppedError;
+pub struct DroppedError(());
+
+impl DroppedError {
+    pub(crate) fn new(x: ()) -> Self {
+        Self(x)
+    }
+}
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
