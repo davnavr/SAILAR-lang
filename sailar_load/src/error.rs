@@ -59,6 +59,8 @@ impl Display for InvalidIndexError {
 pub enum InvalidModuleKind {
     #[error(transparent)]
     InvalidIndex(#[from] InvalidIndexError),
+    #[error(transparent)]
+    InvalidCode(#[from] crate::code_block::InvalidInstructionError),
 }
 
 #[derive(Clone)]
@@ -113,7 +115,7 @@ impl Display for InvalidModuleError {
 ///
 /// In application code, this error is handled by immediately stopping execution as this error usually indicates a bug in
 /// the code.
-/// 
+///
 /// [`Weak`]: std::sync::Weak
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("weak reference to data is no longer valid")]

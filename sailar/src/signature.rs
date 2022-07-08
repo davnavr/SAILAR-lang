@@ -93,8 +93,7 @@ impl Function {
         let parameter_types: CowBox<'a, _> = Into::into(parameter_types);
         let return_types: CowBox<'a, [index::TypeSignature]> = Into::into(return_types);
         let return_type_count = return_types.len();
-        let types = 
-        if parameter_types.is_empty() {
+        let types = if parameter_types.is_empty() {
             return_types.into_boxed()
         } else if return_types.is_empty() {
             parameter_types.into_boxed()

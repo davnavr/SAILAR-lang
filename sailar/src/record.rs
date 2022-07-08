@@ -224,7 +224,7 @@ impl<'a> CodeBlock<'a> {
         A: Into<CowBox<'a, [index::TypeSignature]>>,
         R: Into<CowBox<'a, [index::TypeSignature]>>,
         T: Into<CowBox<'a, [index::TypeSignature]>>,
-        I: Into<CowBox<'a, [instruction::Instruction]>>
+        I: Into<CowBox<'a, [instruction::Instruction]>>,
     {
         let input_types: CowBox<'a, [_]> = input_types.into();
         let result_types: CowBox<'a, [_]> = result_types.into();
@@ -239,13 +239,21 @@ impl<'a> CodeBlock<'a> {
             } else if input_types.is_empty() && result_types.is_empty() {
                 temporary_types
             } else {
-                CowBox::Boxed(input_types.iter().copied().chain(result_types.iter().copied()).chain(temporary_types.iter().copied()).collect())
+                CowBox::Boxed(
+                    input_types
+                        .iter()
+                        .copied()
+                        .chain(result_types.iter().copied())
+                        .chain(temporary_types.iter().copied())
+                        .collect(),
+                )
             }
         };
 
         Self::from_types(register_types, input_count, result_count, instructions.into())
     }
 
+    /// Contains the types of all input registers, results, and temporary registers in that order.
     pub fn register_types(&self) -> &[index::TypeSignature] {
         std::borrow::Borrow::borrow(&self.register_types)
     }
