@@ -22,7 +22,7 @@ pub trait Resolver {
 
 /// A module import resolver that never successfully retrieves a module.
 ///
-/// Obtained by calling [`empty()`].
+/// Obtained by calling [`unsuccessful()`].
 #[derive(Clone, Copy, Debug, Default)]
 #[non_exhaustive]
 pub struct Unsuccessful;

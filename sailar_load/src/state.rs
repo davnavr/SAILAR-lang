@@ -34,7 +34,9 @@ impl State {
     }
 
     /// Creates a new [`State`] with no loaded modules and no import resolver. New modules can only be loaded by calling
-    /// [`force_load_modules`].
+    /// [`force_load_module`].
+    /// 
+    /// [`force_load_module`]: State::force_load_module
     #[inline]
     pub fn new() -> Arc<Self> {
         Self::with_resolver(resolver::unsuccessful())
