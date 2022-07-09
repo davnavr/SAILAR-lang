@@ -23,6 +23,7 @@ index_type_impl!(index::TypeSignature, "type signature");
 index_type_impl!(index::FunctionSignature, "function signature");
 index_type_impl!(index::CodeBlock, "code block");
 index_type_impl!(index::FunctionTemplate, "function template");
+index_type_impl!(index::FunctionInstantiation, "function instantiation");
 index_type_impl!(index::Register, "register");
 
 /// The error type used when an index in a module is not valid.

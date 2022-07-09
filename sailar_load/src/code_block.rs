@@ -163,10 +163,7 @@ pub enum Instruction {
 
 impl Instruction {
     pub fn is_terminator(&self) -> bool {
-        match self {
-            Self::Ret(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Ret(_))
     }
 }
 
@@ -253,7 +250,7 @@ impl Code {
 
     fn validate_body(self: &Arc<Self>) -> Result<Vec<Instruction>, error::LoaderError> {
         struct Validator<'a> {
-            module: Arc<module::Module>,
+            _module: Arc<module::Module>,
             index: Option<usize>,
             source: &'a [Op],
             instructions: Vec<Instruction>,
@@ -264,7 +261,7 @@ impl Code {
             fn new(code: &'a Arc<Code>) -> Result<Self, error::LoaderError> {
                 let source = code.record.instructions();
                 Ok(Self {
-                    module: module::Module::upgrade_weak(&code.module)?,
+                    _module: module::Module::upgrade_weak(&code.module)?,
                     index: None,
                     instructions: Vec::with_capacity(source.len()),
                     source,

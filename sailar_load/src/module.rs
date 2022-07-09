@@ -55,9 +55,13 @@ impl Debug for SymbolLookup {
     }
 }
 
+type LazyEntryPoint =
+    Option<lazy_init::LazyTransform<index::FunctionInstantiation, Result<Arc<function::Instantiation>, error::LoaderError>>>;
+
 pub struct Module {
     loader: Weak<crate::State>,
     module_identifier: Option<Arc<ModuleIdentifier>>,
+    entry_point: LazyEntryPoint,
     symbols: SymbolLookup,
     identifiers: Vec<Cow<'static, Id>>,
     type_signatures: Vec<Arc<type_system::Signature>>,
@@ -75,6 +79,7 @@ impl Module {
             let mut module = Self {
                 loader,
                 module_identifier: None,
+                entry_point: None,
                 symbols: SymbolLookup {
                     lookup: Default::default(),
                 },
@@ -91,6 +96,9 @@ impl Module {
                     Record::MetadataField(field) => match field {
                         record::MetadataField::ModuleIdentifier(identifier) => {
                             module.module_identifier = Some(Arc::new(identifier))
+                        }
+                        record::MetadataField::EntryPoint(index) => {
+                            module.entry_point = Some(lazy_init::LazyTransform::new(index))
                         }
                         bad => todo!("unknown metadata field {:?}", bad),
                     },
@@ -160,6 +168,17 @@ impl Module {
         self.module_identifier.as_ref()
     }
 
+    pub fn entry_point<'a>(self: &'a Arc<Self>) -> Result<Option<&'a Arc<function::Instantiation>>, error::LoaderError> {
+        match &self.entry_point {
+            None => Ok(None),
+            Some(entry_point) => entry_point
+                .get_or_create(|index| self.get_function_instantiation(index).map(Clone::clone))
+                .as_ref()
+                .map(Some)
+                .map_err(Clone::clone),
+        }
+    }
+
     fn fail_index_check<I: error::IndexType>(self: &Arc<Self>, index: I, maximum: Option<usize>) -> error::LoaderError {
         error::InvalidModuleError::new(error::InvalidIndexError::new(index, maximum), self.clone()).into()
     }
@@ -211,15 +230,15 @@ impl Module {
         &self.function_definitions
     }
 
-    pub fn get_function_definition<'a>(
-        self: &'a Arc<Self>,
-        index: index::TypeSignature,
-    ) -> Result<&'a Arc<function::Definition>, error::LoaderError> {
-        self.get_with_index_check(index, &self.function_definitions)
-    }
-
     pub fn function_instantiations(&self) -> &[Arc<function::Instantiation>] {
         &self.function_instantiations
+    }
+
+    pub fn get_function_instantiation<'a>(
+        self: &'a Arc<Self>,
+        index: index::FunctionInstantiation,
+    ) -> Result<&'a Arc<function::Instantiation>, error::LoaderError> {
+        self.get_with_index_check(index, &self.function_instantiations)
     }
 
     pub fn get_function_template(
