@@ -57,7 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.into_records()
     };
 
-    let state = sailar_load::State::new();
+    let state = sailar_load::state::Builder::new().create();
+
     let module = state
         .force_load_module(sailar_load::source::RecordIteratorSource::new(program.drain(..)))?
         .unwrap();

@@ -3,6 +3,7 @@
 use crate::code_block;
 use crate::error;
 use crate::function;
+use crate::state::State;
 use crate::symbol::{DuplicateSymbolError, Symbol};
 use crate::type_system;
 use sailar::identifier::Id;
@@ -59,7 +60,7 @@ type LazyEntryPoint =
     Option<lazy_init::LazyTransform<index::FunctionInstantiation, Result<Arc<function::Instantiation>, error::LoaderError>>>;
 
 pub struct Module {
-    loader: Weak<crate::State>,
+    loader: Weak<State>,
     module_identifier: Option<Arc<ModuleIdentifier>>,
     entry_point: LazyEntryPoint,
     symbols: SymbolLookup,
@@ -73,7 +74,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub(crate) fn from_source<S: crate::Source>(source: S, loader: Weak<crate::State>) -> Result<Arc<Self>, S::Error> {
+    pub(crate) fn from_source<S: crate::Source>(source: S, loader: Weak<State>) -> Result<Arc<Self>, S::Error> {
         let mut error = None;
         let module = Arc::new_cyclic(|this| {
             let mut module = Self {
@@ -155,7 +156,7 @@ impl Module {
         self.module_identifier.is_none()
     }
 
-    pub fn loader(&self) -> &Weak<crate::State> {
+    pub fn loader(&self) -> &Weak<State> {
         &self.loader
     }
 

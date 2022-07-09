@@ -7,6 +7,39 @@ use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 
+/// Indicates the size of pointer addresses.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(transparent)]
+pub struct AddressSize(std::num::NonZeroU16);
+
+impl AddressSize {
+    pub const fn with_byte_size(size: std::num::NonZeroU16) -> Self {
+        Self(size)
+    }
+
+    pub const fn byte_size(self) -> std::num::NonZeroU16 {
+        self.0
+    }
+
+    pub const fn bit_size(self) -> std::num::NonZeroU32 {
+        unsafe {
+            // Safety: Address size is guaranteed to never be zero.
+            std::num::NonZeroU32::new_unchecked((self.0.get() as u32) * 8)
+        }
+    }
+
+    pub const NATIVE: Self = unsafe {
+        // Safety: Size of pointers in Rust is assumed to never be zero.
+        Self::with_byte_size(std::num::NonZeroU16::new_unchecked(std::mem::size_of::<usize>() as u16))
+    };
+}
+
+impl Default for AddressSize {
+    fn default() -> Self {
+        Self::NATIVE
+    }
+}
+
 type ModuleLookup = rustc_hash::FxHashMap<Arc<module::ModuleIdentifier>, Arc<module::Module>>;
 
 #[derive(Debug, Default)]
@@ -19,33 +52,64 @@ pub struct State {
     // Each individual module will cache its imported modules, so accessing this lookup should rarely happen
     modules: Mutex<ModuleArena>,
     resolver: Mutex<resolver::BoxedResolver>,
-    address_size: std::num::NonZeroU8,
+    address_size: AddressSize,
 }
 
-impl State {
-    pub fn with_resolver<R>(resolver: R, address_size: std::num::NonZeroU8) -> Arc<Self>
+pub struct Builder {
+    resolver: Option<resolver::BoxedResolver>,
+    address_size: AddressSize,
+}
+
+impl Builder {
+    /// The default loader configuration using the native pointer address size. New modules can
+    /// only be loaded by calling [`force_load_module`].
+    ///
+    /// [`force_load_module`]: State::force_load_module
+    pub fn new() -> Self {
+        Self {
+            resolver: None,
+            address_size: AddressSize::NATIVE,
+        }
+    }
+
+    /// Sets the resolver used to retrieve the modules corresponding to module imports.
+    pub fn resolver<R>(self, resolver: R) -> Self
     where
         R: Resolver + Send + 'static,
         R::Error: std::error::Error,
     {
-        Arc::new(Self {
+        Self {
+            resolver: Some(resolver::boxed(resolver)),
+            ..self
+        }
+    }
+
+    /// Sets the byte size used for pointer addresses.
+    pub fn address_size(self, size: AddressSize) -> Self {
+        Self {
+            address_size: size,
+            ..self
+        }
+    }
+
+    pub fn create(self) -> Arc<State> {
+        Arc::new(State {
             modules: Default::default(),
-            resolver: Mutex::new(resolver::boxed(resolver)),
-            address_size,
+            resolver: Mutex::new(self.resolver.unwrap_or_else(|| resolver::boxed(resolver::unsuccessful()))),
+            address_size: self.address_size,
         })
     }
+}
 
-    /// Creates a new [`State`] with no loaded modules, no import resolver, and the native pointer address size. New modules can
-    /// only be loaded by calling [`force_load_module`].
-    ///
-    /// [`force_load_module`]: State::force_load_module
-    pub fn new() -> Arc<Self> {
-        Self::with_resolver(
-            resolver::unsuccessful(),
-            std::num::NonZeroU8::new(u8::try_from(std::mem::size_of::<usize>()).unwrap()).unwrap(),
-        )
+impl Default for Builder {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
+impl State {
+    /// Loads a module, attempting to associate its name and version (if present) with the loaded module. Returns `Err` if a
+    /// module corresponding to the same name is already loaded.
     pub fn force_load_module<S: crate::Source>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error> {
         let module = module::Module::from_source(source, Arc::downgrade(self))?;
         let mut arena = self.modules.lock().unwrap();
@@ -89,9 +153,9 @@ impl State {
         }
     }
 
-    /// Gets the size of pointer addresses, in bytes.
-    pub fn address_byte_size(&self) -> std::num::NonZeroU16 {
-        self.address_size.into()
+    /// Gets the size of pointer addresses for all modules loaded by this [`State`].
+    pub fn address_size(&self) -> AddressSize {
+        self.address_size
     }
 }
 
