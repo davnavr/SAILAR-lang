@@ -11,7 +11,7 @@ use std::sync::{Arc, Weak};
 type Record = record::CodeBlock<'static>;
 
 /// A SAILAR instruction that has not yet been type checked.
-pub type UnvalidatedInstruction = instruction::Instruction;
+type Op = instruction::Instruction;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -24,7 +24,7 @@ pub enum InvalidInstructionKind {
 pub struct InvalidInstructionErrorInner {
     kind: InvalidInstructionKind,
     index: usize,
-    instruction: UnvalidatedInstruction,
+    instruction: Op,
     code_block: Arc<Code>,
 }
 
@@ -32,12 +32,7 @@ pub struct InvalidInstructionErrorInner {
 pub struct InvalidInstructionError(Box<InvalidInstructionErrorInner>);
 
 impl InvalidInstructionError {
-    fn new<E: Into<InvalidInstructionKind>>(
-        kind: E,
-        index: usize,
-        instruction: UnvalidatedInstruction,
-        code_block: Arc<Code>,
-    ) -> Self {
+    fn new<E: Into<InvalidInstructionKind>>(kind: E, index: usize, instruction: Op, code_block: Arc<Code>) -> Self {
         Self(Box::new(InvalidInstructionErrorInner {
             kind: kind.into(),
             index,
@@ -54,7 +49,7 @@ impl InvalidInstructionError {
         self.0.index
     }
 
-    pub fn instruction(&self) -> &UnvalidatedInstruction {
+    pub fn instruction(&self) -> &Op {
         &self.0.instruction
     }
 
@@ -96,10 +91,23 @@ impl std::fmt::Display for InvalidInstructionError {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct TypedValue {
+    value_type: (),
+    value: instruction::Value,
+}
+
+impl TypedValue {
+    pub fn raw_value(&self) -> &instruction::Value {
+        &self.value
+    }
+}
+
 /// Represents a type checked SAILAR instruction.
 #[derive(Clone, Debug)]
 pub enum Instruction {
     Nop,
+    Break,
 }
 
 impl Instruction {
@@ -156,14 +164,41 @@ impl Code {
             .map(|types| &types[self.record.input_count() + self.record.result_count()..])
     }
 
+    pub fn get_register_type(&self, index: sailar::index::Register) -> Result<&Arc<type_system::Signature>, error::LoaderError> {
+        // Register types will fail to load if module is dropped, so expecting a module here is ok
+        let module = module::Module::upgrade_weak(&self.module)?;
+        let types = self.register_types()?;
+        let i = usize::from(index);
+        if types.is_empty() {
+            Err(error::InvalidModuleError::new(error::InvalidIndexError::new(index, None), module).into())
+        } else {
+            let input_types = self.input_types()?;
+            if i < input_types.len() {
+                Ok(&input_types[i])
+            } else {
+                let temporary_types = self.temporary_types()?;
+                temporary_types.get(i - input_types.len()).ok_or_else(|| {
+                    error::InvalidModuleError::new(
+                        error::InvalidIndexError::new(index, Some(input_types.len() + temporary_types.len() - 1)),
+                        module,
+                    )
+                    .into()
+                })
+            }
+        }
+    }
+
     fn validate_body(self: &Arc<Self>) -> Result<Vec<Instruction>, error::LoaderError> {
         let module = module::Module::upgrade_weak(&self.module)?;
         let instruction_count = self.record.instructions().len();
         let mut instructions = Vec::with_capacity(instruction_count);
 
+        let type_check_value = |value: &instruction::Value| {};
+
         for (index, op) in self.record.instructions().iter().enumerate() {
             instructions.push(match op {
-                UnvalidatedInstruction::Nop => Instruction::Nop,
+                Op::Nop => Instruction::Nop,
+                Op::Break => Instruction::Break,
                 bad => todo!("support {:?}", bad),
             });
         }
@@ -179,7 +214,7 @@ impl Code {
                 )
                 .into())
             }
-            None => todo!("error for empty block")
+            None => todo!("error for empty block"),
         }
 
         Ok(instructions)

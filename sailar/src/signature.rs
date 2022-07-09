@@ -122,7 +122,7 @@ impl Function {
     }
 }
 
-/// Represents a type signature
+/// Represents a type signature.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
     /// Unsigned 8-bit integer.
