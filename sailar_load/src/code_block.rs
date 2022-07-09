@@ -292,7 +292,7 @@ impl Code {
                 expected: type_system::Type,
             ) -> Result<TypedValue, error::LoaderError> {
                 match value {
-                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => todo!(),
+                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => todo!("integer types"),
                     instruction::Value::IndexedRegister(index) => {
                         let register_type = type_system::Type::Signature(self.code.get_register_type(*index)?.clone());
                         if register_type == expected {

@@ -31,6 +31,7 @@ impl State {
         Arc::new(Self {
             modules: Default::default(),
             resolver: Mutex::new(resolver::boxed(resolver)),
+            address_size,
         })
     }
 

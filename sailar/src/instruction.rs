@@ -36,7 +36,6 @@ impl Display for ConstantInteger {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
 pub enum Constant {
     Integer(ConstantInteger),
 }
@@ -50,7 +49,6 @@ impl Display for Constant {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
 pub enum Value {
     Constant(Constant),
     IndexedRegister(index::Register),
