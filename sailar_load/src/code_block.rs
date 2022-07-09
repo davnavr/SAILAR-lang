@@ -13,30 +13,72 @@ type Record = record::CodeBlock<'static>;
 /// A SAILAR instruction that has not yet been type checked.
 type Op = instruction::Instruction;
 
+/// Error type used when the type of a value does not match what was expected
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("expected type {expected} for value {value}, but got {actual}")]
+pub struct ValueTypeMismatchError {
+    expected: type_system::Type,
+    actual: type_system::Type,
+    value: instruction::Value,
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("expected {expected} values, but got {actual}")]
+pub struct ValueCountMismatchError {
+    expected: usize,
+    actual: usize,
+}
+
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum InvalidInstructionKind {
     #[error("expected terminator instruction at end of block")]
     ExpectedTerminator,
+    #[error(transparent)]
+    ExpectedTypeMismatch(#[from] ValueTypeMismatchError),
+    #[error(transparent)]
+    ValueCountMismatch(#[from] ValueCountMismatchError),
+}
+
+#[derive(Clone, Debug)]
+pub struct InstructionLocation {
+    index: usize,
+    instruction: Op,
+}
+
+impl InstructionLocation {
+    fn new(index: usize, instruction: Op) -> Self {
+        Self { index, instruction }
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn instruction(&self) -> &sailar::instruction::Instruction {
+        &self.instruction
+    }
 }
 
 #[derive(Clone)]
 pub struct InvalidInstructionErrorInner {
-    kind: InvalidInstructionKind,
-    index: usize,
-    instruction: Op,
     code_block: Arc<Code>,
+    location: Option<InstructionLocation>,
+    kind: InvalidInstructionKind,
 }
 
 #[derive(Clone, thiserror::Error)]
 pub struct InvalidInstructionError(Box<InvalidInstructionErrorInner>);
 
 impl InvalidInstructionError {
-    fn new<E: Into<InvalidInstructionKind>>(kind: E, index: usize, instruction: Op, code_block: Arc<Code>) -> Self {
+    fn new<E, L>(kind: E, location: L, code_block: Arc<Code>) -> Self
+    where
+        E: Into<InvalidInstructionKind>,
+        L: Into<Option<InstructionLocation>>,
+    {
         Self(Box::new(InvalidInstructionErrorInner {
             kind: kind.into(),
-            index,
-            instruction,
+            location: location.into(),
             code_block,
         }))
     }
@@ -45,12 +87,8 @@ impl InvalidInstructionError {
         &self.0.kind
     }
 
-    pub fn index(&self) -> usize {
-        self.0.index
-    }
-
-    pub fn instruction(&self) -> &Op {
-        &self.0.instruction
+    pub fn location(&self) -> Option<&InstructionLocation> {
+        self.0.location.as_ref()
     }
 
     pub fn code_block(&self) -> &Arc<Code> {
@@ -75,19 +113,23 @@ impl Debug for InvalidInstructionError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("InvalidInstructionError")
             .field("kind", &self.0.kind)
-            .field("index", &self.0.index)
-            .field("instruction", &self.0.instruction)
+            .field("location", &self.0.location)
             .finish()
     }
 }
 
 impl std::fmt::Display for InvalidInstructionError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "instruction {:?} at index {} is invalid, {}",
-            &self.0.instruction, self.0.index, &self.0.kind
-        )
+        match self.location() {
+            None => std::fmt::Display::fmt(self.kind(), f),
+            Some(location) => write!(
+                f,
+                "instruction {:?} at index {} is invalid, {}",
+                &location.instruction,
+                location.index,
+                self.kind()
+            ),
+        }
     }
 }
 
@@ -98,6 +140,10 @@ pub struct TypedValue {
 }
 
 impl TypedValue {
+    fn new(value_type: type_system::Type, value: instruction::Value) -> Self {
+        Self { value_type, value }
+    }
+
     pub fn value_type(&self) -> &type_system::Type {
         &self.value_type
     }
@@ -112,6 +158,7 @@ impl TypedValue {
 pub enum Instruction {
     Nop,
     Break,
+    Ret(Box<[TypedValue]>),
 }
 
 impl Instruction {
@@ -192,36 +239,112 @@ impl Code {
         }
     }
 
+    fn fail_instruction_validation<E: Into<InvalidInstructionKind>>(
+        self: &Arc<Self>,
+        kind: E,
+        index: Option<usize>,
+    ) -> InvalidInstructionError {
+        InvalidInstructionError::new(
+            kind,
+            index.map(|index| InstructionLocation::new(index, self.record.instructions().get(index).unwrap().clone())),
+            self.clone(),
+        )
+    }
+
     fn validate_body(self: &Arc<Self>) -> Result<Vec<Instruction>, error::LoaderError> {
-        let module = module::Module::upgrade_weak(&self.module)?;
-        let instruction_count = self.record.instructions().len();
-        let mut instructions = Vec::with_capacity(instruction_count);
+        struct Validator<'a> {
+            module: Arc<module::Module>,
+            index: Option<usize>,
+            source: &'a [Op],
+            instructions: Vec<Instruction>,
+            code: &'a Arc<Code>,
+        }
 
-        let type_check_value = |value: &instruction::Value| {};
+        impl<'a> Validator<'a> {
+            fn new(code: &'a Arc<Code>) -> Result<Self, error::LoaderError> {
+                let source = code.record.instructions();
+                Ok(Self {
+                    module: module::Module::upgrade_weak(&code.module)?,
+                    index: None,
+                    instructions: Vec::with_capacity(source.len()),
+                    source,
+                    code,
+                })
+            }
 
-        for (index, op) in self.record.instructions().iter().enumerate() {
-            instructions.push(match op {
+            fn next_instruction(&mut self) -> Option<&'a Op> {
+                let current_index = match self.index {
+                    None => 0,
+                    Some(index) => index + 1,
+                };
+
+                self.index = Some(current_index);
+                self.source.get(current_index)
+            }
+
+            fn fail_validation<E: Into<InvalidInstructionKind>>(&self, kind: E) -> error::LoaderError {
+                self.code.fail_instruction_validation(kind, self.index).into()
+            }
+
+            fn check_value(
+                &self,
+                value: &instruction::Value,
+                expected: type_system::Type,
+            ) -> Result<TypedValue, error::LoaderError> {
+                match value {
+                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => todo!(),
+                    instruction::Value::IndexedRegister(index) => {
+                        let register_type = type_system::Type::Signature(self.code.get_register_type(*index)?.clone());
+                        if register_type == expected {
+                            Ok(TypedValue::new(register_type, value.clone()))
+                        } else {
+                            Err(self.fail_validation(ValueTypeMismatchError {
+                                value: value.clone(),
+                                expected,
+                                actual: register_type,
+                            }))
+                        }
+                    }
+                }
+            }
+
+            fn check_many_values(
+                &self,
+                values: &[instruction::Value],
+                expected: &[Arc<type_system::Signature>],
+            ) -> Result<Box<[TypedValue]>, error::LoaderError> {
+                if values.len() != expected.len() {
+                    return Err(self.fail_validation(ValueCountMismatchError {
+                        expected: expected.len(),
+                        actual: values.len(),
+                    }));
+                }
+
+                values
+                    .iter()
+                    .zip(expected)
+                    .map(|(v, e)| self.check_value(v, e.clone().into()))
+                    .collect()
+            }
+        }
+
+        let mut validator = Validator::new(self)?;
+
+        while let Some(op) = validator.next_instruction() {
+            validator.instructions.push(match op {
                 Op::Nop => Instruction::Nop,
                 Op::Break => Instruction::Break,
+                Op::Ret(values) => Instruction::Ret(validator.check_many_values(values, self.result_types()?)?),
                 bad => todo!("support {:?}", bad),
             });
         }
 
-        match instructions.last() {
+        match validator.instructions.last() {
             Some(terminator) if terminator.is_terminator() => (),
-            Some(_) => {
-                return Err(InvalidInstructionError::new(
-                    InvalidInstructionKind::ExpectedTerminator,
-                    instruction_count - 1,
-                    self.record.instructions().last().unwrap().clone(),
-                    self.clone(),
-                )
-                .into())
-            }
-            None => todo!("error for empty block"),
+            _ => return Err(validator.fail_validation(InvalidInstructionKind::ExpectedTerminator)),
         }
 
-        Ok(instructions)
+        Ok(validator.instructions)
     }
 
     pub fn instructions<'a>(self: &'a Arc<Self>) -> Result<&'a [Instruction], error::LoaderError> {

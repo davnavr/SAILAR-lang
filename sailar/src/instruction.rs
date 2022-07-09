@@ -1,7 +1,7 @@
 //! Representation of the SAILAR instruction set encoding.
 
 use crate::index;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
@@ -24,10 +24,29 @@ impl Debug for ConstantInteger {
     }
 }
 
+impl Display for ConstantInteger {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::I8(value) => write!(f, "{:#02X}", value),
+            Self::I16(value) => write!(f, "{:#04X}", u16::from_le_bytes(*value)),
+            Self::I32(value) => write!(f, "{:#08X}", u32::from_le_bytes(*value)),
+            Self::I64(value) => write!(f, "{:#016X}", u64::from_le_bytes(*value)),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Constant {
     Integer(ConstantInteger),
+}
+
+impl Display for Constant {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Integer(integer) => Display::fmt(integer, f),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -35,6 +54,15 @@ pub enum Constant {
 pub enum Value {
     Constant(Constant),
     IndexedRegister(index::Register),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Constant(constant) => Display::fmt(constant, f),
+            Self::IndexedRegister(register) => write!(f, "#{}", usize::from(*register)),
+        }
+    }
 }
 
 impl From<index::Register> for Value {

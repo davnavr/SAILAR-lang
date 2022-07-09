@@ -56,7 +56,7 @@ impl Debug for SymbolLookup {
 }
 
 pub struct Module {
-    loader: Weak<crate::State>, // TODO: Have this be a reference to a module import resolver instead?
+    loader: Weak<crate::State>,
     module_identifier: Option<Arc<ModuleIdentifier>>,
     symbols: SymbolLookup,
     identifiers: Vec<Cow<'static, Id>>,

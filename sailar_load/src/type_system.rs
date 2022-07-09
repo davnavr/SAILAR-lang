@@ -5,7 +5,7 @@ use crate::module;
 use sailar::index;
 use sailar::signature;
 use std::cmp::PartialEq;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Weak};
 
 pub use signature::{IntegerSign, IntegerSize, IntegerType};
@@ -41,6 +41,18 @@ impl Type {
                     .clone(),
             ),
         })
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::FixedInteger(ty) => Display::fmt(ty, f),
+            Self::UAddr => f.write_str("uaddr"),
+            Self::SAddr => f.write_str("saddr"),
+            Self::F32 => f.write_str("f32"),
+            Self::F64 => f.write_str("f64"),
+        }
     }
 }
 

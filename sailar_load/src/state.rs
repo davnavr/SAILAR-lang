@@ -19,10 +19,11 @@ pub struct State {
     // Each individual module will cache its imported modules, so accessing this lookup should rarely happen
     modules: Mutex<ModuleArena>,
     resolver: Mutex<resolver::BoxedResolver>,
+    address_size: std::num::NonZeroU8,
 }
 
 impl State {
-    pub fn with_resolver<R>(resolver: R) -> Arc<Self>
+    pub fn with_resolver<R>(resolver: R, address_size: std::num::NonZeroU8) -> Arc<Self>
     where
         R: Resolver + Send + 'static,
         R::Error: std::error::Error,
@@ -31,15 +32,6 @@ impl State {
             modules: Default::default(),
             resolver: Mutex::new(resolver::boxed(resolver)),
         })
-    }
-
-    /// Creates a new [`State`] with no loaded modules and no import resolver. New modules can only be loaded by calling
-    /// [`force_load_module`].
-    ///
-    /// [`force_load_module`]: State::force_load_module
-    #[inline]
-    pub fn new() -> Arc<Self> {
-        Self::with_resolver(resolver::unsuccessful())
     }
 
     pub fn force_load_module<S: crate::Source>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error> {
@@ -83,6 +75,11 @@ impl State {
                 }
             },
         }
+    }
+
+    /// Gets the size of pointer addresses, in bytes.
+    pub fn address_byte_size(&self) -> std::num::NonZeroU16 {
+        self.address_size.into()
     }
 }
 
