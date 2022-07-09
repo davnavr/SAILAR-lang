@@ -18,6 +18,10 @@ impl<W: Write> Writer<W> {
         Self { destination }
     }
 
+    pub fn write_byte(&mut self, value: u8) -> Result {
+        self.destination.write_all(std::slice::from_ref(&value))
+    }
+
     pub fn write_unsigned_integer<I: Into<VarU28>>(&mut self, value: I) -> Result {
         value.into().write_to(&mut self.destination)
     }

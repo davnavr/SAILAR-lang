@@ -50,7 +50,7 @@ type_code! {
     /// An arbitrary sized signed integer type.
     SInt = 0x10,
     RawPtr = 0xCA,
-    VoidPtr = 0xCC,
+    VoidPtr = 0xCC, // TODO: Replace void pointer with u8 pointer?
     FuncPtr = 0xCF,
     F32 = 0xF4,
     F64 = 0xF8,

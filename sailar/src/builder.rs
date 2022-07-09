@@ -71,24 +71,55 @@ impl<'a> Builder<'a> {
             }
 
             fn write_type_signature(out: &mut VecWriter, signature: &signature::Type) -> Result {
-                use signature::Type;
-                out.write_all(&[u8::from(signature.code())])?; // TODO: Make type tag a VarU28?
                 match signature {
-                    Type::U8
-                    | Type::S8
-                    | Type::U16
-                    | Type::S16
-                    | Type::U32
-                    | Type::S32
-                    | Type::U64
-                    | Type::S64
-                    | Type::UAddr
-                    | Type::SAddr
-                    | Type::F32
-                    | Type::F64
-                    | Type::RawPtr(None) => Ok(()),
-                    Type::RawPtr(Some(index)) => out.write_length(*index),
-                    Type::FuncPtr(index) => out.write_length(*index),
+                    signature::Type::FixedInteger(ty) => {
+                        if *ty == signature::IntegerType::U8 {
+                            out.write_byte(signature::TypeCode::U8.into())
+                        } else if *ty == signature::IntegerType::S8 {
+                            out.write_byte(signature::TypeCode::S8.into())
+                        } else if *ty == signature::IntegerType::U16 {
+                            out.write_byte(signature::TypeCode::U16.into())
+                        } else if *ty == signature::IntegerType::S16 {
+                            out.write_byte(signature::TypeCode::S16.into())
+                        } else if *ty == signature::IntegerType::U32 {
+                            out.write_byte(signature::TypeCode::U32.into())
+                        } else if *ty == signature::IntegerType::S32 {
+                            out.write_byte(signature::TypeCode::S32.into())
+                        } else if *ty == signature::IntegerType::U64 {
+                            out.write_byte(signature::TypeCode::U64.into())
+                        } else if *ty == signature::IntegerType::S64 {
+                            out.write_byte(signature::TypeCode::S64.into())
+                        } else if *ty == signature::IntegerType::U128 {
+                            out.write_byte(signature::TypeCode::U128.into())
+                        } else if *ty == signature::IntegerType::S128 {
+                            out.write_byte(signature::TypeCode::S128.into())
+                        } else if *ty == signature::IntegerType::U256 {
+                            out.write_byte(signature::TypeCode::U256.into())
+                        } else if *ty == signature::IntegerType::S256 {
+                            out.write_byte(signature::TypeCode::S256.into())
+                        } else {
+                            let code = match ty.sign() {
+                                signature::IntegerSign::Unsigned => signature::TypeCode::UInt,
+                                signature::IntegerSign::Signed => signature::TypeCode::SInt,
+                            };
+
+                            out.write_byte(code.into())?;
+                            out.write_length(ty.size())
+                        }
+                    }
+                    signature::Type::UAddr => out.write_byte(signature::TypeCode::UAddr.into()),
+                    signature::Type::SAddr => out.write_byte(signature::TypeCode::SAddr.into()),
+                    signature::Type::F32 => out.write_byte(signature::TypeCode::F32.into()),
+                    signature::Type::F64 => out.write_byte(signature::TypeCode::F64.into()),
+                    signature::Type::RawPtr(Some(index)) => {
+                        out.write_byte(signature::TypeCode::RawPtr.into())?;
+                        out.write_length(*index)
+                    }
+                    signature::Type::FuncPtr(index) => {
+                        out.write_byte(signature::TypeCode::FuncPtr.into())?;
+                        out.write_length(*index)
+                    }
+                    signature::Type::RawPtr(None) => out.write_byte(signature::TypeCode::VoidPtr.into()),
                 }
             }
 
@@ -103,12 +134,12 @@ impl<'a> Builder<'a> {
 
             fn write_code_value(out: &mut VecWriter, value: &instruction::Value) -> Result {
                 let flags = value.flags();
-                out.write_all(&[flags.bits()])?;
+                out.write_byte(flags.bits())?;
                 match value {
                     instruction::Value::IndexedRegister(index) => out.write_length(*index),
                     instruction::Value::Constant(instruction::Constant::Integer(integer)) => match integer {
                         _ if flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) => Ok(()),
-                        instruction::ConstantInteger::I8(byte) => out.write_all(std::slice::from_ref(byte)),
+                        instruction::ConstantInteger::I8(byte) => out.write_byte(*byte),
                         instruction::ConstantInteger::I16(ref bytes) => out.write_all(bytes),
                         instruction::ConstantInteger::I32(ref bytes) => out.write_all(bytes),
                         instruction::ConstantInteger::I64(ref bytes) => out.write_all(bytes),
@@ -126,7 +157,7 @@ impl<'a> Builder<'a> {
 
                 out.write_length(block.instructions().len())?;
                 for instruction in block.instructions().iter() {
-                    out.write_all(&[u8::from(instruction.opcode())])?;
+                    out.write_byte(u8::from(instruction.opcode()))?;
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
                         Instruction::Ret(values) => {
@@ -143,7 +174,7 @@ impl<'a> Builder<'a> {
                             }
                         }
                         Instruction::AddI(operands) | Instruction::SubI(operands) => {
-                            out.write_all(&[u8::from(operands.overflow_behavior())])?;
+                            out.write_byte(u8::from(operands.overflow_behavior()))?;
                             write_code_value(out, operands.x_value())?;
                             write_code_value(out, operands.y_value())?;
                         }
@@ -194,7 +225,7 @@ impl<'a> Builder<'a> {
             content_buffer.clear();
             let mut record_content = VecWriter::new(&mut content_buffer);
             write_record_content(&mut record_content, record)?;
-            out.write_all(&[u8::from(record.record_type())])?;
+            out.write_byte(u8::from(record.record_type()))?;
             out.write_length(content_buffer.len())?;
             out.write_all(&content_buffer)?;
         }
