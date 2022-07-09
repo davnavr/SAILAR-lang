@@ -47,7 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             record::FunctionBody::Definition(main_code),
         ));
 
-        builder.add_record(record::FunctionInstantiation::from_template(index::FunctionTemplate::from(0)));
+        let entry_point = {
+            builder.add_record(record::FunctionInstantiation::from_template(index::FunctionTemplate::from(0)));
+            index::FunctionInstantiation::from(0)
+        };
+
+        builder.add_record(record::MetadataField::EntryPoint(entry_point));
 
         builder.into_records()
     };
@@ -57,14 +62,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .force_load_module(sailar_load::source::RecordIteratorSource::new(program.drain(..)))?
         .unwrap();
 
-    println!("{:?}", module);
+    let main = module.entry_point()?.ok_or("expected entry point to be present")?;
 
-    let main = module.get_function_definition(0usize.into())?;
-    let code = main.body()?;
-    let sailar_load::function::Body::Defined(entry) = code;
-    let _ = entry.instructions()?;
+    let main_body = match main.template()? {
+        sailar_load::function::Template::Definition(definition) => definition.body()?,
+    };
 
-    println!("{:?}", main);
+    let main_instructions = match main_body {
+        sailar_load::function::Body::Defined(code) => code.instructions()?,
+    };
+
+    assert!(matches!(main_instructions, [sailar_load::code_block::Instruction::Ret(_)]));
 
     Ok(())
 }
