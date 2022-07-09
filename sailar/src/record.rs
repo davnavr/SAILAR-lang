@@ -114,12 +114,15 @@ impl<'a> ModuleIdentifier<'a> {
 #[non_exhaustive]
 pub enum MetadataField<'a> {
     ModuleIdentifier(ModuleIdentifier<'a>),
+    /// Specifies the entry point function of the module.
+    EntryPoint(index::FunctionInstantiation),
 }
 
 impl MetadataField<'_> {
     pub fn field_name(&self) -> &'static Id {
         let name = match self {
             Self::ModuleIdentifier(_) => "id",
+            Self::EntryPoint(_) => "main",
         };
 
         // Safety: all above names are assumed to be valid.

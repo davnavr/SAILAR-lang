@@ -65,9 +65,11 @@ impl<'a> Builder<'a> {
                         for number in identifier.version().iter() {
                             out.write_unsigned_integer(*number)?;
                         }
-                        Ok(())
                     }
+                    record::MetadataField::EntryPoint(entry) => out.write_length(*entry)?,
                 }
+
+                Ok(())
             }
 
             fn write_type_signature(out: &mut VecWriter, signature: &signature::Type) -> Result {
