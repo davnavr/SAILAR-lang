@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 sailar = { path = "../sailar" }
-sailar_get = { path = "../sailar_get" }
+sailar_load = { path = "../sailar_load" }
 thiserror = "1.0.30"
