@@ -58,6 +58,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let main = module.get_function_definition(0usize.into())?;
     let code = main.body()?;
+    let sailar_load::function::Body::Defined(entry) = code;
+    let _ = entry.instructions()?;
 
     println!("{:?}", main);
 

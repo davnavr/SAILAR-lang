@@ -274,7 +274,9 @@ impl Code {
 
             fn next_instruction(&mut self) -> Option<&'a Op> {
                 let current_index = match self.index {
+                    None if self.source.is_empty() => return None,
                     None => 0,
+                    Some(index) if index == self.source.len() - 1 => return None,
                     Some(index) => index + 1,
                 };
 
