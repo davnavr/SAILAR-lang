@@ -7,7 +7,7 @@ use crate::index;
 use crate::instruction::{self, Instruction, Opcode};
 use crate::num::VarU28;
 use crate::record;
-use crate::signature;
+use crate::signature::{self, TypeCode};
 use crate::versioning;
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -88,6 +88,10 @@ pub enum ErrorKind {
     MissingTypeSignatureTag,
     #[error(transparent)]
     InvalidTypeSignatureTag(#[from] signature::InvalidTypeCode),
+    #[error(transparent)]
+    InvalidIntegerTypeSize(#[from] signature::InvalidIntegerSizeError),
+    #[error("expected integer size for type signature")]
+    MissingIntegerTypeSize,
     #[error("expected type signature index")]
     MissingTypeSignatureIndex,
     #[error("expected integer return type count")]
@@ -460,35 +464,49 @@ impl<R: Read> RecordReader<R> {
             read_identifier_content(source, length)
         }
 
+        fn read_fixed_integer_type_signature(
+            source: &mut BufferWrapper<'_>,
+            sign: signature::IntegerSign,
+        ) -> Result<signature::IntegerType> {
+            Ok(signature::IntegerType::new(
+                sign,
+                source.read_unsigned_integer_try_into(|| ErrorKind::MissingIntegerTypeSize)?,
+            ))
+        }
+
         fn read_type_signature(source: &mut BufferWrapper<'_>) -> Result<Record> {
             let mut tag_value = 0u8;
             if source.read_bytes(std::slice::from_mut(&mut tag_value))? == 0 {
-                return source.fail_with(ErrorKind::MissingRecordType);
+                return source.fail_with(ErrorKind::MissingTypeSignatureTag);
             }
 
-            Ok(Record::from(
-                match source.wrap_result(signature::TypeCode::try_from(tag_value))? {
-                    signature::TypeCode::U8 => signature::Type::U8,
-                    signature::TypeCode::S8 => signature::Type::S8,
-                    signature::TypeCode::U16 => signature::Type::U16,
-                    signature::TypeCode::S16 => signature::Type::S16,
-                    signature::TypeCode::U32 => signature::Type::U32,
-                    signature::TypeCode::S32 => signature::Type::S32,
-                    signature::TypeCode::U64 => signature::Type::U64,
-                    signature::TypeCode::S64 => signature::Type::S64,
-                    signature::TypeCode::UAddr => signature::Type::UAddr,
-                    signature::TypeCode::SAddr => signature::Type::SAddr,
-                    signature::TypeCode::F32 => signature::Type::F32,
-                    signature::TypeCode::F64 => signature::Type::F64,
-                    signature::TypeCode::VoidPtr => signature::Type::RawPtr(None),
-                    signature::TypeCode::RawPtr => signature::Type::RawPtr(Some(
-                        source.read_unsigned_integer_try_into(|| ErrorKind::MissingTypeSignatureIndex)?,
-                    )),
-                    signature::TypeCode::FuncPtr => signature::Type::FuncPtr(
-                        source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?,
-                    ),
-                },
-            ))
+            Ok(Record::from(match source.wrap_result(TypeCode::try_from(tag_value))? {
+                TypeCode::U8 => signature::IntegerType::U8.into(),
+                TypeCode::S8 => signature::IntegerType::S8.into(),
+                TypeCode::U16 => signature::IntegerType::U16.into(),
+                TypeCode::S16 => signature::IntegerType::S16.into(),
+                TypeCode::U32 => signature::IntegerType::U32.into(),
+                TypeCode::S32 => signature::IntegerType::S32.into(),
+                TypeCode::U64 => signature::IntegerType::U64.into(),
+                TypeCode::S64 => signature::IntegerType::S64.into(),
+                TypeCode::U128 => signature::IntegerType::U128.into(),
+                TypeCode::S128 => signature::IntegerType::S128.into(),
+                TypeCode::U256 => signature::IntegerType::U256.into(),
+                TypeCode::S256 => signature::IntegerType::S256.into(),
+                TypeCode::UInt => read_fixed_integer_type_signature(source, signature::IntegerSign::Unsigned)?.into(),
+                TypeCode::SInt => read_fixed_integer_type_signature(source, signature::IntegerSign::Signed)?.into(),
+                TypeCode::UAddr => signature::Type::UAddr,
+                TypeCode::SAddr => signature::Type::SAddr,
+                TypeCode::F32 => signature::Type::F32,
+                TypeCode::F64 => signature::Type::F64,
+                TypeCode::VoidPtr => signature::Type::RawPtr(None),
+                TypeCode::RawPtr => signature::Type::RawPtr(Some(
+                    source.read_unsigned_integer_try_into(|| ErrorKind::MissingTypeSignatureIndex)?,
+                )),
+                TypeCode::FuncPtr => {
+                    signature::Type::FuncPtr(source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?)
+                }
+            }))
         }
 
         fn read_function_signature(source: &mut BufferWrapper<'_>) -> Result<Record> {

@@ -2,22 +2,53 @@
 
 use crate::helper::borrow::CowBox;
 use crate::index;
+use crate::num;
 use std::fmt::{Debug, Display, Formatter};
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum TypeCode {
+macro_rules! type_code {
+    ($($(#[$meta:meta])* $name:ident = $value:literal,)*) => {
+        /// Tag that indicates the actual type of a type signature.
+        ///
+        /// Common integer types (s32, u32, s64, etc.) are represented as special cases for space efficiency.
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+        #[repr(u8)]
+        #[non_exhaustive]
+        pub enum TypeCode {
+            $($(#[$meta])* $name = $value,)*
+        }
+
+        impl TryFrom<u8> for TypeCode {
+            type Error = InvalidTypeCode;
+
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                match value {
+                    $(_ if value == $value => Ok(Self::$name),)*
+                    _ => Err(InvalidTypeCode { value }),
+                }
+            }
+        }
+    };
+}
+
+type_code! {
     U8 = 1,
     U16 = 2,
-    U32 = 4,
-    U64 = 8,
-    UAddr = 0xA,
-    S8 = 0x11,
-    S16 = 0x12,
-    S32 = 0x14,
-    S64 = 0x18,
-    SAddr = 0x1A,
+    U32 = 3,
+    U64 = 4,
+    U128 = 5,
+    U256 = 6,
+    UAddr = 7,
+    /// An arbitrary sized unsigned integer type.
+    UInt = 8,
+    S8 = 9,
+    S16 = 0xA,
+    S32 = 0xB,
+    S64 = 0xC,
+    S128 = 0xD,
+    S256 = 0xE,
+    SAddr = 0xF,
+    /// An arbitrary sized signed integer type.
+    SInt = 0x10,
     RawPtr = 0xCA,
     VoidPtr = 0xCC,
     FuncPtr = 0xCF,
@@ -36,31 +67,6 @@ impl From<TypeCode> for u8 {
 #[error("{value:#02X} is not a valid type code")]
 pub struct InvalidTypeCode {
     value: u8,
-}
-
-impl TryFrom<u8> for TypeCode {
-    type Error = InvalidTypeCode;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Self::U8),
-            2 => Ok(Self::U16),
-            4 => Ok(Self::U32),
-            8 => Ok(Self::U64),
-            0xA => Ok(Self::UAddr),
-            0x11 => Ok(Self::S8),
-            0x12 => Ok(Self::S16),
-            0x14 => Ok(Self::S32),
-            0x1A => Ok(Self::SAddr),
-            0xCA => Ok(Self::RawPtr),
-            0xCC => Ok(Self::VoidPtr),
-            0xCF => Ok(Self::FuncPtr),
-            0x18 => Ok(Self::S64),
-            0xF4 => Ok(Self::F32),
-            0xF8 => Ok(Self::F64),
-            _ => Err(InvalidTypeCode { value }),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -234,6 +240,27 @@ impl Display for IntegerSize {
     }
 }
 
+impl From<IntegerSize> for num::VarU28 {
+    fn from(size: IntegerSize) -> Self {
+        Self::from_u16(size.bit_size().get())
+    }
+}
+
+impl TryFrom<num::VarU28> for IntegerSize {
+    type Error = InvalidIntegerSizeError;
+
+    fn try_from(value: num::VarU28) -> Result<Self, Self::Error> {
+        u8::try_from(value)
+            .and_then(std::num::NonZeroU8::try_from)
+            .map_err(|_| InvalidIntegerSizeError(value))
+            .map(Self::new)
+    }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("{0} is not a valid integer size")]
+pub struct InvalidIntegerSizeError(num::VarU28);
+
 /// Indicates whether an integer type is signed or unsigned.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum IntegerSign {
@@ -241,7 +268,7 @@ pub enum IntegerSign {
     Unsigned,
 }
 
-/// Represents an integer type.
+/// Represents a fixed width integer type.
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub struct IntegerType {
     sign: IntegerSign,
@@ -253,25 +280,25 @@ impl IntegerType {
         Self { sign, size }
     }
 
-    pub const I8: Self = Self::new(IntegerSign::Signed, IntegerSize::I8);
+    pub const S8: Self = Self::new(IntegerSign::Signed, IntegerSize::I8);
     pub const U8: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I8);
-    pub const I16: Self = Self::new(IntegerSign::Signed, IntegerSize::I16);
+    pub const S16: Self = Self::new(IntegerSign::Signed, IntegerSize::I16);
     pub const U16: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I16);
     /// The signed 32-bit integer type.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// # use sailar::signature::IntegerType;
-    /// assert_eq!(IntegerType::I32.to_string(), "s32");
+    /// assert_eq!(IntegerType::S32.to_string(), "s32");
     /// ```
-    pub const I32: Self = Self::new(IntegerSign::Signed, IntegerSize::I32);
+    pub const S32: Self = Self::new(IntegerSign::Signed, IntegerSize::I32);
     pub const U32: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I32);
-    pub const I64: Self = Self::new(IntegerSign::Signed, IntegerSize::I64);
+    pub const S64: Self = Self::new(IntegerSign::Signed, IntegerSize::I64);
     pub const U64: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I64);
-    pub const I128: Self = Self::new(IntegerSign::Signed, IntegerSize::I128);
+    pub const S128: Self = Self::new(IntegerSign::Signed, IntegerSize::I128);
     pub const U128: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I128);
-    pub const I256: Self = Self::new(IntegerSign::Signed, IntegerSize::I256);
+    pub const S256: Self = Self::new(IntegerSign::Signed, IntegerSize::I256);
     pub const U256: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I256);
 
     pub const fn sign(self) -> IntegerSign {
@@ -305,22 +332,8 @@ impl Display for IntegerType {
 /// Represents a type signature.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Type {
-    /// Unsigned 8-bit integer.
-    U8,
-    /// Signed 8-bit integer.
-    S8,
-    /// Unsigned 16-bit integer.
-    U16,
-    /// Signed 16-bit integer.
-    S16,
-    /// Unsigned 32-bit integer.
-    U32,
-    /// Signed 32-bit integer.
-    S32,
-    /// Unsigned 64-bit integer.
-    U64,
-    /// Signed 64-bit integer.
-    S64,
+    /// An integer type with a fixed size.
+    FixedInteger(IntegerType),
     /// Unsigned integer with the same size as a raw pointer's address.
     UAddr,
     /// Signed integer with the same size as a raw pointer's address.
@@ -334,24 +347,8 @@ pub enum Type {
     FuncPtr(index::FunctionSignature),
 }
 
-impl Type {
-    pub fn code(&self) -> TypeCode {
-        match self {
-            Self::U8 => TypeCode::U8,
-            Self::S8 => TypeCode::S8,
-            Self::U16 => TypeCode::U16,
-            Self::S16 => TypeCode::S16,
-            Self::U32 => TypeCode::U32,
-            Self::S32 => TypeCode::S32,
-            Self::U64 => TypeCode::U64,
-            Self::S64 => TypeCode::S64,
-            Self::UAddr => TypeCode::UAddr,
-            Self::SAddr => TypeCode::SAddr,
-            Self::F32 => TypeCode::F32,
-            Self::F64 => TypeCode::F64,
-            Self::RawPtr(Some(_)) => TypeCode::RawPtr,
-            Self::RawPtr(None) => TypeCode::VoidPtr,
-            Self::FuncPtr(_) => TypeCode::FuncPtr,
-        }
+impl From<IntegerType> for Type {
+    fn from(ty: IntegerType) -> Self {
+        Self::FixedInteger(ty)
     }
 }
