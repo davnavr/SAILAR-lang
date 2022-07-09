@@ -3,11 +3,12 @@
 use crate::error;
 use crate::module;
 use sailar::index;
+use sailar::signature;
 use std::cmp::PartialEq;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
-pub use sailar::signature::{IntegerSign, IntegerSize, IntegerType};
+pub use signature::{IntegerSign, IntegerSize, IntegerType};
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -17,12 +18,33 @@ pub enum Type {
     SAddr,
     F32,
     F64,
-    RawPtr(Option<Box<Type>>),
+    RawPtr(Option<Arc<Signature>>), // TODO: Make a validation error for recursive RawPtr types.
     FuncPtr(Arc<crate::function::Signature>), // TODO: Make a validation error for recursive FuncPtr types.
     Signature(Arc<Signature>),
 }
 
-// PartialEq only since resolution 
+impl Type {
+    fn try_from_signature(signature: &signature::Type, module: &Weak<module::Module>) -> Result<Self, error::LoaderError> {
+        Ok(match signature {
+            signature::Type::FixedInteger(ty) => Type::FixedInteger(*ty),
+            signature::Type::UAddr => Type::UAddr,
+            signature::Type::SAddr => Type::SAddr,
+            signature::Type::F32 => Type::F32,
+            signature::Type::F64 => Type::F64,
+            signature::Type::RawPtr(None) => Type::RawPtr(None),
+            signature::Type::RawPtr(Some(pointee)) => Self::RawPtr(Some(
+                module::Module::upgrade_weak(module)?.get_type_signature(*pointee)?.clone(),
+            )),
+            signature::Type::FuncPtr(signature) => Self::FuncPtr(
+                module::Module::upgrade_weak(module)?
+                    .get_function_signature(*signature)?
+                    .clone(),
+            ),
+        })
+    }
+}
+
+// PartialEq only since resolution
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -41,12 +63,12 @@ impl std::cmp::Eq for Type {}
 
 pub struct Signature {
     module: Weak<module::Module>,
-    record: sailar::signature::Type,
+    record: signature::Type,
     signature: lazy_init::Lazy<Result<Type, error::LoaderError>>,
 }
 
 impl Signature {
-    pub(crate) fn new(signature: sailar::signature::Type, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(signature: signature::Type, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
             module,
             record: signature,
@@ -58,11 +80,16 @@ impl Signature {
         &self.module
     }
 
-    pub fn record(&self) -> &sailar::signature::Type {
+    pub fn record(&self) -> &signature::Type {
         &self.record
     }
 
-    pub fn signature(&self) -> Result<&Type, error::LoaderError> {}
+    pub fn signature(&self) -> Result<&Type, error::LoaderError> {
+        self.signature
+            .get_or_create(|| Type::try_from_signature(&self.record, &self.module))
+            .as_ref()
+            .map_err(Clone::clone)
+    }
 }
 
 impl Debug for Signature {

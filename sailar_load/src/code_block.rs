@@ -93,7 +93,7 @@ impl std::fmt::Display for InvalidInstructionError {
 
 #[derive(Clone, Debug)]
 pub struct TypedValue {
-    value_type: (),
+    value_type: type_system::Type,
     value: instruction::Value,
 }
 

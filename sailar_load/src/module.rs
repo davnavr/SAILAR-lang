@@ -185,6 +185,13 @@ impl Module {
         &self.function_signatures
     }
 
+    pub fn get_function_signature<'a>(
+        self: &'a Arc<Self>,
+        index: index::FunctionSignature,
+    ) -> Result<&'a Arc<function::Signature>, error::LoaderError> {
+        self.get_with_index_check(index, &self.function_signatures)
+    }
+
     pub fn code_blocks(&self) -> &[Arc<code_block::Code>] {
         &self.code_blocks
     }
