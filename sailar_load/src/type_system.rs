@@ -52,6 +52,10 @@ impl Display for Type {
             Self::SAddr => f.write_str("saddr"),
             Self::F32 => f.write_str("f32"),
             Self::F64 => f.write_str("f64"),
+            Self::RawPtr(None) => f.write_str("voidptr"),
+            Self::RawPtr(Some(pointee)) => write!(f, "rawptr({})", pointee),
+            Self::FuncPtr(signature) => write!(f, "funcptr({})", signature),
+            Self::Signature(signature) => Display::fmt(signature, f),
         }
     }
 }
@@ -76,14 +80,16 @@ impl std::cmp::Eq for Type {}
 pub struct Signature {
     module: Weak<module::Module>,
     record: signature::Type,
+    index: index::TypeSignature,
     signature: lazy_init::Lazy<Result<Type, error::LoaderError>>,
 }
 
 impl Signature {
-    pub(crate) fn new(signature: signature::Type, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(signature: signature::Type, index: index::TypeSignature, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
             module,
             record: signature,
+            index,
             signature: Default::default(),
         })
     }
@@ -94,6 +100,10 @@ impl Signature {
 
     pub fn record(&self) -> &signature::Type {
         &self.record
+    }
+
+    pub fn index(&self) -> index::TypeSignature {
+        self.index
     }
 
     pub fn signature(&self) -> Result<&Type, error::LoaderError> {
@@ -110,6 +120,15 @@ impl Debug for Signature {
             .field("record", &self.signature)
             .field("signature", &self.signature)
             .finish()
+    }
+}
+
+impl Display for Signature {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self.signature.get() {
+            Some(Ok(ty)) => Display::fmt(ty, f),
+            None | Some(Err(_)) => write!(f, "#{}", usize::from(self.index)),
+        }
     }
 }
 

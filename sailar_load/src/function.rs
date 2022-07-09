@@ -7,7 +7,7 @@ use sailar::helper::borrow::CowBox;
 use sailar::record;
 use sailar::signature;
 use std::borrow::{Borrow, Cow};
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Weak};
 
 #[derive(Clone)]
@@ -42,14 +42,16 @@ type SignatureRecord = Cow<'static, signature::Function>;
 
 pub struct Signature {
     signature: SignatureRecord,
+    index: sailar::index::FunctionSignature,
     types: type_system::LazySignatureList,
     module: Weak<module::Module>,
 }
 
 impl Signature {
-    pub(crate) fn new(signature: SignatureRecord, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(signature: SignatureRecord, index: sailar::index::FunctionSignature, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
             signature,
+            index,
             types: Default::default(),
             module,
         })
@@ -57,6 +59,10 @@ impl Signature {
 
     pub fn record(&self) -> &signature::Function {
         &self.signature
+    }
+
+    pub fn index(&self) -> sailar::index::FunctionSignature {
+        self.index
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
@@ -72,6 +78,10 @@ impl Signature {
     pub fn return_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.types().map(|types| &types[0..self.record().return_types().len()])
     }
+
+    pub fn parameter_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
+        self.types().map(|types| &types[self.record().return_types().len()..])
+    }
 }
 
 impl Debug for Signature {
@@ -80,6 +90,35 @@ impl Debug for Signature {
             .field("record", &self.signature)
             .field("types", &self.types)
             .finish()
+    }
+}
+
+impl Display for Signature {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match (self.return_types(), self.parameter_types()) {
+            (Ok(return_types), Ok(parameter_types)) => {
+                use std::fmt::Write;
+        
+                fn fmt_types(types: &[Arc<type_system::Signature>], f: &mut Formatter) -> std::fmt::Result {
+                    for (i, ty) in types.iter().enumerate() {
+                        if i > 0 {
+                            f.write_str(", ")?;
+                        }
+                        
+                        Display::fmt(ty, f)?;
+                    }
+
+                    Ok(())
+                }
+        
+                f.write_char('(')?;
+                fmt_types(parameter_types, f)?;
+                f.write_str(") -> (")?;
+                fmt_types(return_types, f)?;
+                f.write_char(')')
+            }
+            _ => write!(f, "#{}", usize::from(self.index)),
+        }
     }
 }
 

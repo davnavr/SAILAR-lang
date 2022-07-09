@@ -97,10 +97,10 @@ impl Module {
                     Record::Identifier(identifier) => module.identifiers.push(identifier),
                     Record::TypeSignature(signature) => module
                         .type_signatures
-                        .push(crate::type_system::Signature::new(signature.into_owned(), this.clone())),
+                        .push(crate::type_system::Signature::new(signature.into_owned(), module.type_signatures().len().into(), this.clone())),
                     Record::FunctionSignature(signature) => module
                         .function_signatures
-                        .push(function::Signature::new(signature, this.clone())),
+                        .push(function::Signature::new(signature, module.function_signatures.len().into(), this.clone())),
                     Record::CodeBlock(code) => module
                         .code_blocks
                         .push(code_block::Code::new(code.into_boxed(), this.clone())),
