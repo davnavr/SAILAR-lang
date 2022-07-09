@@ -144,9 +144,11 @@ impl Module {
 
     /// Attempts to upgrade a [`Weak`] pointer to a [`Module`], returning a [`LoaderError`] if the module was dropped.
     ///
+    /// Use this function when a reference to a module is required to do something.
+    ///
     /// [`Weak`]: std::sync::Weak
     /// [`LoaderError`]: error::LoaderError
-    pub(crate) fn upgrade_weak(this: &Weak<Self>) -> Result<Arc<Self>, error::LoaderError> {
+    pub fn upgrade_weak(this: &Weak<Self>) -> Result<Arc<Self>, error::LoaderError> {
         this.upgrade()
             .ok_or_else(|| error::LoaderError::new(error::DroppedError::new(())))
     }
