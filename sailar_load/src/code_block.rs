@@ -164,7 +164,7 @@ pub enum Instruction {
 impl Instruction {
     pub fn is_terminator(&self) -> bool {
         match self {
-            // => true,
+            Self::Ret(_) => true,
             _ => false,
         }
     }
