@@ -2,6 +2,7 @@
 
 use crate::helper::borrow::CowBox;
 use crate::index;
+use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
@@ -119,6 +120,185 @@ impl Function {
 
     pub fn parameter_types(&self) -> &[index::TypeSignature] {
         &self.types[self.return_type_count..]
+    }
+}
+
+/// Represents the integer type sizes supported by SAILAR.
+#[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(transparent)]
+pub struct IntegerSize(u8);
+
+impl IntegerSize {
+    /// The minimum bit size of an integer type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::MIN.bit_size().get(), 1);
+    /// ```
+    pub const MIN: Self = Self(0);
+
+    /// The maximum bit size of an integer type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::MAX.bit_size().get(), 256);
+    /// ```
+    pub const MAX: Self = Self(u8::MAX);
+
+    /// The size of a byte.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I8.bit_size().get(), 8);
+    /// ```
+    pub const I8: Self = Self(7);
+
+    /// The size of a 16-bit integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I16.bit_size().get(), 16);
+    /// ```
+    pub const I16: Self = Self(15);
+
+    /// The size of a 32-bit integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I32.bit_size().get(), 32);
+    /// ```
+    pub const I32: Self = Self(31);
+
+    /// The size of a 64-bit integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I64.bit_size().get(), 64);
+    /// ```
+    pub const I64: Self = Self(63);
+
+    /// The size of a 128-bit integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I128.bit_size().get(), 128);
+    /// ```
+    pub const I128: Self = Self(127);
+
+    /// The size of a 256-bit integer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::I256.bit_size().get(), 256);
+    /// ```
+    pub const I256: Self = Self::MAX;
+
+    pub const fn new(bit_size: std::num::NonZeroU8) -> Self {
+        Self(bit_size.get() - 1)
+    }
+
+    /// Gets the size of the integer, in bits.
+    pub const fn bit_size(self) -> std::num::NonZeroU16 {
+        unsafe {
+            // Safety: Size is guaranteed to never be zero.
+            std::num::NonZeroU16::new_unchecked(self.0 as u16 + 1)
+        }
+    }
+}
+
+impl Debug for IntegerSize {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Debug::fmt(&self.bit_size(), f)
+    }
+}
+
+impl Display for IntegerSize {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Display::fmt(&self.bit_size(), f)
+    }
+}
+
+/// Indicates whether an integer type is signed or unsigned.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum IntegerSign {
+    Signed,
+    Unsigned,
+}
+
+/// Represents an integer type.
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+pub struct IntegerType {
+    sign: IntegerSign,
+    size: IntegerSize,
+}
+
+impl IntegerType {
+    pub const fn new(sign: IntegerSign, size: IntegerSize) -> Self {
+        Self { sign, size }
+    }
+
+    pub const I8: Self = Self::new(IntegerSign::Signed, IntegerSize::I8);
+    pub const U8: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I8);
+    pub const I16: Self = Self::new(IntegerSign::Signed, IntegerSize::I16);
+    pub const U16: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I16);
+    /// The signed 32-bit integer type.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use sailar::signature::IntegerType;
+    /// assert_eq!(IntegerType::I32.to_string(), "s32");
+    /// ```
+    pub const I32: Self = Self::new(IntegerSign::Signed, IntegerSize::I32);
+    pub const U32: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I32);
+    pub const I64: Self = Self::new(IntegerSign::Signed, IntegerSize::I64);
+    pub const U64: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I64);
+    pub const I128: Self = Self::new(IntegerSign::Signed, IntegerSize::I128);
+    pub const U128: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I128);
+    pub const I256: Self = Self::new(IntegerSign::Signed, IntegerSize::I256);
+    pub const U256: Self = Self::new(IntegerSign::Unsigned, IntegerSize::I256);
+
+    pub const fn sign(self) -> IntegerSign {
+        self.sign
+    }
+
+    pub const fn size(self) -> IntegerSize {
+        self.size
+    }
+}
+
+impl Debug for IntegerType {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_tuple("IntegerType").field(&self.sign).field(&self.size).finish()
+    }
+}
+
+impl Display for IntegerType {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        std::fmt::Write::write_char(
+            f,
+            match self.sign {
+                IntegerSign::Signed => 's',
+                IntegerSign::Unsigned => 'u',
+            },
+        )?;
+        Display::fmt(&self.size, f)
     }
 }
 

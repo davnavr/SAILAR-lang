@@ -6,6 +6,10 @@ use sailar::index;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum Type {}
+
 pub struct Signature {
     module: Weak<module::Module>,
     signature: sailar::signature::Type,
