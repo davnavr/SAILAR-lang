@@ -35,6 +35,14 @@ impl State {
         })
     }
 
+    /// Creates a new [`State`] with no loaded modules, no import resolver, and the native pointer address size. New modules can
+    /// only be loaded by calling [`force_load_module`].
+    ///
+    /// [`force_load_module`]: State::force_load_module
+    pub fn new() -> Arc<Self> {
+        Self::with_resolver(resolver::unsuccessful(), std::num::NonZeroU8::new(u8::try_from(std::mem::size_of::<usize>()).unwrap()).unwrap())
+    }
+
     pub fn force_load_module<S: crate::Source>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error> {
         let module = module::Module::from_source(source, Arc::downgrade(self))?;
         let mut arena = self.modules.lock().unwrap();
