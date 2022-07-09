@@ -1,6 +1,8 @@
 //! Module for interacting with the SAILAR virtual machine's call stack.
 
+use crate::runtime;
 use crate::value;
+use sailar_load::code_block::Instruction;
 use std::fmt::{Debug, Formatter};
 
 type CodeBlock = std::sync::Arc<sailar_load::code_block::Code>;
@@ -13,10 +15,15 @@ pub struct CodeBlockLocation {
 
 impl CodeBlockLocation {
     fn new(block: CodeBlock) -> Self {
-        Self {
-            block,
-            index: 0,
+        Self { block, index: 0 }
+    }
+
+    pub(crate) fn next_instruction(&mut self) -> runtime::Result<Option<&Instruction>> {
+        let instruction = self.block.instructions()?.get(self.index);
+        if instruction.is_some() {
+            self.index += 1;
         }
+        Ok(instruction)
     }
 }
 
@@ -28,43 +35,85 @@ pub enum FrameLocation {
 
 #[derive(Clone, Debug)]
 pub struct Frame {
-    function: crate::Function,
+    function: runtime::Function,
     arguments: Box<[value::Value]>,
     location: FrameLocation,
 }
 
+impl Frame {
+    pub fn location(&self) -> &FrameLocation {
+        &self.location
+    }
+
+    pub(crate) fn location_mut(&mut self) -> &mut FrameLocation {
+        &mut self.location
+    }
+}
+
+/// Specifies the number of stack frames that the call stack can contain before a stack overflow occurs.
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(transparent)]
+pub struct Size(std::num::NonZeroUsize);
+
+impl Size {
+    pub const fn new(size: std::num::NonZeroUsize) -> Self {
+        Self(size)
+    }
+
+    pub const fn get(self) -> std::num::NonZeroUsize {
+        self.0
+    }
+
+    pub const DEFAULT: Self = Self::new(unsafe {
+        // Safety: The value below is not zero.
+        std::num::NonZeroUsize::new_unchecked(0xFFFFF)
+    });
+}
+
 /// The SAILAR virtual machine call stack.
 pub struct Stack {
-    frames: Vec<Frame>, //RefCell<Frame>
+    frames: Vec<Box<Frame>>,
+    size: Size,
 }
 
 impl Stack {
-    pub(crate) fn new() -> Self {
-        Self { frames: Vec::new() }
+    pub(crate) fn with_size(size: Size) -> Self {
+        Self {
+            frames: Default::default(),
+            size,
+        }
     }
 
     /// Returns an iterator over the call stack, yielding the most recently pushed frames first.
     pub fn iter_frames(&self) -> impl std::iter::ExactSizeIterator<Item = &Frame> {
-        self.frames.iter().rev()
+        self.frames.iter().map(std::borrow::Borrow::borrow).rev()
     }
 
-    pub(crate) fn peek(&self) -> &Frame {
-        self.frames.last().expect("call stack must never be empty")
+    pub fn is_execution_ended(&self) -> bool {
+        self.frames.is_empty()
     }
 
-    // TODO: Handle return values when popping frame.
-    pub(crate) fn pop(&mut self) {
-        self.frames.pop().expect("call stack underflow");
+    /// Pops the current stack frame.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the call stack is empty.
+    pub(crate) fn pop(&mut self) -> Box<Frame> {
+        self.frames.pop().expect("call stack underflow")
     }
 
-    pub(crate) fn push(&mut self, callee: crate::Function, arguments: Box<[value::Value]>) -> crate::Result<()> {
-        self.frames.push(Frame {
+    pub(crate) fn push(&mut self, callee: runtime::Function, arguments: Box<[value::Value]>) -> runtime::Result<()> {
+        if self.frames.len() == self.size.get().get() {
+            todo!("error stack overflow")
+        }
+
+        self.frames.push(Box::new(Frame {
             arguments,
             location: match callee.template()?.as_definition().unwrap().body()? {
                 sailar_load::function::Body::Defined(code) => FrameLocation::Defined(CodeBlockLocation::new(code.clone())),
             },
             function: callee,
-        });
+        }));
 
         Ok(())
     }
