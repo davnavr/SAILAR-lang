@@ -3,35 +3,97 @@
 use crate::error;
 use crate::module;
 use sailar::index;
+use std::cmp::PartialEq;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
+pub use sailar::signature::{IntegerSign, IntegerSize, IntegerType};
+
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum Type {}
+pub enum Type {
+    FixedInteger(IntegerType),
+    UAddr,
+    SAddr,
+    F32,
+    F64,
+    RawPtr(Option<Box<Type>>),
+    FuncPtr(Arc<crate::function::Signature>), // TODO: Make a validation error for recursive FuncPtr types.
+    Signature(Arc<Signature>),
+}
+
+// PartialEq only since resolution 
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::FixedInteger(x), Self::FixedInteger(y)) => x == y,
+            (Self::UAddr, Self::UAddr) | (Self::F32, Self::F32) | (Self::F64, Self::F64) => true,
+            (Self::RawPtr(x), Self::RawPtr(y)) => x == y,
+            (Self::FuncPtr(x), Self::FuncPtr(y)) => x == y,
+            (Self::Signature(x), Self::Signature(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
+// If Type will contain Weak reference, make it PartialEq only
+impl std::cmp::Eq for Type {}
 
 pub struct Signature {
     module: Weak<module::Module>,
-    signature: sailar::signature::Type,
+    record: sailar::signature::Type,
+    signature: lazy_init::Lazy<Result<Type, error::LoaderError>>,
 }
 
 impl Signature {
     pub(crate) fn new(signature: sailar::signature::Type, module: Weak<module::Module>) -> Arc<Self> {
-        Arc::new(Self { module, signature })
+        Arc::new(Self {
+            module,
+            record: signature,
+            signature: Default::default(),
+        })
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
     }
 
-    pub fn signature(&self) -> &sailar::signature::Type {
-        &self.signature
+    pub fn record(&self) -> &sailar::signature::Type {
+        &self.record
     }
+
+    pub fn signature(&self) -> Result<&Type, error::LoaderError> {}
 }
 
 impl Debug for Signature {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Signature").field("signature", &self.signature).finish()
+        f.debug_struct("Signature")
+            .field("record", &self.signature)
+            .field("signature", &self.signature)
+            .finish()
+    }
+}
+
+// PartialEq only since resolution of the signature may result in an error
+impl PartialEq for Signature {
+    fn eq(&self, other: &Self) -> bool {
+        if let (Ok(x), Ok(y)) = (self.signature(), other.signature()) {
+            x == y
+        } else {
+            false
+        }
+    }
+}
+
+impl From<IntegerType> for Type {
+    fn from(ty: IntegerType) -> Self {
+        Self::FixedInteger(ty)
+    }
+}
+
+impl From<Arc<Signature>> for Type {
+    fn from(signature: Arc<Signature>) -> Self {
+        Self::Signature(signature)
     }
 }
 

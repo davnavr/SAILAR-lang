@@ -83,6 +83,16 @@ impl Debug for Signature {
     }
 }
 
+impl std::cmp::PartialEq for Signature {
+    fn eq(&self, other: &Self) -> bool {
+        if let (Ok(x), Ok(y)) = (self.types(), other.types()) {
+            x == y
+        } else {
+            false
+        }
+    }
+}
+
 type InstantiationRecord = record::FunctionInstantiation;
 
 pub struct Instantiation {

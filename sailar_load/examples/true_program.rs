@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
         let integer_type = {
-            builder.add_record(signature::Type::S32);
+            builder.add_record(signature::Type::from(signature::IntegerType::S32));
             index::TypeSignature::from(0)
         };
 
