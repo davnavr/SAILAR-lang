@@ -294,7 +294,31 @@ impl Code {
                 expected: type_system::Type,
             ) -> Result<TypedValue, error::LoaderError> {
                 match value {
-                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => todo!("integer types"),
+                    instruction::Value::Constant(instruction::Constant::Integer(integer)) => {
+                        fn get_integer_bit_width(ty: &type_system::Type) -> Result<type_system::IntegerSize, error::LoaderError> {
+                            Ok(match ty {
+                                type_system::Type::FixedInteger(ty) => ty.size(),
+                                type_system::Type::UAddr
+                                | type_system::Type::SAddr
+                                | type_system::Type::RawPtr(_)
+                                | type_system::Type::FuncPtr(_) => todo!("pointer type size calculation is not yet supported"),
+                                type_system::Type::Signature(signature) => {
+                                    return signature.signature().and_then(get_integer_bit_width)
+                                }
+                                type_system::Type::F32 | type_system::Type::F64 => {
+                                    todo!("error for expected float but got integer constant")
+                                }
+                            })
+                        }
+
+                        let integer_width = get_integer_bit_width(&expected)?;
+
+                        if integer_width >= integer.bit_size() {
+                            Ok(TypedValue::new(expected, value.clone()))
+                        } else {
+                            todo!("error for constant overflow")
+                        }
+                    }
                     instruction::Value::IndexedRegister(index) => {
                         let register_type = type_system::Type::Signature(self.code.get_register_type(*index)?.clone());
                         if register_type == expected {

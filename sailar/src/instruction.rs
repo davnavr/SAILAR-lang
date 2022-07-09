@@ -1,16 +1,28 @@
 //! Representation of the SAILAR instruction set encoding.
 
 use crate::index;
+use crate::signature;
 use std::fmt::{Debug, Display, Formatter};
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
 /// context.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub enum ConstantInteger {
     I8(u8),
     I16([u8; 2]),
     I32([u8; 4]),
     I64([u8; 8]),
+}
+
+impl ConstantInteger {
+    pub fn bit_size(self) -> signature::IntegerSize {
+        match self {
+            Self::I8(_) => signature::IntegerSize::I8,
+            Self::I16(_) => signature::IntegerSize::I16,
+            Self::I32(_) => signature::IntegerSize::I32,
+            Self::I64(_) => signature::IntegerSize::I64,
+        }
+    }
 }
 
 impl Debug for ConstantInteger {

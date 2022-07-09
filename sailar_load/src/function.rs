@@ -48,7 +48,11 @@ pub struct Signature {
 }
 
 impl Signature {
-    pub(crate) fn new(signature: SignatureRecord, index: sailar::index::FunctionSignature, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(
+        signature: SignatureRecord,
+        index: sailar::index::FunctionSignature,
+        module: Weak<module::Module>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             signature,
             index,
@@ -98,19 +102,19 @@ impl Display for Signature {
         match (self.return_types(), self.parameter_types()) {
             (Ok(return_types), Ok(parameter_types)) => {
                 use std::fmt::Write;
-        
+
                 fn fmt_types(types: &[Arc<type_system::Signature>], f: &mut Formatter) -> std::fmt::Result {
                     for (i, ty) in types.iter().enumerate() {
                         if i > 0 {
                             f.write_str(", ")?;
                         }
-                        
+
                         Display::fmt(ty, f)?;
                     }
 
                     Ok(())
                 }
-        
+
                 f.write_char('(')?;
                 fmt_types(parameter_types, f)?;
                 f.write_str(") -> (")?;

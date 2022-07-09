@@ -1,7 +1,7 @@
 use sailar::builder;
 use sailar::identifier::Id;
-use sailar::instruction::{self, Instruction};
 use sailar::index;
+use sailar::instruction::{self, Instruction};
 use sailar::num::VarU28;
 use sailar::record;
 use sailar::signature;
@@ -28,9 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let main_code = {
-            let instructions = vec![
-                Instruction::Ret(vec![instruction::ConstantInteger::I8(0).into()].into_boxed_slice())
-            ];
+            let instructions = vec![Instruction::Ret(
+                vec![instruction::ConstantInteger::I8(0).into()].into_boxed_slice(),
+            )];
 
             builder.add_record(record::CodeBlock::new(
                 [].as_slice(),

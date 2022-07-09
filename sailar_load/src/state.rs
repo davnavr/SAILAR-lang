@@ -40,7 +40,10 @@ impl State {
     ///
     /// [`force_load_module`]: State::force_load_module
     pub fn new() -> Arc<Self> {
-        Self::with_resolver(resolver::unsuccessful(), std::num::NonZeroU8::new(u8::try_from(std::mem::size_of::<usize>()).unwrap()).unwrap())
+        Self::with_resolver(
+            resolver::unsuccessful(),
+            std::num::NonZeroU8::new(u8::try_from(std::mem::size_of::<usize>()).unwrap()).unwrap(),
+        )
     }
 
     pub fn force_load_module<S: crate::Source>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error> {

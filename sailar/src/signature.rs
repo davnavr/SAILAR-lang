@@ -305,6 +305,7 @@ impl IntegerType {
         self.sign
     }
 
+    /// Gets the size of the integer, in bits.
     pub const fn size(self) -> IntegerSize {
         self.size
     }
