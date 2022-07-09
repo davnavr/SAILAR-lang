@@ -48,6 +48,8 @@ impl Display for Constant {
     }
 }
 
+crate::enum_case_from_impl!(Constant, Integer, ConstantInteger);
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Value {
     Constant(Constant),
@@ -67,6 +69,14 @@ impl From<index::Register> for Value {
     #[inline]
     fn from(register: index::Register) -> Self {
         Self::IndexedRegister(register)
+    }
+}
+
+crate::enum_case_from_impl!(Value, Constant, Constant);
+
+impl From<ConstantInteger> for Value {
+    fn from(value: ConstantInteger) -> Self {
+        Constant::from(value).into()
     }
 }
 
