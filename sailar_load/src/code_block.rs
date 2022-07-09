@@ -98,6 +98,10 @@ pub struct TypedValue {
 }
 
 impl TypedValue {
+    pub fn value_type(&self) -> &type_system::Type {
+        &self.value_type
+    }
+
     pub fn raw_value(&self) -> &instruction::Value {
         &self.value
     }
