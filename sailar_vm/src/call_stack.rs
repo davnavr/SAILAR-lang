@@ -2,7 +2,9 @@
 
 use crate::runtime;
 use crate::value;
+use sailar::instruction::{Constant, ConstantInteger};
 use sailar_load::code_block::Instruction;
+use sailar_load::type_system;
 use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
 
@@ -81,20 +83,35 @@ impl DefinedFrame {
         }
     }
 
-    // TODO: Take into consideration the type of the value, so that the correct size is used.
-    pub(crate) fn map_typed_value(&self, value: &sailar_load::code_block::TypedValue) -> value::Value {
+    pub(crate) fn map_typed_value(
+        &self,
+        value: &sailar_load::code_block::TypedValue,
+        endianness: value::Endianness,
+    ) -> value::Value {
         match value.raw_value() {
-            sailar::instruction::Value::Constant(constant) => value::Value::from_constant(constant.clone()),
+            sailar::instruction::Value::Constant(constant) => match constant {
+                sailar::instruction::Constant::Integer(integer) => {
+                    let integer_type = match value.value_type() {
+                        type_system::Type::FixedInteger(ty) => ty,
+                        bad => panic!("expected integer type but got {:?}", bad),
+                    };
+
+                    value::Value::from_constant_integer(integer.clone(), *integer_type, endianness)
+                }
+            },
             sailar::instruction::Value::IndexedRegister(index) => self.get_register_value(*index).clone(),
         }
     }
 
-    pub(crate) fn map_many_typed_values<'a, V>(&self, values: V) -> Box<[value::Value]>
+    pub(crate) fn map_many_typed_values<'a, V>(&self, values: V, endianness: value::Endianness) -> Box<[value::Value]>
     where
         V: IntoIterator<Item = &'a sailar_load::code_block::TypedValue>,
         V::IntoIter: std::iter::ExactSizeIterator,
     {
-        values.into_iter().map(|value| self.map_typed_value(value)).collect()
+        values
+            .into_iter()
+            .map(|value| self.map_typed_value(value, endianness))
+            .collect()
     }
 }
 

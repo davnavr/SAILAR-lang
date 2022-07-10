@@ -50,7 +50,9 @@ impl State {
                     // TODO: Add support for breakpoints
                     ControlFlow::Nothing
                 }
-                Instruction::Ret(return_values) => ControlFlow::Return(code.map_many_typed_values(return_values.iter())),
+                Instruction::Ret(return_values) => {
+                    ControlFlow::Return(code.map_many_typed_values(return_values.iter(), self.runtime.endianness()))
+                }
             },
         };
 

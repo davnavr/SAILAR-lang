@@ -17,6 +17,7 @@ pub type Function = Arc<sailar_load::function::Instantiation>;
 #[derive(Debug)]
 pub struct Runtime {
     call_stack_size: call_stack::Size,
+    endianness: value::Endianness,
     // TODO: Could have hash_map that maps threads to their interpreter state?
 }
 
@@ -25,12 +26,14 @@ pub struct Runtime {
 #[must_use = "must eventually initialize the runtime"]
 pub struct Configuration {
     call_stack_size: call_stack::Size,
+    endianness: value::Endianness,
 }
 
 impl Configuration {
     pub fn new() -> Self {
         Self {
             call_stack_size: call_stack::Size::DEFAULT,
+            endianness: Default::default(),
         }
     }
 
@@ -42,9 +45,15 @@ impl Configuration {
         }
     }
 
+    /// Sets the endianness of the values used in the interpreter.
+    pub fn endianness(self, endianness: value::Endianness) -> Self {
+        Self { endianness, ..self }
+    }
+
     pub fn initialize_runtime(self) -> Arc<Runtime> {
         Arc::new(Runtime {
             call_stack_size: self.call_stack_size,
+            endianness: self.endianness,
         })
     }
 }
@@ -58,6 +67,10 @@ impl Default for Configuration {
 impl Runtime {
     pub fn call_stack_size(&self) -> call_stack::Size {
         self.call_stack_size
+    }
+
+    pub fn endianness(&self) -> value::Endianness {
+        self.endianness
     }
 
     fn execute_entry_point(

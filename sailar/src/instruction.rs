@@ -2,6 +2,7 @@
 
 use crate::index;
 use crate::signature;
+use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Debug, Display, Formatter};
 
 /// Represents a constant integer value stored in little-endian order. Whether or not the value is signed is inferred from
@@ -21,6 +22,28 @@ impl ConstantInteger {
             Self::I16(_) => signature::IntegerSize::I16,
             Self::I32(_) => signature::IntegerSize::I32,
             Self::I64(_) => signature::IntegerSize::I64,
+        }
+    }
+}
+
+impl Borrow<[u8]> for ConstantInteger {
+    fn borrow(&self) -> &[u8] {
+        match self {
+            Self::I8(b) => std::slice::from_ref(b),
+            Self::I16(s) => s.as_slice(),
+            Self::I32(i) => i.as_slice(),
+            Self::I64(l) => l.as_slice(),
+        }
+    }
+}
+
+impl BorrowMut<[u8]> for ConstantInteger {
+    fn borrow_mut(&mut self) -> &mut [u8] {
+        match self {
+            Self::I8(b) => std::slice::from_mut(b),
+            Self::I16(s) => s.as_mut_slice(),
+            Self::I32(i) => i.as_mut_slice(),
+            Self::I64(l) => l.as_mut_slice(),
         }
     }
 }
