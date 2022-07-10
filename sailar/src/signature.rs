@@ -223,9 +223,22 @@ impl IntegerSize {
     /// Gets the size of the integer, in bits.
     pub const fn bit_size(self) -> std::num::NonZeroU16 {
         unsafe {
-            // Safety: Size is guaranteed to never be zero.
+            // Safety: size is guaranteed to never be zero.
             std::num::NonZeroU16::new_unchecked(self.0 as u16 + 1)
         }
+    }
+
+    /// Gets the number of bytes needed to contain an integer of this bit size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::signature::IntegerSize;
+    /// assert_eq!(IntegerSize::new(std::num::NonZeroU8::new(15).unwrap()).byte_size().get(), 2);
+    /// assert_eq!(IntegerSize::I256.byte_size().get(), 32);
+    /// ```
+    pub fn byte_size(self) -> std::num::NonZeroU8 {
+        std::num::NonZeroU8::new(u8::try_from(((self.bit_size().get() + 7) & !7) / 8u16).unwrap()).unwrap()
     }
 }
 
