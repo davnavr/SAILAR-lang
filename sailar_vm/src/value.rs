@@ -34,7 +34,7 @@ pub enum Value {
 impl Value {
     /// Creates a value from the specified constant, truncating, zero extending, or sign extending as necessary to ensure the
     /// value fits in the specified integer type.
-    pub fn from_constant_integer(mut constant: ConstantInteger, integer_type: IntegerType, endianness: Endianness) -> Self {
+    pub fn from_constant_integer(constant: ConstantInteger, integer_type: IntegerType, endianness: Endianness) -> Self {
         let mut value = match integer_type.size().byte_size().get() {
             1 => Value::I8(0),
             2 => Value::I16([0; 2]),
@@ -52,10 +52,22 @@ impl Value {
         }
 
         if endianness == Endianness::Big {
-            BorrowMut::<[u8]>::borrow_mut(&mut constant).reverse();
+            //BorrowMut::<[u8]>::borrow_mut(&mut constant).reverse();
+            todo!("big endian constant conversion not yet supported")
         }
 
-        BorrowMut::<[u8]>::borrow_mut(&mut value).copy_from_slice(Borrow::<[u8]>::borrow(&constant));
+        // TODO: Fix, probably does not handle endianness correctly.
+
+        let source = Borrow::<[u8]>::borrow(&constant);
+        let destination = BorrowMut::<[u8]>::borrow_mut(&mut value);
+        if source.len() == destination.len() {
+            BorrowMut::<[u8]>::borrow_mut(&mut value).copy_from_slice(Borrow::<[u8]>::borrow(&constant));
+        } else {
+            for (b, d) in source.iter().copied().rev().zip(destination.iter_mut().rev()) {
+                *d = b;
+            }
+        }
+
         value
     }
 }
