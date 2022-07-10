@@ -20,7 +20,6 @@ pub enum Type {
     F64,
     RawPtr(Option<Arc<Signature>>), // TODO: Make a validation error for recursive RawPtr types.
     FuncPtr(Arc<crate::function::Signature>), // TODO: Make a validation error for recursive FuncPtr types.
-    Signature(Arc<Signature>),
 }
 
 impl Type {
@@ -44,6 +43,12 @@ impl Type {
     }
 }
 
+impl From<IntegerType> for Type {
+    fn from(ty: IntegerType) -> Self {
+        Self::FixedInteger(ty)
+    }
+}
+
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
@@ -55,7 +60,6 @@ impl Display for Type {
             Self::RawPtr(None) => f.write_str("voidptr"),
             Self::RawPtr(Some(pointee)) => write!(f, "rawptr({})", pointee),
             Self::FuncPtr(signature) => write!(f, "funcptr({})", signature),
-            Self::Signature(signature) => Display::fmt(signature, f),
         }
     }
 }
@@ -68,14 +72,54 @@ impl PartialEq for Type {
             (Self::UAddr, Self::UAddr) | (Self::F32, Self::F32) | (Self::F64, Self::F64) => true,
             (Self::RawPtr(x), Self::RawPtr(y)) => x == y,
             (Self::FuncPtr(x), Self::FuncPtr(y)) => x == y,
-            (Self::Signature(x), Self::Signature(y)) => x == y,
             _ => false,
         }
     }
 }
 
-// If Type will contain Weak reference, make it PartialEq only
-impl std::cmp::Eq for Type {}
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeOrSignature {
+    Type(Type),
+    Signature(Arc<Signature>),
+}
+
+impl TypeOrSignature {
+    pub fn try_get_type(&self) -> Result<&Type, error::LoaderError> {
+        Ok(match self {
+            Self::Type(ty) => ty,
+            Self::Signature(signature) => signature.signature()?,
+        })
+    }
+}
+
+impl From<Type> for TypeOrSignature {
+    fn from(ty: Type) -> Self {
+        Self::Type(ty)
+    }
+}
+
+impl Display for TypeOrSignature {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Type(ty) => Display::fmt(ty, f),
+            Self::Signature(signature) => Display::fmt(signature, f),
+        }
+    }
+}
+
+impl From<Arc<Signature>> for TypeOrSignature {
+    fn from(signature: Arc<Signature>) -> Self {
+        Self::Signature(signature)
+    }
+}
+
+impl<'a> TryFrom<&'a TypeOrSignature> for &'a Type {
+    type Error = error::LoaderError;
+
+    fn try_from(ty: &'a TypeOrSignature) -> Result<&'a Type, error::LoaderError> {
+        ty.try_get_type()
+    }
+}
 
 pub struct Signature {
     module: Weak<module::Module>,
@@ -140,18 +184,6 @@ impl PartialEq for Signature {
         } else {
             false
         }
-    }
-}
-
-impl From<IntegerType> for Type {
-    fn from(ty: IntegerType) -> Self {
-        Self::FixedInteger(ty)
-    }
-}
-
-impl From<Arc<Signature>> for Type {
-    fn from(signature: Arc<Signature>) -> Self {
-        Self::Signature(signature)
     }
 }
 

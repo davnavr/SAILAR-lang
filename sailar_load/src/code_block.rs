@@ -264,7 +264,7 @@ impl Code {
             fn check_value(
                 &self,
                 value: &instruction::Value,
-                expected: type_system::Type,
+                expected: &type_system::Type,
             ) -> Result<TypedValue, error::LoaderError> {
                 match value {
                     instruction::Value::Constant(instruction::Constant::Integer(integer)) => {
@@ -275,31 +275,28 @@ impl Code {
                                 | type_system::Type::SAddr
                                 | type_system::Type::RawPtr(_)
                                 | type_system::Type::FuncPtr(_) => todo!("pointer type size calculation is not yet supported"),
-                                type_system::Type::Signature(signature) => {
-                                    return signature.signature().and_then(get_integer_bit_width)
-                                }
                                 type_system::Type::F32 | type_system::Type::F64 => {
                                     todo!("error for expected float but got integer constant")
                                 }
                             })
                         }
 
-                        let integer_width = get_integer_bit_width(&expected)?;
+                        let integer_width = get_integer_bit_width(expected)?;
 
                         if integer_width >= integer.bit_size() {
-                            Ok(TypedValue::new(expected, value.clone()))
+                            Ok(TypedValue::new(expected.clone(), value.clone()))
                         } else {
                             todo!("error for constant overflow")
                         }
                     }
                     instruction::Value::IndexedRegister(index) => {
-                        let register_type = type_system::Type::Signature(self.code.get_register_type(*index)?.clone());
-                        if register_type == expected {
+                        let register_type = self.code.get_register_type(*index)?.signature()?.clone();
+                        if &register_type == expected {
                             Ok(TypedValue::new(register_type, value.clone()))
                         } else {
                             Err(self.fail_validation(ValueTypeMismatchError {
                                 value: value.clone(),
-                                expected,
+                                expected: expected.clone(),
                                 actual: register_type,
                             }))
                         }
@@ -322,7 +319,7 @@ impl Code {
                 values
                     .iter()
                     .zip(expected)
-                    .map(|(v, e)| self.check_value(v, e.clone().into()))
+                    .map(|(v, e)| self.check_value(v, e.signature()?))
                     .collect()
             }
         }
