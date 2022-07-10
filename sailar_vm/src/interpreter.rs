@@ -43,18 +43,16 @@ impl State {
             Return(Box<[Value]>),
         }
 
-        let control_flow: ControlFlow;
-
-        match current_frame.location_mut() {
-            call_stack::FrameLocation::Defined(code) => {
-                match code.next_instruction()?.expect("missing terminator instruction") {
-                    Instruction::Nop => (),
-                    bad => todo!("interpret {:?}", bad),
+        let control_flow = match current_frame.kind_mut() {
+            call_stack::FrameKind::Defined(code) => match code.next_instruction()?.expect("missing terminator instruction") {
+                Instruction::Nop => ControlFlow::Nothing,
+                Instruction::Break => {
+                    // TODO: Add support for breakpoints
+                    ControlFlow::Nothing
                 }
-
-                control_flow = ControlFlow::Nothing;
-            }
-        }
+                Instruction::Ret(return_values) => ControlFlow::Return(code.map_many_typed_values(return_values.iter())),
+            },
+        };
 
         match control_flow {
             ControlFlow::Nothing => self.call_stack.push(current_frame),
@@ -62,7 +60,16 @@ impl State {
                 // Frame was already popped, so stack doesn't need to be manipulated.
                 if !self.call_stack.is_execution_ended() {
                     let previous_frame = self.call_stack.pop();
-                    // TODO: Call helper that defines temporary registers to store return_values in previous_frame
+                    let expected_result_types = current_frame.return_types()?;
+
+                    assert_eq!(return_values.len(), expected_result_types.len());
+
+                    // TODO: Add check to ensure value has correct type when returning from a foreign function
+                    // .zip(expected_result_types)
+                    for value in return_values.iter() {
+                        // TODO: Call helper that defines temporary registers to store return_values in previous_frame
+                    }
+
                     todo!("handle normal returns");
                     self.call_stack.push(previous_frame);
                 } else {

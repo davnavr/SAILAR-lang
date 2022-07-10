@@ -37,8 +37,6 @@ impl From<Arc<Definition>> for Template {
     }
 }
 
-type SignatureRecord = Cow<'static, signature::Function>;
-
 pub struct Signature {
     return_type_count: usize,
     index: sailar::index::FunctionSignature,
@@ -48,7 +46,7 @@ pub struct Signature {
 
 impl Signature {
     pub(crate) fn new(
-        signature: SignatureRecord,
+        signature: Cow<'static, signature::Function>,
         index: sailar::index::FunctionSignature,
         module: Weak<module::Module>,
     ) -> Arc<Self> {
@@ -153,6 +151,12 @@ impl Instantiation {
             })
             .as_ref()
             .map_err(Clone::clone)
+    }
+
+    pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
+        match self.template()? {
+            Template::Definition(definition) => definition.signature(),
+        }
     }
 }
 
