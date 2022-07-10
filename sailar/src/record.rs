@@ -192,11 +192,13 @@ impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct CodeBlock<'a> {
-    register_types: CowBox<'a, [index::TypeSignature]>,
-    input_count: usize,
-    result_count: usize,
-    instructions: CowBox<'a, [instruction::Instruction]>,
+    /// Contains the types of all input registers, results, and temporary registers in that order.
+    pub register_types: CowBox<'a, [index::TypeSignature]>,
+    pub input_count: usize,
+    pub result_count: usize,
+    pub instructions: CowBox<'a, [instruction::Instruction]>,
 }
 
 impl<'a> CodeBlock<'a> {
@@ -256,43 +258,22 @@ impl<'a> CodeBlock<'a> {
         Self::from_types(register_types, input_count, result_count, instructions.into())
     }
 
-    /// Contains the types of all input registers, results, and temporary registers in that order.
-    pub fn register_types(&self) -> &[index::TypeSignature] {
-        std::borrow::Borrow::borrow(&self.register_types)
-    }
-
-    #[inline]
-    pub fn input_count(&self) -> usize {
-        self.input_count
-    }
-
-    #[inline]
-    pub fn result_count(&self) -> usize {
-        self.result_count
-    }
-
-    #[inline]
     pub fn temporary_count(&self) -> usize {
-        self.register_types().len() - self.input_count - self.result_count
+        self.register_types.len() - self.input_count - self.result_count
     }
 
     pub fn input_types(&self) -> &[index::TypeSignature] {
-        &self.register_types()[0..self.input_count]
+        &self.register_types[0..self.input_count]
     }
 
     /// The types of the results of this [`CodeBlock`]. These are the types of the values that are expected to be used in the
     /// block's `ret` instruction, and should be empty if the block branches to another block instead.
     pub fn result_types(&self) -> &[index::TypeSignature] {
-        &self.register_types()[self.input_count..self.input_count + self.result_count]
+        &self.register_types[self.input_count..self.input_count + self.result_count]
     }
 
     pub fn temporary_types(&self) -> &[index::TypeSignature] {
-        &self.register_types()[self.input_count + self.result_count..]
-    }
-
-    #[inline]
-    pub fn instructions(&self) -> &[instruction::Instruction] {
-        &self.instructions
+        &self.register_types[self.input_count + self.result_count..]
     }
 }
 

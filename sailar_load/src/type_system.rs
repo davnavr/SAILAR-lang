@@ -155,25 +155,22 @@ impl From<Arc<Signature>> for Type {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct LazySignatureList(lazy_init::Lazy<Result<Box<[Arc<Signature>]>, error::LoaderError>>);
+type SignatureIndices = Box<[index::TypeSignature]>;
+type ResolvedSignatureList = Result<Box<[Arc<Signature>]>, error::LoaderError>;
+
+pub(crate) struct LazySignatureList(lazy_init::LazyTransform<SignatureIndices, ResolvedSignatureList>);
 
 impl LazySignatureList {
-    pub(crate) fn get_or_initialize<T>(
-        &self,
-        module: &Weak<module::Module>,
-        types: T,
-    ) -> Result<&[Arc<Signature>], error::LoaderError>
-    where
-        T: IntoIterator<Item = index::TypeSignature>,
-        T::IntoIter: std::iter::ExactSizeIterator,
-    {
+    pub(crate) fn new(types: SignatureIndices) -> Self {
+        Self(lazy_init::LazyTransform::new(types))
+    }
+
+    pub(crate) fn get_or_initialize(&self, module: &Weak<module::Module>) -> Result<&[Arc<Signature>], error::LoaderError> {
         self.0
-            .get_or_create(|| {
+            .get_or_create(|types| {
                 let module = module::Module::upgrade_weak(module)?;
-                let iterator = types.into_iter();
-                let mut loaded = Vec::with_capacity(iterator.len());
-                for index in iterator {
+                let mut loaded = Vec::with_capacity(types.len());
+                for index in types.iter().copied() {
                     loaded.push(module.get_type_signature(index)?.clone());
                 }
                 Ok(loaded.into_boxed_slice())
@@ -186,6 +183,6 @@ impl LazySignatureList {
 
 impl Debug for LazySignatureList {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        Debug::fmt(&self.0, f)
+        f.debug_tuple("LazySignatureList").field(&self.0.get()).finish()
     }
 }

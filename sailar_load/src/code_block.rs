@@ -168,24 +168,22 @@ impl Instruction {
 }
 
 pub struct Code {
-    record: Box<Record>,
+    input_count: usize,
+    result_count: usize,
     register_types: type_system::LazySignatureList,
-    instructions: lazy_init::Lazy<Result<Vec<Instruction>, error::LoaderError>>,
+    instructions: lazy_init::LazyTransform<Box<[Op]>, Result<Vec<Instruction>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Code {
-    pub(crate) fn new(record: Box<Record>, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(record: Record, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
-            record,
-            register_types: Default::default(),
-            instructions: Default::default(),
+            input_count: record.input_count,
+            result_count: record.result_count,
+            register_types: type_system::LazySignatureList::new(record.register_types.into_boxed()),
+            instructions: lazy_init::LazyTransform::new(record.instructions.into_boxed()),
             module,
         })
-    }
-
-    pub fn record(&self) -> &Record {
-        &self.record
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
@@ -194,22 +192,21 @@ impl Code {
 
     /// The types of all input registers, results, and temporary registers in that order.
     pub fn register_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
-        self.register_types
-            .get_or_initialize(&self.module, self.record.register_types().iter().copied())
+        self.register_types.get_or_initialize(&self.module)
     }
 
     pub fn input_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
-        self.register_types().map(|types| &types[0..self.record.input_count()])
+        self.register_types().map(|types| &types[0..self.input_count])
     }
 
     pub fn result_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.register_types()
-            .map(|types| &types[self.record.input_count()..self.record.input_count() + self.record.result_count()])
+            .map(|types| &types[self.input_count..self.input_count + self.result_count])
     }
 
     pub fn temporary_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
         self.register_types()
-            .map(|types| &types[self.record.input_count() + self.record.result_count()..])
+            .map(|types| &types[self.input_count + self.result_count..])
     }
 
     pub fn get_register_type(&self, index: sailar::index::Register) -> Result<&Arc<type_system::Signature>, error::LoaderError> {
@@ -236,53 +233,32 @@ impl Code {
         }
     }
 
-    fn fail_instruction_validation<E: Into<InvalidInstructionKind>>(
-        self: &Arc<Self>,
-        kind: E,
-        index: Option<usize>,
-    ) -> InvalidInstructionError {
-        InvalidInstructionError::new(
-            kind,
-            index.map(|index| InstructionLocation::new(index, self.record.instructions().get(index).unwrap().clone())),
-            self.clone(),
-        )
-    }
-
-    fn validate_body(self: &Arc<Self>) -> Result<Vec<Instruction>, error::LoaderError> {
+    fn validate_body(self: &Arc<Self>, mut instructions: Vec<Op>) -> Result<Vec<Instruction>, error::LoaderError> {
         struct Validator<'a> {
-            _module: Arc<module::Module>,
-            index: Option<usize>,
-            source: &'a [Op],
-            instructions: Vec<Instruction>,
+            //module: Arc<module::Module>,
+            current: Option<InstructionLocation>,
+            source: std::iter::Enumerate<std::vec::Drain<'a, Op>>,
             code: &'a Arc<Code>,
         }
 
         impl<'a> Validator<'a> {
-            fn new(code: &'a Arc<Code>) -> Result<Self, error::LoaderError> {
-                let source = code.record.instructions();
+            fn new(code: &'a Arc<Code>, instructions: &'a mut Vec<Op>) -> Result<Self, error::LoaderError> {
                 Ok(Self {
-                    _module: module::Module::upgrade_weak(&code.module)?,
-                    index: None,
-                    instructions: Vec::with_capacity(source.len()),
-                    source,
+                    //module: module::Module::upgrade_weak(&code.module)?,
+                    current: None,
+                    source: instructions.drain(..).enumerate(),
                     code,
                 })
             }
 
-            fn next_instruction(&mut self) -> Option<&'a Op> {
-                let current_index = match self.index {
-                    None if self.source.is_empty() => return None,
-                    None => 0,
-                    Some(index) if index == self.source.len() - 1 => return None,
-                    Some(index) => index + 1,
-                };
-
-                self.index = Some(current_index);
-                self.source.get(current_index)
+            fn next_instruction(&mut self) -> Option<&Op> {
+                self.source
+                    .next()
+                    .map(|(index, current)| &self.current.insert(InstructionLocation::new(index, current)).instruction)
             }
 
             fn fail_validation<E: Into<InvalidInstructionKind>>(&self, kind: E) -> error::LoaderError {
-                self.code.fail_instruction_validation(kind, self.index).into()
+                InvalidInstructionError::new(kind, self.current.clone(), self.code.clone()).into()
             }
 
             fn check_value(
@@ -351,28 +327,29 @@ impl Code {
             }
         }
 
-        let mut validator = Validator::new(self)?;
+        let mut buffer = Vec::with_capacity(instructions.len());
+        let mut validator = Validator::new(self, &mut instructions)?;
 
         while let Some(op) = validator.next_instruction() {
-            validator.instructions.push(match op {
+            buffer.push(match op.clone() {
                 Op::Nop => Instruction::Nop,
                 Op::Break => Instruction::Break,
-                Op::Ret(values) => Instruction::Ret(validator.check_many_values(values, self.result_types()?)?),
+                Op::Ret(values) => Instruction::Ret(validator.check_many_values(&values, self.result_types()?)?),
                 bad => todo!("support {:?}", bad),
             });
         }
 
-        match validator.instructions.last() {
+        match buffer.last() {
             Some(terminator) if terminator.is_terminator() => (),
             _ => return Err(validator.fail_validation(InvalidInstructionKind::ExpectedTerminator)),
         }
 
-        Ok(validator.instructions)
+        Ok(buffer)
     }
 
     pub fn instructions<'a>(self: &'a Arc<Self>) -> Result<&'a [Instruction], error::LoaderError> {
         self.instructions
-            .get_or_create(|| self.validate_body())
+            .get_or_create(|instructions| self.validate_body(instructions.into_vec()))
             .as_ref()
             .map(|instructions| instructions.as_slice())
             .map_err(Clone::clone)
@@ -382,8 +359,8 @@ impl Code {
 impl Debug for Code {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Code")
-            .field("record", &self.record)
             .field("register_types", &self.register_types)
+            .field("instructions", &self.instructions.get())
             .finish()
     }
 }

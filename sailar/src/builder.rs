@@ -150,15 +150,15 @@ impl<'a> Builder<'a> {
             }
 
             fn write_code_block(out: &mut VecWriter, block: &record::CodeBlock) -> Result {
-                out.write_length(block.input_count())?;
-                out.write_length(block.result_count())?;
+                out.write_length(block.input_count)?;
+                out.write_length(block.result_count)?;
                 out.write_length(block.temporary_count())?;
-                for index in block.register_types().iter() {
+                for index in block.register_types.iter() {
                     out.write_length(*index)?;
                 }
 
-                out.write_length(block.instructions().len())?;
-                for instruction in block.instructions().iter() {
+                out.write_length(block.instructions.len())?;
+                for instruction in block.instructions.iter() {
                     out.write_byte(u8::from(instruction.opcode()))?;
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),

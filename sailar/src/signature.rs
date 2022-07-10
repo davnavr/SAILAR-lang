@@ -70,9 +70,10 @@ pub struct InvalidTypeCode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Function {
-    types: Box<[index::TypeSignature]>,
-    return_type_count: usize,
+    pub types: Box<[index::TypeSignature]>,
+    pub return_type_count: usize,
 }
 
 impl Function {

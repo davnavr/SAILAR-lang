@@ -41,7 +41,7 @@ impl From<Arc<Definition>> for Template {
 type SignatureRecord = Cow<'static, signature::Function>;
 
 pub struct Signature {
-    signature: SignatureRecord,
+    return_type_count: usize,
     index: sailar::index::FunctionSignature,
     types: type_system::LazySignatureList,
     module: Weak<module::Module>,
@@ -54,15 +54,11 @@ impl Signature {
         module: Weak<module::Module>,
     ) -> Arc<Self> {
         Arc::new(Self {
-            signature,
             index,
-            types: Default::default(),
+            return_type_count: signature.return_type_count,
+            types: type_system::LazySignatureList::new(signature.into_owned().types),
             module,
         })
-    }
-
-    pub fn record(&self) -> &signature::Function {
-        &self.signature
     }
 
     pub fn index(&self) -> sailar::index::FunctionSignature {
@@ -75,25 +71,21 @@ impl Signature {
 
     /// Returns the function signature's return types and parameter types.
     pub fn types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
-        self.types
-            .get_or_initialize(&self.module, self.signature.types().iter().copied())
+        self.types.get_or_initialize(&self.module)
     }
 
     pub fn return_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
-        self.types().map(|types| &types[0..self.record().return_types().len()])
+        self.types().map(|types| &types[0..self.return_type_count])
     }
 
     pub fn parameter_types(&self) -> Result<&[Arc<type_system::Signature>], error::LoaderError> {
-        self.types().map(|types| &types[self.record().return_types().len()..])
+        self.types().map(|types| &types[self.return_type_count..])
     }
 }
 
 impl Debug for Signature {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Signature")
-            .field("record", &self.signature)
-            .field("types", &self.types)
-            .finish()
+        f.debug_struct("Signature").field("types", &self.types).finish()
     }
 }
 

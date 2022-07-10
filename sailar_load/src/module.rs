@@ -116,7 +116,7 @@ impl Module {
                     )),
                     Record::CodeBlock(code) => module
                         .code_blocks
-                        .push(code_block::Code::new(code.into_boxed(), this.clone())),
+                        .push(code_block::Code::new(*code.into_boxed(), this.clone())),
                     Record::FunctionDefinition(definition) => {
                         let function = function::Definition::new(definition, this.clone());
                         module
