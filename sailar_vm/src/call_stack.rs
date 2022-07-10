@@ -11,6 +11,7 @@ type CodeBlock = std::sync::Arc<sailar_load::code_block::Code>;
 pub struct CodeBlockLocation {
     block: CodeBlock,
     index: usize,
+    //temporary_registers: Vec<>,
 }
 
 impl CodeBlockLocation {
@@ -102,12 +103,16 @@ impl Stack {
         self.frames.pop().expect("call stack underflow")
     }
 
-    pub(crate) fn push(&mut self, callee: runtime::Function, arguments: Box<[value::Value]>) -> runtime::Result<()> {
+    pub(crate) fn push(&mut self, frame: Box<Frame>) {
+        self.frames.push(frame);
+    }
+
+    pub(crate) fn push_new(&mut self, callee: runtime::Function, arguments: Box<[value::Value]>) -> runtime::Result<()> {
         if self.frames.len() == self.size.get().get() {
             todo!("error stack overflow")
         }
 
-        self.frames.push(Box::new(Frame {
+        self.push(Box::new(Frame {
             arguments,
             location: match callee.template()?.as_definition().unwrap().body()? {
                 sailar_load::function::Body::Defined(code) => FrameLocation::Defined(CodeBlockLocation::new(code.clone())),

@@ -20,6 +20,41 @@ pub struct Runtime {
     // TODO: Could have hash_map that maps threads to their interpreter state?
 }
 
+/// Used configuring the properties of the SAILAR virtual machine.
+#[derive(Clone, Debug)]
+#[must_use = "must eventually initialize the runtime"]
+pub struct Configuration {
+    call_stack_size: call_stack::Size,
+}
+
+impl Configuration {
+    pub fn new() -> Self {
+        Self {
+            call_stack_size: call_stack::Size::DEFAULT,
+        }
+    }
+
+    /// Sets the maximum number of frames in the call stack before a stack overflow occurs.
+    pub fn call_stack_size(self, size: call_stack::Size) -> Self {
+        Self {
+            call_stack_size: size,
+            ..self
+        }
+    }
+
+    pub fn initialize_runtime(self) -> Runtime {
+        Runtime {
+            call_stack_size: self.call_stack_size,
+        }
+    }
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Runtime {
     pub fn call_stack_size(&self) -> call_stack::Size {
         self.call_stack_size

@@ -4,6 +4,7 @@ use crate::call_stack;
 use crate::error;
 use crate::runtime::{self, Runtime};
 use crate::value::Value;
+use sailar_load::code_block::Instruction;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -20,8 +21,12 @@ impl State {
         arguments: Box<[Value]>,
     ) -> Result<Self, error::RuntimeError> {
         let mut call_stack = call_stack::Stack::with_size(runtime.call_stack_size());
-        call_stack.push(entry_point, arguments)?;
+        call_stack.push_new(entry_point, arguments)?;
         Ok(Self { runtime, call_stack })
+    }
+
+    pub fn runtime(&self) -> &Arc<Runtime> {
+        &self.runtime
     }
 
     pub fn call_stack(&self) -> &call_stack::Stack {
@@ -29,24 +34,41 @@ impl State {
     }
 
     pub(crate) fn step(&mut self) -> Result<Option<Box<[Value]>>, error::RuntimeError> {
+        // TODO: How to generate list of stack frames in debugger if current_frame is popped?
         let mut current_frame = self.call_stack.pop();
-        let pop_frame;
+
+        enum ControlFlow {
+            Nothing,
+            //Branch(Arc<sailar_load::code_block::Code>),
+            Return(Box<[Value]>),
+        }
+
+        let control_flow: ControlFlow;
 
         match current_frame.location_mut() {
             call_stack::FrameLocation::Defined(code) => {
                 match code.next_instruction()?.expect("missing terminator instruction") {
-                bad => todo!("interpret {:?}", bad),
-            }
+                    Instruction::Nop => (),
+                    bad => todo!("interpret {:?}", bad),
+                }
 
-            pop_frame = false;
-        },
+                control_flow = ControlFlow::Nothing;
+            }
         }
 
-        if !pop_frame {
-            //self.call_stack.push(current_frame, arguments: Box<[value::Value]>)
-            todo!("handle return instruction")
-        } else if self.call_stack.is_execution_ended() {
-            return Ok(Some(todo!("some return value")));
+        match control_flow {
+            ControlFlow::Nothing => self.call_stack.push(current_frame),
+            ControlFlow::Return(return_values) => {
+                // Frame was already popped, so stack doesn't need to be manipulated.
+                if !self.call_stack.is_execution_ended() {
+                    let previous_frame = self.call_stack.pop();
+                    // TODO: Call helper that defines temporary registers to store return_values in previous_frame
+                    todo!("handle normal returns");
+                    self.call_stack.push(previous_frame);
+                } else {
+                    return Ok(Some(return_values));
+                }
+            }
         }
 
         Ok(None)

@@ -3,7 +3,6 @@
 use crate::error;
 use crate::module;
 use crate::type_system;
-use sailar::helper::borrow::CowBox;
 use sailar::record;
 use sailar::signature;
 use std::borrow::{Borrow, Cow};
@@ -254,8 +253,6 @@ impl<'a, T: Borrow<Definition>> From<&'a T> for DefinitionDebug<'a> {
 
 impl Debug for DefinitionDebug<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Definition")
-            .field("export", &self.0.export())
-            .finish()
+        f.debug_struct("Definition").field("export", &self.0.export()).finish()
     }
 }
