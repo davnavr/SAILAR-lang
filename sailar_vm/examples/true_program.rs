@@ -64,16 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     let main = module.entry_point()?.ok_or("expected entry point to be present")?;
+    let runtime = sailar_vm::runtime::Configuration::new().initialize_runtime();
 
-    let main_body = match main.template()? {
-        sailar_load::function::Template::Definition(definition) => definition.body()?,
-    };
+    let return_values = runtime.execute(main.clone(), Box::default())?;
 
-    let main_instructions = match main_body {
-        sailar_load::function::Body::Defined(code) => code.instructions()?,
-    };
-
-    assert!(matches!(main_instructions, [sailar_load::code_block::Instruction::Ret(_)]));
+    dbg!(return_values);
 
     Ok(())
 }

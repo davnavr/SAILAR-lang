@@ -81,6 +81,7 @@ impl DefinedFrame {
         }
     }
 
+    // TODO: Take into consideration the type of the value, so that the correct size is used.
     pub(crate) fn map_typed_value(&self, value: &sailar_load::code_block::TypedValue) -> value::Value {
         match value.raw_value() {
             sailar::instruction::Value::Constant(constant) => value::Value::from_constant(constant.clone()),

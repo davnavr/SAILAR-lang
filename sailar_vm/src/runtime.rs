@@ -42,10 +42,10 @@ impl Configuration {
         }
     }
 
-    pub fn initialize_runtime(self) -> Runtime {
-        Runtime {
+    pub fn initialize_runtime(self) -> Arc<Runtime> {
+        Arc::new(Runtime {
             call_stack_size: self.call_stack_size,
-        }
+        })
     }
 }
 
