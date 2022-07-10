@@ -131,22 +131,16 @@ impl std::cmp::PartialEq for Signature {
 type InstantiationRecord = record::FunctionInstantiation;
 
 pub struct Instantiation {
-    instantiation: Box<InstantiationRecord>,
-    template: lazy_init::Lazy<Result<Template, error::LoaderError>>,
+    template: lazy_init::LazyTransform<sailar::index::FunctionTemplate, Result<Template, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Instantiation {
-    pub(crate) fn new(instantiation: Box<InstantiationRecord>, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
-            instantiation,
-            template: Default::default(),
+            template: lazy_init::LazyTransform::new(instantiation.template),
             module,
         })
-    }
-
-    pub fn record(&self) -> &record::FunctionInstantiation {
-        &self.instantiation
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
@@ -155,9 +149,8 @@ impl Instantiation {
 
     pub fn template(&self) -> Result<&Template, error::LoaderError> {
         self.template
-            .get_or_create(|| {
-                module::Module::upgrade_weak(&self.module)
-                    .and_then(|module| module.get_function_template(self.record().template()))
+            .get_or_create(|template| {
+                module::Module::upgrade_weak(&self.module).and_then(|module| module.get_function_template(template))
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -167,13 +160,10 @@ impl Instantiation {
 impl Debug for Instantiation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Instantiation")
-            .field("record", &self.instantiation)
-            .field("template", &self.template)
+            .field("template", &self.template.get())
             .finish()
     }
 }
-
-type DefinitionRecord = CowBox<'static, record::FunctionDefinition<'static>>;
 
 /// Represents a function body.
 #[derive(Clone, Debug)]
@@ -183,18 +173,18 @@ pub enum Body {
 
 /// Represents a function definition.
 pub struct Definition {
-    definition: DefinitionRecord,
-    body: lazy_init::Lazy<Result<Body, error::LoaderError>>,
-    signature: lazy_init::Lazy<Result<Arc<Signature>, error::LoaderError>>,
+    export: module::Export,
+    body: lazy_init::LazyTransform<record::FunctionBody<'static>, Result<Body, error::LoaderError>>,
+    signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Definition {
-    pub(crate) fn new(definition: DefinitionRecord, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(definition: record::FunctionDefinition<'static>, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
-            definition,
-            body: Default::default(),
-            signature: Default::default(),
+            export: definition.export,
+            body: lazy_init::LazyTransform::new(definition.body),
+            signature: lazy_init::LazyTransform::new(definition.signature),
             module,
         })
     }
@@ -203,16 +193,16 @@ impl Definition {
         &self.module
     }
 
-    pub fn record(&self) -> &record::FunctionDefinition<'static> {
-        &self.definition
+    pub fn export(&self) -> &module::Export {
+        &self.export
     }
 
     pub fn body(&self) -> Result<&Body, error::LoaderError> {
         self.body
-            .get_or_create(|| match self.definition.body() {
+            .get_or_create(|body| match body {
                 record::FunctionBody::Definition(code) => {
                     let module = module::Module::upgrade_weak(&self.module)?;
-                    Ok(Body::Defined(module.get_code_block(*code)?.clone()))
+                    Ok(Body::Defined(module.get_code_block(code)?.clone()))
                 }
                 record::FunctionBody::Foreign { .. } => todo!("foreign function bodies not yet supported"),
             })
@@ -222,9 +212,9 @@ impl Definition {
 
     pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
         self.signature
-            .get_or_create(|| {
+            .get_or_create(|signature| {
                 module::Module::upgrade_weak(&self.module)?
-                    .get_function_signature(self.definition.signature())
+                    .get_function_signature(signature)
                     .cloned()
             })
             .as_ref()
@@ -243,8 +233,9 @@ impl Definition {
 impl Debug for Definition {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Definition")
-            .field("definition", &self.definition)
-            .field("body", &self.body)
+            .field("signature", &self.signature.get())
+            .field("body", &self.body.get())
+            .field("export", &self.export())
             .finish()
     }
 }
@@ -264,7 +255,7 @@ impl<'a, T: Borrow<Definition>> From<&'a T> for DefinitionDebug<'a> {
 impl Debug for DefinitionDebug<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Definition")
-            .field("export", &self.0.definition.export())
+            .field("export", &self.0.export())
             .finish()
     }
 }

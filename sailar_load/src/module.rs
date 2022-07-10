@@ -18,6 +18,8 @@ pub type Record = record::Record<'static>;
 
 pub type ModuleIdentifier = record::ModuleIdentifier<'static>;
 
+pub type Export = record::Export<'static>;
+
 pub struct SymbolLookup {
     lookup: rustc_hash::FxHashMap<Symbol, ()>,
 }
@@ -118,7 +120,7 @@ impl Module {
                         .code_blocks
                         .push(code_block::Code::new(*code.into_boxed(), this.clone())),
                     Record::FunctionDefinition(definition) => {
-                        let function = function::Definition::new(definition, this.clone());
+                        let function = function::Definition::new(*definition.into_boxed(), this.clone());
                         module
                             .symbols
                             .try_insert(function.to_symbol())
@@ -127,7 +129,7 @@ impl Module {
                     }
                     Record::FunctionInstantiation(instantiation) => module
                         .function_instantiations
-                        .push(function::Instantiation::new(instantiation.into_boxed(), this.clone())),
+                        .push(function::Instantiation::new(*instantiation.into_boxed(), this.clone())),
                     bad => todo!("unsupported {:?}", bad),
                 })
                 .err();

@@ -296,18 +296,14 @@ impl FunctionBody<'_> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FunctionInstantiation {
-    template: index::FunctionTemplate,
+    pub template: index::FunctionTemplate,
 }
 
 impl FunctionInstantiation {
     pub fn from_template(template: index::FunctionTemplate) -> Self {
         Self { template }
-    }
-
-    #[inline]
-    pub fn template(&self) -> index::FunctionTemplate {
-        self.template
     }
 }
 
@@ -350,10 +346,11 @@ impl From<FunctionDefinitionFlags> for VarU28 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FunctionDefinition<'a> {
-    export: Export<'a>,
-    signature: index::FunctionSignature,
-    body: FunctionBody<'a>,
+    pub export: Export<'a>,
+    pub signature: index::FunctionSignature,
+    pub body: FunctionBody<'a>,
 }
 
 impl<'a> FunctionDefinition<'a> {
@@ -361,27 +358,12 @@ impl<'a> FunctionDefinition<'a> {
         Self { export, signature, body }
     }
 
-    #[inline]
-    pub fn export(&self) -> &Export<'a> {
-        &self.export
-    }
-
-    #[inline]
-    pub fn signature(&self) -> index::FunctionSignature {
-        self.signature
-    }
-
-    #[inline]
-    pub fn body(&self) -> &FunctionBody<'a> {
-        &self.body
-    }
-
     pub fn flags(&self) -> FunctionDefinitionFlags {
         // Bit 0 indicates whether body is foreign
         let mut flags = if self.body.is_foreign() { 1u16 } else { 0 };
         // Bit 1 will be used to indicate if a generic parameter count is present
         // Bits 2 to 3 contains the export kind
-        flags |= u16::from(self.export().kind().bits()) << 2u8;
+        flags |= u16::from(self.export.kind().bits()) << 2u8;
         FunctionDefinitionFlags(flags)
     }
 }

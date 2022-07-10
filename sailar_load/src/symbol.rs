@@ -17,7 +17,7 @@ macro_rules! symbol_wrapper {
 
         impl $name {
             pub fn new(definition: std::sync::Arc<$contained>) -> Option<Self> {
-                match definition.record().export() {
+                match definition.export() {
                     record::Export::Private(_) | record::Export::Export(_) => Some(Self(definition)),
                     record::Export::Hidden => None,
                 }
@@ -28,7 +28,7 @@ macro_rules! symbol_wrapper {
             }
 
             pub fn is_private(&self) -> bool {
-                match self.0.record().export() {
+                match self.0.export() {
                     record::Export::Private(_) => true,
                     record::Export::Export(_) => false,
                     record::Export::Hidden => unreachable!(),
@@ -51,7 +51,7 @@ pub enum Symbol {
 impl Symbol {
     pub fn export(&self) -> &record::Export<'static> {
         match self {
-            Self::Function(f) => f.definition().record().export(),
+            Self::Function(f) => f.definition().export(),
         }
     }
 

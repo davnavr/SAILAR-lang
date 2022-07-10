@@ -189,13 +189,13 @@ impl<'a> Builder<'a> {
             fn write_function_definition(out: &mut VecWriter, definition: &record::FunctionDefinition) -> Result {
                 out.write_unsigned_integer(definition.flags())?;
 
-                if let Some(symbol) = definition.export().symbol() {
+                if let Some(symbol) = definition.export.symbol() {
                     out.write_identifier(symbol)?;
                 }
 
-                out.write_length(definition.signature())?;
+                out.write_length(definition.signature)?;
 
-                match definition.body() {
+                match &definition.body {
                     record::FunctionBody::Definition(index) => out.write_length(*index),
                     record::FunctionBody::Foreign { library, entry_point } => {
                         out.write_length(*library)?;
@@ -205,7 +205,7 @@ impl<'a> Builder<'a> {
             }
 
             fn write_function_instantiation(out: &mut VecWriter, instantiation: &record::FunctionInstantiation) -> Result {
-                out.write_length(instantiation.template())?;
+                out.write_length(instantiation.template)?;
                 out.write_length(0usize)
             }
 
