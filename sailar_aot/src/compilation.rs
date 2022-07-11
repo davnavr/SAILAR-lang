@@ -54,7 +54,7 @@ impl Inputs {
     }
 
     /// Specifies a [`Resolver`] that retrieves imported modules for inclusion in this compilation.
-    /// 
+    ///
     /// [`Resolver`]: sailar_load::Resolver
     pub fn module_resolver<R>(self, resolver: R) -> Self
     where
