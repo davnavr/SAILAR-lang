@@ -145,7 +145,8 @@ impl Inputs {
 
         output_module.set_triple(&target_triple);
 
-        let function_cache = crate::function::Cache::new(&output_module);
+        let type_cache = crate::signature::Cache::new(&output_module, &target_data);
+        let function_cache = crate::function::Cache::new(&type_cache);
 
         Ok(Compilation {
             output_module,
