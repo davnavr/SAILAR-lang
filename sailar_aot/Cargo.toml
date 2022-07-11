@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
 sailar = { path = "../sailar" }
-sailar_get = { path = "../sailar_get" }
+sailar_load = { path = "../sailar_load" }
 thiserror = "1.0.30"

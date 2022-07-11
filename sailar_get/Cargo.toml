@@ -1,9 +1,0 @@
-[package]
-name = "sailar_get"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-rustc-hash = "1.1.0"
-sailar = { path = "../sailar" }
-thiserror = "1.0.30"
