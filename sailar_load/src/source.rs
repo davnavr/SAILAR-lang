@@ -1,5 +1,6 @@
 //! Contains the trait used to read the contents of a module during loading.
 
+use crate::error::GenericError;
 use crate::module::Record;
 use sailar::reader;
 use std::convert::Infallible;
@@ -10,6 +11,34 @@ pub trait Source {
     type Records: Iterator<Item = Result<Record, Self::Error>>;
 
     fn source(self) -> Result<Self::Records, Self::Error>;
+}
+
+impl<S: Source> Source for Box<S> {
+    type Error = S::Error;
+    type Records = S::Records;
+
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        S::source(*self)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct Empty;
+
+impl Source for Empty {
+    type Error = Infallible;
+    type Records = std::iter::Empty<Result<Record, Infallible>>;
+
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        Ok(std::iter::empty())
+    }
+}
+
+/// A module source yielding an empty sequence of records.
+#[must_use]
+pub fn empty() -> Empty {
+    Empty
 }
 
 #[derive(Clone, Debug)]
@@ -67,7 +96,7 @@ impl<S: Read> Source for ReaderSource<S> {
     }
 }
 
-pub type BoxedRecords = Box<dyn Iterator<Item = Result<Record, Box<dyn std::error::Error>>>>;
+pub type BoxedRecords = Box<dyn Iterator<Item = Result<Record, GenericError>>>;
 
 #[repr(transparent)]
 struct BoxedRecordsInternals<I, E>(I)
@@ -79,31 +108,22 @@ where
     I: Iterator<Item = Result<Record, E>>,
     E: std::error::Error + 'static,
 {
-    type Item = Result<Record, Box<dyn std::error::Error>>;
+    type Item = Result<Record, GenericError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|result| result.map_err(Box::from))
+        self.0.next().map(|result| result.map_err(GenericError::new))
     }
 }
 
-pub type BoxedSource = Box<dyn Source<Error = Box<dyn std::error::Error>, Records = BoxedRecords>>;
-
 #[repr(transparent)]
-struct BoxedSourceInternals<S>(S);
+pub struct BoxedSource(Box<dyn FnOnce() -> Result<BoxedRecords, GenericError>>);
 
-impl<S> Source for BoxedSourceInternals<S>
-where
-    S: Source + 'static,
-    S::Error: std::error::Error + 'static,
-{
-    type Error = Box<dyn std::error::Error>;
+impl Source for BoxedSource {
+    type Error = GenericError;
     type Records = BoxedRecords;
 
     fn source(self) -> Result<Self::Records, Self::Error> {
-        match self.0.source() {
-            Ok(s) => Ok(Box::new(BoxedRecordsInternals(s))),
-            Err(e) => Err(Box::from(e)),
-        }
+        (self.0)()
     }
 }
 
@@ -112,5 +132,8 @@ where
     S: Source + 'static,
     S::Error: std::error::Error,
 {
-    Box::new(BoxedSourceInternals(source))
+    BoxedSource(Box::new(|| match source.source() {
+        Ok(s) => Ok(Box::new(BoxedRecordsInternals(s))),
+        Err(e) => Err(GenericError::new(e)),
+    }))
 }

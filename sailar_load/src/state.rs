@@ -108,7 +108,7 @@ impl Default for Builder {
 }
 
 impl State {
-    /// Loads a module, attempting to associate its name and version (if present) with the loaded module. Returns `Err` if a
+    /// Loads a module, attempting to associate its name and version (if present) with the loaded module. Returns `Ok(None)` if a
     /// module corresponding to the same name is already loaded.
     pub fn force_load_module<S>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error>
     where
@@ -135,7 +135,7 @@ impl State {
     pub fn get_or_load_module(
         self: &Arc<Self>,
         module_identifier: Arc<module::ModuleIdentifier>,
-    ) -> Result<Option<Arc<module::Module>>, resolver::Error<Box<dyn std::error::Error + 'static>>> {
+    ) -> Result<Option<Arc<module::Module>>, resolver::Error> {
         let mut arena = self.modules.lock().unwrap();
         match arena.named_modules.entry(module_identifier) {
             hash_map::Entry::Occupied(occupied) => Ok(Some(occupied.get().clone())),
@@ -144,10 +144,7 @@ impl State {
                 Err(e) => Err(resolver::Error::RetrievalError(e)),
                 Ok(Some(source)) => {
                     let module =
-                        module::Module::from_source(source::ReaderSource::from(source), Arc::downgrade(self)).map_err(|e| {
-                            let a: Box<dyn std::error::Error + 'static> = Box::from(e);
-                            resolver::Error::RetrievalError(a)
-                        })?;
+                        module::Module::from_source(source, Arc::downgrade(self)).map_err(resolver::Error::RetrievalError)?;
 
                     // TODO: Return an error on identifier mismatch.
                     assert!(Some(vacant.key()) == module.module_identifier());

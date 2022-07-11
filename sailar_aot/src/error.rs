@@ -1,8 +1,12 @@
 //! Contains types representing errors that can occur during compilation.
 
+pub use sailar_load::error::GenericError;
+
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompilationErrorKind {
+    #[error(transparent)]
+    ModuleResolutionError(#[from] GenericError),
     #[error(transparent)]
     LoaderError(#[from] sailar_load::error::LoaderError),
     #[error("invalid target triple: {0}")]

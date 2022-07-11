@@ -48,7 +48,7 @@ impl Inputs {
         S::Error: std::error::Error + 'static,
         M: IntoIterator<Item = S>,
     {
-        self.sources.extend(modules.map(sailar_load::source::boxed));
+        self.sources.extend(modules.into_iter().map(sailar_load::source::boxed));
         self
     }
 
@@ -58,7 +58,7 @@ impl Inputs {
         R::Error: std::error::Error,
     {
         Self {
-            resolver: Some(resolver),
+            resolver: Some(sailar_load::resolver::boxed(resolver)),
             ..self
         }
     }
@@ -98,10 +98,37 @@ impl Inputs {
 
         let target_data = target_machine.get_target_data();
 
+        let state = {
+            let address_size = sailar_load::state::AddressSize::with_byte_size(
+                std::num::NonZeroU16::new(u16::try_from(target_data.get_pointer_byte_size(None)).unwrap()).unwrap(),
+            );
+
+            let mut builder = sailar_load::state::Builder::new().address_size(address_size);
+
+            if let Some(resolver) = self.resolver {
+                builder = builder.resolver(resolver);
+            }
+
+            builder.create()
+        };
+
+        let input_modules = {
+            let mut modules = Vec::with_capacity(self.sources.len());
+            for source in self.sources {
+                match state
+                    .force_load_module(source)
+                    .map_err(CompilationErrorKind::ModuleResolutionError)?
+                {
+                    Some(module) => modules.push(module),
+                    None => todo!("make error for duplicate module"),
+                }
+            }
+            modules.into_boxed_slice()
+        };
+
         let output_module_name;
         let output_module = context.create_module(match self.output_name {
-            OutputName::Inferred => self
-                .modules
+            OutputName::Inferred => input_modules
                 .first()
                 .and_then(|module| module.module_identifier())
                 .map(|id| id.name().as_str())
@@ -113,22 +140,6 @@ impl Inputs {
         });
 
         output_module.set_triple(&target_triple);
-
-        let state = sailar_load::state::Builder::new()
-            .resolver(self.resolver)
-            .address_size(sailar_load::state::AddressSize::with_byte_size(&target_data))
-            .create();
-
-        let input_modules = {
-            let mut modules = Vec::with_capacity(self.sources.len());
-            for source in self.sources {
-                match state.force_load_module(source)? {
-                    Some(module) => modules.push(module),
-                    None => todo!("make error for duplicate module"),
-                }
-            }
-            modules.into_boxed_slice()
-        };
 
         // TODO: Have a hashmap that initially contains all function exports, but will then be gradually filled by all referenced functions
         // This should also help keep track of which functions have yet to be translated
