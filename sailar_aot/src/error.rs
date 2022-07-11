@@ -29,8 +29,8 @@ impl CompilationError {
     }
 }
 
-impl From<CompilationErrorKind> for CompilationError {
-    fn from(kind: CompilationErrorKind) -> Self {
+impl<E: Into<CompilationErrorKind>> From<E> for CompilationError {
+    fn from(kind: E) -> Self {
         Self::new(kind)
     }
 }

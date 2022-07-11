@@ -10,14 +10,19 @@ use std::sync::Arc;
 /// Maps SAILAR function instantiations to LLVM function definitions.
 #[derive(Debug)]
 pub struct Cache<'types, 'module, 'context> {
+    module: &'module inkwell::module::Module<'context>,
     type_cache: &'types crate::signature::Cache<'module, 'context>,
     functions: RefCell<rustc_hash::FxHashMap<ArcEq<function::Instantiation>, LlvmFunction<'context>>>,
     undefined_functions: Vec<(Arc<function::Instantiation>, LlvmFunction<'context>)>,
 }
 
 impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
-    pub fn new(type_cache: &'types crate::signature::Cache<'module, 'context>) -> Self {
+    pub fn new(
+        module: &'module inkwell::module::Module<'context>,
+        type_cache: &'types crate::signature::Cache<'module, 'context>,
+    ) -> Self {
         Self {
+            module,
             type_cache,
             functions: Default::default(),
             undefined_functions: Vec::new(),
