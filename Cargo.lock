@@ -262,6 +262,7 @@ name = "sailar_aot"
 version = "0.1.0"
 dependencies = [
  "inkwell",
+ "rustc-hash",
  "sailar",
  "sailar_load",
  "thiserror",

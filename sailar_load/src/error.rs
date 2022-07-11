@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 /// A boxed error type.
 ///
-/// Workaround for https://github.com/rust-lang/project-error-handling/issues/16
+/// Workaround for <https://github.com/rust-lang/project-error-handling/issues/16>.
 #[repr(transparent)]
 pub struct GenericError(Box<dyn std::error::Error>);
 

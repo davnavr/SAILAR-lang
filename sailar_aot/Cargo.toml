@@ -7,4 +7,5 @@ edition = "2021"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
 sailar = { path = "../sailar" }
 sailar_load = { path = "../sailar_load" }
+rustc-hash = "1.1.0"
 thiserror = "1.0.30"

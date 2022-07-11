@@ -24,6 +24,7 @@ impl Default for OutputName {
     }
 }
 
+/// Represents the inputs of a compilation.
 pub struct Inputs {
     target_machine: Option<TargetMachine>,
     sources: Vec<sailar_load::source::BoxedSource>,
@@ -52,6 +53,9 @@ impl Inputs {
         self
     }
 
+    /// Specifies a [`Resolver`] that retrieves imported modules for inclusion in this compilation.
+    /// 
+    /// [`Resolver`]: sailar_load::Resolver
     pub fn module_resolver<R>(self, resolver: R) -> Self
     where
         R: sailar_load::Resolver + Send + 'static,
@@ -141,9 +145,7 @@ impl Inputs {
 
         output_module.set_triple(&target_triple);
 
-        // TODO: Have a hashmap that initially contains all function exports, but will then be gradually filled by all referenced functions
-        // This should also help keep track of which functions have yet to be translated
-        todo!("hey");
+        let function_lookup = crate::function::Lookup::new(&output_module);
 
         Ok(Compilation {
             output_module,
@@ -160,19 +162,19 @@ impl Default for Inputs {
 
 /// Represents an LLVM module containing LLVM IR corresponding to one or more SAILAR modules.
 #[derive(Debug)]
-pub struct Compilation<'ctx> {
-    output_module: LlvmModule<'ctx>,
+pub struct Compilation<'context> {
+    output_module: LlvmModule<'context>,
     input_modules: Box<[Arc<Module>]>,
 }
 
-impl<'ctx> Compilation<'ctx> {
+impl<'context> Compilation<'context> {
     /// Compiles the specified `inputs`. Alias for [`Inputs::compile`].
     #[inline]
-    pub fn with_inputs(inputs: Inputs, context: &'ctx LlvmContext) -> Result<Self> {
+    pub fn with_inputs(inputs: Inputs, context: &'context LlvmContext) -> Result<Self> {
         inputs.compile(context)
     }
 
-    pub fn into_llvm_module(self) -> LlvmModule<'ctx> {
+    pub fn into_llvm_module(self) -> LlvmModule<'context> {
         self.output_module
     }
 }
