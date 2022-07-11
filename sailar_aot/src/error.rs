@@ -3,6 +3,8 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompilationErrorKind {
+    #[error(transparent)]
+    LoaderError(#[from] sailar_load::error::LoaderError),
     #[error("invalid target triple: {0}")]
     InvalidTargetTriple(String),
     #[error("could not construct target machine for triple {0:?}")]

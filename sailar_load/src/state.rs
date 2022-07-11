@@ -110,7 +110,11 @@ impl Default for Builder {
 impl State {
     /// Loads a module, attempting to associate its name and version (if present) with the loaded module. Returns `Err` if a
     /// module corresponding to the same name is already loaded.
-    pub fn force_load_module<S: crate::Source>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error> {
+    pub fn force_load_module<S>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error>
+    where
+        S: source::Source,
+        S::Error: std::error::Error,
+    {
         let module = module::Module::from_source(source, Arc::downgrade(self))?;
         let mut arena = self.modules.lock().unwrap();
         if let Some(id) = module.module_identifier() {
