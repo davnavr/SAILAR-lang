@@ -24,7 +24,6 @@ impl Default for OutputName {
     }
 }
 
-#[derive(Debug)]
 pub struct Inputs {
     target_machine: Option<TargetMachine>,
     sources: Vec<sailar_load::source::BoxedSource>,
@@ -45,7 +44,7 @@ impl Inputs {
     /// Explicitly includes the specified modules in this compilation.
     pub fn with_modules<S, M>(mut self, modules: M) -> Self
     where
-        S: Source + 'static,
+        S: sailar_load::source::Source + 'static,
         S::Error: std::error::Error + 'static,
         M: IntoIterator<Item = S>,
     {
@@ -85,8 +84,8 @@ impl Inputs {
             None => {
                 target_triple = TargetMachine::get_default_triple();
                 target_machine = Target::create_target_machine(
-                    &Target::from_triple(&host_triple).map_err(|s| CompilationErrorKind::InvalidTargetTriple(s.to_string()))?,
-                    &host_triple,
+                    &Target::from_triple(&target_triple).map_err(|s| CompilationErrorKind::InvalidTargetTriple(s.to_string()))?,
+                    &target_triple,
                     &TargetMachine::get_host_cpu_name().to_string(),
                     &TargetMachine::get_host_cpu_features().to_string(),
                     inkwell::OptimizationLevel::Default,
@@ -120,7 +119,16 @@ impl Inputs {
             .address_size(sailar_load::state::AddressSize::with_byte_size(&target_data))
             .create();
 
-        // TODO: Store the modules
+        let input_modules = {
+            let mut modules = Vec::with_capacity(self.sources.len());
+            for source in self.sources {
+                match state.force_load_module(source)? {
+                    Some(module) => modules.push(module),
+                    None => todo!("make error for duplicate module"),
+                }
+            }
+            modules.into_boxed_slice()
+        };
 
         // TODO: Have a hashmap that initially contains all function exports, but will then be gradually filled by all referenced functions
         // This should also help keep track of which functions have yet to be translated
@@ -128,7 +136,7 @@ impl Inputs {
 
         Ok(Compilation {
             output_module,
-            input_modules: self.modules,
+            input_modules,
         })
     }
 }
@@ -143,7 +151,7 @@ impl Default for Inputs {
 #[derive(Debug)]
 pub struct Compilation<'ctx> {
     output_module: LlvmModule<'ctx>,
-    input_modules: Vec<Arc<Module>>,
+    input_modules: Box<[Arc<Module>]>,
 }
 
 impl<'ctx> Compilation<'ctx> {
