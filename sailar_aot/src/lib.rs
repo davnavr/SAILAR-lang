@@ -2,6 +2,7 @@
 
 mod function;
 mod helper;
+mod signature;
 mod transpiler;
 
 pub mod compilation;

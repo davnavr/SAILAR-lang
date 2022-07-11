@@ -145,7 +145,7 @@ impl Inputs {
 
         output_module.set_triple(&target_triple);
 
-        let function_lookup = crate::function::Lookup::new(&output_module);
+        let function_cache = crate::function::Cache::new(&output_module);
 
         Ok(Compilation {
             output_module,
@@ -172,6 +172,11 @@ impl<'context> Compilation<'context> {
     #[inline]
     pub fn with_inputs(inputs: Inputs, context: &'context LlvmContext) -> Result<Self> {
         inputs.compile(context)
+    }
+
+    /// Gets the modules used as inputs for this compilation.
+    pub fn input_modules(&self) -> &[Arc<Module>] {
+        &self.input_modules
     }
 
     pub fn into_llvm_module(self) -> LlvmModule<'context> {

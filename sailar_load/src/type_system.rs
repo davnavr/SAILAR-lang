@@ -11,7 +11,6 @@ use std::sync::{Arc, Weak};
 pub use signature::{IntegerSign, IntegerSize, IntegerType};
 
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 pub enum Type {
     FixedInteger(IntegerType),
     UAddr,
