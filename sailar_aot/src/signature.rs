@@ -2,7 +2,6 @@
 
 use crate::compilation::Result;
 use crate::helper::ptr::ArcEq;
-use inkwell::basic_block::BasicBlock;
 use inkwell::types::{
     BasicMetadataTypeEnum as LlvmMetadataType, BasicTypeEnum as LlvmBasicType, FunctionType as LlvmFunctionType,
 };
@@ -48,7 +47,6 @@ impl Hash for TypeEq {
 }
 
 /// Maps SAILAR type and function signatures to LLVM types.
-#[derive(Debug)]
 pub struct Cache<'module, 'context> {
     context: &'context inkwell::context::Context,
     target_data: &'module inkwell::targets::TargetData,

@@ -2,6 +2,7 @@
 
 mod function;
 mod helper;
+mod name_mangling;
 mod signature;
 mod transpiler;
 

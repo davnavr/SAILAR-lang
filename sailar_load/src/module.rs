@@ -102,7 +102,8 @@ impl Module {
                 )),
                 Record::CodeBlock(code) => self.code_blocks.push(code_block::Code::new(*code.into_boxed(), this.clone())),
                 Record::FunctionDefinition(definition) => {
-                    let function = function::Definition::new(*definition.into_boxed(), this.clone());
+                    let function =
+                        function::Definition::new(*definition.into_boxed(), self.function_definitions.len(), this.clone());
                     self.symbols
                         .try_insert(function.to_symbol())
                         .expect("TODO: handle duplicate symbol error");

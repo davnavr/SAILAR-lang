@@ -16,10 +16,14 @@ pub enum Template {
 }
 
 impl Template {
-    pub fn as_definition(&self) -> Result<&Arc<Definition>, std::convert::Infallible> {
+    pub fn as_definition(&self) -> Result<&Arc<Definition>, error::LoaderError> {
         match self {
             Self::Definition(definition) => Ok(definition),
         }
+    }
+
+    pub fn export(&self) -> Result<&module::Export, error::LoaderError> {
+        Ok(self.as_definition()?.export())
     }
 }
 
@@ -177,15 +181,17 @@ pub enum Body {
 /// Represents a function definition.
 pub struct Definition {
     export: module::Export,
+    index: usize,
     body: lazy_init::LazyTransform<record::FunctionBody<'static>, Result<Body, error::LoaderError>>,
     signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
 impl Definition {
-    pub(crate) fn new(definition: record::FunctionDefinition<'static>, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(definition: record::FunctionDefinition<'static>, index: usize, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
             export: definition.export,
+            index,
             body: lazy_init::LazyTransform::new(definition.body),
             signature: lazy_init::LazyTransform::new(definition.signature),
             module,
@@ -198,6 +204,10 @@ impl Definition {
 
     pub fn export(&self) -> &module::Export {
         &self.export
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn body(&self) -> Result<&Body, error::LoaderError> {

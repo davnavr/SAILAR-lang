@@ -1,5 +1,6 @@
 //! Module for generating LLVM function definitions corresponding to SAILAR function instantiations.
 
+use crate::compilation::Result;
 use crate::helper::ptr::ArcEq;
 use inkwell::values::FunctionValue as LlvmFunction;
 use sailar_load::function;
@@ -8,12 +9,11 @@ use std::collections::hash_map;
 use std::sync::Arc;
 
 /// Maps SAILAR function instantiations to LLVM function definitions.
-#[derive(Debug)]
 pub struct Cache<'types, 'module, 'context> {
     module: &'module inkwell::module::Module<'context>,
     type_cache: &'types crate::signature::Cache<'module, 'context>,
     functions: RefCell<rustc_hash::FxHashMap<ArcEq<function::Instantiation>, LlvmFunction<'context>>>,
-    undefined_functions: Vec<(Arc<function::Instantiation>, LlvmFunction<'context>)>,
+    undefined_functions: RefCell<Vec<(Arc<function::Instantiation>, LlvmFunction<'context>)>>,
 }
 
 impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
@@ -25,16 +25,44 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
             module,
             type_cache,
             functions: Default::default(),
-            undefined_functions: Vec::new(),
+            undefined_functions: Default::default(),
         }
     }
 
-    pub fn get_or_define(&mut self, instantiation: Arc<function::Instantiation>) -> LlvmFunction<'context> {
-        match self.functions.borrow_mut().entry(ArcEq::from(instantiation)) {
+    pub fn get_or_define(&mut self, instantiation: Arc<function::Instantiation>) -> Result<LlvmFunction<'context>> {
+        Ok(match self.functions.borrow_mut().entry(ArcEq::from(instantiation)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => {
-                todo!("insert the function")
+                let definition = vacant.key().template()?.as_definition()?;
+                let signature = self.type_cache.get_function_type(definition.signature()?.clone())?;
+
+                let linkage;
+                let name;
+                let requires_body;
+
+                match definition.body()? {
+                    sailar_load::function::Body::Defined(_) => {
+                        requires_body = true;
+                        name = crate::name_mangling::mangle(definition)?;
+                        linkage = match &definition.export() {
+                            sailar::record::Export::Hidden | sailar::record::Export::Private(_) => {
+                                inkwell::module::Linkage::Private
+                            }
+                            sailar::record::Export::Export(_) => inkwell::module::Linkage::External,
+                        };
+                    }
+                }
+
+                let function = self.module.add_function(&name, signature, Some(linkage));
+
+                if requires_body {
+                    self.undefined_functions
+                        .borrow_mut()
+                        .push((Arc::from(ArcEq::clone(vacant.key())), function));
+                }
+
+                *vacant.insert(function)
             }
-        }
+        })
     }
 }
