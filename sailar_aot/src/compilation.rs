@@ -161,9 +161,10 @@ impl Inputs {
                 function_cache.get_or_define(function.clone())?;
                 Result::Ok(())
             })?;
-            
+
+        let mut transpiler = crate::transpiler::Transpiler::new(context);
         while let Some((function_instantiation, llvm_function)) = function_cache.next_undefined() {
-            
+            transpiler.translate(function_instantiation, llvm_function)?;
         }
 
         Ok(Compilation {
@@ -173,7 +174,7 @@ impl Inputs {
     }
 
     /// Compiles the specified input into an LLVM module.
-    pub fn compile<'context>(self, context: &'context mut Option<LlvmContext>) -> Result<Compilation<'context>> {
+    pub fn compile(self, context: &mut Option<LlvmContext>) -> Result<Compilation<'_>> {
         let context = Option::insert(context, LlvmContext::create());
         self.compile_in_context(&*context)
     }
