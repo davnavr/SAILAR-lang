@@ -66,4 +66,8 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
             }
         })
     }
+
+    pub fn next_undefined(&self) -> Option<(Arc<function::Instantiation>, LlvmFunction<'context>)> {
+        self.undefined_functions.borrow_mut().pop()
+    }
 }

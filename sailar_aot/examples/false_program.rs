@@ -62,9 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     inkwell::targets::Target::initialize_all(&inkwell::targets::InitializationConfig::default());
 
     let mut context = None;
-    let inputs = sailar_aot::compilation::Inputs::new()
+    let output = sailar_aot::compilation::Inputs::new()
         .with_modules([program])
-        .compile(&mut context)?;
+        .compile(&mut context)?
+        .into_llvm_module();
+
+    output.print_to_stderr();
 
     Ok(())
 }

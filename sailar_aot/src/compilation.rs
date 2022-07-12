@@ -150,6 +150,7 @@ impl Inputs {
 
         let type_cache = crate::signature::Cache::new(context, &target_data);
         let function_cache = crate::function::Cache::new(&output_module, &type_cache);
+        // TODO: Have a helper NameMangling struct and/or trait that also keeps a String buffer to avoid extra allocations.
 
         input_modules
             .iter()
@@ -160,8 +161,10 @@ impl Inputs {
                 function_cache.get_or_define(function.clone())?;
                 Result::Ok(())
             })?;
-
-        output_module.print_to_stderr();
+            
+        while let Some((function_instantiation, llvm_function)) = function_cache.next_undefined() {
+            
+        }
 
         Ok(Compilation {
             output_module,
