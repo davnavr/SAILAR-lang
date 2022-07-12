@@ -68,12 +68,12 @@ impl<I: Iterator<Item = Record>> Source for RecordIterator<I> {
     }
 }
 
-impl<'s> Source for &'s mut Vec<Record> {
+impl Source for Vec<Record> {
     type Error = Infallible;
-    type Records = RecordIterator<std::vec::Drain<'s, Record>>;
+    type Records = RecordIterator<std::vec::IntoIter<Record>>;
 
     fn source(self) -> Result<Self::Records, Infallible> {
-        Ok(self.drain(..).into())
+        Ok(RecordIterator(self.into_iter()))
     }
 }
 

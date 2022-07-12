@@ -75,8 +75,8 @@ impl Inputs {
         }
     }
 
-    /// Given the specified input, compiles the SAILAR code into an LLVM module.
-    pub fn compile(mut self, context: &LlvmContext) -> Result<Compilation<'_>> {
+    /// Given the specified input and LLVM context, compiles the SAILAR code into an LLVM module.
+    pub fn compile_in_context(mut self, context: &LlvmContext) -> Result<Compilation<'_>> {
         let target_triple;
         let target_machine;
 
@@ -150,8 +150,7 @@ impl Inputs {
 
         input_modules
             .iter()
-            .map(|module| module.symbols().iter_functions())
-            .flatten()
+            .flat_map(|module| module.symbols().iter_functions())
             .filter(|symbol| !symbol.is_private())
             .try_for_each(|symbol| {
                 let function = std::ops::Deref::deref(symbol);
@@ -159,10 +158,18 @@ impl Inputs {
                 Result::Ok(())
             })?;
 
+        output_module.print_to_stderr();
+
         Ok(Compilation {
             output_module,
             input_modules,
         })
+    }
+
+    /// Compiles the specified input into an LLVM module.
+    pub fn compile<'context>(mut self, context: &'context mut Option<LlvmContext>) -> Result<Compilation<'context>> {
+        let context = Option::insert(context, LlvmContext::create());
+        self.compile_in_context(&*context)
     }
 }
 
@@ -180,15 +187,20 @@ pub struct Compilation<'context> {
 }
 
 impl<'context> Compilation<'context> {
-    /// Compiles the specified `inputs`. Alias for [`Inputs::compile`].
+    /// Compiles the specified `inputs` in the specified LLVM `context`. Alias for [`Inputs::compile_in_context`].
     #[inline]
     pub fn with_inputs(inputs: Inputs, context: &'context LlvmContext) -> Result<Self> {
-        inputs.compile(context)
+        inputs.compile_in_context(context)
     }
 
     /// Gets the modules used as inputs for this compilation.
     pub fn input_modules(&self) -> &[Arc<Module>] {
         &self.input_modules
+    }
+
+    // Gets the LLVM module produced as a result of compilation.
+    pub fn output_module(&self) -> &LlvmModule<'context> {
+        &self.output_module
     }
 
     pub fn into_llvm_module(self) -> LlvmModule<'context> {
