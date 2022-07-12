@@ -13,6 +13,12 @@ use std::sync::Arc as ArcPtr;
 #[repr(transparent)]
 pub struct ArcEq<T: ?Sized>(ArcPtr<T>);
 
+impl<T: ?Sized> ArcEq<T> {
+    pub fn to_arc(&self) -> ArcPtr<T> {
+        self.0.clone()
+    }
+}
+
 impl<T: ?Sized> Clone for ArcEq<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())

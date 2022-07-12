@@ -1,11 +1,20 @@
 //! Module for interacting with SAILAR module symbols.
 
+use crate::module::Export;
 use sailar::identifier::Id;
-use sailar::record;
 use std::borrow::Borrow;
 use std::cmp::{Eq, PartialEq};
+use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+
+pub(crate) fn is_export_private(export: &Export) -> bool {
+    match export {
+        Export::Private(_) => true,
+        Export::Export(_) => false,
+        Export::Hidden => unreachable!(),
+    }
+}
 
 #[macro_export]
 #[doc(hidden)]
@@ -18,25 +27,21 @@ macro_rules! symbol_wrapper {
         impl $name {
             pub fn new(definition: std::sync::Arc<$contained>) -> Option<Self> {
                 match definition.export() {
-                    record::Export::Private(_) | record::Export::Export(_) => Some(Self(definition)),
-                    record::Export::Hidden => None,
+                    sailar::record::Export::Private(_) | sailar::record::Export::Export(_) => Some(Self(definition)),
+                    sailar::record::Export::Hidden => None,
                 }
-            }
-
-            pub fn definition(&self) -> &std::sync::Arc<$contained> {
-                &self.0
             }
 
             pub fn is_private(&self) -> bool {
-                match self.0.export() {
-                    record::Export::Private(_) => true,
-                    record::Export::Export(_) => false,
-                    record::Export::Hidden => unreachable!(),
-                }
+                crate::symbol::is_export_private(self.0.export())
             }
+        }
 
-            pub fn module(&self) -> &std::sync::Weak<crate::module::Module> {
-                self.0.module()
+        impl std::ops::Deref for $name {
+            type Target = std::sync::Arc<$contained>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
             }
         }
     };
@@ -49,9 +54,9 @@ pub enum Symbol {
 }
 
 impl Symbol {
-    pub fn export(&self) -> &record::Export<'static> {
+    pub fn export(&self) -> &Export {
         match self {
-            Self::Function(f) => f.definition().export(),
+            Self::Function(f) => f.export(),
         }
     }
 
@@ -66,11 +71,7 @@ impl Symbol {
     }
 
     pub fn is_private(&self) -> bool {
-        match self.export() {
-            record::Export::Export(_) => false,
-            record::Export::Private(_) => true,
-            record::Export::Hidden => unreachable!("symbols should not refer to definitions that are hidden"),
-        }
+        is_export_private(self.export())
     }
 }
 
@@ -124,5 +125,51 @@ impl DuplicateSymbolError {
 
     pub fn symbol(&self) -> &Symbol {
         &self.symbol
+    }
+}
+
+pub struct Lookup {
+    lookup: rustc_hash::FxHashMap<Symbol, ()>,
+}
+
+impl Lookup {
+    pub(crate) fn new() -> Self {
+        Self {
+            lookup: Default::default(),
+        }
+    }
+
+    pub fn get<S: ?Sized>(&self, symbol: &S) -> Option<&Symbol>
+    where
+        Symbol: std::borrow::Borrow<S>,
+        S: std::hash::Hash + std::cmp::Eq,
+    {
+        self.lookup.get_key_value(symbol).map(|(k, _)| k)
+    }
+
+    pub fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = &Symbol> {
+        self.lookup.keys()
+    }
+
+    pub fn iter_functions(&self) -> impl std::iter::Iterator<Item = &crate::function::Symbol> {
+        self.iter().map(|symbol| match symbol {
+            Symbol::Function(f) => f,
+        })
+    }
+
+    pub(crate) fn try_insert<S: Into<Symbol>>(&mut self, symbol: S) -> Result<(), DuplicateSymbolError> {
+        match self.lookup.entry(symbol.into()) {
+            hash_map::Entry::Occupied(occupied) => Err(DuplicateSymbolError::new(occupied.key().clone())),
+            hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(());
+                Ok(())
+            }
+        }
+    }
+}
+
+impl Debug for Lookup {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }

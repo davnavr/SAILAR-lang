@@ -42,13 +42,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         builder.add_record(record::FunctionDefinition::new(
-            record::Export::new_export_borrowed(Id::try_from_str("main")?),
             main_signature,
             record::FunctionBody::Definition(main_code),
         ));
 
         let entry_point = {
-            builder.add_record(record::FunctionInstantiation::from_template(index::FunctionTemplate::from(0)));
+            builder.add_record(record::FunctionInstantiation::from_template(
+                record::Export::new_export_borrowed(Id::try_from_str("main")?),
+                index::FunctionTemplate::from(0),
+            ));
             index::FunctionInstantiation::from(0)
         };
 

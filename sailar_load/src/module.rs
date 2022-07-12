@@ -5,13 +5,11 @@ use crate::error;
 use crate::function;
 use crate::source::Source;
 use crate::state::State;
-use crate::symbol::{DuplicateSymbolError, Symbol};
 use crate::type_system;
 use sailar::identifier::Id;
 use sailar::index;
 use sailar::record;
 use std::borrow::{Borrow, Cow};
-use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
@@ -21,44 +19,6 @@ pub type ModuleIdentifier = record::ModuleIdentifier<'static>;
 
 pub type Export = record::Export<'static>;
 
-pub struct SymbolLookup {
-    lookup: rustc_hash::FxHashMap<Symbol, ()>,
-}
-
-impl SymbolLookup {
-    pub fn get<S: ?Sized>(&self, symbol: &S) -> Option<&Symbol>
-    where
-        Symbol: std::borrow::Borrow<S>,
-        S: std::hash::Hash + std::cmp::Eq,
-    {
-        self.lookup.get_key_value(symbol).map(|(k, _)| k)
-    }
-
-    pub fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = &Symbol> {
-        self.lookup.keys()
-    }
-
-    fn try_insert<S: Into<Symbol>>(&mut self, symbol: Option<S>) -> Result<(), DuplicateSymbolError> {
-        if let Some(s) = symbol {
-            match self.lookup.entry(s.into()) {
-                hash_map::Entry::Occupied(occupied) => Err(DuplicateSymbolError::new(occupied.key().clone())),
-                hash_map::Entry::Vacant(vacant) => {
-                    vacant.insert(());
-                    Ok(())
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl Debug for SymbolLookup {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
 type LazyEntryPoint =
     Option<lazy_init::LazyTransform<index::FunctionInstantiation, Result<Arc<function::Instantiation>, error::LoaderError>>>;
 
@@ -66,7 +26,7 @@ pub struct Module {
     loader: Weak<State>,
     module_identifier: Option<Arc<ModuleIdentifier>>,
     entry_point: LazyEntryPoint,
-    symbols: SymbolLookup,
+    symbols: crate::symbol::Lookup,
     identifiers: Vec<Cow<'static, Id>>,
     type_signatures: Vec<Arc<type_system::Signature>>,
     function_signatures: Vec<Arc<function::Signature>>,
@@ -82,6 +42,8 @@ impl Module {
         S: Source,
         S::Error: std::error::Error,
     {
+        let mut symbols = Vec::<crate::symbol::Symbol>::default();
+
         for result in source.source()? {
             match result? {
                 Record::MetadataField(field) => match field {
@@ -102,18 +64,31 @@ impl Module {
                 )),
                 Record::CodeBlock(code) => self.code_blocks.push(code_block::Code::new(*code.into_boxed(), this.clone())),
                 Record::FunctionDefinition(definition) => {
-                    let function =
-                        function::Definition::new(*definition.into_boxed(), self.function_definitions.len(), this.clone());
-                    self.symbols
-                        .try_insert(function.to_symbol())
-                        .expect("TODO: handle duplicate symbol error");
-                    self.function_definitions.push(function);
+                    self.function_definitions.push(function::Definition::new(
+                        *definition.into_boxed(),
+                        self.function_definitions.len(),
+                        this.clone(),
+                    ));
                 }
-                Record::FunctionInstantiation(instantiation) => self
-                    .function_instantiations
-                    .push(function::Instantiation::new(*instantiation.into_boxed(), this.clone())),
+                Record::FunctionInstantiation(instantiation) => {
+                    let instantiation = function::Instantiation::new(
+                        *instantiation.into_boxed(),
+                        self.function_instantiations.len().into(),
+                        this.clone(),
+                    );
+
+                    if let Some(s) = instantiation.to_symbol() {
+                        symbols.push(s.into());
+                    }
+
+                    self.function_instantiations.push(instantiation)
+                }
                 bad => todo!("unsupported {:?}", bad),
             }
+        }
+
+        for s in symbols.drain(..) {
+            self.symbols.try_insert(s).expect("TODO: Handle duplicate symbol error");
         }
 
         Ok(())
@@ -130,9 +105,7 @@ impl Module {
                 loader,
                 module_identifier: None,
                 entry_point: None,
-                symbols: SymbolLookup {
-                    lookup: Default::default(),
-                },
+                symbols: crate::symbol::Lookup::new(),
                 identifiers: Vec::default(),
                 type_signatures: Vec::default(),
                 function_signatures: Vec::default(),
@@ -172,7 +145,7 @@ impl Module {
         &self.loader
     }
 
-    pub fn symbols(&self) -> &SymbolLookup {
+    pub fn symbols(&self) -> &crate::symbol::Lookup {
         &self.symbols
     }
 

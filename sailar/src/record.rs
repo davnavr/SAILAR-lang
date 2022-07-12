@@ -297,74 +297,31 @@ impl FunctionBody<'_> {
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct FunctionInstantiation {
+pub struct FunctionInstantiation<'a> {
+    pub export: Export<'a>,
     pub template: index::FunctionTemplate,
 }
 
-impl FunctionInstantiation {
-    pub fn from_template(template: index::FunctionTemplate) -> Self {
-        Self { template }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(transparent)]
-pub struct FunctionDefinitionFlags(u16);
-
-impl FunctionDefinitionFlags {
-    pub fn try_from_bits(value: VarU28) -> Option<Self> {
-        let bits = u16::try_from(value).ok()?;
-        if (bits & 0xFFF0 != 0) || (bits & 0b1100 == 0b1100) || (bits & 0b10 == 0b10) {
-            None
-        } else {
-            Some(Self(bits))
-        }
-    }
-
-    pub const fn value(self) -> VarU28 {
-        VarU28::from_u16(self.0)
-    }
-
-    pub const fn is_body_foreign(self) -> bool {
-        self.0 & 1 == 1
-    }
-
-    pub const fn export_kind(self) -> ExportKind {
-        match (self.0 >> 2) & 0b11 {
-            0b00 => ExportKind::Hidden,
-            0b01 => ExportKind::Private,
-            0b10 => ExportKind::Export,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<FunctionDefinitionFlags> for VarU28 {
-    fn from(flags: FunctionDefinitionFlags) -> Self {
-        flags.value()
+impl<'a> FunctionInstantiation<'a> {
+    pub fn from_template(export: Export<'a>, template: index::FunctionTemplate) -> Self {
+        Self { export, template }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct FunctionDefinition<'a> {
-    pub export: Export<'a>,
     pub signature: index::FunctionSignature,
     pub body: FunctionBody<'a>,
 }
 
 impl<'a> FunctionDefinition<'a> {
-    pub fn new(export: Export<'a>, signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
-        Self { export, signature, body }
+    pub fn new(signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
+        Self { signature, body }
     }
 
-    pub fn flags(&self) -> FunctionDefinitionFlags {
-        // Bit 0 indicates whether body is foreign
-        let mut flags = if self.body.is_foreign() { 1u16 } else { 0 };
-        // Bit 1 will be used to indicate if a generic parameter count is present
-        // Bits 2 to 3 contains the export kind
-        flags |= u16::from(self.export.kind().bits()) << 2u8;
-        FunctionDefinitionFlags(flags)
+    pub fn flags(&self) -> VarU28 {
+        VarU28::from_u16(if self.body.is_foreign() { 1u16 } else { 0 })
     }
 }
 
@@ -430,7 +387,7 @@ record_types!({
     FunctionDefinition(_definition: CowBox<'a, FunctionDefinition<'a>>,) = 11,
     //StructureDefinition = 12,
     //GlobalDefinition = 13,
-    FunctionInstantiation(_instantiation: CowBox<'a, FunctionInstantiation>,) = 14,
+    FunctionInstantiation(_instantiation: CowBox<'a, FunctionInstantiation<'a>>,) = 14,
     //StructureInstantiation = 15,
     //Namespace = 16,
     //ExceptionClassImport = 17,
@@ -487,9 +444,9 @@ impl<'a> From<FunctionDefinition<'a>> for Record<'a> {
     }
 }
 
-impl From<FunctionInstantiation> for Record<'_> {
+impl<'a> From<FunctionInstantiation<'a>> for Record<'a> {
     #[inline]
-    fn from(instantiation: FunctionInstantiation) -> Self {
+    fn from(instantiation: FunctionInstantiation<'a>) -> Self {
         Self::FunctionInstantiation(CowBox::Boxed(Box::new(instantiation)))
     }
 }

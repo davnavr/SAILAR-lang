@@ -148,6 +148,17 @@ impl Inputs {
         let type_cache = crate::signature::Cache::new(context, &target_data);
         let function_cache = crate::function::Cache::new(&output_module, &type_cache);
 
+        input_modules
+            .iter()
+            .map(|module| module.symbols().iter_functions())
+            .flatten()
+            .filter(|symbol| !symbol.is_private())
+            .try_for_each(|symbol| {
+                let function = std::ops::Deref::deref(symbol);
+                function_cache.get_or_define(function.clone())?;
+                Result::Ok(())
+            })?;
+
         Ok(Compilation {
             output_module,
             input_modules,

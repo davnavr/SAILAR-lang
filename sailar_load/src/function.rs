@@ -5,11 +5,10 @@ use crate::module;
 use crate::type_system;
 use sailar::record;
 use sailar::signature;
-use std::borrow::{Borrow, Cow};
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Weak};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Template {
     Definition(Arc<Definition>),
     //Import()
@@ -19,18 +18,6 @@ impl Template {
     pub fn as_definition(&self) -> Result<&Arc<Definition>, error::LoaderError> {
         match self {
             Self::Definition(definition) => Ok(definition),
-        }
-    }
-
-    pub fn export(&self) -> Result<&module::Export, error::LoaderError> {
-        Ok(self.as_definition()?.export())
-    }
-}
-
-impl Debug for Template {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        match self {
-            Self::Definition(definition) => f.debug_tuple("Definition").field(&DefinitionDebug(definition)).finish(),
         }
     }
 }
@@ -50,7 +37,7 @@ pub struct Signature {
 
 impl Signature {
     pub(crate) fn new(
-        signature: Cow<'static, signature::Function>,
+        signature: std::borrow::Cow<'static, signature::Function>,
         index: sailar::index::FunctionSignature,
         module: Weak<module::Module>,
     ) -> Arc<Self> {
@@ -129,23 +116,37 @@ impl std::cmp::PartialEq for Signature {
     }
 }
 
-type InstantiationRecord = record::FunctionInstantiation;
-
 pub struct Instantiation {
     template: lazy_init::LazyTransform<sailar::index::FunctionTemplate, Result<Template, error::LoaderError>>,
+    export: module::Export,
+    index: sailar::index::FunctionInstantiation,
     module: Weak<module::Module>,
 }
 
 impl Instantiation {
-    pub(crate) fn new(instantiation: InstantiationRecord, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(
+        instantiation: record::FunctionInstantiation<'static>,
+        index: sailar::index::FunctionInstantiation,
+        module: Weak<module::Module>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             template: lazy_init::LazyTransform::new(instantiation.template),
+            export: instantiation.export,
+            index,
             module,
         })
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
+    }
+
+    pub fn index(&self) -> sailar::index::FunctionInstantiation {
+        self.index
+    }
+
+    pub fn export(&self) -> &module::Export {
+        &self.export
     }
 
     pub fn template(&self) -> Result<&Template, error::LoaderError> {
@@ -155,6 +156,10 @@ impl Instantiation {
             })
             .as_ref()
             .map_err(Clone::clone)
+    }
+
+    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
+        Symbol::new(self.clone())
     }
 
     pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
@@ -167,6 +172,7 @@ impl Instantiation {
 impl Debug for Instantiation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Instantiation")
+            .field("export", &self.export)
             .field("template", &self.template.get())
             .finish()
     }
@@ -180,7 +186,6 @@ pub enum Body {
 
 /// Represents a function definition.
 pub struct Definition {
-    export: module::Export,
     index: usize,
     body: lazy_init::LazyTransform<record::FunctionBody<'static>, Result<Body, error::LoaderError>>,
     signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
@@ -190,7 +195,6 @@ pub struct Definition {
 impl Definition {
     pub(crate) fn new(definition: record::FunctionDefinition<'static>, index: usize, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
-            export: definition.export,
             index,
             body: lazy_init::LazyTransform::new(definition.body),
             signature: lazy_init::LazyTransform::new(definition.signature),
@@ -200,10 +204,6 @@ impl Definition {
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
-    }
-
-    pub fn export(&self) -> &module::Export {
-        &self.export
     }
 
     pub fn index(&self) -> usize {
@@ -234,10 +234,6 @@ impl Definition {
             .map_err(Clone::clone)
     }
 
-    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
-        Symbol::new(self.clone())
-    }
-
     pub fn to_template(self: &Arc<Self>) -> Template {
         Template::from(self.clone())
     }
@@ -248,25 +244,8 @@ impl Debug for Definition {
         f.debug_struct("Definition")
             .field("signature", &self.signature.get())
             .field("body", &self.body.get())
-            .field("export", &self.export())
             .finish()
     }
 }
 
-crate::symbol_wrapper!(pub struct Symbol(Definition));
-
-/// Helepr struct that provides a shortened [`Debug`] representation of [`Definition`].
-#[repr(transparent)]
-pub struct DefinitionDebug<'a>(&'a Definition);
-
-impl<'a, T: Borrow<Definition>> From<&'a T> for DefinitionDebug<'a> {
-    fn from(reference: &'a T) -> Self {
-        Self(reference.borrow())
-    }
-}
-
-impl Debug for DefinitionDebug<'_> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Definition").field("export", &self.0.export()).finish()
-    }
-}
+crate::symbol_wrapper!(pub struct Symbol(Instantiation));

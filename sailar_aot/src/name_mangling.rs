@@ -29,17 +29,17 @@ pub trait Definition {
     fn anonymous_prefix() -> &'static str;
 }
 
-impl Definition for Arc<sailar_load::function::Definition> {
+impl Definition for Arc<sailar_load::function::Instantiation> {
     fn index(&self) -> usize {
-        sailar_load::function::Definition::index(self)
+        sailar_load::function::Instantiation::index(self).into()
     }
 
     fn export(&self) -> &Export {
-        sailar_load::function::Definition::export(self)
+        sailar_load::function::Instantiation::export(self)
     }
 
     fn module(&self) -> &std::sync::Weak<Module> {
-        sailar_load::function::Definition::module(self)
+        sailar_load::function::Instantiation::module(self)
     }
 
     fn anonymous_prefix() -> &'static str {

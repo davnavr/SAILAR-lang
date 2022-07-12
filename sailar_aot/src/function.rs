@@ -29,10 +29,11 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
         }
     }
 
-    pub fn get_or_define(&mut self, instantiation: Arc<function::Instantiation>) -> Result<LlvmFunction<'context>> {
+    pub fn get_or_define(&self, instantiation: Arc<function::Instantiation>) -> Result<LlvmFunction<'context>> {
         Ok(match self.functions.borrow_mut().entry(ArcEq::from(instantiation)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => {
+                let instantiation = vacant.key();
                 let definition = vacant.key().template()?.as_definition()?;
                 let signature = self.type_cache.get_function_type(definition.signature()?.clone())?;
 
@@ -43,8 +44,8 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
                 match definition.body()? {
                     sailar_load::function::Body::Defined(_) => {
                         requires_body = true;
-                        name = crate::name_mangling::mangle(definition)?;
-                        linkage = match &definition.export() {
+                        name = crate::name_mangling::mangle(std::ops::Deref::deref(instantiation))?;
+                        linkage = match instantiation.export() {
                             sailar::record::Export::Hidden | sailar::record::Export::Private(_) => {
                                 inkwell::module::Linkage::Private
                             }
