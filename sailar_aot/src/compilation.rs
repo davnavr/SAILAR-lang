@@ -24,12 +24,32 @@ impl Default for OutputName {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum MainFunctionKind {
+    /// Indicates that a C style `main` function should be generated that calls the entry point of the SAILAR program.
+    ///
+    /// ```C
+    /// int main(int argc, char* argv[]) {
+    ///     // Call to SAILAR entry point is generated here.
+    /// }
+    /// ```
+    CStyle,
+}
+
+impl Default for MainFunctionKind {
+    fn default() -> Self {
+        Self::CStyle
+    }
+}
+
 /// Represents the inputs of a compilation.
 pub struct Inputs {
     target_machine: Option<TargetMachine>,
     sources: Vec<sailar_load::source::BoxedSource>,
     resolver: Option<sailar_load::resolver::BoxedResolver>,
     output_name: OutputName,
+    main_kind: MainFunctionKind,
 }
 
 impl Inputs {
@@ -39,6 +59,7 @@ impl Inputs {
             sources: Default::default(),
             resolver: None,
             output_name: Default::default(),
+            main_kind: Default::default(),
         }
     }
 
@@ -73,6 +94,19 @@ impl Inputs {
             target_machine: Some(target_machine),
             ..self
         }
+    }
+
+    /// Sets the name of the output LLVM module.
+    pub fn output_name(self, name: OutputName) -> Self {
+        Self {
+            output_name: name,
+            ..self
+        }
+    }
+
+    /// Sets the type of `main` function produced for an executable.
+    pub fn main_function_kind(self, kind: MainFunctionKind) -> Self {
+        Self { main_kind: kind, ..self }
     }
 
     /// Given the specified input and LLVM context, compiles the SAILAR code into an LLVM module.
@@ -124,7 +158,7 @@ impl Inputs {
             for source in self.sources {
                 match state
                     .force_load_module(source)
-                    .map_err(CompilationErrorKind::ModuleResolutionError)?
+                    .map_err(CompilationErrorKind::ModuleResolution)?
                 {
                     Some(module) => modules.push(module),
                     None => todo!("make error for duplicate module"),
@@ -162,9 +196,46 @@ impl Inputs {
                 Result::Ok(())
             })?;
 
+        // TODO: Add options to either expect only a single entry point in all modules, specify that an entry point in a named module should be used, or to allow any entry point to be picked.
+        let mut main_function_choices = {
+            let mut choices = Vec::new();
+            for module in input_modules.iter() {
+                if let Some(main_function) = module.entry_point()? {
+                    choices.push((module.clone(), main_function.clone()));
+                }
+            }
+            choices.into_iter()
+        };
+
+        let main_function = if main_function_choices.len() <= 1 {
+            if let Some((_, main_function)) = main_function_choices.next() {
+                Some((main_function.clone(), function_cache.get_or_define(main_function)?))
+            } else {
+                None
+            }
+        } else {
+            todo!(
+                "handle ambigous entry point ({} possible choices)",
+                main_function_choices.len()
+            );
+        };
+
         let mut transpiler = crate::transpiler::Transpiler::new(context);
         while let Some((function_instantiation, llvm_function)) = function_cache.next_undefined() {
             transpiler.translate(function_instantiation, llvm_function)?;
+        }
+
+        match self.main_kind {
+            MainFunctionKind::CStyle => {
+                if let Some((main_instantiation, main_value)) = main_function {
+                    // TODO: Uh oh, how to figure out the bit size of a C `int`?
+                    // TODO: Check if main_instantiation signature has an integer exit code.
+
+                    let actual_entry_point = output_module.add_function("main", todo!("int"), None);
+
+                    todo!("build entry")
+                }
+            }
         }
 
         Ok(Compilation {
@@ -173,7 +244,12 @@ impl Inputs {
         })
     }
 
-    /// Compiles the specified input into an LLVM module.
+    /// Compiles the specified input into an LLVM module, storing a newly crated LLVM [`Context`].
+    ///
+    /// For more information, see the documentation for [`compile_in_context`].
+    ///
+    /// [`Context`]: LlvmContext
+    /// [`compile_in_context`]: Inputs::compile_in_context
     pub fn compile(self, context: &mut Option<LlvmContext>) -> Result<Compilation<'_>> {
         let context = Option::insert(context, LlvmContext::create());
         self.compile_in_context(&*context)

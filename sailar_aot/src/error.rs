@@ -2,19 +2,23 @@
 
 pub use sailar_load::error::GenericError;
 
+/// Represents the set of error that can occur during compilation.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompilationErrorKind {
+    /// Indicates that some error occured while resolving a reference to a SAILAR module.
     #[error(transparent)]
-    ModuleResolutionError(#[from] GenericError),
+    ModuleResolution(#[from] GenericError),
+    //InvalidMainFunction(Vec<std::sync::Arc>),
     #[error(transparent)]
-    LoaderError(#[from] sailar_load::error::LoaderError),
+    Loader(#[from] sailar_load::error::LoaderError),
     #[error("invalid target triple: {0}")]
     InvalidTargetTriple(String),
     #[error("could not construct target machine for triple {0:?}")]
     InvalidTargetMachine(inkwell::targets::TargetTriple),
 }
 
+/// The error type used when an error occurs during compilation.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct CompilationError(Box<CompilationErrorKind>);
