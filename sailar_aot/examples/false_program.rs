@@ -8,7 +8,7 @@ use sailar::signature;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A program that returns an exit code of 1 (failure).
-    let mut program: Vec<record::Record<'static>> = {
+    let program: Vec<record::Record<'static>> = {
         let mut builder = builder::Builder::new();
 
         static PROGRAM_VERSION: &'static [VarU28] = &[VarU28::from_u8(1), VarU28::from_u8(1)];
@@ -59,7 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.into_records()
     };
 
-    
+    inkwell::targets::Target::initialize_all(&inkwell::targets::InitializationConfig::default());
+
     let mut context = None;
     let inputs = sailar_aot::compilation::Inputs::new()
         .with_modules([program])

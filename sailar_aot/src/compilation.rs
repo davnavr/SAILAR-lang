@@ -76,7 +76,10 @@ impl Inputs {
     }
 
     /// Given the specified input and LLVM context, compiles the SAILAR code into an LLVM module.
-    pub fn compile_in_context(mut self, context: &LlvmContext) -> Result<Compilation<'_>> {
+    ///
+    /// To avoid compilation errors, ensure that any LLVM target triples you use have been initialized beforehand, such as by
+    /// calling [`inkwell::targets::Target::initialize_all`].
+    pub fn compile_in_context(self, context: &LlvmContext) -> Result<Compilation<'_>> {
         let target_triple;
         let target_machine;
 
@@ -167,7 +170,7 @@ impl Inputs {
     }
 
     /// Compiles the specified input into an LLVM module.
-    pub fn compile<'context>(mut self, context: &'context mut Option<LlvmContext>) -> Result<Compilation<'context>> {
+    pub fn compile<'context>(self, context: &'context mut Option<LlvmContext>) -> Result<Compilation<'context>> {
         let context = Option::insert(context, LlvmContext::create());
         self.compile_in_context(&*context)
     }
