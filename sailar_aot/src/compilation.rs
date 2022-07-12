@@ -1,9 +1,9 @@
 //! Module for translating from SAILAR modules to LLVM modules.
 
 use crate::error::{CompilationError, CompilationErrorKind};
+use crate::target;
 use inkwell::context::Context as LlvmContext;
 use inkwell::module::Module as LlvmModule;
-use inkwell::targets::{Target, TargetMachine};
 use sailar_load::module::Module;
 use std::sync::Arc;
 
@@ -44,18 +44,18 @@ impl Default for MainFunctionKind {
 }
 
 /// Represents the inputs of a compilation.
-pub struct Inputs {
-    target_machine: Option<TargetMachine>,
+pub struct Inputs<'input> {
+    target_platform: Option<target::Platform<'input>>,
     sources: Vec<sailar_load::source::BoxedSource>,
     resolver: Option<sailar_load::resolver::BoxedResolver>,
     output_name: OutputName,
     main_kind: MainFunctionKind,
 }
 
-impl Inputs {
+impl<'input> Inputs<'input> {
     pub fn new() -> Self {
         Self {
-            target_machine: None,
+            target_platform: None,
             sources: Default::default(),
             resolver: None,
             output_name: Default::default(),
@@ -88,12 +88,10 @@ impl Inputs {
         }
     }
 
-    /// Sets the target machine for the compilation.
-    pub fn target_machine(self, target_machine: TargetMachine) -> Self {
-        Self {
-            target_machine: Some(target_machine),
-            ..self
-        }
+    /// Sets the target platform for the compilation.
+    pub fn target_platform(mut self, target_platform: target::Platform<'input>) -> Self {
+        self.target_platform = Some(target_platform);
+        self
     }
 
     /// Sets the name of the output LLVM module.
@@ -111,37 +109,19 @@ impl Inputs {
 
     /// Given the specified input and LLVM context, compiles the SAILAR code into an LLVM module.
     ///
-    /// To avoid compilation errors, ensure that any LLVM target triples you use have been initialized beforehand, such as by
-    /// calling [`inkwell::targets::Target::initialize_all`].
+    /// For information about errors that can occur regarding target information, see the documentation for the [`target`]
+    /// module.
     pub fn compile_in_context(self, context: &LlvmContext) -> Result<Compilation<'_>> {
-        let target_triple;
-        let target_machine;
-
-        match self.target_machine {
-            Some(machine) => {
-                target_machine = machine;
-                target_triple = target_machine.get_triple();
-            }
-            None => {
-                target_triple = TargetMachine::get_default_triple();
-                target_machine = Target::create_target_machine(
-                    &Target::from_triple(&target_triple).map_err(|s| CompilationErrorKind::InvalidTargetTriple(s.to_string()))?,
-                    &target_triple,
-                    &TargetMachine::get_host_cpu_name().to_string(),
-                    &TargetMachine::get_host_cpu_features().to_string(),
-                    inkwell::OptimizationLevel::Default,
-                    inkwell::targets::RelocMode::Default,
-                    inkwell::targets::CodeModel::Default,
-                )
-                .unwrap();
-            }
-        }
-
-        let target_data = target_machine.get_target_data();
+        let target_platform = if let Some(target) = self.target_platform {
+            target
+        } else {
+            target::Platform::host(inkwell::OptimizationLevel::Default)?
+        };
 
         let state = {
             let address_size = sailar_load::state::AddressSize::with_byte_size(
-                std::num::NonZeroU16::new(u16::try_from(target_data.get_pointer_byte_size(None)).unwrap()).unwrap(),
+                std::num::NonZeroU16::new(u16::try_from(target_platform.target().data().get_pointer_byte_size(None)).unwrap())
+                    .unwrap(),
             );
 
             let mut builder = sailar_load::state::Builder::new().address_size(address_size);
@@ -180,9 +160,9 @@ impl Inputs {
             }
         });
 
-        output_module.set_triple(&target_triple);
+        output_module.set_triple(target_platform.target().triple());
 
-        let type_cache = crate::signature::Cache::new(context, &target_data);
+        let type_cache = crate::signature::Cache::new(context, target_platform.target().data());
         let function_cache = crate::function::Cache::new(&output_module, &type_cache);
         // TODO: Have a helper NameMangling struct and/or trait that also keeps a String buffer to avoid extra allocations.
 
@@ -256,7 +236,7 @@ impl Inputs {
     }
 }
 
-impl Default for Inputs {
+impl Default for Inputs<'_> {
     fn default() -> Self {
         Self::new()
     }
