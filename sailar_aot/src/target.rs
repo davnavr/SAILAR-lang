@@ -165,6 +165,10 @@ impl IntegerSize {
             std::num::NonZeroU16::new_unchecked(self.byte_size().get() as u16 * 8u16)
         }
     }
+
+    pub fn get_llvm_integer_type(self, context: &inkwell::context::Context) -> inkwell::types::IntType {
+        context.custom_width_int_type(u32::from(self.bit_size().get()))
+    }
 }
 
 /// Describes the C integer sizes for a target platform.

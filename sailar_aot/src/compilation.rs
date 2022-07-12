@@ -208,12 +208,51 @@ impl<'input> Inputs<'input> {
         match self.main_kind {
             MainFunctionKind::CStyle => {
                 if let Some((main_instantiation, main_value)) = main_function {
-                    // TODO: Uh oh, how to figure out the bit size of a C `int`?
-                    // TODO: Check if main_instantiation signature has an integer exit code.
+                    let main_signature = main_instantiation.signature()?;
+                    if !main_signature.parameter_types()?.is_empty() {
+                        todo!("handle main function parameters")
+                    }
 
-                    let actual_entry_point = output_module.add_function("main", todo!("int"), None);
+                    let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
 
-                    todo!("build entry")
+                    let actual_parameter_types: [inkwell::types::BasicMetadataTypeEnum; 2] = [
+                        // argc
+                        c_int_type.into(),
+                        // argv
+                        target_platform
+                            .c_data_model()
+                            .int_size
+                            .get_llvm_integer_type(context)
+                            .ptr_type(inkwell::AddressSpace::Generic)
+                            .ptr_type(inkwell::AddressSpace::Generic)
+                            .into(),
+                    ];
+
+                    let actual_signature;
+                    // TODO: Indicate if we need to truncate or sign extend the exit code.
+                    // TODO: Add support for other integer types for exit code.
+                    let has_exit_code; // Set to false if we need to insert an exit code ourselves
+                    match main_signature.return_types()? {
+                        [] => {
+                            actual_signature = context.void_type().fn_type(&actual_parameter_types, false);
+                            has_exit_code = false;
+                        }
+                        bad => todo!("unsupported return types {:?}", bad),
+                    }
+
+                    let actual_entry_point = output_module.add_function("main", actual_signature, None);
+                    let entry_block = context.append_basic_block(actual_entry_point, "");
+                    let builder = context.create_builder();
+
+                    builder.position_at_end(entry_block);
+                    let result = builder.build_call(main_value, &[], "");
+
+                    if has_exit_code {
+                        let exit_code = result.try_as_basic_value().left().unwrap();
+                        builder.build_return(Some(&exit_code));
+                    } else {
+                        builder.build_return(None);
+                    }
                 }
             }
         }
