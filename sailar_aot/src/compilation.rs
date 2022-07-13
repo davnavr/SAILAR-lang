@@ -321,7 +321,7 @@ impl<'input, 'context> Compilation<'input, 'context> {
     }
 
     /// Produces an assembly or object file containing the compiled code.
-    pub fn write_object_code_to_file<P: AsRef<std::path::Path>>(
+    pub fn write_object_code_to_file<P: AsRef<std::path::Path> + ?Sized>(
         &self,
         file_type: inkwell::targets::FileType,
         path: &P,

@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_modules([program])
         .compile(&mut context)?;
 
-    // Print the LLVM assembly of the produced module.
+    // Print the LLVM assembly of the produced module
     output.output_module().print_to_stderr();
 
     // Write an object file to disk
