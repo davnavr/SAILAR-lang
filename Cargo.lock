@@ -265,6 +265,7 @@ dependencies = [
  "rustc-hash",
  "sailar",
  "sailar_load",
+ "sailar_samples",
  "thiserror",
 ]
 
@@ -291,6 +292,7 @@ version = "0.1.0"
 dependencies = [
  "sailar",
  "sailar_load",
+ "sailar_samples",
  "thiserror",
 ]
 

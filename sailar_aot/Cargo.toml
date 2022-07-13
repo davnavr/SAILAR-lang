@@ -9,3 +9,6 @@ sailar = { path = "../sailar" }
 sailar_load = { path = "../sailar_load" }
 rustc-hash = "1.1.0"
 thiserror = "1.0.30"
+
+[dev-dependencies]
+sailar_samples = { path = "../sailar_samples" }
