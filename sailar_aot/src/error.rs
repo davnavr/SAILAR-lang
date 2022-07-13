@@ -10,6 +10,12 @@ pub use sailar_load::error::GenericError;
 #[repr(transparent)]
 pub struct EntryPointReturnTypesError(Box<[Arc<sailar_load::type_system::Signature>]>);
 
+impl EntryPointReturnTypesError {
+    pub(crate) fn with_types(types: &[Arc<sailar_load::type_system::Signature>]) -> Self {
+        Self(types.to_vec().into_boxed_slice())
+    }
+}
+
 impl Display for EntryPointReturnTypesError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         sailar_load::type_system::display_signatures(self.0.iter(), f)?;
@@ -32,7 +38,8 @@ pub enum CompilationErrorKind {
     /// Indicates that some error occured while resolving a reference to a SAILAR module.
     #[error(transparent)]
     ModuleResolution(#[from] GenericError),
-    //InvalidMainFunction(Vec<std::sync::Arc>),
+    #[error(transparent)]
+    InvalidEntryPoint(#[from] InvalidEntryPointError),
     #[error(transparent)]
     Loader(#[from] sailar_load::error::LoaderError),
     #[error(transparent)]

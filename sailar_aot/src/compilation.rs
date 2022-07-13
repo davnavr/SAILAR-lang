@@ -219,7 +219,11 @@ impl<'input> Inputs<'input> {
                     let has_exit_code = match main_signature.return_types()? {
                         [] => false,
                         [return_type] => matches!(return_type.signature()?, sailar_load::type_system::Type::FixedInteger(_)),
-                        bad => todo!("error for unsupported return types {:?}", bad),
+                        bad => {
+                            return Err(
+                                error::InvalidEntryPointError::from(error::EntryPointReturnTypesError::with_types(bad)).into(),
+                            )
+                        }
                     };
 
                     let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
