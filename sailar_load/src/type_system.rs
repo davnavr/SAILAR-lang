@@ -218,22 +218,21 @@ impl Debug for LazySignatureList {
     }
 }
 
-fn display_comma_separated_in_parenthesis<I>(items: I, f: &mut Formatter) -> std::fmt::Result
+fn display_comma_separated_in_parenthesis<I, W>(items: I, out: &mut W) -> std::fmt::Result
 where
     I: Iterator,
     I::Item: Display,
+    W: std::fmt::Write,
 {
-    use std::fmt::Write;
-
-    f.write_char('(')?;
+    out.write_char('(')?;
     for (index, ty) in items.enumerate() {
         if index > 0 {
-            f.write_str(", ")?;
+            out.write_str(", ")?;
         }
 
-        Display::fmt(&ty, f)?;
+        out.write_fmt(format_args!("{}", &ty))?;
     }
-    f.write_char(')')
+    out.write_char(')')
 }
 
 /// Helper function for printing a sequence of types as a comma separated list.
@@ -241,19 +240,22 @@ where
 /// # Examples
 ///
 /// ```
-/// # use sailar_load::type_system::{DisplayIter, IntegerType, Type};
+/// # use sailar_load::type_system::{display_types, IntegerType, Type};
 /// let types = vec![Type::FixedInteger(IntegerType::U8), IntegerType::S32.into()];
-/// assert_eq!(DisplayIter::from(&types).to_string(), "(u8, s32)");
+/// let mut buffer = String::new();
+/// display_types(&types, &mut buffer).unwrap();
+/// assert_eq!(buffer, "(u8, s32)");
 /// ```
-pub fn display_types<'a, T: IntoIterator<Item = &'a Type> + 'a>(types: T, f: &mut Formatter) -> std::fmt::Result {
-    display_comma_separated_in_parenthesis(types.into_iter(), f)
+pub fn display_types<'a, T: IntoIterator<Item = &'a Type> + 'a, W: std::fmt::Write>(types: T, out: &mut W) -> std::fmt::Result {
+    display_comma_separated_in_parenthesis(types.into_iter(), out)
 }
 
 /// Helper function for printing a sequence of type signatures.
-pub fn display_signatures<'a, T, S>(signatures: T, f: &mut Formatter) -> std::fmt::Result
+pub fn display_signatures<'a, T, S, W>(signatures: T, out: &mut W) -> std::fmt::Result
 where
     T: IntoIterator<Item = &'a S> + 'a,
     S: std::ops::Deref<Target = Signature> + 'a,
+    W: std::fmt::Write,
 {
-    display_comma_separated_in_parenthesis(signatures.into_iter().map(std::ops::Deref::deref), f)
+    display_comma_separated_in_parenthesis(signatures.into_iter().map(std::ops::Deref::deref), out)
 }
