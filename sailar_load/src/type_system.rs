@@ -217,3 +217,43 @@ impl Debug for LazySignatureList {
         f.debug_tuple("LazySignatureList").field(&self.0.get()).finish()
     }
 }
+
+fn display_comma_separated_in_parenthesis<I>(items: I, f: &mut Formatter) -> std::fmt::Result
+where
+    I: Iterator,
+    I::Item: Display,
+{
+    use std::fmt::Write;
+
+    f.write_char('(')?;
+    for (index, ty) in items.enumerate() {
+        if index > 0 {
+            f.write_str(", ")?;
+        }
+
+        Display::fmt(&ty, f)?;
+    }
+    f.write_char(')')
+}
+
+/// Helper function for printing a sequence of types as a comma separated list.
+///
+/// # Examples
+///
+/// ```
+/// # use sailar_load::type_system::{DisplayIter, IntegerType, Type};
+/// let types = vec![Type::FixedInteger(IntegerType::U8), IntegerType::S32.into()];
+/// assert_eq!(DisplayIter::from(&types).to_string(), "(u8, s32)");
+/// ```
+pub fn display_types<'a, T: IntoIterator<Item = &'a Type> + 'a>(types: T, f: &mut Formatter) -> std::fmt::Result {
+    display_comma_separated_in_parenthesis(types.into_iter(), f)
+}
+
+/// Helper function for printing a sequence of type signatures.
+pub fn display_signatures<'a, T, S>(signatures: T, f: &mut Formatter) -> std::fmt::Result
+where
+    T: IntoIterator<Item = &'a S> + 'a,
+    S: std::ops::Deref<Target = Signature> + 'a,
+{
+    display_comma_separated_in_parenthesis(signatures.into_iter().map(std::ops::Deref::deref), f)
+}

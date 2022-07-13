@@ -1,6 +1,29 @@
 //! Contains types representing errors that can occur during compilation.
 
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+
 pub use sailar_load::error::GenericError;
+
+/// Error type used when an entry point contains return types that are not supported.
+#[derive(Debug, thiserror::Error)]
+#[repr(transparent)]
+pub struct EntryPointReturnTypesError(Box<[Arc<sailar_load::type_system::Signature>]>);
+
+impl Display for EntryPointReturnTypesError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        sailar_load::type_system::display_signatures(self.0.iter(), f)?;
+        f.write_str(" is not a supported return type for an entry point function")
+    }
+}
+
+/// Error type used when an entry point function is invalid.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum InvalidEntryPointError {
+    #[error(transparent)]
+    UnsupportedReturnTypes(#[from] EntryPointReturnTypesError),
+}
 
 /// Represents the set of errors that can occur during compilation.
 #[derive(Debug, thiserror::Error)]

@@ -1,10 +1,11 @@
 //! Module for translating from SAILAR modules to LLVM modules.
 
-use crate::error::{CompilationError, CompilationErrorKind};
+use crate::error::{self, CompilationError, CompilationErrorKind};
 use crate::target;
 use inkwell::context::Context as LlvmContext;
 use inkwell::module::Module as LlvmModule;
 use sailar_load::module::Module;
+use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, CompilationError>;
@@ -213,19 +214,18 @@ impl<'input> Inputs<'input> {
                         todo!("handle main function parameters")
                     }
 
-                    // TODO: Indicate if we need to truncate or sign extend the exit code.
-                    // TODO: Add support for other integer types for exit code.
-                    let has_exit_code; // Set to false if we need to insert an exit code ourselves
-                    match main_signature.return_types()? {
-                        [] => {
-                            has_exit_code = false;
-                        }
-                        bad => todo!("unsupported return types {:?}", bad),
-                    }
+                    // TODO: Indicate if we need to truncate or sign extend the exit code, when we want to allow different integer return types.
+                    // Set to false if we need to insert an exit code ourselves
+                    let has_exit_code = match main_signature.return_types()? {
+                        [] => false,
+                        [return_type] => matches!(return_type.signature()?, sailar_load::type_system::Type::FixedInteger(_)),
+                        bad => todo!("error for unsupported return types {:?}", bad),
+                    };
+
+                    let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
 
                     let actual_entry_point = {
-                        let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
-                        let entry_point_signature = c_int_type.fn_type(
+                        let signature = c_int_type.fn_type(
                             &[
                                 // argc
                                 c_int_type.into(),
@@ -241,7 +241,7 @@ impl<'input> Inputs<'input> {
                             false,
                         );
 
-                        output_module.add_function("main", entry_point_signature, None)
+                        output_module.add_function("main", signature, None)
                     };
 
                     let entry_block = context.append_basic_block(actual_entry_point, "");
@@ -250,12 +250,13 @@ impl<'input> Inputs<'input> {
                     builder.position_at_end(entry_block);
                     let result = builder.build_call(main_value, &[], "");
 
-                    if has_exit_code {
-                        let exit_code = result.try_as_basic_value().left().unwrap();
-                        builder.build_return(Some(&exit_code));
+                    let exit_code = if has_exit_code {
+                        result.try_as_basic_value().left().unwrap()
                     } else {
-                        builder.build_return(None);
-                    }
+                        c_int_type.const_zero().into()
+                    };
+
+                    builder.build_return(Some(&exit_code));
                 }
             }
         }
