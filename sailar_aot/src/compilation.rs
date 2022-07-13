@@ -111,7 +111,7 @@ impl<'input> Inputs<'input> {
     ///
     /// For information about errors that can occur regarding target information, see the documentation for the [`target`]
     /// module.
-    pub fn compile_in_context(self, context: &LlvmContext) -> Result<Compilation<'_>> {
+    pub fn compile_in_context<'context>(self, context: &'context LlvmContext) -> Result<Compilation<'input, 'context>> {
         let target_platform = if let Some(target) = self.target_platform {
             target
         } else {
@@ -263,6 +263,7 @@ impl<'input> Inputs<'input> {
         Ok(Compilation {
             output_module,
             input_modules,
+            target_platform,
         })
     }
 
@@ -272,7 +273,7 @@ impl<'input> Inputs<'input> {
     ///
     /// [`Context`]: LlvmContext
     /// [`compile_in_context`]: Inputs::compile_in_context
-    pub fn compile(self, context: &mut Option<LlvmContext>) -> Result<Compilation<'_>> {
+    pub fn compile<'context>(self, context: &'context mut Option<LlvmContext>) -> Result<Compilation<'input, 'context>> {
         let context = Option::insert(context, LlvmContext::create());
         self.compile_in_context(&*context)
     }
@@ -286,15 +287,16 @@ impl Default for Inputs<'_> {
 
 /// Represents an LLVM module containing LLVM IR corresponding to one or more SAILAR modules.
 #[derive(Debug)]
-pub struct Compilation<'context> {
+pub struct Compilation<'input, 'context> {
     output_module: LlvmModule<'context>,
     input_modules: Box<[Arc<Module>]>,
+    target_platform: target::Platform<'input>,
 }
 
-impl<'context> Compilation<'context> {
+impl<'input, 'context> Compilation<'input, 'context> {
     /// Compiles the specified `inputs` in the specified LLVM `context`. Alias for [`Inputs::compile_in_context`].
     #[inline]
-    pub fn with_inputs(inputs: Inputs, context: &'context LlvmContext) -> Result<Self> {
+    pub fn with_inputs(inputs: Inputs<'input>, context: &'context LlvmContext) -> Result<Self> {
         inputs.compile_in_context(context)
     }
 
@@ -308,7 +310,20 @@ impl<'context> Compilation<'context> {
         &self.output_module
     }
 
-    pub fn into_llvm_module(self) -> LlvmModule<'context> {
-        self.output_module
+    /// Gets the target platform of this compilation.
+    pub fn target_platform(&self) -> &target::Platform<'input> {
+        &self.target_platform
+    }
+
+    /// Produces an assembly or object file containing the compiled code.
+    pub fn write_object_code_to_file(
+        &self,
+        file_type: inkwell::targets::FileType,
+        path: &std::path::Path,
+    ) -> std::result::Result<(), inkwell::support::LLVMString> {
+        self.target_platform
+            .target()
+            .machine()
+            .write_to_file(&self.output_module, file_type, path)
     }
 }

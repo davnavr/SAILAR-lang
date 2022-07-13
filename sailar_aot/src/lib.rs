@@ -7,9 +7,11 @@
 //! [`Inputs::compile_in_context`] or one of ts related functions, to produce an LLVM module as output.
 //!
 //! # Producing Object Files
-//! The main use case for the compiler's output is to produce object files. The resulting object files can then be linked
-//! with a linker (such as [`lld`](https://lld.llvm.org/) or your system linker) or even provided to some C compilers to produce
-//! an executable or library.
+//! The main use case for the compiler's output is to produce object files. The main way to produce object files after
+//! compilation is by calling [`Compilation::write_object_code_to_file`].
+//! 
+//! The resulting object files can then be linked with a linker (such as [`lld`](https://lld.llvm.org/) or your system linker) or
+//! even provided to some C compilers to produce an executable or library.
 //!
 //! # Saving LLVM Bitcode
 //! Although not the main way the output of compilation is intended to be executed, the resulting LLVM bitcode can be written to
@@ -19,6 +21,7 @@
 //!
 //! [`Inputs`]: compilation::Inputs
 //! [`Inputs::compile_in_context`]: compilation::Inputs::compile_in_context
+//! [`Compilation::write_object_code_to_file`]: compilation::Compilation::write_object_code_to_file
 
 mod function;
 mod helper;
