@@ -1,14 +1,12 @@
-//! Sample SAILAR programs.
+//! Contains sample SAILAR programs.
 
-#![cfg(feature = "samples")]
-
-use crate::builder::Builder;
-use crate::identifier::{Id, Identifier};
-use crate::index;
-use crate::instruction::{self, Instruction};
-use crate::num::VarU28;
-use crate::record;
-use crate::signature;
+use sailar::builder::Builder;
+use sailar::identifier::{Id, Identifier};
+use sailar::index;
+use sailar::instruction::{self, Instruction};
+use sailar::num::VarU28;
+use sailar::record;
+use sailar::signature;
 
 /// Produces a sample program containing an entry point function that simple returns with the specified exit code.
 pub fn exit_with(name: Identifier, exit_code: u32) -> Builder<'static> {

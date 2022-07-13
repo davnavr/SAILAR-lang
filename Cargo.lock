@@ -279,6 +279,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sailar_samples"
+version = "0.1.0"
+dependencies = [
+ "sailar",
+]
+
+[[package]]
 name = "sailar_vm"
 version = "0.1.0"
 dependencies = [

@@ -11,7 +11,6 @@ pub mod instruction;
 pub mod num;
 pub mod reader;
 pub mod record;
-pub mod samples;
 pub mod signature;
 pub mod versioning;
 pub mod writer;
