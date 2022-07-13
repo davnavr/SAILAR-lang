@@ -64,10 +64,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut context = None;
     let output = sailar_aot::compilation::Inputs::new()
         .with_modules([program])
-        .compile(&mut context)?
-        .into_llvm_module();
+        .compile(&mut context)?;
 
-    output.print_to_stderr();
+    output.output_module().print_to_stderr();
 
     Ok(())
 }
