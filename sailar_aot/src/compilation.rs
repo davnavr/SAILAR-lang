@@ -321,14 +321,14 @@ impl<'input, 'context> Compilation<'input, 'context> {
     }
 
     /// Produces an assembly or object file containing the compiled code.
-    pub fn write_object_code_to_file(
+    pub fn write_object_code_to_file<P: AsRef<std::path::Path>>(
         &self,
         file_type: inkwell::targets::FileType,
-        path: &std::path::Path,
+        path: &P,
     ) -> std::result::Result<(), inkwell::support::LLVMString> {
         self.target_platform
             .target()
             .machine()
-            .write_to_file(&self.output_module, file_type, path)
+            .write_to_file(&self.output_module, file_type, path.as_ref())
     }
 }

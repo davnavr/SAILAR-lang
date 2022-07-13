@@ -62,11 +62,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     inkwell::targets::Target::initialize_all(&inkwell::targets::InitializationConfig::default());
 
     let mut context = None;
+
+    // Compile for the current target platform
     let output = sailar_aot::compilation::Inputs::new()
         .with_modules([program])
         .compile(&mut context)?;
 
+    // Print the LLVM assembly of the produced module.
     output.output_module().print_to_stderr();
+
+    // Write an object file to disk
+    output.write_object_code_to_file(inkwell::targets::FileType::Object, "false.o")?;
 
     Ok(())
 }
