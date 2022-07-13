@@ -5,6 +5,29 @@ use std::sync::Arc;
 
 pub use sailar_load::error::GenericError;
 
+/// Error type used when an attempt to write LLVM bitcode to a file fails.
+#[derive(Debug, thiserror::Error)]
+#[repr(transparent)]
+pub struct BitcodeWriteError(Option<Box<std::path::Path>>);
+
+impl BitcodeWriteError {
+    pub(crate) fn with_path(path: &std::path::Path) -> Self {
+        Self(Some(Box::from(path)))
+    }
+}
+
+impl Display for BitcodeWriteError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.write_str("unknown error occured while writing bitcode to ")?;
+
+        if let Some(path) = &self.0 {
+            Display::fmt(&path.display(), f)
+        } else {
+            f.write_str("disk")
+        }
+    }
+}
+
 /// Error type used when an entry point contains return types that are not supported.
 #[derive(Debug, thiserror::Error)]
 #[repr(transparent)]

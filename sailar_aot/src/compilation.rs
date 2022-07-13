@@ -5,7 +5,6 @@ use crate::target;
 use inkwell::context::Context as LlvmContext;
 use inkwell::module::Module as LlvmModule;
 use sailar_load::module::Module;
-use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, CompilationError>;
@@ -320,8 +319,8 @@ impl<'input, 'context> Compilation<'input, 'context> {
         &self.target_platform
     }
 
-    /// Produces an assembly or object file containing the compiled code.
-    pub fn write_object_code_to_file<P: AsRef<std::path::Path> + ?Sized>(
+    /// Writes assembly or object code to the specified `path`.
+    pub fn write_object_code_to_path<P: AsRef<std::path::Path> + ?Sized>(
         &self,
         file_type: inkwell::targets::FileType,
         path: &P,
@@ -330,5 +329,22 @@ impl<'input, 'context> Compilation<'input, 'context> {
             .target()
             .machine()
             .write_to_file(&self.output_module, file_type, path.as_ref())
+    }
+
+    /// Writes the LLVM bitcode to the specified `path`.
+    ///
+    /// Using LLVM tools, the produced LLVM bitcode can then be compiled with
+    /// [`llc`](https://www.llvm.org/docs/CommandGuide/llc.html), or interpreted with
+    /// [`lli`](https://www.llvm.org/docs/CommandGuide/lli.html).
+    pub fn write_llvm_bitcode_to_path<P: AsRef<std::path::Path> + ?Sized>(
+        &self,
+        path: &P,
+    ) -> std::result::Result<(), error::BitcodeWriteError> {
+        let path = path.as_ref();
+        if self.output_module.write_bitcode_to_path(path) {
+            Ok(())
+        } else {
+            Err(error::BitcodeWriteError::with_path(path))
+        }
     }
 }

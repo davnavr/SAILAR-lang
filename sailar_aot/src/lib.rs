@@ -9,7 +9,7 @@
 //! # Producing Object Files
 //!
 //! The main use case for the compiler's output is to produce object files. The main way to produce object files after
-//! compilation is by calling [`Compilation::write_object_code_to_file`].
+//! compilation is by calling [`Compilation::write_object_code_to_path`].
 //!
 //! The resulting object files can then be linked with a linker (such as [`lld`](https://lld.llvm.org/) or your system linker) or
 //! even provided to some C compilers to produce an executable or library.
@@ -26,7 +26,7 @@
 //!
 //! [`Inputs`]: compilation::Inputs
 //! [`Inputs::compile_in_context`]: compilation::Inputs::compile_in_context
-//! [`Compilation::write_object_code_to_file`]: compilation::Compilation::write_object_code_to_file
+//! [`Compilation::write_object_code_to_path`]: compilation::Compilation::write_object_code_to_path
 
 mod function;
 mod helper;

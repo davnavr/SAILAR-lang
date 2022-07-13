@@ -71,8 +71,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Print the LLVM assembly of the produced module
     output.output_module().print_to_stderr();
 
-    // Write an object file to disk
-    output.write_object_code_to_file(inkwell::targets::FileType::Object, "false.o")?;
+    // Write an object file to disk, this can then be linked with a C standard library to produce an executable
+    output.write_object_code_to_path(inkwell::targets::FileType::Object, "false.o")?;
+
+    // Write the LLVM bitcode to disk, which can then be interpreted with lli or compiled with llc
+    output.write_llvm_bitcode_to_path("false.bc")?;
 
     Ok(())
 }
