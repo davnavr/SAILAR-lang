@@ -213,34 +213,37 @@ impl<'input> Inputs<'input> {
                         todo!("handle main function parameters")
                     }
 
-                    let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
-
-                    let actual_parameter_types: [inkwell::types::BasicMetadataTypeEnum; 2] = [
-                        // argc
-                        c_int_type.into(),
-                        // argv
-                        target_platform
-                            .c_data_model()
-                            .int_size
-                            .get_llvm_integer_type(context)
-                            .ptr_type(inkwell::AddressSpace::Generic)
-                            .ptr_type(inkwell::AddressSpace::Generic)
-                            .into(),
-                    ];
-
-                    let actual_signature;
                     // TODO: Indicate if we need to truncate or sign extend the exit code.
                     // TODO: Add support for other integer types for exit code.
                     let has_exit_code; // Set to false if we need to insert an exit code ourselves
                     match main_signature.return_types()? {
                         [] => {
-                            actual_signature = context.void_type().fn_type(&actual_parameter_types, false);
                             has_exit_code = false;
                         }
                         bad => todo!("unsupported return types {:?}", bad),
                     }
 
-                    let actual_entry_point = output_module.add_function("main", actual_signature, None);
+                    let actual_entry_point = {
+                        let c_int_type = target_platform.c_data_model().int_size.get_llvm_integer_type(context);
+                        let entry_point_signature = c_int_type.fn_type(
+                            &[
+                                // argc
+                                c_int_type.into(),
+                                // argv
+                                target_platform
+                                    .c_data_model()
+                                    .int_size
+                                    .get_llvm_integer_type(context)
+                                    .ptr_type(inkwell::AddressSpace::Generic)
+                                    .ptr_type(inkwell::AddressSpace::Generic)
+                                    .into(),
+                            ],
+                            false,
+                        );
+
+                        output_module.add_function("main", entry_point_signature, None)
+                    };
+
                     let entry_block = context.append_basic_block(actual_entry_point, "");
                     let builder = context.create_builder();
 
