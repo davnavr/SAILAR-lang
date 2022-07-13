@@ -64,6 +64,10 @@ impl<'module, 'context> Cache<'module, 'context> {
         }
     }
 
+    pub fn context(&self) -> &'context inkwell::context::Context {
+        self.context
+    }
+
     pub fn get_function_type(&self, signature: Arc<sailar_load::function::Signature>) -> Result<LlvmFunctionType<'context>> {
         Ok(match self.function_types.borrow_mut().entry(ArcEq::from(signature)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),

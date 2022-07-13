@@ -200,7 +200,7 @@ impl<'input> Inputs<'input> {
             );
         };
 
-        let mut transpiler = crate::transpiler::Transpiler::new(context);
+        let mut transpiler = crate::transpiler::Transpiler::new(&type_cache);
         while let Some((function_instantiation, llvm_function)) = function_cache.next_undefined() {
             transpiler.translate(function_instantiation, llvm_function)?;
         }

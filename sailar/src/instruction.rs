@@ -26,6 +26,14 @@ impl ConstantInteger {
     }
 }
 
+impl std::ops::Deref for ConstantInteger {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.borrow()
+    }
+}
+
 impl Borrow<[u8]> for ConstantInteger {
     fn borrow(&self) -> &[u8] {
         match self {
