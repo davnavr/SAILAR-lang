@@ -11,7 +11,6 @@ use std::sync::{Arc, Weak};
 pub use signature::{IntegerSign, IntegerSize, IntegerType};
 
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 pub enum Type {
     FixedInteger(IntegerType),
     UAddr,
@@ -217,4 +216,46 @@ impl Debug for LazySignatureList {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_tuple("LazySignatureList").field(&self.0.get()).finish()
     }
+}
+
+fn display_comma_separated_in_parenthesis<I, W>(items: I, out: &mut W) -> std::fmt::Result
+where
+    I: Iterator,
+    I::Item: Display,
+    W: std::fmt::Write,
+{
+    out.write_char('(')?;
+    for (index, ty) in items.enumerate() {
+        if index > 0 {
+            out.write_str(", ")?;
+        }
+
+        out.write_fmt(format_args!("{}", &ty))?;
+    }
+    out.write_char(')')
+}
+
+/// Helper function for printing a sequence of types as a comma separated list.
+///
+/// # Examples
+///
+/// ```
+/// # use sailar_load::type_system::{display_types, IntegerType, Type};
+/// let types = vec![Type::FixedInteger(IntegerType::U8), IntegerType::S32.into()];
+/// let mut buffer = String::new();
+/// display_types(&types, &mut buffer).unwrap();
+/// assert_eq!(buffer, "(u8, s32)");
+/// ```
+pub fn display_types<'a, T: IntoIterator<Item = &'a Type> + 'a, W: std::fmt::Write>(types: T, out: &mut W) -> std::fmt::Result {
+    display_comma_separated_in_parenthesis(types.into_iter(), out)
+}
+
+/// Helper function for printing a sequence of type signatures.
+pub fn display_signatures<'a, T, S, W>(signatures: T, out: &mut W) -> std::fmt::Result
+where
+    T: IntoIterator<Item = &'a S> + 'a,
+    S: std::ops::Deref<Target = Signature> + 'a,
+    W: std::fmt::Write,
+{
+    display_comma_separated_in_parenthesis(signatures.into_iter().map(std::ops::Deref::deref), out)
 }

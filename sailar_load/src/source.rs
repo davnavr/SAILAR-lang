@@ -1,73 +1,139 @@
 //! Contains the trait used to read the contents of a module during loading.
 
+use crate::error::GenericError;
 use crate::module::Record;
-use sailar::reader::{self, Reader};
+use sailar::reader;
+use std::convert::Infallible;
 use std::io::Read;
 
 pub trait Source {
     type Error;
+    type Records: Iterator<Item = Result<Record, Self::Error>>;
 
-    fn iter_records<F: FnMut(Record)>(self, f: F) -> Result<(), Self::Error>;
+    fn source(self) -> Result<Self::Records, Self::Error>;
 }
 
-impl<E, I: std::iter::Iterator<Item = Result<Record, E>>> Source for I {
-    type Error = E;
+impl<S: Source> Source for Box<S> {
+    type Error = S::Error;
+    type Records = S::Records;
 
-    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), E> {
-        for value in self {
-            match value {
-                Ok(record) => f(record),
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        S::source(*self)
     }
 }
 
-#[repr(transparent)]
-pub struct RecordIteratorSource<I>(I);
+#[derive(Copy, Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct Empty;
 
-impl<I> RecordIteratorSource<I> {
-    pub fn new(iterator: I) -> Self {
+impl Source for Empty {
+    type Error = Infallible;
+    type Records = std::iter::Empty<Result<Record, Infallible>>;
+
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        Ok(std::iter::empty())
+    }
+}
+
+/// A module source yielding an empty sequence of records.
+#[must_use]
+pub fn empty() -> Empty {
+    Empty
+}
+
+#[derive(Clone, Debug)]
+#[repr(transparent)]
+pub struct RecordIterator<I>(I);
+
+impl<I: Iterator<Item = Record>> From<I> for RecordIterator<I> {
+    fn from(iterator: I) -> Self {
         Self(iterator)
     }
 }
 
-impl<I: std::iter::Iterator<Item = Record>> Source for RecordIteratorSource<I> {
-    type Error = std::convert::Infallible;
+impl<I: Iterator<Item = Record>> Iterator for RecordIterator<I> {
+    type Item = Result<Record, Infallible>;
 
-    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), Self::Error> {
-        for value in self.0 {
-            f(value);
-        }
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(Ok)
+    }
+}
 
-        Ok(())
+impl<I: Iterator<Item = Record>> Source for RecordIterator<I> {
+    type Error = Infallible;
+    type Records = Self;
+
+    fn source(self) -> Result<Self, Infallible> {
+        Ok(self)
+    }
+}
+
+impl Source for Vec<Record> {
+    type Error = Infallible;
+    type Records = RecordIterator<std::vec::IntoIter<Record>>;
+
+    fn source(self) -> Result<Self::Records, Infallible> {
+        Ok(RecordIterator(self.into_iter()))
     }
 }
 
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct ReaderSource<S>(Reader<S>);
+pub struct ReaderSource<S>(reader::Reader<S>);
 
-impl<S: Read> From<Reader<S>> for ReaderSource<S> {
-    #[inline]
-    fn from(reader: Reader<S>) -> Self {
+impl<S: Read> From<reader::Reader<S>> for ReaderSource<S> {
+    fn from(reader: reader::Reader<S>) -> Self {
         Self(reader)
     }
 }
 
 impl<S: Read> Source for ReaderSource<S> {
     type Error = reader::Error;
+    type Records = reader::RecordReader<S>;
 
-    fn iter_records<F: FnMut(Record)>(self, mut f: F) -> Result<(), Self::Error> {
-        let (_, mut record_reader) = self.0.to_record_reader()?;
-        while let Some(value) = record_reader.next_record() {
-            match value {
-                Ok(record) => f(record),
-                Err(e) => return Err(e),
-            }
-        }
-        record_reader.finish()
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        self.0.to_record_reader().map(|(_, records)| records)
     }
+}
+
+pub type BoxedRecords = Box<dyn Iterator<Item = Result<Record, GenericError>>>;
+
+#[repr(transparent)]
+struct BoxedRecordsInternals<I, E>(I)
+where
+    I: Iterator<Item = Result<Record, E>>;
+
+impl<I, E> Iterator for BoxedRecordsInternals<I, E>
+where
+    I: Iterator<Item = Result<Record, E>>,
+    E: std::error::Error + 'static,
+{
+    type Item = Result<Record, GenericError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|result| result.map_err(GenericError::new))
+    }
+}
+
+#[repr(transparent)]
+pub struct BoxedSource(Box<dyn FnOnce() -> Result<BoxedRecords, GenericError>>);
+
+impl Source for BoxedSource {
+    type Error = GenericError;
+    type Records = BoxedRecords;
+
+    fn source(self) -> Result<Self::Records, Self::Error> {
+        (self.0)()
+    }
+}
+
+pub fn boxed<S>(source: S) -> BoxedSource
+where
+    S: Source + 'static,
+    S::Error: std::error::Error,
+{
+    BoxedSource(Box::new(|| match source.source() {
+        Ok(s) => Ok(Box::new(BoxedRecordsInternals(s))),
+        Err(e) => Err(GenericError::new(e)),
+    }))
 }

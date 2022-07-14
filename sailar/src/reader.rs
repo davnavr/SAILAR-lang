@@ -657,20 +657,10 @@ impl<R: Read> RecordReader<R> {
 
         fn read_function_definition(source: &mut BufferWrapper<'_>) -> Result<Record> {
             let flag_bits = source.read_unsigned_integer(|| ErrorKind::MissingFunctionDefinitionFlags)?;
-            let flags = source.wrap_result(
-                record::FunctionDefinitionFlags::try_from_bits(flag_bits)
-                    .ok_or(ErrorKind::InvalidFunctionDefinitionFlags(flag_bits)),
-            )?;
-
-            let export = match flags.export_kind() {
-                record::ExportKind::Hidden => record::Export::Hidden,
-                record::ExportKind::Private => record::Export::Private(Cow::Owned(read_identifier(source)?)),
-                record::ExportKind::Export => record::Export::Export(Cow::Owned(read_identifier(source)?)),
-            };
 
             let signature = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?;
 
-            let body = if !flags.is_body_foreign() {
+            let body = if flag_bits == VarU28::from_u8(1) {
                 record::FunctionBody::Definition(source.read_unsigned_integer_try_into(|| ErrorKind::MissingCodeBlockIndex)?)
             } else {
                 record::FunctionBody::Foreign {
@@ -679,13 +669,20 @@ impl<R: Read> RecordReader<R> {
                 }
             };
 
-            Ok(Record::from(record::FunctionDefinition::new(export, signature, body)))
+            Ok(Record::from(record::FunctionDefinition::new(signature, body)))
         }
 
         fn read_function_instantiation(source: &mut BufferWrapper<'_>) -> Result<Record> {
-            source
-                .read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionTemplateIndex)
-                .map(|index| Record::from(record::FunctionInstantiation::from_template(index)))
+            let flags = source.read_unsigned_integer(|| ErrorKind::MissingFunctionDefinitionFlags)?;
+            let export = match flags.get() {
+                0 => record::Export::Hidden,
+                1 => record::Export::Private(Cow::Owned(read_identifier(source)?)),
+                2 => record::Export::Export(Cow::Owned(read_identifier(source)?)),
+                bad => todo!("read export kind {:#02X}", bad),
+            };
+
+            let template = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionTemplateIndex)?;
+            Ok(Record::from(record::FunctionInstantiation::from_template(export, template)))
         }
 
         self.count -= 1;

@@ -5,6 +5,42 @@ use sailar::index;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
+/// A boxed error type.
+///
+/// Workaround for <https://github.com/rust-lang/project-error-handling/issues/16>.
+#[repr(transparent)]
+pub struct GenericError(Box<dyn std::error::Error>);
+
+impl GenericError {
+    pub fn new<E: std::error::Error + 'static>(error: E) -> Self {
+        Self(Box::from(error))
+    }
+
+    pub fn into_inner(self) -> Box<dyn std::error::Error> {
+        self.0
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for GenericError {
+    fn from(error: Box<dyn std::error::Error>) -> Self {
+        Self(error)
+    }
+}
+
+impl std::fmt::Debug for GenericError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl Display for GenericError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl std::error::Error for GenericError {}
+
 pub(crate) trait IndexType: Into<usize> + Copy {
     fn kind() -> &'static str;
 }

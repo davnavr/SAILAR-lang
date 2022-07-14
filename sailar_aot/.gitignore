@@ -1,4 +1,12 @@
 # LLVM
 *.bc
-*.obj
+
+# Objects
+*.a
+*.dll
 *.exe
+*.o
+*.out
+*.obj
+*.lib
+*.so

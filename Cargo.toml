@@ -1,10 +1,8 @@
 [workspace]
 members = [
     "sailar",
-    # "sailar_c",
+    "sailar_samples",
     "sailar_load",
     "sailar_vm",
-    # "sailasm",
-    # "sailas",
-    # "sailas_wasm",
+    "sailar_aot",
 ]

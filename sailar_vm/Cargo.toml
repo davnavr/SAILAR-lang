@@ -7,3 +7,6 @@ edition = "2021"
 sailar = { path = "../sailar" }
 sailar_load = { path = "../sailar_load" }
 thiserror = "1.0.30"
+
+[dev-dependencies]
+sailar_samples = { path = "../sailar_samples" }

@@ -215,7 +215,7 @@ impl Stack {
         }
 
         self.push(Box::new(Frame {
-            kind: match callee.template()?.as_definition().unwrap().body()? {
+            kind: match callee.template()?.as_definition()?.body()? {
                 sailar_load::function::Body::Defined(code) => FrameKind::Defined(DefinedFrame::new(arguments, code.clone())?),
             },
             function: callee,
