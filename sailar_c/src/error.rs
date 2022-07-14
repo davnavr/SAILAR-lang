@@ -56,3 +56,31 @@ pub unsafe extern "C" fn sailar_dispose_error(error: *mut Error) {
         Box::from_raw(error);
     }
 }
+
+/// Allocates a string describing an `error`.
+///
+/// # Safety
+///
+/// Callers must ensure that the `error` has not already been disposed.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_error_message(error: *mut Error) -> *const String {
+    if let Some(error) = error.as_ref() {
+        Box::into_raw(Box::new(error.to_string())) as *const _
+    } else {
+        std::ptr::null()
+    }
+}
+
+/// Disposes a string containing an error message.
+///
+/// # Safety
+///
+/// Callers must ensure that the `message` has not already been disposed.
+/// 
+/// This function is **not thread safe**.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_dispose_error_message(message: *mut String) {
+    if !message.is_null() {
+        Box::from_raw(message);
+    }
+}
