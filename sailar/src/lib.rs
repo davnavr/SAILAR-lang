@@ -12,6 +12,7 @@ pub mod num;
 pub mod reader;
 pub mod record;
 pub mod signature;
+pub mod validation;
 pub mod versioning;
 pub mod writer;
 
