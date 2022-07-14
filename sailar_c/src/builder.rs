@@ -2,6 +2,7 @@
 
 #![warn(non_snake_case)]
 
+use crate::buffer::Buffer;
 use crate::error::{self, Error};
 use crate::path::FilePath;
 
@@ -45,6 +46,28 @@ pub unsafe extern "C" fn sailar_builder_write_to_path(builder: *const Builder, p
             (None, _) => Err("cannot write contents of null builder")?,
             (_, None) => Err("cannot write builder contents to null path")?,
         },
+        error,
+    )
+}
+
+/// Writes the contents of a SAILAR module to a byte buffer.
+///
+/// # Safety
+///
+/// Callers must ensure that the `builder` has not already been disposed.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_builder_write_to_buffer(builder: *const Builder, error: *mut *const Error) -> *mut Buffer {
+    error::handle_or(
+        || {
+            if let Some(builder) = builder.as_ref() {
+                let mut buffer = Buffer::with_capacity(128);
+                builder.write_to(&mut buffer)?;
+                Ok(Box::into_raw(Box::new(buffer)))
+            } else {
+                Err("unable to write null builder to buffer")?
+            }
+        },
+        std::ptr::null_mut(),
         error,
     )
 }

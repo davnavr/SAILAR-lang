@@ -25,6 +25,10 @@ public unsafe sealed class Builder : IDisposable {
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_builder_write_to_path", ExactSpelling = true)]
     private static extern void WriteToPath(Opaque* builder, Path.Opaque* path, out Error.Opaque* error);
 
+    
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_builder_write_to_buffer", ExactSpelling = true)]
+    private static extern Interop.Buffer.Opaque* WriteToBuffer(Opaque* builder, out Error.Opaque* error);
+
     private Builder(Opaque* builder) {
         this.builder = builder;
     }
@@ -33,7 +37,7 @@ public unsafe sealed class Builder : IDisposable {
         return new(CreateEmpty());
     }
 
-    private void CheckIfDisposed() {
+    private void ThrowIfDisposed() {
         if (builder == null) {
             throw new ObjectDisposedException(GetType().FullName);
         }
@@ -44,13 +48,24 @@ public unsafe sealed class Builder : IDisposable {
         var destination = Path.FromString(path);
 
         lock (locker) {
-            CheckIfDisposed();
+            ThrowIfDisposed();
             Error.Opaque* error;
             WriteToPath(builder, destination, out error);
             Error.Throw(error);
         }
 
         Path.Dispose(destination);
+    }
+
+    /// <summary>Attempts to write the SAILAR module to a byte buffer.</summary>
+    public Interop.Buffer ToBuffer() {
+        lock (locker) {
+            ThrowIfDisposed();
+            Error.Opaque* error;
+            var buffer = WriteToBuffer(builder, out error);
+            Error.Throw(error);
+            return new(buffer);
+        }
     }
 
     private void Dispose(bool disposing) {

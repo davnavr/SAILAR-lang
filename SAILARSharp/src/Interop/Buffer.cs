@@ -18,6 +18,10 @@ public unsafe sealed class Buffer : IDisposable {
 
     private Opaque* buffer;
 
+    internal Buffer(Opaque* buffer) {
+        this.buffer = buffer;
+    }
+
     internal Opaque* LockContents() {
         if (buffer == null) {
             throw new ObjectDisposedException(GetType().FullName);
@@ -67,7 +71,6 @@ public unsafe sealed class Buffer : IDisposable {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
-
 
     ~Buffer() => Dispose(false);
 }
