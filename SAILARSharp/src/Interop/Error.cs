@@ -19,14 +19,27 @@ internal unsafe static class Error {
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_error_message_contents", ExactSpelling = true)]
     private static extern byte* GetMessageContents(OpaqueMessage* message, out nuint length);
 
-    internal static void ThrowOnError(Opaque* error) {
-        if (error != null) {
-            var message = GetMessage(error);
-            Dispose(error);
+    /// <summary>Retrieves the error message as a <see cref="string"/>, disposing the <paramref name="error"/>.</summary>
+    internal static string IntoString(Opaque* error) {
+        if (error == null) {
+            return string.Empty;
+        }
 
-            nuint length;
-            byte* buffer = GetMessageContents(message, out length);
-            throw new ErrorMessageException(System.Text.Encoding.UTF8.GetString(buffer, (int)length));
+        var message = GetMessage(error);
+        nuint length;
+        byte* buffer = GetMessageContents(message, out length);
+
+        DisposeMessage(message);
+        Dispose(error);
+
+        return System.Text.Encoding.UTF8.GetString(buffer, (int)length);
+    }
+
+    /// <summary>Throws an exception if an error occured, disposing the <paramref name="error"/>.</summary>
+    /// <exception cref="ErrorMessageException">Thrown if <paramref name="error"/> was not <see langword="null"/>.</exception>
+    internal static void Throw(Opaque* error) {
+        if (error != null) {
+            throw new ErrorMessageException(IntoString(error));
         }
     }
 }
