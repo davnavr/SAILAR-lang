@@ -13,8 +13,8 @@ pub type Builder = sailar::builder::Builder<'static>;
 ///
 /// See the [`crate#safety`] documentation.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_builder_create() -> *const Builder {
-    Box::into_raw(Box::new(Builder::new())) as *const _
+pub unsafe extern "C" fn sailar_builder_create() -> *mut Builder {
+    Box::into_raw(Box::new(Builder::new()))
 }
 
 /// Disposes a module builder.
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn sailar_builder_dispose(builder: *mut Builder) {
 ///
 /// Callers must ensure that the `builder` has not already been disposed.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_builder_write_to_path(builder: *mut Builder, path: *const FilePath, error: *mut *const Error) {
+pub unsafe extern "C" fn sailar_builder_write_to_path(builder: *const Builder, path: *const FilePath, error: *mut *const Error) {
     error::handle_or_default(
         || match (builder.as_ref(), path.as_ref()) {
             (Some(builder), Some(path)) => {
