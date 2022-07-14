@@ -12,7 +12,7 @@ use sailar::identifier::Id;
 ///
 /// # Safety
 ///
-/// The identifier should not have been disposed.
+/// See the [`crate#safety`] documentation.
 ///
 /// [`sailar_dispose_error`]: error::sailar_dispose_error
 #[no_mangle]
@@ -21,7 +21,12 @@ pub unsafe extern "C" fn sailar_identifier_from_utf8(
     length: usize,
     error: *mut *const Error,
 ) -> *const Box<Id> {
-    let bytes = std::slice::from_raw_parts(contents, length);
+    let bytes = if contents.is_null() {
+        Default::default()
+    } else {
+        std::slice::from_raw_parts(contents, length)
+    };
+
     error::handle_or(
         || {
             let s = std::str::from_utf8(bytes)?;
@@ -46,7 +51,12 @@ pub unsafe extern "C" fn sailar_identifier_from_utf16(
     count: usize,
     error: *mut *const Error,
 ) -> *const Box<Id> {
-    let code_points = std::slice::from_raw_parts(contents, count);
+    let code_points = if contents.is_null() {
+        Default::default()
+    } else {
+        std::slice::from_raw_parts(contents, count)
+    };
+
     error::handle_or(
         || {
             let s = String::from_utf16(code_points)?;
@@ -62,11 +72,9 @@ pub unsafe extern "C" fn sailar_identifier_from_utf16(
 ///
 /// # Safety
 ///
-/// Callers must ensure that the `identifier` has not already been disposed.
-///
-/// This function is **not thread safe**.
+/// Callers must ensure that the `identifier` has not already been disposed..
 #[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_identifier(identifier: *mut Box<Id>) {
+pub unsafe extern "C" fn sailar_identifier_dispose(identifier: *mut Box<Id>) {
     if !identifier.is_null() {
         Box::from_raw(identifier);
     }
@@ -84,6 +92,7 @@ pub unsafe extern "C" fn sailar_identifier_contents(identifier: *mut Box<Id>, le
         *length = bytes.len();
         bytes.as_ptr()
     } else {
+        *length = 0;
         std::ptr::null()
     }
 }

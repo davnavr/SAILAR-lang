@@ -1,28 +1,76 @@
-﻿namespace SAILARSharp.Interop {
-    using System;
-    using System.Collections.Immutable;
+namespace SAILARSharp.Interop;
 
-    internal unsafe static class Buffer {
-        public static OpaqueBuffer* From(ReadOnlySpan<byte> source) {
-            fixed (byte* address = source) {
-                return SAILAR.CreateBufferFromAddress(address, (UIntPtr)source.Length);
-            }
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+/// <summary>Represents a <see cref="byte"/> buffer.</summary>
+public unsafe sealed class Buffer : IDisposable {
+    internal readonly struct Opaque { }
+
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_buffer_dispose", ExactSpelling = true)]
+    private static extern void Dispose(Opaque* buffer);
+
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_buffer_contents", ExactSpelling = true)]
+    private static extern byte* GetContents(Opaque* buffer, out nuint length);
+
+    private readonly object locker = new();
+
+    private Opaque* buffer;
+
+    internal Buffer(Opaque* buffer) {
+        this.buffer = buffer;
+    }
+
+    internal Opaque* LockContents() {
+        if (buffer == null) {
+            throw new ObjectDisposedException(GetType().FullName);
         }
 
-        public static OpaqueBuffer* From(byte* address, int length) => From(new ReadOnlySpan<byte>(address, length));
+        Monitor.Enter(locker);
 
-        public static OpaqueBuffer* From(byte[] source) => From(new ReadOnlySpan<byte>(source));
+        return buffer;
+    }
 
-        public static OpaqueBuffer* From(ImmutableArray<byte> source) => From(source.AsSpan());
+    internal void UnlockContents() {
+        Monitor.Exit(locker);
+    }
 
-        public static ReadOnlySpan<byte> AsSpan(OpaqueBuffer* buffer) {
+    /// <summary>Copies the contents of this buffer to an array.</summary>
+    /// <exception cref="ObjectDisposedException">Thrown if the buffer was already disposed.</exception>
+    public byte[] ToArray() {
+        try {
+            LockContents();
+            nuint length;
+            byte* contents = GetContents(buffer, out length);
+            var bytes = new Span<byte>(contents, (int)length);
+            return bytes.ToArray();
+        } finally {
+            UnlockContents();
+        }
+    }
+
+    private void Dispose(bool disposing) {
+        try {
+            if (disposing) {
+                Monitor.Enter(locker);
+            }
+
             if (buffer != null) {
-                UIntPtr length = UIntPtr.Zero;
-                var address = SAILAR.GetBufferContents(buffer, &length);
-                return new ReadOnlySpan<byte>(address, (int)length);
-            } else {
-                return default;
+                Dispose(buffer);
+                buffer = null;
+            }
+        } finally {
+            if (disposing) {
+                Monitor.Exit(locker);
             }
         }
     }
+
+    public void Dispose() {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    ~Buffer() => Dispose(false);
 }
