@@ -39,7 +39,7 @@ internal unsafe static class Error {
     /// <exception cref="ErrorMessageException">Thrown if <paramref name="error"/> was not <see langword="null"/>.</exception>
     internal static void Throw(Opaque* error) {
         if (error != null) {
-            throw new ErrorMessageException(IntoString(error));
+            throw new Core.ErrorMessageException(IntoString(error));
         }
     }
 }

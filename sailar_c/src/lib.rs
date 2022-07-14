@@ -13,5 +13,6 @@
 
 #![allow(non_snake_case)]
 
+pub mod builder;
 pub mod error;
 pub mod identifier;
