@@ -37,24 +37,44 @@ public unsafe sealed class Error : IDisposable {
         Dispose(error);
     }
 
-    /// <summary>Gets a <see cref="Span{T}"/> over the UTF-8 contents of the error message.</summary>
-    public Span<byte> GetBytes() {
+    /// <summary>Attempts to retrieve a <see cref="Span{T}"/> over the UTF-8 contents of the error message.</summary>
+    /// <param name="contents">
+    /// When this method returns, contains a <see cref="Span{T}"/> over the message contents, or <see cref="Span{T}.Empty"/> if
+    /// the message was already disposed.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> if the message contents were successfully retrieved; otherwise, <see langword="false"/>.
+    /// </returns>
+    public bool GetBytes(out Span<byte> contents) {
         lock (sync) {
             if (message == null) {
-                throw new ObjectDisposedException(null, "error message was disposed");
+                contents = Span<byte>.Empty;
+                return false;
+            } else {
+                nuint length;
+                byte* message = GetMessageContents(this.message, out length);
+                contents = new Span<byte>(message, (int)length);
+                return true;
             }
-
-            nuint length;
-            byte* contents = GetMessageContents(message, out length);
-
-            return new Span<byte>(contents, (int)length);
         }
     }
 
+    /// <summary>Gets a <see cref="Span{T}"/> over the UTF-8 contents of the error message.</summary>
+    /// <exception cref="ObjectDisposedException">Thrown if the message was already disposed.</exception>
+    public Span<byte> GetBytes() {
+        Span<byte> contents;
+        if (!GetBytes(out contents)) {
+            throw new ObjectDisposedException(GetType().FullName);
+        }
+        
+        return contents;
+    }
+
+    /// <summary>Gets the error message as a <see cref="String"/>.</summary>
     public override string ToString() {
         lock (sync) {
             if (message == null) {
-                return String.Empty;
+                return "The message was already disposed.";
             }
 
             contents ??= Encoding.UTF8.GetString(GetBytes());
