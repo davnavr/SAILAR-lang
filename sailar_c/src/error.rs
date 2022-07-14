@@ -57,8 +57,6 @@ pub unsafe fn handle_or_default<T: Default, F: FnOnce() -> Result<T, Error>>(exp
 /// # Safety
 ///
 /// Callers must ensure that the `error` has not already been disposed.
-///
-/// This function is **not thread safe**.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_error_dispose(error: *mut Error) {
     if !error.is_null() {
@@ -101,8 +99,6 @@ pub unsafe extern "C" fn sailar_error_message_contents(message: *mut String, len
 /// # Safety
 ///
 /// Callers must ensure that the `message` has not already been disposed.
-///
-/// This function is **not thread safe**.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_error_message_dispose(message: *mut String) {
     if !message.is_null() {

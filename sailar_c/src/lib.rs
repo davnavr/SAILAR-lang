@@ -8,8 +8,7 @@
 //! Note that as a C API, the provided functions make pervasive use of [`raw pointers`](pointer); and as such,
 //! [Rust's pointer safety rules apply](std::ptr#safety).
 //!
-//! Where possible, the functions provided by this library aim to be thread safe. The main exception to these are disposal
-//! functions, which free memory.
+//! Almost all functions provided are also **not thread safe**. This means that it is the duty of callers to do synchronization.
 
 #![allow(non_snake_case)]
 

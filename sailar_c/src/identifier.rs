@@ -72,9 +72,7 @@ pub unsafe extern "C" fn sailar_identifier_from_utf16(
 ///
 /// # Safety
 ///
-/// Callers must ensure that the `identifier` has not already been disposed.
-///
-/// This function is **not thread safe**.
+/// Callers must ensure that the `identifier` has not already been disposed..
 #[no_mangle]
 pub unsafe extern "C" fn sailar_identifier_dispose(identifier: *mut Box<Id>) {
     if !identifier.is_null() {
