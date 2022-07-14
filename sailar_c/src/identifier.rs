@@ -1,22 +1,34 @@
 //! Functions for manipulating identifiers.
 
-use crate::error::Error;
-use sailar::identifier::Id;
+#![warn(non_snake_case)]
 
-pub type Identifier = Box<Id>;
+use crate::error::{self, Error};
+use sailar::identifier::Id;
 
 /// Creates a SAILAR identifier string by copying from a sequence of bytes. If the bytes are not valid UTF-8, returns `null`
 /// and an error that can be disposed with `sailar_dispose_error`.
 ///
 /// The identifier can be disposed later with `sailar_dispose_identifier`.
-/// 
+///
 /// # Safety
-/// 
+///
 /// See the [`crate`] documentation.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_create_identifier(contents: *const u8, length: usize, error: *mut Error) -> *const Identifier {
+pub unsafe extern "C" fn sailar_identifier_from_utf8(
+    contents: *const u8,
+    length: usize,
+    error: *mut *const Error,
+) -> *const Box<Id> {
     let bytes = std::slice::from_raw_parts(contents, length);
-    //Identifier::new(crate::handle_error!(identifier::Identifier::try_from(bytes), error))
+    error::handle_or(
+        || {
+            let s = std::str::from_utf8(bytes)?;
+            let id = sailar::identifier::Identifier::try_from_str(s)?.into_boxed_id();
+            Ok(Box::into_raw(Box::new(id)) as *const _)
+        },
+        std::ptr::null(),
+        error,
+    )
 }
 
 // #[no_mangle]

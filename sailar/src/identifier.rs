@@ -92,29 +92,24 @@ impl Id {
 }
 
 impl Identifier {
-    #[inline]
     pub fn from_id(identifier: &Id) -> Self {
         identifier.to_identifier()
     }
 
-    #[inline]
     pub fn from_string(identifier: String) -> Result<Self, InvalidError> {
         Id::try_from_str(&identifier)?;
         Ok(Self(identifier))
     }
 
-    #[inline]
     pub fn from_boxed_str(identifier: Box<str>) -> Result<Self, InvalidError> {
         Self::from_string(identifier.into_string())
     }
 
-    #[inline]
     pub fn try_from_str(identifier: &str) -> Result<Self, InvalidError> {
         Id::try_from_str(identifier)?;
         Ok(Self(identifier.to_owned()))
     }
 
-    #[inline]
     pub fn from_byte_slice(bytes: &[u8]) -> Result<Self, ParseError> {
         Id::from_byte_slice(bytes).map(Id::to_identifier)
     }
@@ -123,7 +118,6 @@ impl Identifier {
         Ok(Self::from_string(String::from_utf8(bytes).map_err(|e| e.utf8_error())?)?)
     }
 
-    #[inline]
     pub fn as_id(&self) -> &Id {
         unsafe {
             // Safety: Constructors for Identifier delegates to same validation check as Id, and representations for str and Id
@@ -132,21 +126,40 @@ impl Identifier {
         }
     }
 
-    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_bytes()
     }
 
-    #[inline]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+
+    pub fn into_boxed_id(self) -> Box<Id> {
+        unsafe {
+            // Safety: Box<Id> should have same layout as Box<str>.
+            std::mem::transmute::<Box<str>, Box<Id>>(self.0.into_boxed_str())
+        }
     }
 }
 
 impl From<&Id> for Identifier {
-    #[inline]
     fn from(identifier: &Id) -> Self {
         Self::from_id(identifier)
+    }
+}
+
+impl From<Box<Id>> for Identifier {
+    fn from(identifier: Box<Id>) -> Self {
+        unsafe {
+            // Safety: Box<Id> should have same layout as Box<str>.
+            Self(std::mem::transmute::<Box<Id>, Box<str>>(identifier).into_string())
+        }
+    }
+}
+
+impl From<&Id> for Box<Id> {
+    fn from(identifier: &Id) -> Self {
+        Identifier::from(identifier).into_boxed_id()
     }
 }
 
