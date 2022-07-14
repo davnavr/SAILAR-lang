@@ -21,7 +21,12 @@ pub unsafe extern "C" fn sailar_identifier_from_utf8(
     length: usize,
     error: *mut *const Error,
 ) -> *const Box<Id> {
-    let bytes = std::slice::from_raw_parts(contents, length);
+    let bytes = if contents.is_null() {
+        Default::default()
+    } else {
+        std::slice::from_raw_parts(contents, length)
+    };
+
     error::handle_or(
         || {
             let s = std::str::from_utf8(bytes)?;
@@ -46,7 +51,12 @@ pub unsafe extern "C" fn sailar_identifier_from_utf16(
     count: usize,
     error: *mut *const Error,
 ) -> *const Box<Id> {
-    let code_points = std::slice::from_raw_parts(contents, count);
+    let code_points = if contents.is_null() {
+        Default::default()
+    } else {
+        std::slice::from_raw_parts(contents, count)
+    };
+
     error::handle_or(
         || {
             let s = String::from_utf16(code_points)?;

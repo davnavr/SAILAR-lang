@@ -30,6 +30,17 @@ internal unsafe static class Identifier {
         
         Dispose(identifier);
 
-        return Encoding.UTF8.GetString(contents, (int)length);
+        return length == 0 ? string.Empty : Encoding.UTF8.GetString(contents, (int)length);
+    }
+
+    /// <summary>Converts a .NET <see cref="string"/> into a SAILAR identifier string.</summary>
+    /// <exception cref="ErrorMessageException">Thrown if the <paramref name="identifier"/> was invalid.</exception>
+    internal static Opaque* FromString(string? identifier) {
+        fixed(char* contents = identifier) {
+            Error.Opaque* error;
+            Opaque* id = Create(contents, identifier == null ? 0 : (nuint)identifier.Length, out error);
+            Error.Throw(error);
+            return id;
+        }
     }
 }
