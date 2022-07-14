@@ -1,61 +1,36 @@
-//! Error handling functions.
+//! Provides error handling.
 
-// Workaround since dyn makes a fat pointer
-crate::box_wrapper!(Error(pub Box<dyn std::error::Error>));
+pub type Error = Box<dyn std::error::Error + Send + 'static>;
 
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub(crate) struct StaticError(&'static str);
-
-impl From<&'static str> for StaticError {
-    #[inline]
-    fn from(message: &'static str) -> Self {
-        Self(message)
-    }
-}
-
-impl Error {
-    pub(crate) unsafe fn from_error<E: Into<Box<dyn std::error::Error>>>(error: E) -> Self {
-        Self::new(error.into())
-    }
-
-    pub(crate) unsafe fn from_str(message: &'static str) -> Self {
-        Self::from_error(StaticError(message))
-    }
-}
-
-pub(crate) unsafe fn handle_error<T, E: Into<Box<dyn std::error::Error>>>(result: Result<T, E>, error: *mut Error) -> Option<T> {
-    match result {
+/// Wraps a [`Result`], storing any `error` that occurs.
+/// 
+/// # Safety
+/// 
+/// The `error` must be [valid](std::ptr#safety).
+pub unsafe fn wrap<T, E, F>(expression: F, error: *mut *const Error) -> Option<T>
+where
+    E: std::error::Error + Send + 'static,
+    F: FnOnce() -> Result<T, E>,
+{
+    match expression() {
         Ok(value) => Some(value),
         Err(e) => {
-            *error = Error::from_error(e);
+            *error = Box::into_raw(Box::new(Box::new(e))) as *const Error;
             None
         }
     }
 }
 
+/// Disposes the specified `error`.
+/// 
+/// # Safety
+/// 
+/// Callers must ensure that the `error` has not already been disposed.
+/// 
+/// This function is **not thread safe**.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_error(error: Error) {
-    Box::from_raw(error.0);
-}
-
-crate::box_wrapper!(ErrorMessage(pub String));
-
-/// Allocates an object containing the `error`'s message. The `error` object should be disposed later using
-/// `sailar_dispose_error_message`.
-#[no_mangle]
-pub unsafe extern "C" fn sailar_get_error_message(error: Error) -> ErrorMessage {
-    ErrorMessage::new(error.into_ref().to_string())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn sailar_get_error_message_contents(message: ErrorMessage, length: *mut usize) -> *const u8 {
-    let message = message.into_ref();
-    *length = message.len();
-    message.as_ptr()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_error_message(message: ErrorMessage) {
-    message.into_box();
+pub unsafe extern "C" fn sailar_dispose_error(error: *mut Error) {
+    if !error.is_null() {
+        Box::from_raw(error);
+    }
 }
