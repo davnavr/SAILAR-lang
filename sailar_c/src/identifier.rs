@@ -12,7 +12,7 @@ use sailar::identifier::Id;
 ///
 /// # Safety
 ///
-/// The identifier should not have been disposed.
+/// See the [`crate#safety`] documentation.
 ///
 /// [`sailar_dispose_error`]: error::sailar_dispose_error
 #[no_mangle]

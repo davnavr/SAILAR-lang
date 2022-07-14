@@ -92,7 +92,7 @@ pub unsafe extern "C" fn sailar_error_message_contents(message: *mut String, len
 /// # Safety
 ///
 /// Callers must ensure that the `message` has not already been disposed.
-/// 
+///
 /// This function is **not thread safe**.
 #[no_mangle]
 pub unsafe extern "C" fn sailar_dispose_error_message(message: *mut String) {

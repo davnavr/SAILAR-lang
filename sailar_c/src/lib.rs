@@ -16,3 +16,4 @@
 pub mod builder;
 pub mod error;
 pub mod identifier;
+pub mod path;
