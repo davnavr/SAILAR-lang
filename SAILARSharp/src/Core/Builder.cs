@@ -29,6 +29,9 @@ public unsafe sealed class Builder : IDisposable {
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_builder_write_to_buffer", ExactSpelling = true)]
     private static extern Interop.Buffer.Opaque* WriteToBuffer(Opaque* builder, out Error.Opaque* error);
 
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_builder_add_module_identifier", ExactSpelling = true)]
+    private static extern void AddModuleIdentifier(Opaque* builder, Identifier.Opaque* name, ushort* version, nuint versionNumberCount);
+
     private Builder(Opaque* builder) {
         this.builder = builder;
     }
@@ -40,6 +43,15 @@ public unsafe sealed class Builder : IDisposable {
     private void ThrowIfDisposed() {
         if (builder == null) {
             throw new ObjectDisposedException(GetType().FullName);
+        }
+    }
+
+    public void AddModuleIdentifier(string name, ReadOnlySpan<ushort> version) {
+        lock (locker) {
+            ThrowIfDisposed();
+            fixed(ushort* moduleVersionNumbers = version) {
+                AddModuleIdentifier(builder, Identifier.FromString(name), moduleVersionNumbers, (nuint)version.Length);
+            }
         }
     }
 
