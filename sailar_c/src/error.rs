@@ -71,6 +71,22 @@ pub unsafe extern "C" fn sailar_error_message(error: *mut Error) -> *const Strin
     }
 }
 
+/// Returns a pointer to the UTF-8 contents of an error message, as well as the length in bytes.
+///
+/// # Safety
+///
+/// The `message` should not have been disposed.
+#[no_mangle]
+pub unsafe extern "C" fn sailar_error_message_contents(message: *mut String, length: *mut usize) -> *const u8 {
+    if let Some(message) = message.as_ref() {
+        *length = message.len();
+        message.as_bytes().as_ptr()
+    } else {
+        *length = 0;
+        std::ptr::null()
+    }
+}
+
 /// Disposes a string containing an error message.
 ///
 /// # Safety

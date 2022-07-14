@@ -84,6 +84,7 @@ pub unsafe extern "C" fn sailar_identifier_contents(identifier: *mut Box<Id>, le
         *length = bytes.len();
         bytes.as_ptr()
     } else {
+        *length = 0;
         std::ptr::null()
     }
 }
