@@ -9,7 +9,7 @@ internal unsafe static class Identifier {
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_identifier_from_utf16", ExactSpelling = true)]
     private static extern Opaque* Create(char* contents, nuint count, out Error.Opaque* error);
 
-    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_identifier", ExactSpelling = true)]
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_identifier_dispose", ExactSpelling = true)]
     internal static extern void Dispose(Opaque* identifier);
     
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_identifier_contents", ExactSpelling = true)]

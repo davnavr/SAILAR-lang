@@ -7,10 +7,10 @@ internal unsafe static class Error {
 
     internal readonly struct OpaqueMessage { }
 
-    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_error", ExactSpelling = true)]
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_error_dispose", ExactSpelling = true)]
     private static extern void Dispose(Opaque* error);
 
-    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_error_message", ExactSpelling = true)]
+    [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_error_message_dispose", ExactSpelling = true)]
     private static extern void DisposeMessage(OpaqueMessage* message);
 
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_error_message", ExactSpelling = true)]

@@ -42,6 +42,15 @@ where
 pub unsafe fn handle_or<T, F: FnOnce() -> Result<T, Error>>(expression: F, default: T, error: *mut *const Error) -> T {
     handle_or_else(expression, || default, error)
 }
+/// Handles any `error` that is produced by a closure that returns a [`Result`], returning [`Default::default`] if an error
+/// occurs.
+///
+/// # Safety
+///
+/// The `error` must be [valid](std::ptr#safety).
+pub unsafe fn handle_or_default<T: Default, F: FnOnce() -> Result<T, Error>>(expression: F, error: *mut *const Error) -> T {
+    handle_or(expression, Default::default(), error)
+}
 
 /// Disposes the specified `error`.
 ///
@@ -51,7 +60,7 @@ pub unsafe fn handle_or<T, F: FnOnce() -> Result<T, Error>>(expression: F, defau
 ///
 /// This function is **not thread safe**.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_error(error: *mut Error) {
+pub unsafe extern "C" fn sailar_error_dispose(error: *mut Error) {
     if !error.is_null() {
         Box::from_raw(error);
     }
@@ -95,7 +104,7 @@ pub unsafe extern "C" fn sailar_error_message_contents(message: *mut String, len
 ///
 /// This function is **not thread safe**.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_dispose_error_message(message: *mut String) {
+pub unsafe extern "C" fn sailar_error_message_dispose(message: *mut String) {
     if !message.is_null() {
         Box::from_raw(message);
     }
