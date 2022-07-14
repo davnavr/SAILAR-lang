@@ -2,12 +2,14 @@ namespace SAILARSharp.Interop;
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
 
 /// <summary>
 /// <p>Encapsulates an error message produced by SAILAR.</p>
 /// <p>This class is thread safe.</p>
 /// </summary>
-public unsafe sealed class Error {
+public unsafe sealed class Error : IDisposable {
     internal readonly struct Opaque { }
 
     internal readonly struct OpaqueMessage { }
@@ -16,7 +18,7 @@ public unsafe sealed class Error {
 
     private OpaqueMessage* message;
 
-    private string contents = String.Empty;
+    private string? contents = null;
 
     [DllImport("SAILARCore", CallingConvention = CallingConvention.Cdecl, EntryPoint = "sailar_dispose_error", ExactSpelling = true)]
     private static extern void Dispose(Opaque* error);
@@ -39,7 +41,7 @@ public unsafe sealed class Error {
     public Span<byte> GetBytes() {
         lock (sync) {
             if (message == null) {
-                return Span<byte>.Empty;
+                throw new ObjectDisposedException(null, "error message was disposed");
             }
 
             nuint length;
@@ -48,4 +50,37 @@ public unsafe sealed class Error {
             return new Span<byte>(contents, (int)length);
         }
     }
+
+    public override string ToString() {
+        lock (sync) {
+            if (message == null) {
+                return String.Empty;
+            }
+
+            contents ??= Encoding.UTF8.GetString(GetBytes());
+
+            return contents;
+        }
+    }
+
+    private void Dispose(bool disposing) {
+        try {
+            if (disposing) {
+                Monitor.Enter(sync);
+            }
+
+            if (message != null) {
+                DisposeMessage(message);
+                message = null;
+            }
+        } finally {
+            if (disposing) {
+                Monitor.Exit(sync);
+            }
+        }
+    }
+
+    public void Dispose() => Dispose(true);
+
+    ~Error() => Dispose(false);
 }
