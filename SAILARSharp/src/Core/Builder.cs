@@ -33,7 +33,7 @@ public unsafe sealed class Builder : IDisposable {
         this.builder = builder;
     }
 
-    public Builder Create() {
+    public static Builder Create() {
         return new(CreateEmpty());
     }
 
