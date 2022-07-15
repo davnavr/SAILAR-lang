@@ -180,42 +180,73 @@ impl<'a> ValidModule<'a> {
                     }
                 }
             }
+
+            // TODO: Validate function signatures
         }
 
-        //let check_data_index
-
-        // TODO: Rename to signature comparer, make it also responsible for comparing function signatures
-        struct TypeSignatureComparer<'a, 'b> {
+        struct SignatureComparer<'a, 'b> {
             type_signatures: &'b [Cow<'a, signature::Type>],
-            cache: rustc_hash::FxHashMap<(index::TypeSignature, index::TypeSignature), bool>,
+            function_signatures: &'b [Cow<'a, signature::Function>],
+            type_comparison_cache: rustc_hash::FxHashMap<(index::TypeSignature, index::TypeSignature), bool>,
+            function_comparison_cache: rustc_hash::FxHashMap<(index::FunctionSignature, index::FunctionSignature), bool>,
         }
 
-        impl TypeSignatureComparer<'_, '_> {
-            fn are_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
-                if let Some(existing) = self.cache.get(&(a, b)) {
+        impl SignatureComparer<'_, '_> {
+            fn are_functions_equal(&mut self, a: index::FunctionSignature, b: index::FunctionSignature) -> bool {
+                if a == b {
+                    true
+                } else if let Some(existing) = self.function_comparison_cache.get(&(a, b)) {
                     *existing
                 } else {
-                    let x = &self.type_signatures[usize::from(a)];
-                    let y = &self.type_signatures[usize::from(b)];
+                    let a_types = self.function_signatures[usize::from(a)].as_ref().types();
+                    let b_types = self.function_signatures[usize::from(b)].as_ref().types();
 
-                    let comparison = match (x.as_ref(), y.as_ref()) {
+                    let comparison = if a_types.len() != b_types.len() {
+                        false
+                    } else {
+                        a_types.iter().zip(b_types).all(|(x, y)| self.are_types_equal(*x, *y))
+                    };
+
+                    self.function_comparison_cache.insert((a, b), comparison);
+                    comparison
+                }
+            }
+
+            fn are_types_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
+                if a == b {
+                    true
+                } else if let Some(existing) = self.type_comparison_cache.get(&(a, b)) {
+                    *existing
+                } else {
+                    let x = self.type_signatures[usize::from(a)].as_ref();
+                    let y = self.type_signatures[usize::from(b)].as_ref();
+
+                    let comparison = match (x, y) {
+                        (signature::Type::RawPtr(Some(c)), signature::Type::RawPtr(Some(d))) if c != d => {
+                            self.are_types_equal(*c, *d)
+                        }
+
                         (signature::Type::FixedInteger(c), signature::Type::FixedInteger(d)) => c == d,
                         (signature::Type::F32, signature::Type::F32)
                         | (signature::Type::F64, signature::Type::F64)
                         | (signature::Type::UAddr, signature::Type::UAddr)
                         | (signature::Type::SAddr, signature::Type::SAddr)
-                        | (signature::Type::RawPtr(None), signature::Type::RawPtr(None)) => true,
+                        | (signature::Type::RawPtr(_), signature::Type::RawPtr(_))
+                        | (signature::Type::FuncPtr(_), signature::Type::FuncPtr(_)) => true,
                         _ => false,
                     };
 
+                    self.type_comparison_cache.insert((a, b), comparison);
                     comparison
                 }
             }
         }
 
-        let mut type_signature_comparer = TypeSignatureComparer {
+        let mut signature_comparer = SignatureComparer {
             type_signatures: &contents.type_signatures,
-            cache: Default::default(),
+            function_signatures: &contents.function_signatures,
+            type_comparison_cache: Default::default(),
+            function_comparison_cache: Default::default(),
         };
 
         // TODO: Perform validation here.
