@@ -128,9 +128,9 @@ impl<'a> ValidModule<'a> {
         let check_function_signature_index = get_index_validator(contents.function_signatures.len());
 
         {
+            /// The values are the types that directly refer to the key.
             type TypeReferenceLookup = rustc_hash::FxHashMap<index::TypeSignature, rustc_hash::FxHashSet<index::TypeSignature>>;
 
-            // The values are the types that directly refer to the key.
             let mut type_reference_lookup: TypeReferenceLookup = Default::default();
 
             for (i, signature) in contents.type_signatures.iter().enumerate() {
@@ -150,6 +150,7 @@ impl<'a> ValidModule<'a> {
                     signature::Type::FuncPtr(signature) => {
                         check_function_signature_index(*signature)?;
 
+                        // Recursive function signatures should be prevented here
                         contents.function_signatures[usize::from(*signature)]
                             .types()
                             .iter()
@@ -157,13 +158,11 @@ impl<'a> ValidModule<'a> {
                             .for_each(|type_signature| {
                                 type_reference_lookup.entry(type_signature).or_default().insert(current_index);
                             });
-
-                        // TODO: Check for cycle in FuncPtr
                     }
                 }
             }
 
-            let mut type_referer_buffer = Vec::<index::TypeSignature>::new();
+            let mut type_referer_buffer = Vec::<index::TypeSignature>::with_capacity(type_reference_lookup.len());
             let mut type_referent_lookup: rustc_hash::FxHashSet<index::TypeSignature> = Default::default();
             for (referent, referers) in type_reference_lookup.iter() {
                 type_referent_lookup.clear();
@@ -181,7 +180,11 @@ impl<'a> ValidModule<'a> {
                 }
             }
 
-            // TODO: Validate function signatures
+            contents
+                .function_signatures
+                .iter()
+                .flat_map(|signature| signature.as_ref().types().iter().copied())
+                .try_for_each(check_type_signature_index)?;
         }
 
         struct SignatureComparer<'a, 'b> {

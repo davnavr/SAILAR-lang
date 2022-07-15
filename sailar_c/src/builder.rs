@@ -5,8 +5,8 @@
 use crate::buffer::Buffer;
 use crate::error::{self, Error};
 use crate::path::FilePath;
-use sailar::record;
 use sailar::identifier::Id;
+use sailar::record;
 
 pub type Builder = sailar::builder::Builder<'static>;
 
@@ -80,11 +80,19 @@ pub unsafe extern "C" fn sailar_builder_write_to_buffer(builder: *const Builder,
 ///
 /// Callers must ensure that the `builder` has not already been disposed.
 #[no_mangle]
-pub unsafe extern "C" fn sailar_builder_add_module_identifier(builder: *mut Builder, name: *const Box<Id>, version_numbers: *const u16, version_numbers_count: usize) {
+pub unsafe extern "C" fn sailar_builder_add_module_identifier(
+    builder: *mut Builder,
+    name: *const Box<Id>,
+    version_numbers: *const u16,
+    version_numbers_count: usize,
+) {
     let builder = builder.as_mut().unwrap();
     let name = name.as_ref().unwrap();
     // TODO: How to ensure version numbers are not null?
     let version_numbers = std::slice::from_raw_parts(version_numbers, version_numbers_count);
     let version: Box<[_]> = version_numbers.iter().copied().map(sailar::num::VarU28::from_u16).collect();
-    builder.add_record(record::MetadataField::ModuleIdentifier(record::ModuleIdentifier::new_owned(name.as_ref().into(), version)))
+    builder.add_record(record::MetadataField::ModuleIdentifier(record::ModuleIdentifier::new_owned(
+        name.as_ref().into(),
+        version,
+    )))
 }
