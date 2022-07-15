@@ -1,7 +1,7 @@
 //! Types that represent indices used to refer to records in a SAILAR module.
 
 use crate::num::{IntegerEncodingError, VarU28};
-use std::fmt::{Debug, Formatter};
+use std::fmt::Formatter;
 use std::num::TryFromIntError;
 
 macro_rules! index_type {
@@ -42,9 +42,15 @@ macro_rules! index_type {
             }
         }
 
-        impl Debug for $name {
+        impl std::fmt::Debug for $name {
             fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-                Debug::fmt(&self.0, f)
+                std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                write!(f, "#{}", self.0)
             }
         }
     };
