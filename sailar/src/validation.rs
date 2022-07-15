@@ -3,7 +3,7 @@
 //! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
 
 use crate::record::{self, Record};
-use helper::borrow::CowBox;
+use crate::helper::borrow::CowBox;
 use std::borrow::Cow;
 
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
@@ -32,8 +32,6 @@ impl<E: Into<ErrorKind>> From<E> for Error {
         Self::from_kind(error)
     }
 }
-
-pub type ValidationResult<T> = Result<T, Error>;
 
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
@@ -68,7 +66,7 @@ pub struct ValidModule<'a> {
 }
 
 impl<'a> ValidModule<'a> {
-    pub fn from_records_fallible<R, E>(records: R) -> Result<ValidationResult<Self>, E>
+    pub fn from_records_fallible<R, E>(records: R) -> Result<Result<Self, Error>, E>
     where
         R: IntoIterator<Item = Result<Record<'a>, E>>
     {
@@ -88,7 +86,7 @@ impl<'a> ValidModule<'a> {
         Ok(Ok(Self { contents }))
     }
 
-    pub fn from_records<R: IntoIterator<Item = Record<'a>>>(records: R) -> ValidationResult<Self> {
+    pub fn from_records<R: IntoIterator<Item = Record<'a>>>(records: R) -> Result<Self, Error> {
         Self::from_records_fallible::<_, std::convert::Infallible>(records.into_iter().map(Ok)).unwrap()
     }
 
@@ -98,5 +96,29 @@ impl<'a> ValidModule<'a> {
 
     pub fn into_contents(self) -> ModuleContents<'a> {
         self.contents
+    }
+}
+
+impl<'a> TryFrom<Vec<Record<'a>>> for ValidModule<'a> {
+    type Error = Error;
+
+    fn try_from(records: Vec<Record<'a>>) -> Result<Self, Self::Error> {
+        Self::from_records(records)
+    }
+}
+
+impl<'a> TryFrom<Box<[Record<'a>]>> for ValidModule<'a> {
+    type Error = Error;
+
+    fn try_from(records: Box<[Record<'a>]>) -> Result<Self, Self::Error> {
+        Self::try_from(records.into_vec())
+    }
+}
+
+impl<'a, const N: usize> TryFrom<[Record<'a>; N]> for ValidModule<'a> {
+    type Error = Error;
+
+    fn try_from(records: [Record<'a>; N]) -> Result<Self, Self::Error> {
+        Self::from_records(records)
     }
 }
