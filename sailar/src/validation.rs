@@ -5,6 +5,7 @@
 use crate::helper::borrow::CowBox;
 use crate::index;
 use crate::record::{self, Record};
+use crate::signature;
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 
@@ -70,22 +71,6 @@ impl<E: Into<ErrorKind>> From<E> for Error {
     }
 }
 
-fn validate_index<I: index::Index>(index: I, maximum_index: Option<usize>) -> Result<(), Error> {
-    let index = index.into();
-    match maximum_index {
-        Some(maximum) if index <= maximum => Ok(()),
-        _ => Err(Error::from(InvalidIndexError {
-            index,
-            maximum_index,
-            name: I::name(),
-        })),
-    }
-}
-
-fn validate_index_into<I: index::Index, T>(index: I, items: &[T]) -> Result<(), Error> {
-    validate_index(index, if items.is_empty() { None } else { Some(items.len() - 1) })
-}
-
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
@@ -94,6 +79,8 @@ pub struct ModuleContents<'a> {
     pub entry_point: Option<index::FunctionInstantiation>,
     /// The list of all identifier records in the module.
     pub identifiers: Vec<Cow<'a, crate::identifier::Id>>,
+    pub type_signatures: Vec<Cow<'a, signature::Type>>,
+    pub function_signatures: Vec<Cow<'a, signature::Function>>,
 }
 
 impl<'a> ModuleContents<'a> {
@@ -113,6 +100,43 @@ pub struct ValidModule<'a> {
 
 impl<'a> ValidModule<'a> {
     fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
+        fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<(), Error> {
+            move |index: I| {
+                let index = index.into();
+                if index < length {
+                    Ok(())
+                } else {
+                    Err(InvalidIndexError {
+                        index,
+                        maximum_index: if length == 0 { None } else { Some(length - 1) },
+                        name: I::name(),
+                    })?
+                }
+            }
+        }
+
+        let check_type_signature_index = get_index_validator(contents.type_signatures.len());
+        let check_function_signature_index = get_index_validator(contents.function_signatures.len());
+
+        for signature in contents.type_signatures.iter() {
+            match signature.as_ref() {
+                signature::Type::FixedInteger(_)
+                | signature::Type::F32
+                | signature::Type::F64
+                | signature::Type::SAddr
+                | signature::Type::UAddr
+                | signature::Type::RawPtr(None) => (),
+                signature::Type::RawPtr(Some(pointee)) => {
+                    // TODO: Check for cycle
+                    check_type_signature_index(*pointee)?;
+                }
+                signature::Type::FuncPtr(signature) => {
+                    // TODO: Check for cycle
+                    check_function_signature_index(*signature)?;
+                }
+            }
+        }
+
         // TODO: Perform validation here.
 
         for field in metadata_fields.into_iter() {
@@ -123,8 +147,7 @@ impl<'a> ValidModule<'a> {
                         return Err(ErrorKind::DuplicateEntryPoint {
                             defined,
                             duplicate: entry_point,
-                        }
-                        .into());
+                        })?;
                     }
                     // else if entry point OOB
 
@@ -147,6 +170,8 @@ impl<'a> ValidModule<'a> {
             match data? {
                 Record::MetadataField(metadata) => metadata_fields.push(metadata),
                 Record::Identifier(identifier) => contents.identifiers.push(identifier),
+                Record::TypeSignature(signature) => contents.type_signatures.push(signature),
+                Record::FunctionSignature(signature) => contents.function_signatures.push(signature),
                 bad => todo!("validate {:?}", bad),
             }
         }
