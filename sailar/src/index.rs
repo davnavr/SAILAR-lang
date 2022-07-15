@@ -4,8 +4,12 @@ use crate::num::{IntegerEncodingError, VarU28};
 use std::fmt::Formatter;
 use std::num::TryFromIntError;
 
+pub(crate) trait Index: Into<usize> + Copy {
+    fn name() -> &'static str;
+}
+
 macro_rules! index_type {
-    ($(#[$meta:meta])* $name:ident) => {
+    ($(#[$meta:meta])* $name:ident { name = $description:literal }) => {
         #[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
         #[repr(transparent)]
         pub struct $name(usize);
@@ -53,41 +57,48 @@ macro_rules! index_type {
                 write!(f, "#{}", self.0)
             }
         }
+
+        impl Index for $name {
+            fn name() -> &'static str {
+                $description
+            }
+        }
     };
 }
 
 index_type!(
-    #[doc("Represents an index to an identifier in a module.")]
-    Identifier
+    /// Represents an index to an identifier in a module.
+    Identifier { name = "identifier string" }
 );
 
 index_type!(
-    #[doc("Represents an index to a function signature in a module.")]
-    FunctionSignature
+    /// Represents an index to a function signature in a module.
+    FunctionSignature { name = "function signature" }
 );
 
 index_type!(
-    #[doc("Represents an index to a type signature in a module.")]
-    TypeSignature
+    /// Represents an index to a type signature in a module.
+    TypeSignature { name = "type signature" }
 );
 
 index_type!(
-    #[doc("Represents an index to a code block in a module.")]
-    CodeBlock
+    /// Represents an index to a code block in a module.
+    CodeBlock { name = "code block" }
 );
 
 index_type!(
-    #[doc("Represents an index to a function import or definition in a module in that order.")]
-    FunctionTemplate
+    /// Represents an index to a function import or definition in a module in that order.
+    FunctionTemplate { name = "function template" }
 );
 
 index_type!(
-    #[doc("Represents an index to a function instantiation in a module.")]
-    FunctionInstantiation
+    /// Represents an index to a function instantiation in a module.
+    FunctionInstantiation { name = "function instantiation" }
 );
 
 index_type!(
-    #[doc("Represents an index referring to a register in a code block.")]
-    #[doc("Indices start first with the input registers followed by temporary registers.")]
-    Register
+    /// Represents an index referring to a register in a code block.
+    ///
+    /// Indices start first with the input registers followed by temporary registers.
+    Register { name = "register" }
 );

@@ -6,6 +6,35 @@ use crate::helper::borrow::CowBox;
 use crate::index;
 use crate::record::{self, Record};
 use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
+
+/// The error type used when an index in a module is not valid.
+#[derive(Clone, Debug, thiserror::Error)]
+pub struct InvalidIndexError {
+    index: usize,
+    maximum_index: Option<usize>,
+    name: &'static str,
+}
+
+impl InvalidIndexError {
+    pub(crate) fn new<I: index::Index>(index: I, maximum_index: Option<usize>) -> Self {
+        Self {
+            index: index.into(),
+            maximum_index,
+            name: I::name(),
+        }
+    }
+}
+
+impl Display for InvalidIndexError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{} index {} is not valid", self.name, self.index)?;
+        if let Some(maximum) = self.maximum_index {
+            write!(f, ", maximum valid index is {}", maximum)?;
+        }
+        Ok(())
+    }
+}
 
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
 ///
@@ -19,6 +48,8 @@ pub enum ErrorKind {
         defined: index::FunctionInstantiation,
         duplicate: index::FunctionInstantiation,
     },
+    #[error(transparent)]
+    InvalidIndex(#[from] InvalidIndexError),
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -37,6 +68,22 @@ impl<E: Into<ErrorKind>> From<E> for Error {
     fn from(error: E) -> Self {
         Self::from_kind(error)
     }
+}
+
+fn validate_index<I: index::Index>(index: I, maximum_index: Option<usize>) -> Result<(), Error> {
+    let index = index.into();
+    match maximum_index {
+        Some(maximum) if index <= maximum => Ok(()),
+        _ => Err(Error::from(InvalidIndexError {
+            index,
+            maximum_index,
+            name: I::name(),
+        })),
+    }
+}
+
+fn validate_index_into<I: index::Index, T>(index: I, items: &[T]) -> Result<(), Error> {
+    validate_index(index, if items.is_empty() { None } else { Some(items.len() - 1) })
 }
 
 /// Represents the contents of a SAILAR module.
