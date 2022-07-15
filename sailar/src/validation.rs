@@ -37,6 +37,13 @@ impl Display for InvalidIndexError {
     }
 }
 
+/// The error type used when a cycle is detected in a type signature, resulting in infinite recursion.
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("type signature {index} directly or indirectly refers to itself, resulting in infinite recursion")]
+pub struct TypeSignatureCycleError {
+    index: index::TypeSignature,
+}
+
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
 ///
 /// Usually used with the [`Error`] type.
@@ -51,6 +58,8 @@ pub enum ErrorKind {
     },
     #[error(transparent)]
     InvalidIndex(#[from] InvalidIndexError),
+    #[error(transparent)]
+    TypeSignatureCycle(#[from] TypeSignatureCycleError),
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -118,24 +127,96 @@ impl<'a> ValidModule<'a> {
         let check_type_signature_index = get_index_validator(contents.type_signatures.len());
         let check_function_signature_index = get_index_validator(contents.function_signatures.len());
 
-        for signature in contents.type_signatures.iter() {
-            match signature.as_ref() {
-                signature::Type::FixedInteger(_)
-                | signature::Type::F32
-                | signature::Type::F64
-                | signature::Type::SAddr
-                | signature::Type::UAddr
-                | signature::Type::RawPtr(None) => (),
-                signature::Type::RawPtr(Some(pointee)) => {
-                    // TODO: Check for cycle
-                    check_type_signature_index(*pointee)?;
+        {
+            type TypeReferenceLookup = rustc_hash::FxHashMap<index::TypeSignature, rustc_hash::FxHashSet<index::TypeSignature>>;
+
+            // The values are the types that directly refer to the key.
+            let mut type_reference_lookup: TypeReferenceLookup = Default::default();
+
+            for (i, signature) in contents.type_signatures.iter().enumerate() {
+                let current_index = index::TypeSignature::from(i);
+
+                match signature.as_ref() {
+                    signature::Type::FixedInteger(_)
+                    | signature::Type::F32
+                    | signature::Type::F64
+                    | signature::Type::SAddr
+                    | signature::Type::UAddr
+                    | signature::Type::RawPtr(None) => (),
+                    signature::Type::RawPtr(Some(pointee)) => {
+                        check_type_signature_index(*pointee)?;
+                        type_reference_lookup.entry(*pointee).or_default().insert(current_index);
+                    }
+                    signature::Type::FuncPtr(signature) => {
+                        check_function_signature_index(*signature)?;
+
+                        contents.function_signatures[usize::from(*signature)]
+                            .types()
+                            .iter()
+                            .copied()
+                            .for_each(|type_signature| {
+                                type_reference_lookup.entry(type_signature).or_default().insert(current_index);
+                            });
+
+                        // TODO: Check for cycle in FuncPtr
+                    }
                 }
-                signature::Type::FuncPtr(signature) => {
-                    // TODO: Check for cycle
-                    check_function_signature_index(*signature)?;
+            }
+
+            let mut type_referer_buffer = Vec::<index::TypeSignature>::new();
+            let mut type_referent_lookup: rustc_hash::FxHashSet<index::TypeSignature> = Default::default();
+            for (referent, referers) in type_reference_lookup.iter() {
+                type_referent_lookup.clear();
+                type_referer_buffer.clear();
+                type_referer_buffer.extend(referers);
+
+                while let Some(referer) = type_referer_buffer.pop() {
+                    if referer == *referent {
+                        return Err(TypeSignatureCycleError { index: referer })?;
+                    } else if type_referent_lookup.insert(referer) {
+                        if let Some(indirect_referers) = type_reference_lookup.get(&referer) {
+                            type_referer_buffer.extend(indirect_referers);
+                        }
+                    }
                 }
             }
         }
+
+        //let check_data_index
+
+        // TODO: Rename to signature comparer, make it also responsible for comparing function signatures
+        struct TypeSignatureComparer<'a, 'b> {
+            type_signatures: &'b [Cow<'a, signature::Type>],
+            cache: rustc_hash::FxHashMap<(index::TypeSignature, index::TypeSignature), bool>,
+        }
+
+        impl TypeSignatureComparer<'_, '_> {
+            fn are_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
+                if let Some(existing) = self.cache.get(&(a, b)) {
+                    *existing
+                } else {
+                    let x = &self.type_signatures[usize::from(a)];
+                    let y = &self.type_signatures[usize::from(b)];
+
+                    let comparison = match (x.as_ref(), y.as_ref()) {
+                        (signature::Type::FixedInteger(c), signature::Type::FixedInteger(d)) => c == d,
+                        (signature::Type::F32, signature::Type::F32)
+                        | (signature::Type::F64, signature::Type::F64)
+                        | (signature::Type::UAddr, signature::Type::UAddr)
+                        | (signature::Type::SAddr, signature::Type::SAddr)
+                        | (signature::Type::RawPtr(None), signature::Type::RawPtr(None)) => true,
+                        _ => false,
+                    };
+
+                    comparison
+                }
+            }
+        }
+
+        let mut type_signature_comparer = TypeSignatureComparer {
+            type_signatures: &contents.type_signatures,
+            cache: Default::default(),
+        };
 
         // TODO: Perform validation here.
 

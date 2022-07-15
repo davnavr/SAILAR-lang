@@ -367,3 +367,18 @@ impl From<IntegerType> for Type {
         Self::FixedInteger(ty)
     }
 }
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::FixedInteger(integer_type) => Display::fmt(integer_type, f),
+            Self::UAddr => f.write_str("uaddr"),
+            Self::SAddr => f.write_str("saddr"),
+            Self::F32 => f.write_str("f32"),
+            Self::F64 => f.write_str("f64"),
+            Self::RawPtr(None) => f.write_str("voidptr"),
+            Self::RawPtr(Some(pointee)) => write!(f, "rawptr {}", pointee),
+            Self::FuncPtr(signature) => write!(f, "funcptr {}", signature),
+        }
+    }
+}
