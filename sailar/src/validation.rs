@@ -3,6 +3,7 @@
 //! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
 
 use crate::record::{self, Record};
+use helper::borrow::CowBox;
 use std::borrow::Cow;
 
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
@@ -38,7 +39,26 @@ pub type ValidationResult<T> = Result<T, Error>;
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct ModuleContents<'a> {
-    identifiers: Vec<Cow<'a, crate::identifier::Id>>,
+    /// The list of all metadata records in the module.
+    pub metadata: Vec<record::MetadataField<'a>>,
+    /// The list of all identifier records in the module.
+    pub identifiers: Vec<Cow<'a, crate::identifier::Id>>,
+}
+
+impl<'a> ModuleContents<'a> {
+    pub fn module_identifiers(&self) -> impl std::iter::Iterator<Item = &record::ModuleIdentifier<'a>> {
+        self.metadata.iter().filter_map(|f| match f {
+            record::MetadataField::ModuleIdentifier(id) => Some(id),
+            _ => None,
+        })
+    }
+
+    /// Indicates whether the module is anonymous.
+    /// 
+    /// Anonymous modules do not have any module identifier, meaning that they cannot be imported by other modules.
+    pub fn is_anonymous(&self) -> bool {
+        self.module_identifiers().next().is_none()
+    }
 }
 
 /// Represents a validated SAILAR module.
@@ -56,12 +76,14 @@ impl<'a> ValidModule<'a> {
 
         for data in records.into_iter() {
             match data? {
+                Record::MetadataField(field) => contents.metadata.push(field),
                 Record::Identifier(identifier) => contents.identifiers.push(identifier),
                 bad => todo!("validate {:?}", bad),
             }
         }
 
         // TODO: Perform validation here.
+        // TODO: Check that only one entry point exists
 
         Ok(Ok(Self { contents }))
     }
