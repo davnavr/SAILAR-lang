@@ -112,6 +112,30 @@ pub struct ValidModule<'a> {
 }
 
 impl<'a> ValidModule<'a> {
+    fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
+        // TODO: Perform validation here.
+
+        for field in metadata_fields.into_iter() {
+            match field {
+                record::MetadataField::ModuleIdentifier(identifier) => contents.module_identifiers.push(identifier),
+                record::MetadataField::EntryPoint(entry_point) => {
+                    if let Some(defined) = contents.entry_point {
+                        return Err(ErrorKind::DuplicateEntryPoint {
+                            defined,
+                            duplicate: entry_point,
+                        }
+                        .into());
+                    }
+                    // else if entry point OOB
+
+                    contents.entry_point = Some(entry_point);
+                }
+            }
+        }
+
+        Ok(Self { contents })
+    }
+
     pub fn from_records_fallible<R, E>(records: R) -> Result<Result<Self, Error>, E>
     where
         R: IntoIterator<Item = Result<Record<'a>, E>>,
@@ -127,27 +151,7 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        // TODO: Perform validation here.
-
-        for field in metadata_fields.into_iter() {
-            match field {
-                record::MetadataField::ModuleIdentifier(identifier) => contents.module_identifiers.push(identifier),
-                record::MetadataField::EntryPoint(entry_point) => {
-                    if let Some(defined) = contents.entry_point {
-                        return Ok(Err(ErrorKind::DuplicateEntryPoint {
-                            defined,
-                            duplicate: entry_point,
-                        }
-                        .into()));
-                    }
-                    // else if entry point OOB
-
-                    contents.entry_point = Some(entry_point);
-                }
-            }
-        }
-
-        Ok(Ok(Self { contents }))
+        Ok(Self::validate(contents, metadata_fields))
     }
 
     pub fn from_records<R: IntoIterator<Item = Record<'a>>>(records: R) -> Result<Self, Error> {
