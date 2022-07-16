@@ -1,6 +1,6 @@
 //! Module to perform validation of SAILAR code.
 //!
-//! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
+//! Validation ensures that the contents &of a SAILAR module are correct, without having to resolve any imports.
 
 use crate::helper::borrow::CowBox;
 use crate::index;
@@ -28,6 +28,7 @@ impl Display for InvalidIndexError {
     }
 }
 
+/// The error type used when a value does not have the type that was expected.
 #[derive(Clone, Debug, thiserror::Error)]
 pub struct ValueTypeMismatchError {
     value: instruction::Value,
@@ -42,6 +43,29 @@ impl Display for ValueTypeMismatchError {
             write!(f, ", but got {}", actual_type)?;
         }
         Ok(())
+    }
+}
+
+/// The error type used when a function definition's parameters or return types do not match it's entry block.
+#[derive(Clone, Debug, thiserror::Error)]
+pub struct FunctionDefinitionTypeMismatchError {
+    entry_block: index::CodeBlock,
+    are_parameters_wrong: bool,
+    actual_types: Box<[signature::Type]>,
+    expected_types: Box<[signature::Type]>,
+}
+
+impl Display for FunctionDefinitionTypeMismatchError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "function definition with entry block {} has the ", self.entry_block)?;
+        f.write_str(if self.are_parameters_wrong { "parameter" } else { "return" })?;
+        write!(f, " types {}, but the ", signature::DisplayTypes::from(&self.actual_types))?;
+        f.write_str(if self.are_parameters_wrong {
+            "entry block had input types of "
+        } else {
+            "expected return types were inferred to be "
+        })?;
+        Display::fmt(&signature::DisplayTypes::from(&self.expected_types), f)
     }
 }
 
@@ -105,7 +129,9 @@ pub enum ErrorKind {
     #[error("code block {0} must contain at least one instruction")]
     EmptyCodeBlock(index::CodeBlock),
     #[error(transparent)]
-    InvalidInstruction(#[from] InvalidInstructionError), //FunctionInputTypesMismatch
+    InvalidInstruction(#[from] InvalidInstructionError),
+    #[error(transparent)]
+    FunctionTypeMismatch(#[from] FunctionDefinitionTypeMismatchError),
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -234,7 +260,7 @@ impl<'a> ValidModule<'a> {
                 .iter()
                 .flat_map(|signature| signature.as_ref().types().iter().copied())
                 .try_for_each(|index| {
-                    (&check_type_signature_index)(index)?;
+                    check_type_signature_index(index)?;
                     Result::<_, Error>::Ok(())
                 })?;
         }
@@ -245,18 +271,18 @@ impl<'a> ValidModule<'a> {
         }
 
         impl SignatureComparer<'_, '_> {
+            fn are_type_index_lists_equal(&self, a: &[index::TypeSignature], b: &[index::TypeSignature]) -> bool {
+                a.len() == a.len() && a.iter().zip(b).all(|(x, y)| self.are_type_indices_equal(*x, *y))
+            }
+
             fn are_function_indices_equal(&self, a: index::FunctionSignature, b: index::FunctionSignature) -> bool {
                 if a == b {
                     true
                 } else {
-                    let a_types = self.function_signatures[usize::from(a)].as_ref().types();
-                    let b_types = self.function_signatures[usize::from(b)].as_ref().types();
-
-                    if a_types.len() != b_types.len() {
-                        false
-                    } else {
-                        a_types.iter().zip(b_types).all(|(x, y)| self.are_type_indices_equal(*x, *y))
-                    }
+                    self.are_type_index_lists_equal(
+                        self.function_signatures[usize::from(a)].as_ref().types(),
+                        self.function_signatures[usize::from(b)].as_ref().types(),
+                    )
                 }
             }
 
@@ -286,10 +312,6 @@ impl<'a> ValidModule<'a> {
                     )
                 }
             }
-
-            //fn check_types_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature)
-
-            //fn check_many_types_equal
         }
 
         let signature_comparer = SignatureComparer {
@@ -298,11 +320,19 @@ impl<'a> ValidModule<'a> {
         };
 
         let get_type_signature =
-            |index| Result::<_, Error>::Ok(contents.type_signatures[(&check_type_signature_index)(index)?].as_ref());
+            |index| Result::<_, Error>::Ok(contents.type_signatures[check_type_signature_index(index)?].as_ref());
+
+        let get_type_signature_list_owned = |indices: &[index::TypeSignature]| {
+            indices
+                .iter()
+                .copied()
+                .map(|index| get_type_signature(index).cloned())
+                .collect::<Result<Box<[_]>, Error>>()
+        };
 
         let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
 
-        let get_code_block = { |index| Result::<_, Error>::Ok(contents.code[(&check_code_block_index)(index)?].as_ref()) };
+        let get_code_block = { |index| Result::<_, Error>::Ok(contents.code[check_code_block_index(index)?].as_ref()) };
 
         // TODO: Have a hashmap of all of the blocks that a block potentially branches to, as well as the eventual return type.
         {
@@ -326,15 +356,14 @@ impl<'a> ValidModule<'a> {
 
                 let next_temporary_register_index = || index::Register::from(block.input_count + current_temporary_count.get());
 
-                let next_temporary_register_type =
-                    || (&get_type_signature)(block.temporary_types()[current_temporary_count.get()]);
+                let next_temporary_register_type = || get_type_signature(block.temporary_types()[current_temporary_count.get()]);
 
                 let mut has_terminator = false;
-                let mut instruction_iterator = block.instructions.iter();
+                let instruction_iterator = block.instructions.iter();
                 let instruction_index = std::cell::Cell::new(0usize);
                 let last_instruction_index = block.instructions.len() - 1;
 
-                while let Some(instruction) = instruction_iterator.next() {
+                for instruction in instruction_iterator {
                     macro_rules! invalid_instruction {
                         ($kind:expr) => {
                             return Err(InvalidInstructionError {
@@ -359,7 +388,7 @@ impl<'a> ValidModule<'a> {
                     };
 
                     let get_register_type_index = |register| -> Result<_, Error> {
-                        let index = (&validate_register_index)(register)?;
+                        let index = validate_register_index(register)?;
                         Ok(if index < block.input_count {
                             block.input_types()[index]
                         } else {
@@ -367,7 +396,7 @@ impl<'a> ValidModule<'a> {
                         })
                     };
 
-                    let get_register_type = |register| (&get_type_signature)(get_register_type_index(register)?);
+                    let get_register_type = |register| get_type_signature(get_register_type_index(register)?);
 
                     //let define_temporary_register = |ty: index::TypeSignature| { };
 
@@ -376,7 +405,7 @@ impl<'a> ValidModule<'a> {
                             (_, signature::Type::FixedInteger(_)) if expected.is_integer() => Ok(()),
                             (instruction::Value::IndexedRegister(register_index), _)
                                 if (&signature_comparer)
-                                    .are_type_signatures_equal((&get_register_type)(*register_index)?, expected) =>
+                                    .are_type_signatures_equal(get_register_type(*register_index)?, expected) =>
                             {
                                 Ok(())
                             }
@@ -385,8 +414,7 @@ impl<'a> ValidModule<'a> {
                                 expected_type: expected.clone(),
                                 actual_type: match value {
                                     instruction::Value::Constant(instruction::Constant::Integer(_)) => None,
-                                    instruction::Value::IndexedRegister(register) =>
-                                        Some((&get_register_type)(*register)?.clone()),
+                                    instruction::Value::IndexedRegister(register) => Some(get_register_type(*register)?.clone()),
                                 },
                             }),
                         }
@@ -401,7 +429,7 @@ impl<'a> ValidModule<'a> {
                         }
 
                         for (value, expected_type) in values.iter().zip(expected) {
-                            (&expected_type_for_value)(value, get_type_signature(*expected_type)?)?;
+                            expected_type_for_value(value, get_type_signature(*expected_type)?)?;
                         }
 
                         Ok(())
@@ -459,7 +487,15 @@ impl<'a> ValidModule<'a> {
                     let entry_block = get_code_block(code_index)?;
                     let signature = contents.function_signatures[usize::from(definition.signature)].as_ref();
 
-                    // TODO: Check that input types match signature parameters.
+                    if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
+                        return Err(FunctionDefinitionTypeMismatchError {
+                            entry_block: code_index,
+                            are_parameters_wrong: true,
+                            actual_types: get_type_signature_list_owned(signature.parameter_types())?,
+                            expected_types: get_type_signature_list_owned(entry_block.input_types())?,
+                        })?;
+                    }
+
                     // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
                 }
                 record::FunctionBody::Foreign { .. } => (),

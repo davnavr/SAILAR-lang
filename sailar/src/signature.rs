@@ -388,3 +388,34 @@ impl Display for Type {
         }
     }
 }
+
+/// Helper struct to display a list of types.
+pub struct DisplayTypes<'a>(&'a [Type]);
+
+impl<'a> From<&'a [Type]> for DisplayTypes<'a> {
+    fn from(types: &'a [Type]) -> Self {
+        Self(types)
+    }
+}
+
+impl<'a> From<&'a Box<[Type]>> for DisplayTypes<'a> {
+    fn from(types: &'a Box<[Type]>) -> Self {
+        Self(types.as_ref())
+    }
+}
+
+impl Display for DisplayTypes<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        use std::fmt::Write;
+
+        f.write_char('(')?;
+        for (index, ty) in self.0.iter().enumerate() {
+            if index > 0 {
+                f.write_str(", ")?;
+            }
+
+            Display::fmt(ty, f)?;
+        }
+        f.write_char(')')
+    }
+}

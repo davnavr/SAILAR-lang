@@ -280,6 +280,10 @@ impl<'a> CodeBlock<'a> {
     pub fn temporary_types(&self) -> &[index::TypeSignature] {
         &self.register_types[self.input_count + self.result_count..]
     }
+
+    pub fn to_function_signature(&self) -> signature::Function {
+        signature::Function::new(self.input_types(), self.result_types())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
