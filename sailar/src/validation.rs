@@ -293,10 +293,13 @@ impl<'a> ValidModule<'a> {
             function_comparison_cache: Default::default(),
         };
 
+        //let get_type
         let get_type_signature =
             |index| Result::<_, Error>::Ok(contents.type_signatures[(&check_type_signature_index)(index)?].as_ref());
 
         let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
+
+        let get_code_block = { |index| Result::<_, Error>::Ok(contents.code[(&check_code_block_index)(index)?].as_ref()) };
 
         // TODO: Have a hashmap of all of the blocks that a block potentially branches to, as well as the eventual return type.
         {
@@ -316,6 +319,7 @@ impl<'a> ValidModule<'a> {
                 };
 
                 let current_temporary_count = std::cell::Cell::new(0usize);
+                let increment_temporary_count = || current_temporary_count.set(current_temporary_count.get() + 1);
 
                 let next_temporary_register_index = || index::Register::from(block.input_count + current_temporary_count.get());
 
@@ -352,7 +356,7 @@ impl<'a> ValidModule<'a> {
                     };
 
                     let get_register_type = |register: index::Register| -> Result<&signature::Type, Error> {
-                        let index = validate_register_index(register)?;
+                        let index = (&validate_register_index)(register)?;
                         let signature_index = if index < block.input_count {
                             block.input_types()[index]
                         } else {
@@ -362,7 +366,27 @@ impl<'a> ValidModule<'a> {
                         (&get_type_signature)(signature_index)
                     };
 
-                    let define_temporary_register = |ty: index::TypeSignature| {};
+                    //let define_temporary_register = |ty: index::TypeSignature| { };
+
+                    let expect_integer_value = |value: &instruction::Value, expected: &signature::Type| -> Result<(), Error> {
+                        debug_assert!(expected.is_integer());
+
+                        match value {
+                            instruction::Value::Constant(instruction::Constant::Integer(_)) => Ok(()),
+                            instruction::Value::IndexedRegister(register) => {
+                                let register_type = (&get_register_type)(*register)?;
+                                if register_type == expected {
+                                    Ok(())
+                                } else {
+                                    invalid_instruction!(InvalidInstructionKind::ExpectedTypeForValue {
+                                        value: value.clone(),
+                                        expected_type: expected.clone(),
+                                        actual_type: register_type.clone()
+                                    })
+                                }
+                            }
+                        }
+                    };
 
                     if has_terminator {
                         invalid_instruction!(InvalidInstructionKind::ExpectedTerminatorAsLastInstruction);
@@ -371,16 +395,21 @@ impl<'a> ValidModule<'a> {
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
                         Instruction::AddI(arguments) | Instruction::SubI(arguments) => {
-                            let return_type = next_temporary_register_type()?;
+                            let operand_type = next_temporary_register_type()?;
 
-                            if !return_type.is_integer() {
+                            if !operand_type.is_integer() {
                                 invalid_instruction!(InvalidInstructionKind::ExpectedIntegerResult {
                                     register: next_temporary_register_index(),
-                                    actual_type: return_type.clone()
+                                    actual_type: operand_type.clone()
                                 });
                             }
 
-                            todo!("maths")
+                            expect_integer_value(arguments.x_value(), operand_type)?;
+                            expect_integer_value(arguments.y_value(), operand_type)?;
+                            increment_temporary_count(); // The result of the operation is the operand_type
+
+                            // TODO: Define another register for arithmetic overflow.
+                            // Simply check if the next temporary register type is a boolean
                         }
                         Instruction::Ret(values) => {
                             has_terminator = todo!("handle ret instruction");
@@ -402,10 +431,8 @@ impl<'a> ValidModule<'a> {
 
             match definition.body {
                 record::FunctionBody::Definition(code_index) => {
-                    check_code_block_index(code_index)?;
-
+                    let entry_block = get_code_block(code_index)?;
                     let signature = contents.function_signatures[usize::from(definition.signature)].as_ref();
-                    let entry_block = contents.code[usize::from(code_index)].as_ref();
 
                     // TODO: Check that input types match signature parameters.
                     // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
