@@ -388,6 +388,21 @@ instruction_set! {{
     //Reverse,
 }}
 
+impl Instruction {
+    /// Returns `true` if the instruction is a terminator instruction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use sailar::instruction::Instruction;
+    /// assert_eq!(Instruction::Nop.is_terminator(), false);
+    /// assert_eq!(Instruction::Ret(Default::default()).is_terminator(), true);
+    /// ```
+    pub fn is_terminator(&self) -> bool {
+        matches!(self, Self::Ret(_))
+    }
+}
+
 impl From<Opcode> for u8 {
     #[inline]
     fn from(opcode: Opcode) -> u8 {

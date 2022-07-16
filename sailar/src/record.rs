@@ -262,6 +262,11 @@ impl<'a> CodeBlock<'a> {
         self.register_types.len() - self.input_count - self.result_count
     }
 
+    /// Gets the total number of registers defined in the block.
+    pub fn register_count(&self) -> usize {
+        self.register_types.len() - self.result_count
+    }
+
     pub fn input_types(&self) -> &[index::TypeSignature] {
         &self.register_types[0..self.input_count]
     }

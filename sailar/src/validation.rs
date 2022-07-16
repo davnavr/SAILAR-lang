@@ -4,6 +4,7 @@
 
 use crate::helper::borrow::CowBox;
 use crate::index;
+use crate::instruction::{self, Instruction};
 use crate::record::{self, Record};
 use crate::signature;
 use std::borrow::Cow;
@@ -17,16 +18,6 @@ pub struct InvalidIndexError {
     name: &'static str,
 }
 
-impl InvalidIndexError {
-    pub(crate) fn new<I: index::Index>(index: I, maximum_index: Option<usize>) -> Self {
-        Self {
-            index: index.into(),
-            maximum_index,
-            name: I::name(),
-        }
-    }
-}
-
 impl Display for InvalidIndexError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{} index {} is not valid", self.name, self.index)?;
@@ -37,11 +28,31 @@ impl Display for InvalidIndexError {
     }
 }
 
-/// The error type used when a cycle is detected in a type signature, resulting in infinite recursion.
 #[derive(Clone, Debug, thiserror::Error)]
-#[error("type signature {index} directly or indirectly refers to itself, resulting in infinite recursion")]
-pub struct TypeSignatureCycleError {
-    index: index::TypeSignature,
+#[non_exhaustive]
+pub enum InvalidInstructionKind {
+    #[error("expected terminator instruction at end of block")]
+    ExpectedTerminator,
+    #[error("no instructions should come after the first terminator instruction")]
+    ExpectedTerminatorAsLastInstruction,
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+pub struct InvalidInstructionError {
+    instruction_index: usize,
+    instruction: Instruction,
+    code_block: index::CodeBlock,
+    kind: InvalidInstructionKind,
+}
+
+impl Display for InvalidInstructionError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "instruction \"{:?}\" at index {}, in code block {} is invalid: {}",
+            self.instruction, self.instruction_index, self.code_block, self.kind
+        )
+    }
 }
 
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
@@ -58,8 +69,13 @@ pub enum ErrorKind {
     },
     #[error(transparent)]
     InvalidIndex(#[from] InvalidIndexError),
+    /// Used when a cycle is detected in a type signature, resulting in infinite recursion.
+    #[error("type signature {0} directly or indirectly refers to itself, resulting in infinite recursion")]
+    TypeSignatureCycle(index::TypeSignature),
+    #[error("code block {0} must contain at least one instruction")]
+    EmptyCodeBlock(index::CodeBlock),
     #[error(transparent)]
-    TypeSignatureCycle(#[from] TypeSignatureCycleError),
+    InvalidInstruction(#[from] InvalidInstructionError), //FunctionInputTypesMismatch
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -90,6 +106,9 @@ pub struct ModuleContents<'a> {
     pub identifiers: Vec<Cow<'a, crate::identifier::Id>>,
     pub type_signatures: Vec<Cow<'a, signature::Type>>,
     pub function_signatures: Vec<Cow<'a, signature::Function>>,
+    pub data: Vec<Cow<'a, record::DataArray>>,
+    pub code: Vec<CowBox<'a, record::CodeBlock<'a>>>,
+    pub function_definitions: Vec<CowBox<'a, record::FunctionDefinition<'a>>>,
 }
 
 impl<'a> ModuleContents<'a> {
@@ -171,7 +190,7 @@ impl<'a> ValidModule<'a> {
 
                 while let Some(referer) = type_referer_buffer.pop() {
                     if referer == *referent {
-                        return Err(TypeSignatureCycleError { index: referer })?;
+                        return Err(ErrorKind::TypeSignatureCycle(referer))?;
                     } else if type_referent_lookup.insert(referer) {
                         if let Some(indirect_referers) = type_reference_lookup.get(&referer) {
                             type_referer_buffer.extend(indirect_referers);
@@ -243,6 +262,10 @@ impl<'a> ValidModule<'a> {
                     comparison
                 }
             }
+
+            //fn check_types_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature)
+
+            //fn check_many_types_equal
         }
 
         let mut signature_comparer = SignatureComparer {
@@ -252,7 +275,77 @@ impl<'a> ValidModule<'a> {
             function_comparison_cache: Default::default(),
         };
 
-        // TODO: Perform validation here.
+        let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
+
+        // TODO: Have a hashmap of all of the blocks that a block branches to, as well as the eventual return type.
+        {
+            //let mut branch_targets = Vec::<(index::CodeBlock, Box<[signature::Type]>)>::new();
+            for (block_index, block) in contents.code.iter().enumerate() {
+                let block_index = index::CodeBlock::from(block_index);
+
+                if block.instructions.is_empty() {
+                    return Err(ErrorKind::EmptyCodeBlock(block_index))?;
+                }
+
+                let last_instruction_index = block.instructions.len() - 1;
+
+                let mut has_terminator = false;
+                let mut instruction_iterator = block.instructions.iter();
+                
+                let instruction_index = std::cell::Cell::new(0usize);
+                let instruction_validation_failed = |instruction: &Instruction, kind: InvalidInstructionKind| -> Error {
+                    Error::from_kind(InvalidInstructionError {
+                        instruction_index: instruction_index.get(),
+                        code_block: block_index,
+                        instruction: instruction.clone(),
+                        kind
+                    })
+                };
+
+                while let Some(instruction) = instruction_iterator.next() {
+                    macro_rules! invalid_instruction {
+                        ($kind:expr) => {
+                            return Err(instruction_validation_failed(instruction, $kind))?;
+                        };
+                    }
+
+                    if has_terminator {
+                        invalid_instruction!(InvalidInstructionKind::ExpectedTerminatorAsLastInstruction);
+                    }
+
+                    match instruction {
+                        Instruction::Nop | Instruction::Break => (),
+                        Instruction::Ret(values) => {
+                            has_terminator = todo!("handle ret instruction");
+                        }
+                        bad => todo!("validate {:?}", bad),
+                    }
+
+                    if instruction_index.get() < last_instruction_index {
+                        instruction_index.set(instruction_index.get() + 1);
+                    } else if !has_terminator {
+                        invalid_instruction!(InvalidInstructionKind::ExpectedTerminator);
+                    }
+                }
+            }
+        }
+
+        for definition in contents.function_definitions.iter() {
+            check_function_signature_index(definition.signature)?;
+
+            match definition.body {
+                record::FunctionBody::Definition(code_index) => {
+                    check_code_block_index(code_index)?;
+
+                    let signature = contents.function_signatures[usize::from(definition.signature)].as_ref();
+                    let entry_block = contents.code[usize::from(code_index)].as_ref();
+
+                    // TODO: Check that input types match signature parameters.
+                    // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
+                }
+                record::FunctionBody::Foreign { .. } => (),
+            }
+        }
 
         for field in metadata_fields.into_iter() {
             match field {
@@ -287,6 +380,8 @@ impl<'a> ValidModule<'a> {
                 Record::Identifier(identifier) => contents.identifiers.push(identifier),
                 Record::TypeSignature(signature) => contents.type_signatures.push(signature),
                 Record::FunctionSignature(signature) => contents.function_signatures.push(signature),
+                Record::Data(data) => contents.data.push(data),
+                Record::CodeBlock(block) => contents.code.push(block),
                 bad => todo!("validate {:?}", bad),
             }
         }
