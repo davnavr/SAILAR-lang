@@ -63,6 +63,8 @@ pub enum InvalidInstructionKind {
     },
     #[error(transparent)]
     ExpectedTypeForValue(#[from] ValueTypeMismatchError),
+    #[error("expected {expected} values, but got {actual}")]
+    ValueCountMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -257,7 +259,7 @@ impl<'a> ValidModule<'a> {
                     let comparison = if a_types.len() != b_types.len() {
                         false
                     } else {
-                        a_types.iter().zip(b_types).all(|(x, y)| self.are_types_equal(*x, *y))
+                        a_types.iter().zip(b_types).all(|(x, y)| self.are_type_indices_equal(*x, *y))
                     };
 
                     self.function_comparison_cache.insert((a, b), comparison);
@@ -265,7 +267,7 @@ impl<'a> ValidModule<'a> {
                 }
             }
 
-            fn are_types_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
+            fn are_type_indices_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
                 if a == b {
                     true
                 } else if let Some(existing) = self.type_comparison_cache.get(&(a, b)) {
@@ -276,7 +278,7 @@ impl<'a> ValidModule<'a> {
 
                     let comparison = match (x, y) {
                         (signature::Type::RawPtr(Some(c)), signature::Type::RawPtr(Some(d))) if c != d => {
-                            self.are_types_equal(*c, *d)
+                            self.are_type_indices_equal(*c, *d)
                         }
 
                         (signature::Type::FixedInteger(c), signature::Type::FixedInteger(d)) => c == d,
@@ -367,20 +369,20 @@ impl<'a> ValidModule<'a> {
                         }
                     };
 
-                    let get_register_type = |register: index::Register| -> Result<&signature::Type, Error> {
+                    let get_register_type_index = |register| -> Result<_, Error> {
                         let index = (&validate_register_index)(register)?;
-                        let signature_index = if index < block.input_count {
+                        Ok(if index < block.input_count {
                             block.input_types()[index]
                         } else {
                             block.temporary_types()[index - block.input_count]
-                        };
-
-                        (&get_type_signature)(signature_index)
+                        })
                     };
+
+                    let get_register_type = |register| (&get_type_signature)(get_register_type_index(register)?);
 
                     //let define_temporary_register = |ty: index::TypeSignature| { };
 
-                    let expected_value_for_type = |value: &instruction::Value, expected: &_| -> Result<(), Error> {
+                    let expected_type_for_value = |value: &instruction::Value, expected: &_| -> Result<(), Error> {
                         match (value, expected) {
                             (_, signature::Type::FixedInteger(_)) if expected.is_integer() => Ok(()),
                             _ => invalid_instruction!(ValueTypeMismatchError {
@@ -388,10 +390,23 @@ impl<'a> ValidModule<'a> {
                                 expected_type: expected.clone(),
                                 actual_type: match value {
                                     instruction::Value::Constant(instruction::Constant::Integer(_)) => None,
-                                    instruction::Value::IndexedRegister(register) => Some((&get_register_type)(*register)?.clone()),
+                                    instruction::Value::IndexedRegister(register) =>
+                                        Some((&get_register_type)(*register)?.clone()),
                                 },
                             }),
                         }
+                    };
+
+                    let expected_types_for_values = |values: &[_], expected: &[_]| -> Result<(), Error> {
+                        if values.len() != expected.len() {
+                            invalid_instruction!(InvalidInstructionKind::ValueCountMismatch { expected: expected.len(), actual: values.len() });
+                        }
+
+                        for (value, expected_type) in values.iter().zip(expected) {
+                            (&expected_type_for_value)(value, get_type_signature(*expected_type)?)?;
+                        }
+
+                        Ok(())
                     };
 
                     if has_terminator {
@@ -410,8 +425,8 @@ impl<'a> ValidModule<'a> {
                                 });
                             }
 
-                            expected_value_for_type(arguments.x_value(), operand_type)?;
-                            expected_value_for_type(arguments.y_value(), operand_type)?;
+                            expected_type_for_value(arguments.x_value(), operand_type)?;
+                            expected_type_for_value(arguments.y_value(), operand_type)?;
                             increment_temporary_count(); // The result of the operation is the operand_type
 
                             match arguments.overflow_behavior() {
@@ -423,7 +438,8 @@ impl<'a> ValidModule<'a> {
                             }
                         }
                         Instruction::Ret(values) => {
-                            has_terminator = todo!("handle ret instruction");
+                            expected_types_for_values(values.as_ref(), block.result_types())?;
+                            has_terminator = true;
                         }
                         bad => todo!("validate {:?}", bad),
                     }
