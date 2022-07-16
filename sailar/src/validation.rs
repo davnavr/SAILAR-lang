@@ -29,6 +29,23 @@ impl Display for InvalidIndexError {
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
+pub struct ValueTypeMismatchError {
+    value: instruction::Value,
+    expected_type: signature::Type,
+    actual_type: Option<signature::Type>,
+}
+
+impl Display for ValueTypeMismatchError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "expected value {} to be of type {}", self.value, self.expected_type)?;
+        if let Some(actual_type) = &self.actual_type {
+            write!(f, ", but got {}", actual_type)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum InvalidInstructionKind {
     #[error("expected terminator instruction at end of block")]
@@ -44,12 +61,8 @@ pub enum InvalidInstructionKind {
         register: index::Register,
         actual_type: signature::Type,
     },
-    #[error("expected {value} to be of type {expected_type}, but got {actual_type}")]
-    ExpectedTypeForValue {
-        value: instruction::Value,
-        expected_type: signature::Type,
-        actual_type: signature::Type,
-    },
+    #[error(transparent)]
+    ExpectedTypeForValue(#[from] ValueTypeMismatchError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -293,7 +306,6 @@ impl<'a> ValidModule<'a> {
             function_comparison_cache: Default::default(),
         };
 
-        //let get_type
         let get_type_signature =
             |index| Result::<_, Error>::Ok(contents.type_signatures[(&check_type_signature_index)(index)?].as_ref());
 
@@ -368,23 +380,17 @@ impl<'a> ValidModule<'a> {
 
                     //let define_temporary_register = |ty: index::TypeSignature| { };
 
-                    let expect_integer_value = |value: &instruction::Value, expected: &signature::Type| -> Result<(), Error> {
-                        debug_assert!(expected.is_integer());
-
-                        match value {
-                            instruction::Value::Constant(instruction::Constant::Integer(_)) => Ok(()),
-                            instruction::Value::IndexedRegister(register) => {
-                                let register_type = (&get_register_type)(*register)?;
-                                if register_type == expected {
-                                    Ok(())
-                                } else {
-                                    invalid_instruction!(InvalidInstructionKind::ExpectedTypeForValue {
-                                        value: value.clone(),
-                                        expected_type: expected.clone(),
-                                        actual_type: register_type.clone()
-                                    })
-                                }
-                            }
+                    let expected_value_for_type = |value: &instruction::Value, expected: &_| -> Result<(), Error> {
+                        match (value, expected) {
+                            (_, signature::Type::FixedInteger(_)) if expected.is_integer() => Ok(()),
+                            _ => invalid_instruction!(ValueTypeMismatchError {
+                                value: value.clone(),
+                                expected_type: expected.clone(),
+                                actual_type: match value {
+                                    instruction::Value::Constant(instruction::Constant::Integer(_)) => None,
+                                    instruction::Value::IndexedRegister(register) => Some((&get_register_type)(*register)?.clone()),
+                                },
+                            }),
                         }
                     };
 
@@ -404,12 +410,17 @@ impl<'a> ValidModule<'a> {
                                 });
                             }
 
-                            expect_integer_value(arguments.x_value(), operand_type)?;
-                            expect_integer_value(arguments.y_value(), operand_type)?;
+                            expected_value_for_type(arguments.x_value(), operand_type)?;
+                            expected_value_for_type(arguments.y_value(), operand_type)?;
                             increment_temporary_count(); // The result of the operation is the operand_type
 
-                            // TODO: Define another register for arithmetic overflow.
-                            // Simply check if the next temporary register type is a boolean
+                            match arguments.overflow_behavior() {
+                                instruction::OverflowBehavior::Flag => {
+                                    // TODO: Simply check if the next temporary register type is a boolean
+                                    todo!("Define another register for arithmetic overflow")
+                                }
+                                instruction::OverflowBehavior::Ignore | instruction::OverflowBehavior::Saturate => (),
+                            }
                         }
                         Instruction::Ret(values) => {
                             has_terminator = todo!("handle ret instruction");
