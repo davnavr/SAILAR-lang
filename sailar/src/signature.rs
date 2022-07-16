@@ -362,6 +362,12 @@ pub enum Type {
     FuncPtr(index::FunctionSignature),
 }
 
+impl Type {
+    pub fn is_integer(&self) -> bool {
+        matches!(self, Self::FixedInteger(_) | Self::UAddr | Self::SAddr)
+    }
+}
+
 impl From<IntegerType> for Type {
     fn from(ty: IntegerType) -> Self {
         Self::FixedInteger(ty)

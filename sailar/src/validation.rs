@@ -35,6 +35,21 @@ pub enum InvalidInstructionKind {
     ExpectedTerminator,
     #[error("no instructions should come after the first terminator instruction")]
     ExpectedTerminatorAsLastInstruction,
+    #[error(transparent)]
+    InvalidIndex(#[from] InvalidIndexError),
+    #[error("attempted to define more than {count} temporary registers")]
+    ExtraneousTemporary { count: usize },
+    #[error("expected result register (register {register}) to be an integer type, but got {actual_type}")]
+    ExpectedIntegerResult {
+        register: index::Register,
+        actual_type: signature::Type,
+    },
+    #[error("expected {value} to be of type {expected_type}, but got {actual_type}")]
+    ExpectedTypeForValue {
+        value: instruction::Value,
+        expected_type: signature::Type,
+        actual_type: signature::Type,
+    },
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -128,11 +143,11 @@ pub struct ValidModule<'a> {
 
 impl<'a> ValidModule<'a> {
     fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
-        fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<(), Error> {
+        fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<usize, Error> {
             move |index: I| {
                 let index = index.into();
                 if index < length {
-                    Ok(())
+                    Ok(index)
                 } else {
                     Err(InvalidIndexError {
                         index,
@@ -203,7 +218,10 @@ impl<'a> ValidModule<'a> {
                 .function_signatures
                 .iter()
                 .flat_map(|signature| signature.as_ref().types().iter().copied())
-                .try_for_each(check_type_signature_index)?;
+                .try_for_each(|index| {
+                    (&check_type_signature_index)(index)?;
+                    Result::<_, Error>::Ok(())
+                })?;
         }
 
         struct SignatureComparer<'a, 'b> {
@@ -275,9 +293,12 @@ impl<'a> ValidModule<'a> {
             function_comparison_cache: Default::default(),
         };
 
+        let get_type_signature =
+            |index| Result::<_, Error>::Ok(contents.type_signatures[(&check_type_signature_index)(index)?].as_ref());
+
         let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
 
-        // TODO: Have a hashmap of all of the blocks that a block branches to, as well as the eventual return type.
+        // TODO: Have a hashmap of all of the blocks that a block potentially branches to, as well as the eventual return type.
         {
             //let mut branch_targets = Vec::<(index::CodeBlock, Box<[signature::Type]>)>::new();
             for (block_index, block) in contents.code.iter().enumerate() {
@@ -287,27 +308,61 @@ impl<'a> ValidModule<'a> {
                     return Err(ErrorKind::EmptyCodeBlock(block_index))?;
                 }
 
-                let last_instruction_index = block.instructions.len() - 1;
+                let total_register_count = block.register_count();
+                let last_register_index = if total_register_count > 0 {
+                    Some(total_register_count - 1)
+                } else {
+                    None
+                };
+
+                let current_temporary_count = std::cell::Cell::new(0usize);
+
+                let next_temporary_register_index = || index::Register::from(block.input_count + current_temporary_count.get());
+
+                let next_temporary_register_type =
+                    || (&get_type_signature)(block.temporary_types()[current_temporary_count.get()]);
 
                 let mut has_terminator = false;
                 let mut instruction_iterator = block.instructions.iter();
-                
                 let instruction_index = std::cell::Cell::new(0usize);
-                let instruction_validation_failed = |instruction: &Instruction, kind: InvalidInstructionKind| -> Error {
-                    Error::from_kind(InvalidInstructionError {
-                        instruction_index: instruction_index.get(),
-                        code_block: block_index,
-                        instruction: instruction.clone(),
-                        kind
-                    })
-                };
+                let last_instruction_index = block.instructions.len() - 1;
 
                 while let Some(instruction) = instruction_iterator.next() {
                     macro_rules! invalid_instruction {
                         ($kind:expr) => {
-                            return Err(instruction_validation_failed(instruction, $kind))?;
+                            return Err(InvalidInstructionError {
+                                instruction_index: instruction_index.get(),
+                                code_block: block_index,
+                                instruction: instruction.clone(),
+                                kind: $kind.into(),
+                            })?
                         };
                     }
+
+                    let validate_register_index = |register: index::Register| -> Result<usize, Error> {
+                        let index = usize::from(register);
+                        match last_register_index {
+                            Some(last) if index <= last => Ok(index),
+                            None | Some(_) => invalid_instruction!(InvalidIndexError {
+                                index,
+                                maximum_index: last_register_index,
+                                name: <index::Register as index::Index>::name(),
+                            }),
+                        }
+                    };
+
+                    let get_register_type = |register: index::Register| -> Result<&signature::Type, Error> {
+                        let index = validate_register_index(register)?;
+                        let signature_index = if index < block.input_count {
+                            block.input_types()[index]
+                        } else {
+                            block.temporary_types()[index - block.input_count]
+                        };
+
+                        (&get_type_signature)(signature_index)
+                    };
+
+                    let define_temporary_register = |ty: index::TypeSignature| {};
 
                     if has_terminator {
                         invalid_instruction!(InvalidInstructionKind::ExpectedTerminatorAsLastInstruction);
@@ -315,6 +370,18 @@ impl<'a> ValidModule<'a> {
 
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
+                        Instruction::AddI(arguments) | Instruction::SubI(arguments) => {
+                            let return_type = next_temporary_register_type()?;
+
+                            if !return_type.is_integer() {
+                                invalid_instruction!(InvalidInstructionKind::ExpectedIntegerResult {
+                                    register: next_temporary_register_index(),
+                                    actual_type: return_type.clone()
+                                });
+                            }
+
+                            todo!("maths")
+                        }
                         Instruction::Ret(values) => {
                             has_terminator = todo!("handle ret instruction");
                         }
