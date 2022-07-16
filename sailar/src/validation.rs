@@ -242,57 +242,48 @@ impl<'a> ValidModule<'a> {
         struct SignatureComparer<'a, 'b> {
             type_signatures: &'b [Cow<'a, signature::Type>],
             function_signatures: &'b [Cow<'a, signature::Function>],
-            type_comparison_cache: rustc_hash::FxHashMap<(index::TypeSignature, index::TypeSignature), bool>,
-            function_comparison_cache: rustc_hash::FxHashMap<(index::FunctionSignature, index::FunctionSignature), bool>,
         }
 
         impl SignatureComparer<'_, '_> {
-            fn are_functions_equal(&mut self, a: index::FunctionSignature, b: index::FunctionSignature) -> bool {
+            fn are_function_indices_equal(&self, a: index::FunctionSignature, b: index::FunctionSignature) -> bool {
                 if a == b {
                     true
-                } else if let Some(existing) = self.function_comparison_cache.get(&(a, b)) {
-                    *existing
                 } else {
                     let a_types = self.function_signatures[usize::from(a)].as_ref().types();
                     let b_types = self.function_signatures[usize::from(b)].as_ref().types();
 
-                    let comparison = if a_types.len() != b_types.len() {
+                    if a_types.len() != b_types.len() {
                         false
                     } else {
                         a_types.iter().zip(b_types).all(|(x, y)| self.are_type_indices_equal(*x, *y))
-                    };
-
-                    self.function_comparison_cache.insert((a, b), comparison);
-                    comparison
+                    }
                 }
             }
 
-            fn are_type_indices_equal(&mut self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
+            fn are_type_signatures_equal(&self, x: &signature::Type, y: &signature::Type) -> bool {
+                match (x, y) {
+                    (signature::Type::RawPtr(Some(c)), signature::Type::RawPtr(Some(d))) => self.are_type_indices_equal(*c, *d),
+                    (signature::Type::FuncPtr(c), signature::Type::FuncPtr(d)) => self.are_function_indices_equal(*c, *d),
+                    (signature::Type::FixedInteger(c), signature::Type::FixedInteger(d)) => c == d,
+                    (signature::Type::F32, signature::Type::F32)
+                    | (signature::Type::F64, signature::Type::F64)
+                    | (signature::Type::UAddr, signature::Type::UAddr)
+                    | (signature::Type::SAddr, signature::Type::SAddr)
+                    | (signature::Type::RawPtr(Some(_)), signature::Type::RawPtr(None))
+                    | (signature::Type::RawPtr(None), signature::Type::RawPtr(Some(_)))
+                    | (signature::Type::RawPtr(None), signature::Type::RawPtr(None)) => true,
+                    _ => false,
+                }
+            }
+
+            fn are_type_indices_equal(&self, a: index::TypeSignature, b: index::TypeSignature) -> bool {
                 if a == b {
                     true
-                } else if let Some(existing) = self.type_comparison_cache.get(&(a, b)) {
-                    *existing
                 } else {
-                    let x = self.type_signatures[usize::from(a)].as_ref();
-                    let y = self.type_signatures[usize::from(b)].as_ref();
-
-                    let comparison = match (x, y) {
-                        (signature::Type::RawPtr(Some(c)), signature::Type::RawPtr(Some(d))) if c != d => {
-                            self.are_type_indices_equal(*c, *d)
-                        }
-
-                        (signature::Type::FixedInteger(c), signature::Type::FixedInteger(d)) => c == d,
-                        (signature::Type::F32, signature::Type::F32)
-                        | (signature::Type::F64, signature::Type::F64)
-                        | (signature::Type::UAddr, signature::Type::UAddr)
-                        | (signature::Type::SAddr, signature::Type::SAddr)
-                        | (signature::Type::RawPtr(_), signature::Type::RawPtr(_))
-                        | (signature::Type::FuncPtr(_), signature::Type::FuncPtr(_)) => true,
-                        _ => false,
-                    };
-
-                    self.type_comparison_cache.insert((a, b), comparison);
-                    comparison
+                    self.are_type_signatures_equal(
+                        self.type_signatures[usize::from(a)].as_ref(),
+                        self.type_signatures[usize::from(b)].as_ref(),
+                    )
                 }
             }
 
@@ -301,11 +292,9 @@ impl<'a> ValidModule<'a> {
             //fn check_many_types_equal
         }
 
-        let mut signature_comparer = SignatureComparer {
+        let signature_comparer = SignatureComparer {
             type_signatures: &contents.type_signatures,
             function_signatures: &contents.function_signatures,
-            type_comparison_cache: Default::default(),
-            function_comparison_cache: Default::default(),
         };
 
         let get_type_signature =
@@ -385,6 +374,12 @@ impl<'a> ValidModule<'a> {
                     let expected_type_for_value = |value: &instruction::Value, expected: &_| -> Result<(), Error> {
                         match (value, expected) {
                             (_, signature::Type::FixedInteger(_)) if expected.is_integer() => Ok(()),
+                            (instruction::Value::IndexedRegister(register_index), _)
+                                if (&signature_comparer)
+                                    .are_type_signatures_equal((&get_register_type)(*register_index)?, expected) =>
+                            {
+                                Ok(())
+                            }
                             _ => invalid_instruction!(ValueTypeMismatchError {
                                 value: value.clone(),
                                 expected_type: expected.clone(),
@@ -399,7 +394,10 @@ impl<'a> ValidModule<'a> {
 
                     let expected_types_for_values = |values: &[_], expected: &[_]| -> Result<(), Error> {
                         if values.len() != expected.len() {
-                            invalid_instruction!(InvalidInstructionKind::ValueCountMismatch { expected: expected.len(), actual: values.len() });
+                            invalid_instruction!(InvalidInstructionKind::ValueCountMismatch {
+                                expected: expected.len(),
+                                actual: values.len()
+                            });
                         }
 
                         for (value, expected_type) in values.iter().zip(expected) {
