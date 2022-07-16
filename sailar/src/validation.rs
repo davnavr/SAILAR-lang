@@ -69,6 +69,9 @@ impl Display for FunctionDefinitionTypeMismatchError {
     }
 }
 
+/// A list specifying the different ways in which an instruction is considered invalid. 
+/// 
+/// Used with the [`InvalidInstructionError`] type.
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum InvalidInstructionKind {
@@ -91,6 +94,9 @@ pub enum InvalidInstructionKind {
     ValueCountMismatch { expected: usize, actual: usize },
 }
 
+/// The error type used when a SAILAR instruction is invalid.
+/// 
+/// Used with the [`ErrorKind`] type to indicate that a SAILAR code block is not valid.
 #[derive(Clone, Debug, thiserror::Error)]
 pub struct InvalidInstructionError {
     instruction_index: usize,
@@ -165,7 +171,10 @@ pub struct ModuleContents<'a> {
     pub data: Vec<Cow<'a, record::DataArray>>,
     pub code: Vec<CowBox<'a, record::CodeBlock<'a>>>,
     pub function_definitions: Vec<CowBox<'a, record::FunctionDefinition<'a>>>,
+    //pub function_instantiations
 }
+
+// TODO: Instead of definitions & instantiations, how about definitions (the functions w/ no generic parameters and instantiations), and templates make all have symbols.
 
 impl<'a> ModuleContents<'a> {
     /// Indicates whether the module is anonymous.
@@ -501,6 +510,8 @@ impl<'a> ValidModule<'a> {
                 record::FunctionBody::Foreign { .. } => (),
             }
         }
+
+        //for (index, instantiation) in contents.function_instantiations.iter() {}
 
         for field in metadata_fields.into_iter() {
             match field {
