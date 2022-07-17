@@ -1,6 +1,6 @@
 //! Module to perform validation of SAILAR code.
 //!
-//! Validation ensures that the contents &of a SAILAR module are correct, without having to resolve any imports.
+//! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
 
 use crate::helper::borrow::CowBox;
 use crate::index;
@@ -69,8 +69,8 @@ impl Display for FunctionDefinitionTypeMismatchError {
     }
 }
 
-/// A list specifying the different ways in which an instruction is considered invalid. 
-/// 
+/// A list specifying the different ways in which an instruction is considered invalid.
+///
 /// Used with the [`InvalidInstructionError`] type.
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -95,7 +95,7 @@ pub enum InvalidInstructionKind {
 }
 
 /// The error type used when a SAILAR instruction is invalid.
-/// 
+///
 /// Used with the [`ErrorKind`] type to indicate that a SAILAR code block is not valid.
 #[derive(Clone, Debug, thiserror::Error)]
 pub struct InvalidInstructionError {
@@ -186,12 +186,19 @@ impl<'a> ModuleContents<'a> {
 }
 
 /// Represents a validated SAILAR module.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ValidModule<'a> {
     contents: ModuleContents<'a>,
 }
 
 impl<'a> ValidModule<'a> {
+    /// Creates a valid module with the specified `contents`, without actually performing any validation.
+    ///
+    /// Passing a module that is not valid may result in panics later.
+    pub fn from_contents_without_performing_validation_at_all(contents: ModuleContents<'a>) -> Self {
+        Self { contents }
+    }
+
     fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
         fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<usize, Error> {
             move |index: I| {
@@ -589,5 +596,15 @@ impl<'a, const N: usize> TryFrom<[Record<'a>; N]> for ValidModule<'a> {
 
     fn try_from(records: [Record<'a>; N]) -> Result<Self, Self::Error> {
         Self::from_records(records)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::validation::ValidModule;
+
+    #[test]
+    fn empty_module_is_always_valid() {
+        ValidModule::from_records(std::iter::empty()).unwrap();
     }
 }
