@@ -365,3 +365,24 @@ other_try_from_integer_trait_impl!(u16);
 other_try_from_integer_trait_impl!(i16);
 other_try_from_integer_trait_impl!(usize);
 other_try_from_integer_trait_impl!(isize);
+
+impl std::ops::BitOr for VarU28 {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::num::VarU28;
+
+    #[test]
+    fn bitor() {
+        assert_eq!(
+            VarU28::from_u8(0b0110_1001) | VarU28::from_u8(0b0010),
+            VarU28::from_u8(0b0110_1011)
+        );
+    }
+}

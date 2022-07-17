@@ -10,20 +10,13 @@ use std::borrow::Cow;
 
 /// Indicates whether a definition in a module can be imported by other modules.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[repr(u8)]
 pub enum ExportKind {
     /// The definition is not exported and does not have a symbol.
-    Hidden = 0,
+    Hidden,
     /// The definition has a symbol, but is not exported.
-    Private = 1,
+    Private,
     /// The definition has a symbol and can be imported by other modules.
-    Export = 2,
-}
-
-impl ExportKind {
-    pub const fn bits(self) -> u8 {
-        self as u8
-    }
+    Export,
 }
 
 impl Default for ExportKind {
@@ -33,31 +26,35 @@ impl Default for ExportKind {
     }
 }
 
-/// Assigns a symbol to a definition and indicates if it is exported.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum Export<'a> {
-    /// The definition is not exported.
-    Hidden,
-    /// The definition has a symbol, but is not exported.
-    Private(Cow<'a, Id>),
-    /// The definition is exported.
-    Export(Cow<'a, Id>),
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("cannot encode symbol with length of {length} bytes")]
+pub struct SymbolEncodingError {
+    length: usize,
 }
 
-impl<'a> Export<'a> {
-    pub fn new_export_owned(symbol: Identifier) -> Self {
-        Self::Export(Cow::Owned(symbol))
-    }
+/// Assigns a symbol to a definition and indicates if it is exported.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum Export<'data> {
+    Hidden,
+    PrivateBorrowed(&'data Id),
+    PrivateOwned(Identifier),
+    ExportBorrowed(&'data Id),
+    ExportOwned(Identifier),
+}
 
-    pub fn new_export_borrowed(symbol: &'a Id) -> Self {
-        Self::Export(Cow::Borrowed(symbol))
+impl<'data> Export<'data> {
+    pub fn new_export(symbol: Cow<'data, Id>) -> Self {
+        match symbol {
+            Cow::Owned(symbol) => Self::ExportOwned(symbol),
+            Cow::Borrowed(symbol) => Self::ExportBorrowed(symbol),
+        }
     }
 
     pub fn kind(&self) -> ExportKind {
         match self {
             Self::Hidden => ExportKind::Hidden,
-            Self::Private(_) => ExportKind::Private,
-            Self::Export(_) => ExportKind::Export,
+            Self::PrivateBorrowed(_) | Self::PrivateOwned(_) => ExportKind::Private,
+            Self::ExportBorrowed(_) | Self::ExportOwned(_) => ExportKind::Export,
         }
     }
 
@@ -65,13 +62,30 @@ impl<'a> Export<'a> {
     pub fn symbol(&self) -> Option<&Id> {
         match self {
             Self::Hidden => None,
-            Self::Private(symbol) | Self::Export(symbol) => Some(std::convert::AsRef::as_ref(symbol)),
+            Self::PrivateBorrowed(symbol) | Self::ExportBorrowed(symbol) => Some(symbol),
+            Self::PrivateOwned(symbol) | Self::ExportOwned(symbol) => Some(symbol.as_id()),
+        }
+    }
+
+    /// Gets the variable-length integer indicating the length of the symbol and whether it is externally visible.
+    pub fn flag_bits(&self) -> Result<VarU28, SymbolEncodingError> {
+        match self.symbol() {
+            None => Ok(VarU28::from_u8(0)),
+            Some(symbol) => {
+                let length = symbol.len();
+                match VarU28::try_from(length) {
+                    Ok(bits) => {
+                        let flag = VarU28::from_u8(if self.kind() == ExportKind::Export { 1 } else { 0 });
+                        Ok(flag | bits)
+                    }
+                    Err(_) => Err(SymbolEncodingError { length }),
+                }
+            }
         }
     }
 }
 
 impl Default for Export<'_> {
-    #[inline]
     fn default() -> Self {
         Self::Hidden
     }
@@ -115,7 +129,7 @@ impl<'a> ModuleIdentifier<'a> {
 pub enum MetadataField<'a> {
     ModuleIdentifier(ModuleIdentifier<'a>),
     /// Specifies the entry point function of the module.
-    EntryPoint(index::FunctionInstantiation),
+    EntryPoint(index::Function),
 }
 
 impl MetadataField<'_> {
@@ -306,31 +320,35 @@ impl FunctionBody<'_> {
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct FunctionInstantiation<'a> {
-    pub export: Export<'a>,
-    pub template: index::FunctionTemplate,
+pub struct FunctionTemplate<'data> {
+    pub export: Export<'data>,
+    pub signature: index::FunctionSignature,
+    pub entry_block: index::CodeBlock,
 }
 
-impl<'a> FunctionInstantiation<'a> {
-    pub fn from_template(export: Export<'a>, template: index::FunctionTemplate) -> Self {
-        Self { export, template }
+impl<'data> FunctionTemplate<'data> {
+    pub fn new(export: Export<'data>, signature: index::FunctionSignature, entry_block: index::CodeBlock) -> Self {
+        Self {
+            export,
+            signature,
+            entry_block,
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub struct FunctionDefinition<'a> {
-    pub signature: index::FunctionSignature,
-    pub body: FunctionBody<'a>,
+pub struct Function<'data> {
+    pub template: index::FunctionTemplate,
+    _placeholder: &'data (),
 }
 
-impl<'a> FunctionDefinition<'a> {
-    pub fn new(signature: index::FunctionSignature, body: FunctionBody<'a>) -> Self {
-        Self { signature, body }
-    }
-
-    pub fn flags(&self) -> VarU28 {
-        VarU28::from_u16(if self.body.is_foreign() { 1u16 } else { 0 })
+impl<'data> Function<'data> {
+    pub fn with_template(template: index::FunctionTemplate) -> Self {
+        Self {
+            template,
+            _placeholder: &(),
+        }
     }
 }
 
@@ -341,7 +359,7 @@ pub struct InvalidTypeError {
 }
 
 macro_rules! record_types {
-    ({
+    (for<$lifetimes:tt> {
         $($(#[$case_meta:meta])* $case_name:ident$(($($case_argument_name:ident: $case_argument:ty,)*))? = $case_number:literal,)*
     }) => {
         /// Indicates what kind of content is contained in a record.
@@ -366,7 +384,7 @@ macro_rules! record_types {
 
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
-        pub enum Record<'a> {
+        pub enum Record<$lifetimes> {
             $($(#[$case_meta])* $case_name$(($($case_argument,)*))?,)*
         }
 
@@ -380,23 +398,23 @@ macro_rules! record_types {
     };
 }
 
-record_types!({
-    MetadataField(_field: MetadataField<'a>,) = 0,
+record_types!(for<'data> {
+    MetadataField(_field: MetadataField<'data>,) = 0,
     // Array records are a special case handled by the reading and writing APIs, and so explicit construction is not allowed here.
     //Array = 1,
-    Identifier(_identifier: Cow<'a, Id>,) = 2,
-    TypeSignature(_signature: Cow<'a, signature::Type>,) = 3,
-    FunctionSignature(_signature: Cow<'a, signature::Function>,) = 4,
-    Data(_bytes: Cow<'a, DataArray>,) = 5,
-    CodeBlock(_code: CowBox<'a, CodeBlock<'a>>,) = 6,
+    Identifier(_identifier: Cow<'data, Id>,) = 2,
+    TypeSignature(_signature: Cow<'data, signature::Type>,) = 3,
+    FunctionSignature(_signature: Cow<'data, signature::Function>,) = 4,
+    Data(_bytes: Cow<'data, DataArray>,) = 5,
+    CodeBlock(_code: CowBox<'data, CodeBlock<'data>>,) = 6,
     //ModuleImport = 7,
     //FunctionImport = 8,
     //StructureImport = 9,
     //GlobalImport = 10,
-    FunctionDefinition(_definition: CowBox<'a, FunctionDefinition<'a>>,) = 11,
+    FunctionTemplate(_template: FunctionTemplate<'data>,) = 11,
     //StructureDefinition = 12,
     //GlobalDefinition = 13,
-    FunctionInstantiation(_instantiation: CowBox<'a, FunctionInstantiation<'a>>,) = 14,
+    Function(_function: Function<'data>,) = 14,
     //StructureInstantiation = 15,
     //Namespace = 16,
     //ExceptionClassImport = 17,
@@ -412,8 +430,8 @@ impl From<Type> for u8 {
     }
 }
 
-impl<'a> From<MetadataField<'a>> for Record<'a> {
-    fn from(metadata: MetadataField<'a>) -> Self {
+impl<'data> From<MetadataField<'data>> for Record<'data> {
+    fn from(metadata: MetadataField<'data>) -> Self {
         Self::MetadataField(metadata)
     }
 }
@@ -439,24 +457,22 @@ impl From<signature::Function> for Record<'_> {
     }
 }
 
-impl<'a> From<CodeBlock<'a>> for Record<'a> {
+impl<'data> From<CodeBlock<'data>> for Record<'data> {
     #[inline]
-    fn from(block: CodeBlock<'a>) -> Self {
+    fn from(block: CodeBlock<'data>) -> Self {
         Self::CodeBlock(CowBox::Boxed(Box::new(block)))
     }
 }
 
-impl<'a> From<FunctionDefinition<'a>> for Record<'a> {
-    #[inline]
-    fn from(definition: FunctionDefinition<'a>) -> Self {
-        Self::FunctionDefinition(CowBox::Boxed(Box::new(definition)))
+impl<'data> From<FunctionTemplate<'data>> for Record<'data> {
+    fn from(template: FunctionTemplate<'data>) -> Self {
+        Self::FunctionTemplate(template)
     }
 }
 
-impl<'a> From<FunctionInstantiation<'a>> for Record<'a> {
-    #[inline]
-    fn from(instantiation: FunctionInstantiation<'a>) -> Self {
-        Self::FunctionInstantiation(CowBox::Boxed(Box::new(instantiation)))
+impl<'data> From<Function<'data>> for Record<'data> {
+    fn from(function: Function<'data>) -> Self {
+        Self::Function(function)
     }
 }
 

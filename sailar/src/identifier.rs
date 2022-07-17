@@ -163,6 +163,12 @@ impl From<&Id> for Box<Id> {
     }
 }
 
+impl AsRef<Id> for Identifier {
+    fn as_ref(&self) -> &Id {
+        self.as_id()
+    }
+}
+
 #[derive(Clone, Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum InvalidError {
