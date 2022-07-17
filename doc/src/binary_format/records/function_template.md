@@ -6,12 +6,10 @@ The function template system is made to help eventually add support for generic 
 
 ## Structure
 
-Without any generic parameters, and with a body defined in SAILAR code, a function signature record consists of:
+In its simplest form, without any generic parameters, a function template record consists of:
 
 - The [export information](../export_information.md) for the function
 - A [variable width integer index] to a [function signature](./function_signature.md)
 - A [variable width integer index] to the function's entry block, which is the code block that control flow is tranferred to when the function is called
-
-TODO: Figure out how foreign impl/native functions are represented.
 
 [variable width integer index]: ../values.md#variable-length-integers
