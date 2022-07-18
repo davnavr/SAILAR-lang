@@ -192,11 +192,13 @@ pub struct Exports {
     pub function_templates: Vec<index::FunctionTemplate>,
 }
 
+pub type ModuleIdentifierSet<'data> = rustc_hash::FxHashSet<record::ModuleIdentifier<'data>>;
+
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct ModuleContents<'data> {
-    pub module_identifiers: Vec<record::ModuleIdentifier<'data>>,
+    pub module_identifiers: ModuleIdentifierSet<'data>,
     pub entry_point: Option<index::Function>,
     /// The list of all identifier records in the module.
     pub identifiers: Vec<Cow<'data, crate::identifier::Id>>,
@@ -579,7 +581,7 @@ impl<'data> ValidModule<'data> {
 
         for field in metadata_fields.into_iter() {
             match field {
-                record::MetadataField::ModuleIdentifier(identifier) => contents.module_identifiers.push(identifier),
+                record::MetadataField::ModuleIdentifier(identifier) => { contents.module_identifiers.insert(identifier); },
                 record::MetadataField::EntryPoint(entry_point) => {
                     if let Some(defined) = contents.entry_point {
                         return Err(ErrorKind::DuplicateEntryPoint {
