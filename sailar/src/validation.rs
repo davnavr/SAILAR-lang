@@ -578,8 +578,11 @@ impl<'data> ValidModule<'data> {
             }
         }
 
-        // TODO: Validate function instantiations
-        //for (index, instantiation) in contents.functions.iter() {}
+        let check_function_template_index = get_index_validator(contents.function_templates.len());
+
+        for instantiation in contents.functions.iter() {
+            check_function_template_index(instantiation.template)?;
+        }
 
         for field in metadata_fields.into_iter() {
             match field {
