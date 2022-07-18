@@ -46,18 +46,23 @@ impl Display for ValueTypeMismatchError {
     }
 }
 
-/// The error type used when a function definition's parameters or return types do not match it's entry block.
+/// The error type used when a function template's parameters or return types do not match it's entry block.
 #[derive(Clone, Debug, thiserror::Error)]
-pub struct FunctionDefinitionTypeMismatchError {
+pub struct FunctionTypeMismatchError {
+    template: index::FunctionTemplate,
     entry_block: index::CodeBlock,
     are_parameters_wrong: bool,
     actual_types: Box<[signature::Type]>,
     expected_types: Box<[signature::Type]>,
 }
 
-impl Display for FunctionDefinitionTypeMismatchError {
+impl Display for FunctionTypeMismatchError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "function definition with entry block {} has the ", self.entry_block)?;
+        write!(
+            f,
+            "function template {} with entry block {} has the ",
+            self.template, self.entry_block
+        )?;
         f.write_str(if self.are_parameters_wrong { "parameter" } else { "return" })?;
         write!(f, " types {}, but the ", signature::DisplayTypes::from(&self.actual_types))?;
         f.write_str(if self.are_parameters_wrong {
@@ -137,7 +142,7 @@ pub enum ErrorKind {
     #[error(transparent)]
     InvalidInstruction(#[from] InvalidInstructionError),
     #[error(transparent)]
-    FunctionTypeMismatch(#[from] FunctionDefinitionTypeMismatchError),
+    FunctionTypeMismatch(#[from] FunctionTypeMismatchError),
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -172,8 +177,6 @@ pub struct ModuleContents<'data> {
     pub code: Vec<CowBox<'data, record::CodeBlock<'data>>>,
     pub function_templates: Vec<record::FunctionTemplate<'data>>,
 }
-
-// TODO: Instead of definitions & instantiations, how about definitions (the functions w/ no generic parameters and instantiations), and templates make all have symbols.
 
 impl<'a> ModuleContents<'a> {
     /// Indicates whether the module is anonymous.
@@ -494,14 +497,16 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        for template in contents.function_templates.iter() {
+        for (index, template) in contents.function_templates.iter().enumerate() {
+            let current_index = index::FunctionTemplate::from(index);
             check_function_signature_index(template.signature)?;
 
             let entry_block = get_code_block(template.entry_block)?;
             let signature = contents.function_signatures[usize::from(template.signature)].as_ref();
 
             if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
-                return Err(FunctionDefinitionTypeMismatchError {
+                return Err(FunctionTypeMismatchError {
+                    template: current_index,
                     entry_block: template.entry_block,
                     are_parameters_wrong: true,
                     actual_types: get_type_signature_list_owned(signature.parameter_types())?,
