@@ -633,6 +633,10 @@ impl<'data> ValidModule<'data> {
         Self::from_records_fallible::<_, std::convert::Infallible>(records.into_iter().map(Ok)).unwrap()
     }
 
+    pub fn from_builder(builder: crate::builder::Builder<'static>) -> Result<Self, Error> {
+        Self::from_records(builder.into_records())
+    }
+
     pub fn contents(&self) -> &ModuleContents<'data> {
         &self.contents
     }
