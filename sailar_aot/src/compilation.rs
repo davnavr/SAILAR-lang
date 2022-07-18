@@ -1,13 +1,15 @@
 //! Module for translating from SAILAR modules to LLVM modules.
 
-use crate::error::{self, CompilationError, CompilationErrorKind};
+use crate::error;
 use crate::target;
 use inkwell::context::Context as LlvmContext;
 use inkwell::module::Module as LlvmModule;
 use sailar_load::module::Module;
 use std::sync::Arc;
 
-pub type Result<T> = std::result::Result<T, CompilationError>;
+pub type InputModule = sailar::validation::ValidModule<'static>;
+
+pub type Result<T> = std::result::Result<T, error::CompilationError>;
 
 /// Specifies how the name of the output LLVM module is determined.
 #[derive(Clone, Debug)]
@@ -29,6 +31,9 @@ impl Default for OutputName {
 pub enum MainFunctionKind {
     /// Indicates that a C style `main` function should be generated that calls the entry point of the SAILAR program.
     ///
+    /// The produced object code will then need to be linked with the target platform's C runtime, as the latter is responsible
+    /// for calling the `main` function.
+    ///
     /// ```C
     /// int main(int argc, char* argv[]) {
     ///     // Call to SAILAR entry point is generated here.
@@ -46,8 +51,7 @@ impl Default for MainFunctionKind {
 /// Represents the inputs of a compilation.
 pub struct Inputs<'input> {
     target_platform: Option<target::Platform<'input>>,
-    sources: Vec<sailar_load::source::BoxedSource>,
-    resolver: Option<sailar_load::resolver::BoxedResolver>,
+    input_modules: Vec<InputModule>,
     output_name: OutputName,
     main_kind: MainFunctionKind,
 }
@@ -56,36 +60,19 @@ impl<'input> Inputs<'input> {
     pub fn new() -> Self {
         Self {
             target_platform: None,
-            sources: Default::default(),
-            resolver: None,
+            input_modules: Default::default(),
             output_name: Default::default(),
             main_kind: Default::default(),
         }
     }
 
-    /// Explicitly includes the specified modules in this compilation.
-    pub fn with_modules<S, M>(mut self, modules: M) -> Self
+    /// Adds the specified modules in this compilation.
+    pub fn with_modules<M>(mut self, modules: M) -> Self
     where
-        S: sailar_load::source::Source + 'static,
-        S::Error: std::error::Error + 'static,
-        M: IntoIterator<Item = S>,
+        M: IntoIterator<Item = InputModule>,
     {
-        self.sources.extend(modules.into_iter().map(sailar_load::source::boxed));
+        self.input_modules.extend(modules.into_iter());
         self
-    }
-
-    /// Specifies a [`Resolver`] that retrieves imported modules for inclusion in this compilation.
-    ///
-    /// [`Resolver`]: sailar_load::Resolver
-    pub fn module_resolver<R>(self, resolver: R) -> Self
-    where
-        R: sailar_load::Resolver + Send + 'static,
-        R::Error: std::error::Error,
-    {
-        Self {
-            resolver: Some(sailar_load::resolver::boxed(resolver)),
-            ..self
-        }
     }
 
     /// Sets the target platform for the compilation.
@@ -124,24 +111,17 @@ impl<'input> Inputs<'input> {
                     .unwrap(),
             );
 
-            let mut builder = sailar_load::state::Builder::new().address_size(address_size);
-
-            if let Some(resolver) = self.resolver {
-                builder = builder.resolver(resolver);
-            }
-
-            builder.create()
+            sailar_load::state::Configuration::new()
+                .address_size(address_size)
+                .create_state()
         };
 
         let input_modules = {
-            let mut modules = Vec::with_capacity(self.sources.len());
-            for source in self.sources {
-                match state
-                    .force_load_module(source)
-                    .map_err(CompilationErrorKind::ModuleResolution)?
-                {
-                    Some(module) => modules.push(module),
-                    None => todo!("make error for duplicate module"),
+            let mut modules = Vec::with_capacity(self.input_modules.len());
+            for source in self.input_modules {
+                match state.load_module(source) {
+                    Ok(module) => modules.push(module),
+                    Err(_) => todo!("make error for duplicate module"),
                 }
             }
             modules.into_boxed_slice()
@@ -151,7 +131,7 @@ impl<'input> Inputs<'input> {
         let output_module = context.create_module(match self.output_name {
             OutputName::Inferred => input_modules
                 .first()
-                .and_then(|module| module.module_identifier())
+                .and_then(|module| module.module_identifiers().iter().next())
                 .map(|id| id.name().as_str())
                 .unwrap_or("<unnamed>"),
             OutputName::Specified(name) => {
@@ -166,21 +146,22 @@ impl<'input> Inputs<'input> {
         let function_cache = crate::function::Cache::new(&output_module, &type_cache);
         // TODO: Have a helper NameMangling struct and/or trait that also keeps a String buffer to avoid extra allocations.
 
-        input_modules
-            .iter()
-            .flat_map(|module| module.symbols().iter_functions())
-            .filter(|symbol| !symbol.is_private())
-            .try_for_each(|symbol| {
-                let function = std::ops::Deref::deref(symbol);
-                function_cache.get_or_define(function.clone())?;
-                Result::Ok(())
-            })?;
+        {
+            // Add all exported functions into initial compilation list.
+            let all_functions = input_modules.iter().flat_map(|module| module.functions());
+
+            for function in all_functions {
+                if function.template()?.as_definition()?.is_exported() {
+                    function_cache.get_or_define(function.clone())?;
+                }
+            }
+        }
 
         // TODO: Add options to either expect only a single entry point in all modules, specify that an entry point in a named module should be used, or to allow any entry point to be picked.
         let mut main_function_choices = {
             let mut choices = Vec::new();
             for module in input_modules.iter() {
-                if let Some(main_function) = module.entry_point()? {
+                if let Some(main_function) = module.entry_point() {
                     choices.push((module.clone(), main_function.clone()));
                 }
             }

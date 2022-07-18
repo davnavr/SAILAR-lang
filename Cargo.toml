@@ -2,8 +2,8 @@
 members = [
     "sailar",
     "sailar_samples",
-    # "sailar_aot",
     "sailar_load",
     "sailar_vm",
+    "sailar_aot",
     "sailar_c",
 ]

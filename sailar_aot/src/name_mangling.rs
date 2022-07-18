@@ -5,7 +5,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 fn mangle_module_name(module: &Arc<Module>, buffer: &mut String) {
-    match module.module_identifier() {
+    match module.module_identifiers().iter().next() {
         Some(identifier) => {
             buffer.push_str(identifier.name().as_str());
             for n in identifier.version().iter() {
@@ -27,24 +27,6 @@ pub trait Definition {
     fn module(&self) -> &std::sync::Weak<Module>;
 
     fn anonymous_prefix() -> &'static str;
-}
-
-impl Definition for Arc<sailar_load::function::Instantiation> {
-    fn index(&self) -> usize {
-        sailar_load::function::Instantiation::index(self).into()
-    }
-
-    fn export(&self) -> &Export {
-        sailar_load::function::Instantiation::export(self)
-    }
-
-    fn module(&self) -> &std::sync::Weak<Module> {
-        sailar_load::function::Instantiation::module(self)
-    }
-
-    fn anonymous_prefix() -> &'static str {
-        "F"
-    }
 }
 
 pub fn mangle<D: Definition>(definition: &D) -> Result<String, sailar_load::error::LoaderError> {

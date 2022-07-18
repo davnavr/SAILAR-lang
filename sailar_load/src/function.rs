@@ -216,6 +216,10 @@ impl DefinedTemplate {
         &self.export
     }
 
+    pub fn is_exported(&self) -> bool {
+        self.export.kind() == record::ExportKind::Export
+    }
+
     pub fn entry_block(&self) -> Result<&DefinedBody, error::LoaderError> {
         self.entry_block
             .get_or_create(|entry_block| {
