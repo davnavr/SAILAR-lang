@@ -716,7 +716,7 @@ impl<R: Read> RecordReader<R> {
                                     expected_size: data_size,
                                 }));
                             }
-                            Ok(Record::Data(Cow::Owned(buffer.into_boxed_slice())))
+                            Ok(Record::Data(Cow::Owned(buffer)))
                         },
                         _ => todo!("add support for array record type {:?}", array_type),
                     },
@@ -730,7 +730,7 @@ impl<R: Read> RecordReader<R> {
             record::Type::Identifier => read_identifier_content(content, record_size).map(|id| Some(Record::from(id))),
             record::Type::TypeSignature => read_type_signature(content).map(Some),
             record::Type::FunctionSignature => read_function_signature(content).map(Some),
-            record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
+            record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec())))),
             record::Type::CodeBlock => read_code_block(content).map(Some),
             record::Type::FunctionTemplate => read_function_template(content).map(Some),
             record::Type::Function => read_function(content).map(Some),

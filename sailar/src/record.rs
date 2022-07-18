@@ -144,67 +144,6 @@ impl MetadataField<'_> {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-#[repr(transparent)]
-pub struct DataArray(pub [u8]);
-
-impl DataArray {
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    #[inline]
-    pub fn from_bytes<'a>(bytes: &'a [u8]) -> &'a Self {
-        unsafe {
-            // Safety: Layout of data array is the same.
-            std::mem::transmute::<&'a _, &'a _>(bytes)
-        }
-    }
-}
-
-impl<'a> From<&'a DataArray> for &'a [u8] {
-    #[inline]
-    fn from(data: &'a DataArray) -> &'a [u8] {
-        data.as_bytes()
-    }
-}
-
-impl<'a> From<&'a [u8]> for &'a DataArray {
-    #[inline]
-    fn from(bytes: &'a [u8]) -> &'a DataArray {
-        DataArray::from_bytes(bytes)
-    }
-}
-
-impl std::borrow::Borrow<DataArray> for Box<[u8]> {
-    #[inline]
-    fn borrow(&self) -> &DataArray {
-        self.as_ref().into()
-    }
-}
-
-impl std::borrow::ToOwned for DataArray {
-    type Owned = Box<[u8]>;
-
-    #[inline]
-    fn to_owned(&self) -> Self::Owned {
-        Box::from(self.as_bytes())
-    }
-}
-
-impl std::cmp::PartialEq<[u8]> for DataArray {
-    fn eq(&self, other: &[u8]) -> bool {
-        self.as_bytes() == other
-    }
-}
-
-impl<const N: usize> std::cmp::PartialEq<[u8; N]> for DataArray {
-    fn eq(&self, other: &[u8; N]) -> bool {
-        self.as_bytes() == other.as_slice()
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CodeBlock<'a> {
@@ -403,10 +342,10 @@ record_types!(for<'data> {
     // Array records are a special case handled by the reading and writing APIs, and so explicit construction is not allowed here.
     //Array = 1,
     Identifier(_identifier: Cow<'data, Id>,) = 2,
-    TypeSignature(_signature: Cow<'data, signature::Type>,) = 3,
-    FunctionSignature(_signature: Cow<'data, signature::Function>,) = 4,
-    Data(_bytes: Cow<'data, DataArray>,) = 5,
-    CodeBlock(_code: CowBox<'data, CodeBlock<'data>>,) = 6,
+    TypeSignature(_signature: signature::Type,) = 3,
+    FunctionSignature(_signature: signature::Function,) = 4,
+    Data(_bytes: Cow<'data, [u8]>,) = 5,
+    CodeBlock(_code: CodeBlock<'data>,) = 6,
     //ModuleImport = 7,
     //FunctionImport = 8,
     //StructureImport = 9,
@@ -446,21 +385,21 @@ impl From<Identifier> for Record<'_> {
 impl From<signature::Type> for Record<'_> {
     #[inline]
     fn from(signature: signature::Type) -> Self {
-        Self::TypeSignature(Cow::Owned(signature))
+        Self::TypeSignature(signature)
     }
 }
 
 impl From<signature::Function> for Record<'_> {
     #[inline]
     fn from(signature: signature::Function) -> Self {
-        Self::FunctionSignature(Cow::Owned(signature))
+        Self::FunctionSignature(signature)
     }
 }
 
 impl<'data> From<CodeBlock<'data>> for Record<'data> {
     #[inline]
     fn from(block: CodeBlock<'data>) -> Self {
-        Self::CodeBlock(CowBox::Boxed(Box::new(block)))
+        Self::CodeBlock(block)
     }
 }
 

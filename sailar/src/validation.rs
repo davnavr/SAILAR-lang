@@ -171,10 +171,10 @@ pub struct ModuleContents<'data> {
     pub entry_point: Option<index::Function>,
     /// The list of all identifier records in the module.
     pub identifiers: Vec<Cow<'data, crate::identifier::Id>>,
-    pub type_signatures: Vec<Cow<'data, signature::Type>>,
-    pub function_signatures: Vec<Cow<'data, signature::Function>>,
-    pub data: Vec<Cow<'data, record::DataArray>>,
-    pub code: Vec<CowBox<'data, record::CodeBlock<'data>>>,
+    pub type_signatures: Vec<signature::Type>,
+    pub function_signatures: Vec<signature::Function>,
+    pub data: Vec<Cow<'data, [u8]>>,
+    pub code: Vec<record::CodeBlock<'data>>,
     pub function_templates: Vec<record::FunctionTemplate<'data>>,
 }
 
@@ -229,7 +229,7 @@ impl<'a> ValidModule<'a> {
             for (i, signature) in contents.type_signatures.iter().enumerate() {
                 let current_index = index::TypeSignature::from(i);
 
-                match signature.as_ref() {
+                match signature {
                     signature::Type::FixedInteger(_)
                     | signature::Type::F32
                     | signature::Type::F64
@@ -276,19 +276,19 @@ impl<'a> ValidModule<'a> {
             contents
                 .function_signatures
                 .iter()
-                .flat_map(|signature| signature.as_ref().types().iter().copied())
+                .flat_map(|signature| signature.types().iter().copied())
                 .try_for_each(|index| {
                     check_type_signature_index(index)?;
                     Result::<_, Error>::Ok(())
                 })?;
         }
 
-        struct SignatureComparer<'a, 'b> {
-            type_signatures: &'b [Cow<'a, signature::Type>],
-            function_signatures: &'b [Cow<'a, signature::Function>],
+        struct SignatureComparer<'a> {
+            type_signatures: &'a [signature::Type],
+            function_signatures: &'a [signature::Function],
         }
 
-        impl SignatureComparer<'_, '_> {
+        impl SignatureComparer<'_> {
             fn are_type_index_lists_equal(&self, a: &[index::TypeSignature], b: &[index::TypeSignature]) -> bool {
                 a.len() == a.len() && a.iter().zip(b).all(|(x, y)| self.are_type_indices_equal(*x, *y))
             }
@@ -298,8 +298,8 @@ impl<'a> ValidModule<'a> {
                     true
                 } else {
                     self.are_type_index_lists_equal(
-                        self.function_signatures[usize::from(a)].as_ref().types(),
-                        self.function_signatures[usize::from(b)].as_ref().types(),
+                        self.function_signatures[usize::from(a)].types(),
+                        self.function_signatures[usize::from(b)].types(),
                     )
                 }
             }
@@ -324,10 +324,7 @@ impl<'a> ValidModule<'a> {
                 if a == b {
                     true
                 } else {
-                    self.are_type_signatures_equal(
-                        self.type_signatures[usize::from(a)].as_ref(),
-                        self.type_signatures[usize::from(b)].as_ref(),
-                    )
+                    self.are_type_signatures_equal(&self.type_signatures[usize::from(a)], &self.type_signatures[usize::from(b)])
                 }
             }
         }
@@ -337,8 +334,7 @@ impl<'a> ValidModule<'a> {
             function_signatures: &contents.function_signatures,
         };
 
-        let get_type_signature =
-            |index| Result::<_, Error>::Ok(contents.type_signatures[check_type_signature_index(index)?].as_ref());
+        let get_type_signature = |index| Result::<_, Error>::Ok(&contents.type_signatures[check_type_signature_index(index)?]);
 
         let get_type_signature_list_owned = |indices: &[index::TypeSignature]| {
             indices
@@ -350,7 +346,7 @@ impl<'a> ValidModule<'a> {
 
         let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
 
-        let get_code_block = { |index| Result::<_, Error>::Ok(contents.code[check_code_block_index(index)?].as_ref()) };
+        let get_code_block = { |index| Result::<_, Error>::Ok(&contents.code[check_code_block_index(index)?]) };
 
         // TODO: Have a hashmap of all of the blocks that a block potentially branches to, as well as the eventual return type.
         {
@@ -502,7 +498,7 @@ impl<'a> ValidModule<'a> {
             check_function_signature_index(template.signature)?;
 
             let entry_block = get_code_block(template.entry_block)?;
-            let signature = contents.function_signatures[usize::from(template.signature)].as_ref();
+            let signature = &contents.function_signatures[usize::from(template.signature)];
 
             if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
                 return Err(FunctionTypeMismatchError {

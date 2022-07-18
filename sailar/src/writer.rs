@@ -194,7 +194,7 @@ impl<W: Write> Writer<W> {
             Record::Identifier(identifier) => self.write_all(identifier.as_bytes()),
             Record::TypeSignature(signature) => self.write_type_signature(signature),
             Record::FunctionSignature(signature) => self.write_function_signature(signature),
-            Record::Data(bytes) => self.write_all(bytes.as_ref().as_bytes()),
+            Record::Data(bytes) => self.write_all(bytes.as_ref()),
             Record::CodeBlock(block) => self.write_code_block(block),
             Record::FunctionTemplate(template) => self.write_function_template(template),
             Record::Function(function) => self.write_function(function),
