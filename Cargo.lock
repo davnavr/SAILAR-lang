@@ -63,6 +63,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy-init"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23517540be87a91d06324e6bf6286ba8214171123ee8862ae9a5e7d938d71815"
+
+[[package]]
 name = "libc"
 version = "0.2.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -107,6 +113,16 @@ name = "sailar_c"
 version = "0.1.0"
 dependencies = [
  "sailar",
+]
+
+[[package]]
+name = "sailar_load"
+version = "0.1.0"
+dependencies = [
+ "lazy-init",
+ "rustc-hash",
+ "sailar",
+ "thiserror",
 ]
 
 [[package]]
