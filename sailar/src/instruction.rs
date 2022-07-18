@@ -349,7 +349,7 @@ instruction_set! {{
     /// call <function> (<argument0>, <argument1>, ...) ; Call function with no return values
     /// ```
     /// Transfers control flow to the specified `function`, providing the specified values as arguments.
-    Call(_callee: index::FunctionInstantiation, _arguments: Box<[Value]>,) = 7,
+    Call(_callee: index::Function, _arguments: Box<[Value]>,) = 7,
     //CallIndr = 8,
     //CallRet = 9,
     /// ```text

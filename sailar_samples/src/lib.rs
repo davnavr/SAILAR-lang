@@ -41,17 +41,18 @@ pub fn exit_with(name: Identifier, exit_code: u32) -> Builder<'static> {
         index::CodeBlock::from(0)
     };
 
-    builder.add_record(record::FunctionDefinition::new(
-        main_signature,
-        record::FunctionBody::Definition(main_code),
-    ));
+    let main_template = {
+        builder.add_record(record::FunctionTemplate::new(
+            record::Export::ExportBorrowed(Id::try_from_str("main").unwrap()),
+            main_signature,
+            main_code,
+        ));
+        index::FunctionTemplate::from(0)
+    };
 
     let entry_point = {
-        builder.add_record(record::FunctionInstantiation::from_template(
-            record::Export::new_export_borrowed(Id::try_from_str("main").unwrap()),
-            index::FunctionTemplate::from(0),
-        ));
-        index::FunctionInstantiation::from(0)
+        builder.add_record(record::Function::with_template(main_template));
+        index::Function::from(0)
     };
 
     builder.add_record(record::MetadataField::EntryPoint(entry_point));

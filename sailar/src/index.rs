@@ -87,13 +87,13 @@ index_type!(
 );
 
 index_type!(
-    /// Represents an index to a function import or definition in a module in that order.
+    /// Represents an index to an imported function template, or a function template in the current module, in that order.
     FunctionTemplate { name = "function template" }
 );
 
 index_type!(
-    /// Represents an index to a function instantiation in a module.
-    FunctionInstantiation { name = "function instantiation" }
+    /// Represents an index to a function (an instantiation of a function template) in the current module.
+    Function { name = "function" }
 );
 
 index_type!(

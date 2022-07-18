@@ -102,14 +102,12 @@ pub enum ErrorKind {
     MissingFunctionSignatureIndex,
     #[error("expected data array byte length")]
     MissingDataLength,
-    #[error("expected flag byte of function definition")]
-    MissingFunctionDefinitionFlags,
-    #[error("{0:#02X} is not a valid function definition flags combination")]
-    InvalidFunctionDefinitionFlags(VarU28),
+    #[error("expected unsigned integer for export")]
+    MissingExportFlags,
+    #[error("export must have a symbol that is not empty")]
+    EmptyExportSymbol,
     #[error("expected code block index")]
     MissingCodeBlockIndex,
-    #[error("expected identifier index to the foreign function's library name")]
-    MissingForeignLibraryName,
     #[error("expected function template index integer")]
     MissingFunctionTemplateIndex,
     #[error("expected integer number of temporary registers")]
@@ -655,34 +653,40 @@ impl<R: Read> RecordReader<R> {
             )))
         }
 
-        fn read_function_definition(source: &mut BufferWrapper<'_>) -> Result<Record> {
-            let flag_bits = source.read_unsigned_integer(|| ErrorKind::MissingFunctionDefinitionFlags)?;
+        fn read_export(source: &mut BufferWrapper) -> Result<record::Export<'static>> {
+            let flags: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingExportFlags)?;
+            let is_export = flags & 1 == 1;
+            let length = flags >> 1;
 
-            let signature = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?;
-
-            let body = if flag_bits == VarU28::from_u8(1) {
-                record::FunctionBody::Definition(source.read_unsigned_integer_try_into(|| ErrorKind::MissingCodeBlockIndex)?)
+            if is_export && length == 0 {
+                source.fail_with(ErrorKind::EmptyExportSymbol)
             } else {
-                record::FunctionBody::Foreign {
-                    library: source.read_unsigned_integer_try_into(|| ErrorKind::MissingForeignLibraryName)?,
-                    entry_point: Cow::Owned(read_identifier(source)?),
-                }
-            };
-
-            Ok(Record::from(record::FunctionDefinition::new(signature, body)))
+                let symbol = read_identifier_content(source, length)?;
+                Ok(if is_export {
+                    record::Export::ExportOwned(symbol)
+                } else {
+                    record::Export::PrivateOwned(symbol)
+                })
+            }
         }
 
-        fn read_function_instantiation(source: &mut BufferWrapper<'_>) -> Result<Record> {
-            let flags = source.read_unsigned_integer(|| ErrorKind::MissingFunctionDefinitionFlags)?;
-            let export = match flags.get() {
-                0 => record::Export::Hidden,
-                1 => record::Export::Private(Cow::Owned(read_identifier(source)?)),
-                2 => record::Export::Export(Cow::Owned(read_identifier(source)?)),
-                bad => todo!("read export kind {:#02X}", bad),
-            };
+        fn read_function_template(source: &mut BufferWrapper) -> Result<Record> {
+            Ok(Record::FunctionTemplate(record::FunctionTemplate {
+                export: read_export(source)?,
+                signature: source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionSignatureIndex)?,
+                entry_block: source.read_unsigned_integer_try_into(|| ErrorKind::MissingCodeBlockIndex)?,
+            }))
+        }
 
+        fn read_function(source: &mut BufferWrapper) -> Result<Record> {
             let template = source.read_unsigned_integer_try_into(|| ErrorKind::MissingFunctionTemplateIndex)?;
-            Ok(Record::from(record::FunctionInstantiation::from_template(export, template)))
+            let placeholder = source.read_unsigned_integer(|| ErrorKind::MissingReservedInteger)?;
+
+            if placeholder != VarU28::from_u8(0) {
+                todo!("generic argument count")
+            }
+
+            Ok(Record::Function(record::Function::with_template(template)))
         }
 
         self.count -= 1;
@@ -712,7 +716,7 @@ impl<R: Read> RecordReader<R> {
                                     expected_size: data_size,
                                 }));
                             }
-                            Ok(Record::Data(Cow::Owned(buffer.into_boxed_slice())))
+                            Ok(Record::Data(Cow::Owned(buffer)))
                         },
                         _ => todo!("add support for array record type {:?}", array_type),
                     },
@@ -726,10 +730,10 @@ impl<R: Read> RecordReader<R> {
             record::Type::Identifier => read_identifier_content(content, record_size).map(|id| Some(Record::from(id))),
             record::Type::TypeSignature => read_type_signature(content).map(Some),
             record::Type::FunctionSignature => read_function_signature(content).map(Some),
-            record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec().into_boxed_slice())))),
+            record::Type::Data => Ok(Some(Record::Data(Cow::Owned(content.source.to_vec())))),
             record::Type::CodeBlock => read_code_block(content).map(Some),
-            record::Type::FunctionDefinition => read_function_definition(content).map(Some),
-            record::Type::FunctionInstantiation => read_function_instantiation(content).map(Some),
+            record::Type::FunctionTemplate => read_function_template(content).map(Some),
+            record::Type::Function => read_function(content).map(Some),
             _ => todo!("parse a {:?}", record_type),
         }
     }

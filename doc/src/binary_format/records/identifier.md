@@ -6,4 +6,7 @@ byte length of the record contents indicates the length of the string. When cont
 [variable width integer](../values.md#variable-length-integers) indicating the length is prepended before the string contents,
 effectively making the record a [byte vector containing a string](../values.md#strings).
 
+Note that all identifier strings cannot contain any `NUL` (`0x00`) bytes. This is to allow compatibility of native code formats,
+which typically use `null` terminated strings for symbol names.
+
 [array record]: array.md

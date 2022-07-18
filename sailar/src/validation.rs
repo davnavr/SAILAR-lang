@@ -2,12 +2,13 @@
 //!
 //! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
 
-use crate::helper::borrow::CowBox;
+use crate::identifier::{Id, Identifier};
 use crate::index;
 use crate::instruction::{self, Instruction};
 use crate::record::{self, Record};
 use crate::signature;
 use std::borrow::Cow;
+use std::collections::hash_map;
 use std::fmt::{Display, Formatter};
 
 /// The error type used when an index in a module is not valid.
@@ -46,18 +47,23 @@ impl Display for ValueTypeMismatchError {
     }
 }
 
-/// The error type used when a function definition's parameters or return types do not match it's entry block.
+/// The error type used when a function template's parameters or return types do not match it's entry block.
 #[derive(Clone, Debug, thiserror::Error)]
-pub struct FunctionDefinitionTypeMismatchError {
+pub struct FunctionTypeMismatchError {
+    template: index::FunctionTemplate,
     entry_block: index::CodeBlock,
     are_parameters_wrong: bool,
     actual_types: Box<[signature::Type]>,
     expected_types: Box<[signature::Type]>,
 }
 
-impl Display for FunctionDefinitionTypeMismatchError {
+impl Display for FunctionTypeMismatchError {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "function definition with entry block {} has the ", self.entry_block)?;
+        write!(
+            f,
+            "function template {} with entry block {} has the ",
+            self.template, self.entry_block
+        )?;
         f.write_str(if self.are_parameters_wrong { "parameter" } else { "return" })?;
         write!(f, " types {}, but the ", signature::DisplayTypes::from(&self.actual_types))?;
         f.write_str(if self.are_parameters_wrong {
@@ -115,6 +121,21 @@ impl Display for InvalidInstructionError {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SymbolIndex {
+    FunctionTemplate(index::FunctionTemplate),
+}
+
+crate::enum_case_from_impl!(SymbolIndex, FunctionTemplate, index::FunctionTemplate);
+
+impl Display for SymbolIndex {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::FunctionTemplate(index) => write!(f, "{} {}", <index::FunctionTemplate as index::Index>::name(), index),
+        }
+    }
+}
+
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
 ///
 /// Usually used with the [`Error`] type.
@@ -124,8 +145,8 @@ pub enum ErrorKind {
     /// Used when more than one entry point was specified by a metadata record.
     #[error("duplicate entry point #{duplicate}, #{defined} is already defined as the entry point function")]
     DuplicateEntryPoint {
-        defined: index::FunctionInstantiation,
-        duplicate: index::FunctionInstantiation,
+        defined: index::Function,
+        duplicate: index::Function,
     },
     #[error(transparent)]
     InvalidIndex(#[from] InvalidIndexError),
@@ -137,7 +158,13 @@ pub enum ErrorKind {
     #[error(transparent)]
     InvalidInstruction(#[from] InvalidInstructionError),
     #[error(transparent)]
-    FunctionTypeMismatch(#[from] FunctionDefinitionTypeMismatchError),
+    FunctionTypeMismatch(#[from] FunctionTypeMismatchError),
+    #[error("{duplicate} has symbol {symbol:?}, but that symbol already corresponds to {existing}")]
+    DuplicateSymbol {
+        symbol: Identifier,
+        existing: SymbolIndex,
+        duplicate: SymbolIndex,
+    },
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -158,25 +185,29 @@ impl<E: Into<ErrorKind>> From<E> for Error {
     }
 }
 
+/// Indicates which definitions in a module are exported.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct Exports {
+    pub function_templates: Vec<index::FunctionTemplate>,
+}
+
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
-pub struct ModuleContents<'a> {
-    pub module_identifiers: Vec<record::ModuleIdentifier<'a>>,
-    pub entry_point: Option<index::FunctionInstantiation>,
+pub struct ModuleContents<'data> {
+    pub module_identifiers: Vec<record::ModuleIdentifier<'data>>,
+    pub entry_point: Option<index::Function>,
     /// The list of all identifier records in the module.
-    pub identifiers: Vec<Cow<'a, crate::identifier::Id>>,
-    pub type_signatures: Vec<Cow<'a, signature::Type>>,
-    pub function_signatures: Vec<Cow<'a, signature::Function>>,
-    pub data: Vec<Cow<'a, record::DataArray>>,
-    pub code: Vec<CowBox<'a, record::CodeBlock<'a>>>,
-    pub function_definitions: Vec<CowBox<'a, record::FunctionDefinition<'a>>>,
-    //pub function_instantiations
+    pub identifiers: Vec<Cow<'data, crate::identifier::Id>>,
+    pub type_signatures: Vec<signature::Type>,
+    pub function_signatures: Vec<signature::Function>,
+    pub data: Vec<Cow<'data, [u8]>>,
+    pub code: Vec<record::CodeBlock<'data>>,
+    pub function_templates: Vec<record::FunctionTemplate<'data>>,
 }
 
-// TODO: Instead of definitions & instantiations, how about definitions (the functions w/ no generic parameters and instantiations), and templates make all have symbols.
-
-impl<'a> ModuleContents<'a> {
+impl<'data> ModuleContents<'data> {
     /// Indicates whether the module is anonymous.
     ///
     /// Anonymous modules do not have any module identifier, meaning that they cannot be imported by other modules.
@@ -186,20 +217,21 @@ impl<'a> ModuleContents<'a> {
 }
 
 /// Represents a validated SAILAR module.
-#[derive(Clone, Debug, Default)]
-pub struct ValidModule<'a> {
-    contents: ModuleContents<'a>,
+#[derive(Clone, Default)]
+pub struct ValidModule<'data> {
+    contents: ModuleContents<'data>,
+    exports: Exports,
 }
 
-impl<'a> ValidModule<'a> {
+impl<'data> ValidModule<'data> {
     /// Creates a valid module with the specified `contents`, without actually performing any validation.
     ///
     /// Passing a module that is not valid may result in panics later.
-    pub fn from_contents_without_performing_validation_at_all(contents: ModuleContents<'a>) -> Self {
-        Self { contents }
+    pub fn from_contents_without_performing_validation_at_all(contents: ModuleContents<'data>, exports: Exports) -> Self {
+        Self { contents, exports }
     }
 
-    fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
+    fn validate(mut contents: ModuleContents<'data>, metadata_fields: Vec<record::MetadataField<'data>>) -> Result<Self, Error> {
         fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<usize, Error> {
             move |index: I| {
                 let index = index.into();
@@ -227,7 +259,7 @@ impl<'a> ValidModule<'a> {
             for (i, signature) in contents.type_signatures.iter().enumerate() {
                 let current_index = index::TypeSignature::from(i);
 
-                match signature.as_ref() {
+                match signature {
                     signature::Type::FixedInteger(_)
                     | signature::Type::F32
                     | signature::Type::F64
@@ -274,19 +306,19 @@ impl<'a> ValidModule<'a> {
             contents
                 .function_signatures
                 .iter()
-                .flat_map(|signature| signature.as_ref().types().iter().copied())
+                .flat_map(|signature| signature.types().iter().copied())
                 .try_for_each(|index| {
                     check_type_signature_index(index)?;
                     Result::<_, Error>::Ok(())
                 })?;
         }
 
-        struct SignatureComparer<'a, 'b> {
-            type_signatures: &'b [Cow<'a, signature::Type>],
-            function_signatures: &'b [Cow<'a, signature::Function>],
+        struct SignatureComparer<'a> {
+            type_signatures: &'a [signature::Type],
+            function_signatures: &'a [signature::Function],
         }
 
-        impl SignatureComparer<'_, '_> {
+        impl SignatureComparer<'_> {
             fn are_type_index_lists_equal(&self, a: &[index::TypeSignature], b: &[index::TypeSignature]) -> bool {
                 a.len() == a.len() && a.iter().zip(b).all(|(x, y)| self.are_type_indices_equal(*x, *y))
             }
@@ -296,8 +328,8 @@ impl<'a> ValidModule<'a> {
                     true
                 } else {
                     self.are_type_index_lists_equal(
-                        self.function_signatures[usize::from(a)].as_ref().types(),
-                        self.function_signatures[usize::from(b)].as_ref().types(),
+                        self.function_signatures[usize::from(a)].types(),
+                        self.function_signatures[usize::from(b)].types(),
                     )
                 }
             }
@@ -322,10 +354,7 @@ impl<'a> ValidModule<'a> {
                 if a == b {
                     true
                 } else {
-                    self.are_type_signatures_equal(
-                        self.type_signatures[usize::from(a)].as_ref(),
-                        self.type_signatures[usize::from(b)].as_ref(),
-                    )
+                    self.are_type_signatures_equal(&self.type_signatures[usize::from(a)], &self.type_signatures[usize::from(b)])
                 }
             }
         }
@@ -335,8 +364,7 @@ impl<'a> ValidModule<'a> {
             function_signatures: &contents.function_signatures,
         };
 
-        let get_type_signature =
-            |index| Result::<_, Error>::Ok(contents.type_signatures[check_type_signature_index(index)?].as_ref());
+        let get_type_signature = |index| Result::<_, Error>::Ok(&contents.type_signatures[check_type_signature_index(index)?]);
 
         let get_type_signature_list_owned = |indices: &[index::TypeSignature]| {
             indices
@@ -348,7 +376,7 @@ impl<'a> ValidModule<'a> {
 
         let check_code_block_index = get_index_validator::<index::CodeBlock>(contents.code.len());
 
-        let get_code_block = { |index| Result::<_, Error>::Ok(contents.code[check_code_block_index(index)?].as_ref()) };
+        let get_code_block = { |index| Result::<_, Error>::Ok(&contents.code[check_code_block_index(index)?]) };
 
         // TODO: Have a hashmap of all of the blocks that a block potentially branches to, as well as the eventual return type.
         {
@@ -495,30 +523,59 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        for definition in contents.function_definitions.iter() {
-            check_function_signature_index(definition.signature)?;
+        #[derive(Default)]
+        struct SymbolLookup<'a>(rustc_hash::FxHashMap<&'a Id, SymbolIndex>);
 
-            match definition.body {
-                record::FunctionBody::Definition(code_index) => {
-                    let entry_block = get_code_block(code_index)?;
-                    let signature = contents.function_signatures[usize::from(definition.signature)].as_ref();
-
-                    if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
-                        return Err(FunctionDefinitionTypeMismatchError {
-                            entry_block: code_index,
-                            are_parameters_wrong: true,
-                            actual_types: get_type_signature_list_owned(signature.parameter_types())?,
-                            expected_types: get_type_signature_list_owned(entry_block.input_types())?,
-                        })?;
+        impl<'a> SymbolLookup<'a> {
+            fn try_insert(&mut self, symbol: &'a Id, index: SymbolIndex) -> Result<(), Error> {
+                match self.0.entry(symbol) {
+                    hash_map::Entry::Occupied(occupied) => {
+                        return Err(ErrorKind::DuplicateSymbol {
+                            symbol: Identifier::from_id(occupied.key()),
+                            existing: *occupied.get(),
+                            duplicate: index,
+                        })?
                     }
-
-                    // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
+                    hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(index);
+                        Ok(())
+                    }
                 }
-                record::FunctionBody::Foreign { .. } => (),
             }
         }
 
-        //for (index, instantiation) in contents.function_instantiations.iter() {}
+        let mut symbol_lookup = SymbolLookup::default();
+        let mut exports = Exports::default();
+
+        for (index, template) in contents.function_templates.iter().enumerate() {
+            let current_index = index::FunctionTemplate::from(index);
+            check_function_signature_index(template.signature)?;
+
+            if let Some(symbol) = template.export.symbol() {
+                symbol_lookup.try_insert(symbol, current_index.into())?;
+            }
+
+            let entry_block = get_code_block(template.entry_block)?;
+            let signature = &contents.function_signatures[usize::from(template.signature)];
+
+            if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
+                return Err(FunctionTypeMismatchError {
+                    template: current_index,
+                    entry_block: template.entry_block,
+                    are_parameters_wrong: true,
+                    actual_types: get_type_signature_list_owned(signature.parameter_types())?,
+                    expected_types: get_type_signature_list_owned(entry_block.input_types())?,
+                })?;
+            }
+
+            // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
+
+            if template.export.kind() == record::ExportKind::Export {
+                exports.function_templates.push(current_index);
+            }
+        }
+
+        //for (index, instantiation) in contents.functions.iter() {}
 
         for field in metadata_fields.into_iter() {
             match field {
@@ -537,14 +594,14 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        Ok(Self { contents })
+        Ok(Self { contents, exports })
     }
 
     pub fn from_records_fallible<R, E>(records: R) -> Result<Result<Self, Error>, E>
     where
-        R: IntoIterator<Item = Result<Record<'a>, E>>,
+        R: IntoIterator<Item = Result<Record<'data>, E>>,
     {
-        let mut contents = ModuleContents::<'a>::default();
+        let mut contents = ModuleContents::<'data>::default();
         let mut metadata_fields = Vec::new();
 
         for data in records.into_iter() {
@@ -555,6 +612,7 @@ impl<'a> ValidModule<'a> {
                 Record::FunctionSignature(signature) => contents.function_signatures.push(signature),
                 Record::Data(data) => contents.data.push(data),
                 Record::CodeBlock(block) => contents.code.push(block),
+                Record::FunctionTemplate(template) => contents.function_templates.push(template),
                 bad => todo!("validate {:?}", bad),
             }
         }
@@ -562,40 +620,50 @@ impl<'a> ValidModule<'a> {
         Ok(Self::validate(contents, metadata_fields))
     }
 
-    pub fn from_records<R: IntoIterator<Item = Record<'a>>>(records: R) -> Result<Self, Error> {
+    pub fn from_records<R: IntoIterator<Item = Record<'data>>>(records: R) -> Result<Self, Error> {
         Self::from_records_fallible::<_, std::convert::Infallible>(records.into_iter().map(Ok)).unwrap()
     }
 
-    pub fn contents(&self) -> &ModuleContents<'a> {
+    pub fn contents(&self) -> &ModuleContents<'data> {
         &self.contents
     }
 
-    pub fn into_contents(self) -> ModuleContents<'a> {
+    pub fn exports(&self) -> &Exports {
+        &self.exports
+    }
+
+    pub fn into_contents(self) -> ModuleContents<'data> {
         self.contents
     }
 }
 
-impl<'a> TryFrom<Vec<Record<'a>>> for ValidModule<'a> {
+impl<'data> TryFrom<Vec<Record<'data>>> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: Vec<Record<'a>>) -> Result<Self, Self::Error> {
+    fn try_from(records: Vec<Record<'data>>) -> Result<Self, Self::Error> {
         Self::from_records(records)
     }
 }
 
-impl<'a> TryFrom<Box<[Record<'a>]>> for ValidModule<'a> {
+impl<'data> TryFrom<Box<[Record<'data>]>> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: Box<[Record<'a>]>) -> Result<Self, Self::Error> {
+    fn try_from(records: Box<[Record<'data>]>) -> Result<Self, Self::Error> {
         Self::try_from(records.into_vec())
     }
 }
 
-impl<'a, const N: usize> TryFrom<[Record<'a>; N]> for ValidModule<'a> {
+impl<'data, const N: usize> TryFrom<[Record<'data>; N]> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: [Record<'a>; N]) -> Result<Self, Self::Error> {
+    fn try_from(records: [Record<'data>; N]) -> Result<Self, Self::Error> {
         Self::from_records(records)
+    }
+}
+
+impl<'data> std::fmt::Debug for ValidModule<'data> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.contents, f)
     }
 }
 
