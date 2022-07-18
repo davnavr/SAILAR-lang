@@ -157,10 +157,6 @@ impl Function {
             .as_ref()
             .map_err(Clone::clone)
     }
-
-    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
-        Symbol::new(self.clone())
-    }
 }
 
 impl Debug for Function {
@@ -232,6 +228,10 @@ impl DefinedTemplate {
     pub fn to_template(self: &Arc<Self>) -> Template {
         Template::from(self.clone())
     }
+    
+    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
+        Symbol::new(self.clone())
+    }
 }
 
 impl Debug for DefinedTemplate {
@@ -245,4 +245,4 @@ impl Debug for DefinedTemplate {
     }
 }
 
-crate::symbol_wrapper!(pub struct Symbol(Instantiation));
+crate::symbol_wrapper!(pub struct Symbol(DefinedTemplate));

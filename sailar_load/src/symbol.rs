@@ -8,14 +8,6 @@ use std::collections::hash_map;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 
-pub(crate) fn is_export_private(export: &Export) -> bool {
-    match export {
-        Export::Private(_) => true,
-        Export::Export(_) => false,
-        Export::Hidden => unreachable!(),
-    }
-}
-
 #[macro_export]
 #[doc(hidden)]
 macro_rules! symbol_wrapper {
@@ -26,14 +18,11 @@ macro_rules! symbol_wrapper {
 
         impl $name {
             pub fn new(definition: std::sync::Arc<$contained>) -> Option<Self> {
-                match definition.export() {
-                    sailar::record::Export::Private(_) | sailar::record::Export::Export(_) => Some(Self(definition)),
-                    sailar::record::Export::Hidden => None,
+                if definition.export().kind() == sailar::record::ExportKind::Hidden {
+                    None
+                } else {
+                    Some(Self(definition))
                 }
-            }
-
-            pub fn is_private(&self) -> bool {
-                crate::symbol::is_export_private(self.0.export())
             }
         }
 
@@ -71,7 +60,7 @@ impl Symbol {
     }
 
     pub fn is_private(&self) -> bool {
-        is_export_private(self.export())
+        self.export().kind() == sailar::record::ExportKind::Private
     }
 }
 
