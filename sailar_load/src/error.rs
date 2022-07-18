@@ -1,9 +1,10 @@
 //! Contains types representing errors encountered during loading.
 
 use crate::module::Module;
-use sailar::index;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
+
+pub use sailar::validation::Error as InvalidModuleKind;
 
 /// A boxed error type.
 ///
@@ -40,67 +41,6 @@ impl Display for GenericError {
 }
 
 impl std::error::Error for GenericError {}
-
-pub(crate) trait IndexType: Into<usize> + Copy {
-    fn kind() -> &'static str;
-}
-
-macro_rules! index_type_impl {
-    ($implementor:ty, $name:literal) => {
-        impl IndexType for $implementor {
-            fn kind() -> &'static str {
-                $name
-            }
-        }
-    };
-}
-
-index_type_impl!(index::TypeSignature, "type signature");
-index_type_impl!(index::FunctionSignature, "function signature");
-index_type_impl!(index::CodeBlock, "code block");
-index_type_impl!(index::FunctionTemplate, "function template");
-index_type_impl!(index::FunctionInstantiation, "function instantiation");
-index_type_impl!(index::Register, "register");
-
-/// The error type used when an index in a module is not valid.
-#[derive(Clone, Debug, thiserror::Error)]
-pub struct InvalidIndexError {
-    index: usize,
-    maximum_index: Option<usize>,
-    kind: &'static str,
-}
-
-impl InvalidIndexError {
-    pub(crate) fn new<I: IndexType>(index: I, maximum_index: Option<usize>) -> Self {
-        Self {
-            index: index.into(),
-            maximum_index,
-            kind: I::kind(),
-        }
-    }
-}
-
-impl Display for InvalidIndexError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{} index {} is not valid", self.kind, self.index)?;
-        if let Some(maximum) = self.maximum_index {
-            write!(f, ", maximum valid index is {}", maximum)?;
-        }
-        Ok(())
-    }
-}
-
-/// A list specifying the kinds of invalid content that can be encountered when validating a module.
-///
-/// Usually used with the [`InvalidModuleError`] type.
-#[derive(Clone, Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum InvalidModuleKind {
-    #[error(transparent)]
-    InvalidIndex(#[from] InvalidIndexError),
-    #[error(transparent)]
-    InvalidCode(#[from] crate::code_block::InvalidInstructionError),
-}
 
 #[derive(Clone)]
 pub struct InvalidModuleErrorInner {

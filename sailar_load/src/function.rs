@@ -178,25 +178,21 @@ impl Debug for Instantiation {
     }
 }
 
-/// Represents a function body.
-#[derive(Clone, Debug)]
-pub enum Body {
-    Defined(Arc<crate::code_block::Code>),
-}
+pub type DefinedBody = Arc<crate::code_block::Code>;
 
-/// Represents a function definition.
-pub struct Definition {
+/// Represents a defined function template, containing SAILAR code as its body.
+pub struct DefinedTemplate {
     index: usize,
-    body: lazy_init::LazyTransform<record::FunctionBody<'static>, Result<Body, error::LoaderError>>,
+    entry_block: lazy_init::LazyTransform<sailar::index::CodeBlock, Result<DefinedBody, error::LoaderError>>,
     signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
     module: Weak<module::Module>,
 }
 
-impl Definition {
-    pub(crate) fn new(definition: record::FunctionDefinition<'static>, index: usize, module: Weak<module::Module>) -> Arc<Self> {
+impl DefinedTemplate {
+    pub(crate) fn new(definition: record::FunctionTemplate<'static>, index: usize, module: Weak<module::Module>) -> Arc<Self> {
         Arc::new(Self {
             index,
-            body: lazy_init::LazyTransform::new(definition.body),
+            entry_block: lazy_init::LazyTransform::new(definition.entry_block),
             signature: lazy_init::LazyTransform::new(definition.signature),
             module,
         })
