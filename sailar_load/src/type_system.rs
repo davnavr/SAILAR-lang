@@ -17,26 +17,29 @@ pub enum Type {
     SAddr,
     F32,
     F64,
-    RawPtr(Option<Arc<Signature>>), // TODO: Make a validation error for recursive RawPtr types.
-    FuncPtr(Arc<crate::function::Signature>), // TODO: Make a validation error for recursive FuncPtr types.
+    RawPtr(Option<Arc<Signature>>),
+    FuncPtr(Arc<crate::function::Signature>),
 }
 
 impl Type {
-    fn try_from_signature(signature: &signature::Type, module: &Weak<module::Module>) -> Result<Self, error::LoaderError> {
-        Ok(match signature {
+    pub(crate) fn from_signature(signature: &signature::Type, module: &Arc<module::Module>) -> Self {
+        match signature {
             signature::Type::FixedInteger(ty) => Type::FixedInteger(*ty),
             signature::Type::UAddr => Type::UAddr,
             signature::Type::SAddr => Type::SAddr,
             signature::Type::F32 => Type::F32,
             signature::Type::F64 => Type::F64,
             signature::Type::RawPtr(None) => Type::RawPtr(None),
-            signature::Type::RawPtr(Some(pointee)) => Self::RawPtr(Some(
-                module::Module::upgrade_weak(module)?.type_signatures()[usize::from(*pointee)].clone(),
-            )),
-            signature::Type::FuncPtr(signature) => {
-                Self::FuncPtr(module::Module::upgrade_weak(module)?.function_signatures()[usize::from(*signature)].clone())
-            }
-        })
+            signature::Type::RawPtr(Some(pointee)) => Self::RawPtr(Some(module.type_signatures()[usize::from(*pointee)].clone())),
+            signature::Type::FuncPtr(signature) => Self::FuncPtr(module.function_signatures()[usize::from(*signature)].clone()),
+        }
+    }
+
+    pub(crate) fn try_from_signature(
+        signature: &signature::Type,
+        module: &Weak<module::Module>,
+    ) -> Result<Self, error::LoaderError> {
+        module::Module::upgrade_weak(module).map(|module| Self::from_signature(signature, &module))
     }
 }
 

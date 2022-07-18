@@ -586,7 +586,9 @@ impl<'data> ValidModule<'data> {
 
         for field in metadata_fields.into_iter() {
             match field {
-                record::MetadataField::ModuleIdentifier(identifier) => { contents.module_identifiers.insert(identifier); },
+                record::MetadataField::ModuleIdentifier(identifier) => {
+                    contents.module_identifiers.insert(identifier);
+                }
                 record::MetadataField::EntryPoint(entry_point) => {
                     if let Some(defined) = contents.entry_point {
                         return Err(ErrorKind::DuplicateEntryPoint {

@@ -228,7 +228,7 @@ impl DefinedTemplate {
     pub fn to_template(self: &Arc<Self>) -> Template {
         Template::from(self.clone())
     }
-    
+
     pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
         Symbol::new(self.clone())
     }
