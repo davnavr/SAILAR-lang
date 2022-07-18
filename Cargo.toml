@@ -5,5 +5,5 @@ members = [
     # "sailar_load",
     # "sailar_vm",
     # "sailar_aot",
-    # "sailar_c",
+    "sailar_c",
 ]
