@@ -102,21 +102,6 @@ impl Borrow<Id> for Symbol {
     }
 }
 
-#[derive(Debug)]
-pub struct DuplicateSymbolError {
-    symbol: Symbol,
-}
-
-impl DuplicateSymbolError {
-    pub(crate) fn new(symbol: Symbol) -> Self {
-        Self { symbol }
-    }
-
-    pub fn symbol(&self) -> &Symbol {
-        &self.symbol
-    }
-}
-
 pub struct Lookup {
     lookup: rustc_hash::FxHashMap<Symbol, ()>,
 }
@@ -146,12 +131,11 @@ impl Lookup {
         })
     }
 
-    pub(crate) fn try_insert<S: Into<Symbol>>(&mut self, symbol: S) -> Result<(), DuplicateSymbolError> {
+    pub(crate) fn insert<S: Into<Symbol>>(&mut self, symbol: S) {
         match self.lookup.entry(symbol.into()) {
-            hash_map::Entry::Occupied(occupied) => Err(DuplicateSymbolError::new(occupied.key().clone())),
+            hash_map::Entry::Occupied(occupied) => panic!("duplicate symbol {}", occupied.key().name()),
             hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(());
-                Ok(())
             }
         }
     }

@@ -38,11 +38,12 @@ impl Module {
                 .map(|(index, function)| function::Function::new(function, index.into(), this.clone()))
                 .collect();
 
+            let mut symbols = crate::symbol::Lookup::new();
+
             Self {
                 loader,
                 module_identifiers: contents.module_identifiers,
                 entry_point: contents.entry_point.map(|index| functions[usize::from(index)].clone()),
-                symbols: crate::symbol::Lookup::new(), // TODO: Get the exports!
                 identifiers: contents.identifiers,
                 type_signatures: contents
                     .type_signatures
@@ -67,9 +68,16 @@ impl Module {
                     .into_iter()
                     .enumerate()
                     // TODO: Add number of imported function templates to index
-                    .map(|(index, template)| function::DefinedTemplate::new(template, index.into(), this.clone()))
+                    .map(|(index, template)| {
+                        let a = function::DefinedTemplate::new(template, index.into(), this.clone());
+                        if let Some(symbol) = a.to_symbol() {
+                            symbols.insert(symbol);
+                        }
+                        a
+                    })
                     .collect(),
                 functions,
+                symbols,
             }
         })
     }
