@@ -3,7 +3,7 @@
 use crate::runtime;
 use crate::value;
 use sailar::instruction::{Constant, ConstantInteger};
-use sailar_load::code_block::Instruction;
+use sailar_load::code_block::TypedInstruction;
 use sailar_load::type_system;
 use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
@@ -44,9 +44,9 @@ impl DefinedFrame {
         &self.temporary_registers[..self.temporary_index.get()]
     }
 
-    pub(crate) fn next_instruction(&self) -> runtime::Result<Option<&Instruction>> {
+    pub(crate) fn next_instruction(&self) -> runtime::Result<Option<&TypedInstruction>> {
         let current_index = self.instruction_index.get();
-        let instruction = self.block.instructions()?.get(current_index);
+        let instruction = self.block.typed_instructions()?.get(current_index);
         if instruction.is_some() {
             self.instruction_index.set(current_index + 1);
         }
@@ -215,9 +215,10 @@ impl Stack {
         }
 
         self.push(Box::new(Frame {
-            kind: match callee.template()?.as_definition()?.body()? {
-                sailar_load::function::Body::Defined(code) => FrameKind::Defined(DefinedFrame::new(arguments, code.clone())?),
-            },
+            kind: FrameKind::Defined(DefinedFrame::new(
+                arguments,
+                callee.template()?.as_definition()?.entry_block()?.clone(),
+            )?),
             function: callee,
         }));
 

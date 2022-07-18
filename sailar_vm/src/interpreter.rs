@@ -4,7 +4,7 @@ use crate::call_stack;
 use crate::error;
 use crate::runtime::{self, Runtime};
 use crate::value::Value;
-use sailar_load::code_block::Instruction;
+use sailar_load::code_block::TypedInstruction;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
@@ -45,12 +45,12 @@ impl State {
 
         let control_flow = match current_frame.kind_mut() {
             call_stack::FrameKind::Defined(code) => match code.next_instruction()?.expect("missing terminator instruction") {
-                Instruction::Nop => ControlFlow::Nothing,
-                Instruction::Break => {
+                TypedInstruction::Nop => ControlFlow::Nothing,
+                TypedInstruction::Break => {
                     // TODO: Add support for breakpoints
                     ControlFlow::Nothing
                 }
-                Instruction::Ret(return_values) => {
+                TypedInstruction::Ret(return_values) => {
                     ControlFlow::Return(code.map_many_typed_values(return_values.iter(), self.runtime.endianness()))
                 }
             },

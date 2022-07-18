@@ -9,16 +9,16 @@ use sailar::record;
 use sailar::signature;
 
 /// Produces a sample program containing an entry point function that simple returns with the specified exit code.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use sailar::validation::ValidModule;
-/// 
+///
 /// let program = sailar_samples::exit_with("MyProgram".try_into()?, 101);
-/// 
+///
 /// ValidModule::from_builder(program)?;
-/// 
+///
 /// # Result::<_, Box<dyn std::error::Error>>::Ok(())
 /// ```
 pub fn exit_with(name: Identifier, exit_code: u32) -> Builder<'static> {

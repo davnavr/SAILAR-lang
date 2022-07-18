@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, error::RuntimeError>;
 /// The loader is responsible for resolving references to and validating SAILAR modules.
 pub type Loader = Arc<sailar_load::state::State>;
 
-pub type Function = Arc<sailar_load::function::Instantiation>;
+pub type Function = Arc<sailar_load::function::Function>;
 
 /// Encapsulates all state needed to execute the SAILAR virtual machine.
 #[derive(Debug)]

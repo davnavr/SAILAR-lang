@@ -126,6 +126,7 @@ pub struct Function {
     template: lazy_init::LazyTransform<sailar::index::FunctionTemplate, Result<Template, error::LoaderError>>,
     index: sailar::index::Function,
     module: Weak<module::Module>,
+    signature: lazy_init::Lazy<Result<Arc<Signature>, error::LoaderError>>,
 }
 
 impl Function {
@@ -138,6 +139,7 @@ impl Function {
             template: lazy_init::LazyTransform::new(instantiation.template),
             index,
             module,
+            signature: Default::default(),
         })
     }
 
@@ -154,6 +156,14 @@ impl Function {
             .get_or_create(|template| {
                 module::Module::upgrade_weak(&self.module).map(|module| module.index_function_template(template))
             })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// Returns the signature of the function template if there are no generic type arguments.
+    pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
+        self.signature
+            .get_or_create(|| self.template()?.as_definition()?.signature().cloned())
             .as_ref()
             .map_err(Clone::clone)
     }
