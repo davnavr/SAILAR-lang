@@ -207,6 +207,7 @@ pub struct ModuleContents<'data> {
     pub data: Vec<Cow<'data, [u8]>>,
     pub code: Vec<record::CodeBlock<'data>>,
     pub function_templates: Vec<record::FunctionTemplate<'data>>,
+    pub functions: Vec<record::Function<'data>>,
 }
 
 impl<'data> ModuleContents<'data> {
@@ -577,6 +578,7 @@ impl<'data> ValidModule<'data> {
             }
         }
 
+        // TODO: Validate function instantiations
         //for (index, instantiation) in contents.functions.iter() {}
 
         for field in metadata_fields.into_iter() {
@@ -615,7 +617,7 @@ impl<'data> ValidModule<'data> {
                 Record::Data(data) => contents.data.push(data),
                 Record::CodeBlock(block) => contents.code.push(block),
                 Record::FunctionTemplate(template) => contents.function_templates.push(template),
-                bad => todo!("validate {:?}", bad),
+                Record::Function(function) => contents.functions.push(function),
             }
         }
 

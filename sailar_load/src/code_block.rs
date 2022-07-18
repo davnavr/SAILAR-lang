@@ -4,16 +4,15 @@ use crate::error;
 use crate::module;
 use crate::type_system;
 use sailar::instruction;
-use sailar::record;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Weak};
 
-type Record = record::CodeBlock<'static>;
-
 /// A SAILAR instruction that has not yet been type checked.
+#[deprecated]
 type Op = instruction::Instruction;
 
 /// Error type used when the type of a value does not match what was expected
+#[deprecated]
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("expected type {expected} for value {value}, but got {actual}")]
 pub struct ValueTypeMismatchError {
@@ -22,6 +21,7 @@ pub struct ValueTypeMismatchError {
     value: instruction::Value,
 }
 
+#[deprecated]
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("expected {expected} values, but got {actual}")]
 pub struct ValueCountMismatchError {
@@ -29,6 +29,7 @@ pub struct ValueCountMismatchError {
     actual: usize,
 }
 
+#[deprecated]
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum InvalidInstructionKind {
@@ -40,6 +41,7 @@ pub enum InvalidInstructionKind {
     ValueCountMismatch(#[from] ValueCountMismatchError),
 }
 
+#[deprecated]
 #[derive(Clone, Debug)]
 pub struct InstructionLocation {
     index: usize,
@@ -60,6 +62,7 @@ impl InstructionLocation {
     }
 }
 
+#[deprecated]
 #[derive(Clone)]
 pub struct InvalidInstructionErrorInner {
     code_block: Arc<Code>,
@@ -67,6 +70,7 @@ pub struct InvalidInstructionErrorInner {
     kind: InvalidInstructionKind,
 }
 
+#[deprecated]
 #[derive(Clone, thiserror::Error)]
 pub struct InvalidInstructionError(Box<InvalidInstructionErrorInner>);
 
@@ -96,10 +100,7 @@ impl InvalidInstructionError {
     }
 
     pub fn into_loader_error(self) -> error::LoaderError {
-        match self.code_block().module().upgrade() {
-            Some(module) => error::InvalidModuleError::new(self, module).into(),
-            None => error::DroppedError::new(()).into(),
-        }
+        todo!()
     }
 }
 
@@ -172,22 +173,32 @@ pub struct Code {
     result_count: usize,
     register_types: type_system::LazySignatureList,
     instructions: lazy_init::LazyTransform<Box<[Op]>, Result<Vec<Instruction>, error::LoaderError>>,
+    index: sailar::index::CodeBlock,
     module: Weak<module::Module>,
 }
 
 impl Code {
-    pub(crate) fn new(record: Record, module: Weak<module::Module>) -> Arc<Self> {
+    pub(crate) fn new(
+        code: sailar::record::CodeBlock<'static>,
+        index: sailar::index::CodeBlock,
+        module: Weak<module::Module>,
+    ) -> Arc<Self> {
         Arc::new(Self {
-            input_count: record.input_count,
-            result_count: record.result_count,
-            register_types: type_system::LazySignatureList::new(record.register_types.into_boxed()),
-            instructions: lazy_init::LazyTransform::new(record.instructions.into_boxed()),
+            input_count: code.input_count,
+            result_count: code.result_count,
+            register_types: type_system::LazySignatureList::new(code.register_types.into_boxed()),
+            instructions: lazy_init::LazyTransform::new(code.instructions.into_boxed()),
+            index,
             module,
         })
     }
 
     pub fn module(&self) -> &Weak<module::Module> {
         &self.module
+    }
+
+    pub fn index(&self) -> sailar::index::CodeBlock {
+        self.index
     }
 
     /// The types of all input registers, results, and temporary registers in that order.
@@ -211,26 +222,7 @@ impl Code {
 
     pub fn get_register_type(&self, index: sailar::index::Register) -> Result<&Arc<type_system::Signature>, error::LoaderError> {
         // Register types will fail to load if module is dropped, so expecting a module here is ok
-        let module = module::Module::upgrade_weak(&self.module)?;
-        let types = self.register_types()?;
-        let i = usize::from(index);
-        if types.is_empty() {
-            Err(error::InvalidModuleError::new(error::InvalidIndexError::new(index, None), module).into())
-        } else {
-            let input_types = self.input_types()?;
-            if i < input_types.len() {
-                Ok(&input_types[i])
-            } else {
-                let temporary_types = self.temporary_types()?;
-                temporary_types.get(i - input_types.len()).ok_or_else(|| {
-                    error::InvalidModuleError::new(
-                        error::InvalidIndexError::new(index, Some(input_types.len() + temporary_types.len() - 1)),
-                        module,
-                    )
-                    .into()
-                })
-            }
-        }
+        todo!("get register type impl")
     }
 
     fn validate_body(self: &Arc<Self>, mut instructions: Vec<Op>) -> Result<Vec<Instruction>, error::LoaderError> {
@@ -356,6 +348,7 @@ impl Code {
 impl Debug for Code {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Code")
+            .field("index", &self.index)
             .field("register_types", &self.register_types)
             .field("instructions", &self.instructions.get())
             .finish()

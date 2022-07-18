@@ -1,10 +1,7 @@
 //! Module for managing loader state.
 
 use crate::module;
-use crate::resolver::{self, Resolver};
-use crate::source;
-use std::collections::hash_map;
-use std::fmt::{Debug, Formatter};
+use sailar::validation::ValidModule;
 use std::sync::{Arc, Mutex};
 
 /// Indicates the size of pointer addresses.
@@ -40,128 +37,88 @@ impl Default for AddressSize {
     }
 }
 
-type ModuleLookup = rustc_hash::FxHashMap<Arc<module::ModuleIdentifier>, Arc<module::Module>>;
-
-#[derive(Debug, Default)]
-struct ModuleArena {
-    named_modules: ModuleLookup,
-    anonymous_modules: Vec<Arc<module::Module>>,
-}
-
-pub struct State {
-    // Each individual module will cache its imported modules, so accessing this lookup should rarely happen
-    modules: Mutex<ModuleArena>,
-    resolver: Mutex<resolver::BoxedResolver>,
+/// Used to configure the properties of the loader [`State`].
+#[derive(Debug)]
+pub struct Configuration {
     address_size: AddressSize,
 }
 
-pub struct Builder {
-    resolver: Option<resolver::BoxedResolver>,
-    address_size: AddressSize,
-}
-
-impl Builder {
-    /// The default loader configuration using the native pointer address size. New modules can
-    /// only be loaded by calling [`force_load_module`].
-    ///
-    /// [`force_load_module`]: State::force_load_module
+impl Configuration {
+    /// Generates the default loader configuration using the native pointer address size.
     pub fn new() -> Self {
         Self {
-            resolver: None,
             address_size: AddressSize::NATIVE,
         }
     }
 
-    /// Sets the resolver used to retrieve the modules corresponding to module imports.
-    pub fn resolver<R>(self, resolver: R) -> Self
-    where
-        R: Resolver + Send + 'static,
-        R::Error: std::error::Error,
-    {
-        Self {
-            resolver: Some(resolver::boxed(resolver)),
-            ..self
-        }
-    }
-
     /// Sets the byte size used for pointer addresses.
-    pub fn address_size(self, size: AddressSize) -> Self {
-        Self {
-            address_size: size,
-            ..self
-        }
+    pub fn address_size(mut self, size: AddressSize) -> Self {
+        self.address_size = size;
+        self
     }
 
-    pub fn create(self) -> Arc<State> {
+    pub fn create_state(self) -> Arc<State> {
         Arc::new(State {
-            modules: Default::default(),
-            resolver: Mutex::new(self.resolver.unwrap_or_else(|| resolver::boxed(resolver::unsuccessful()))),
             address_size: self.address_size,
+            modules: Default::default(),
         })
     }
 }
 
-impl Default for Builder {
+impl Default for Configuration {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[derive(Debug, Default)]
+struct Modules {
+    lookup: rustc_hash::FxHashMap<module::ModuleIdentifier, usize>,
+    modules: Vec<Arc<module::Module>>,
+}
+
+#[derive(Debug)]
+pub struct State {
+    // Each individual module will cache its imported modules, so accessing this lookup should rarely happen
+    modules: Mutex<Modules>,
+    address_size: AddressSize,
+}
+
 impl State {
-    /// Loads a module, attempting to associate its name and version (if present) with the loaded module. Returns `Ok(None)` if a
-    /// module corresponding to the same name is already loaded.
-    pub fn force_load_module<S>(self: &Arc<Self>, source: S) -> Result<Option<Arc<module::Module>>, S::Error>
-    where
-        S: source::Source,
-        S::Error: std::error::Error,
-    {
-        let module = module::Module::from_source(source, Arc::downgrade(self))?;
+    /// Loads a module. If a module corresponding to the same identifiers are already loaded, returns `Err`; otherwise, returns `Ok`.
+    pub fn load_module(self: &Arc<Self>, module: ValidModule<'static>) -> Result<Arc<module::Module>, Arc<module::Module>> {
         let mut arena = self.modules.lock().unwrap();
-        if let Some(id) = module.module_identifier() {
-            match arena.named_modules.entry(id.clone()) {
-                hash_map::Entry::Occupied(_) => return Ok(None),
-                hash_map::Entry::Vacant(vacant) => {
-                    vacant.insert(module.clone());
-                }
+        let module_names = module.contents().module_identifiers.clone();
+
+        for name in module_names.iter() {
+            if let Some(existing) = arena.lookup.get(name) {
+                return Err(arena.modules[*existing].clone());
             }
-        } else {
-            arena.anonymous_modules.push(module.clone());
         }
 
-        Ok(Some(module))
+        let loaded = module::Module::from_contents(module.into_contents(), Arc::downgrade(self));
+        let arena_index = arena.modules.len();
+
+        for name in module_names.into_iter() {
+            match arena.lookup.insert(name, arena_index) {
+                None => (),
+                Some(_) => unreachable!(),
+            }
+        }
+
+        arena.modules.push(loaded.clone());
+
+        Ok(loaded)
     }
 
-    /// Gets the loaded module corresponding to the identifier or loads a module using the import resolver.
-    pub fn get_or_load_module(
-        self: &Arc<Self>,
-        module_identifier: Arc<module::ModuleIdentifier>,
-    ) -> Result<Option<Arc<module::Module>>, resolver::Error> {
-        let mut arena = self.modules.lock().unwrap();
-        match arena.named_modules.entry(module_identifier) {
-            hash_map::Entry::Occupied(occupied) => Ok(Some(occupied.get().clone())),
-            hash_map::Entry::Vacant(vacant) => match self.resolver.lock().unwrap().load_from_identifier(vacant.key()) {
-                Ok(None) => Ok(None),
-                Err(e) => Err(resolver::Error::RetrievalError(e)),
-                Ok(Some(source)) => {
-                    let module =
-                        module::Module::from_source(source, Arc::downgrade(self)).map_err(resolver::Error::RetrievalError)?;
-
-                    // TODO: Return an error on identifier mismatch.
-                    assert!(Some(vacant.key()) == module.module_identifier());
-                    Ok(Some(module))
-                }
-            },
-        }
+    /// Gets the loaded module corresponding to the identifier.
+    pub fn get_module(self: &Arc<Self>, identifier: &module::ModuleIdentifier) -> Option<Arc<module::Module>> {
+        let modules = self.modules.lock().unwrap();
+        modules.lookup.get(identifier).map(|index| modules.modules[*index].clone())
     }
 
     /// Gets the size of pointer addresses for all modules loaded by this [`State`].
     pub fn address_size(&self) -> AddressSize {
         self.address_size
-    }
-}
-
-impl Debug for State {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("State").field("modules", &self.modules).finish()
     }
 }

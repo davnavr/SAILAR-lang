@@ -31,13 +31,11 @@ impl Type {
             signature::Type::F64 => Type::F64,
             signature::Type::RawPtr(None) => Type::RawPtr(None),
             signature::Type::RawPtr(Some(pointee)) => Self::RawPtr(Some(
-                module::Module::upgrade_weak(module)?.get_type_signature(*pointee)?.clone(),
+                module::Module::upgrade_weak(module)?.type_signatures()[usize::from(*pointee)].clone(),
             )),
-            signature::Type::FuncPtr(signature) => Self::FuncPtr(
-                module::Module::upgrade_weak(module)?
-                    .get_function_signature(*signature)?
-                    .clone(),
-            ),
+            signature::Type::FuncPtr(signature) => {
+                Self::FuncPtr(module::Module::upgrade_weak(module)?.function_signatures()[usize::from(*signature)].clone())
+            }
         })
     }
 }
@@ -187,8 +185,10 @@ impl PartialEq for Signature {
 }
 
 type SignatureIndices = Box<[index::TypeSignature]>;
+
 type ResolvedSignatureList = Result<Box<[Arc<Signature>]>, error::LoaderError>;
 
+#[repr(transparent)]
 pub(crate) struct LazySignatureList(lazy_init::LazyTransform<SignatureIndices, ResolvedSignatureList>);
 
 impl LazySignatureList {
@@ -200,11 +200,10 @@ impl LazySignatureList {
         self.0
             .get_or_create(|types| {
                 let module = module::Module::upgrade_weak(module)?;
-                let mut loaded = Vec::with_capacity(types.len());
-                for index in types.iter().copied() {
-                    loaded.push(module.get_type_signature(index)?.clone());
-                }
-                Ok(loaded.into_boxed_slice())
+                Ok(types
+                    .iter()
+                    .map(|index| module.type_signatures()[usize::from(*index)].clone())
+                    .collect())
             })
             .as_ref()
             .map(std::borrow::Borrow::borrow)

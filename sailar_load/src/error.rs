@@ -1,10 +1,8 @@
 //! Contains types representing errors encountered during loading.
 
-use crate::module::Module;
+use crate::module::{self, Module};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-
-pub use sailar::validation::Error as InvalidModuleKind;
 
 /// A boxed error type.
 ///
@@ -42,55 +40,7 @@ impl Display for GenericError {
 
 impl std::error::Error for GenericError {}
 
-#[derive(Clone)]
-pub struct InvalidModuleErrorInner {
-    module: Arc<Module>,
-    kind: InvalidModuleKind,
-}
-
-/// The error type used when validation to check that a module's contents are valid fails.
-#[derive(Clone, thiserror::Error)]
-pub struct InvalidModuleError(Box<InvalidModuleErrorInner>);
-
-impl InvalidModuleError {
-    pub(crate) fn new<E: Into<InvalidModuleKind>>(kind: E, module: Arc<Module>) -> Self {
-        Self(Box::new(InvalidModuleErrorInner {
-            module,
-            kind: kind.into(),
-        }))
-    }
-
-    /// Gets the module that is invalid.
-    pub fn module(&self) -> &Arc<Module> {
-        &self.0.module
-    }
-
-    pub fn kind(&self) -> &InvalidModuleKind {
-        &self.0.kind
-    }
-}
-
-impl std::fmt::Debug for InvalidModuleError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("InvalidModuleError")
-            .field("module", self.module())
-            .field("kind", self.kind())
-            .finish()
-    }
-}
-
-impl Display for InvalidModuleError {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "in module {}, {}",
-            &crate::module::Display::from(self.module()),
-            self.kind()
-        )
-    }
-}
-
-/// Indicates that a [`Weak`] reference to data is no longer valid since it was dropped.
+/// The error type used to indicate that a [`Weak`] reference to data is no longer valid since it was dropped.
 ///
 /// In application code, this error is handled by immediately stopping execution as this error usually indicates a bug in
 /// the code.
@@ -108,13 +58,54 @@ impl DroppedError {
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
+pub enum UnresolvedReferenceKind {
+    #[error("could not resolve reference to {0:?}")]
+    Module(module::ModuleIdentifier),
+}
+
+/// The error type used when a reference to something could not be resolved.
+#[derive(Clone, Debug, thiserror::Error)]
+pub struct UnresolvedReferenceError {
+    module: Arc<Module>,
+    kind: UnresolvedReferenceKind,
+}
+
+impl UnresolvedReferenceError {
+    pub(crate) fn new<E: Into<UnresolvedReferenceKind>>(kind: E, module: Arc<Module>) -> Self {
+        Self {
+            module,
+            kind: kind.into(),
+        }
+    }
+
+    pub fn module(&self) -> &Arc<Module> {
+        &self.module
+    }
+
+    pub fn kind(&self) -> &UnresolvedReferenceKind {
+        &self.kind
+    }
+}
+
+impl Display for UnresolvedReferenceError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "unable to resolve reference in module {}: {}",
+            &crate::module::Display::from(&self.module),
+            self.kind
+        )
+    }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum LoaderErrorKind {
     /// Indicates that data necessary for loading was unexpectedly dropped.
     #[error(transparent)]
     Dropped(#[from] DroppedError),
-    /// Used when the SAILAR module does not contain valid content.
     #[error(transparent)]
-    Invalid(#[from] InvalidModuleError),
+    UnresolvedReference(#[from] UnresolvedReferenceError),
 }
 
 /// The error type used when loading a SAILAR module fails.
