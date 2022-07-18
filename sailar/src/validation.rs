@@ -2,12 +2,13 @@
 //!
 //! Validation ensures that the contents of a SAILAR module are correct, without having to resolve any imports.
 
-use crate::helper::borrow::CowBox;
+use crate::identifier::{Id, Identifier};
 use crate::index;
 use crate::instruction::{self, Instruction};
 use crate::record::{self, Record};
 use crate::signature;
 use std::borrow::Cow;
+use std::collections::hash_map;
 use std::fmt::{Display, Formatter};
 
 /// The error type used when an index in a module is not valid.
@@ -120,6 +121,21 @@ impl Display for InvalidInstructionError {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SymbolIndex {
+    FunctionTemplate(index::FunctionTemplate),
+}
+
+crate::enum_case_from_impl!(SymbolIndex, FunctionTemplate, index::FunctionTemplate);
+
+impl Display for SymbolIndex {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::FunctionTemplate(index) => write!(f, "{} {}", <index::FunctionTemplate as index::Index>::name(), index),
+        }
+    }
+}
+
 /// A list specifying the kinds of errors that can occur during SAILAR module validation.
 ///
 /// Usually used with the [`Error`] type.
@@ -143,6 +159,12 @@ pub enum ErrorKind {
     InvalidInstruction(#[from] InvalidInstructionError),
     #[error(transparent)]
     FunctionTypeMismatch(#[from] FunctionTypeMismatchError),
+    #[error("{duplicate} has symbol {symbol:?}, but that symbol already corresponds to {existing}")]
+    DuplicateSymbol {
+        symbol: Identifier,
+        existing: SymbolIndex,
+        duplicate: SymbolIndex,
+    },
 }
 
 /// Represents an error that occured during validation of a SAILAR module.
@@ -163,6 +185,13 @@ impl<E: Into<ErrorKind>> From<E> for Error {
     }
 }
 
+/// Indicates which definitions in a module are exported.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct Exports {
+    pub function_templates: Vec<index::FunctionTemplate>,
+}
+
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
@@ -178,7 +207,7 @@ pub struct ModuleContents<'data> {
     pub function_templates: Vec<record::FunctionTemplate<'data>>,
 }
 
-impl<'a> ModuleContents<'a> {
+impl<'data> ModuleContents<'data> {
     /// Indicates whether the module is anonymous.
     ///
     /// Anonymous modules do not have any module identifier, meaning that they cannot be imported by other modules.
@@ -188,20 +217,21 @@ impl<'a> ModuleContents<'a> {
 }
 
 /// Represents a validated SAILAR module.
-#[derive(Clone, Debug, Default)]
-pub struct ValidModule<'a> {
-    contents: ModuleContents<'a>,
+#[derive(Clone, Default)]
+pub struct ValidModule<'data> {
+    contents: ModuleContents<'data>,
+    exports: Exports,
 }
 
-impl<'a> ValidModule<'a> {
+impl<'data> ValidModule<'data> {
     /// Creates a valid module with the specified `contents`, without actually performing any validation.
     ///
     /// Passing a module that is not valid may result in panics later.
-    pub fn from_contents_without_performing_validation_at_all(contents: ModuleContents<'a>) -> Self {
-        Self { contents }
+    pub fn from_contents_without_performing_validation_at_all(contents: ModuleContents<'data>, exports: Exports) -> Self {
+        Self { contents, exports }
     }
 
-    fn validate(mut contents: ModuleContents<'a>, metadata_fields: Vec<record::MetadataField<'a>>) -> Result<Self, Error> {
+    fn validate(mut contents: ModuleContents<'data>, metadata_fields: Vec<record::MetadataField<'data>>) -> Result<Self, Error> {
         fn get_index_validator<I: index::Index>(length: usize) -> impl Fn(I) -> Result<usize, Error> {
             move |index: I| {
                 let index = index.into();
@@ -493,9 +523,37 @@ impl<'a> ValidModule<'a> {
             }
         }
 
+        #[derive(Default)]
+        struct SymbolLookup<'a>(rustc_hash::FxHashMap<&'a Id, SymbolIndex>);
+
+        impl<'a> SymbolLookup<'a> {
+            fn try_insert(&mut self, symbol: &'a Id, index: SymbolIndex) -> Result<(), Error> {
+                match self.0.entry(symbol) {
+                    hash_map::Entry::Occupied(occupied) => {
+                        return Err(ErrorKind::DuplicateSymbol {
+                            symbol: Identifier::from_id(occupied.key()),
+                            existing: *occupied.get(),
+                            duplicate: index,
+                        })?
+                    }
+                    hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(index);
+                        Ok(())
+                    }
+                }
+            }
+        }
+
+        let mut symbol_lookup = SymbolLookup::default();
+        let mut exports = Exports::default();
+
         for (index, template) in contents.function_templates.iter().enumerate() {
             let current_index = index::FunctionTemplate::from(index);
             check_function_signature_index(template.signature)?;
+
+            if let Some(symbol) = template.export.symbol() {
+                symbol_lookup.try_insert(symbol, current_index.into())?;
+            }
 
             let entry_block = get_code_block(template.entry_block)?;
             let signature = &contents.function_signatures[usize::from(template.signature)];
@@ -511,6 +569,10 @@ impl<'a> ValidModule<'a> {
             }
 
             // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
+
+            if template.export.kind() == record::ExportKind::Export {
+                exports.function_templates.push(current_index);
+            }
         }
 
         //for (index, instantiation) in contents.functions.iter() {}
@@ -532,14 +594,14 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        Ok(Self { contents })
+        Ok(Self { contents, exports })
     }
 
     pub fn from_records_fallible<R, E>(records: R) -> Result<Result<Self, Error>, E>
     where
-        R: IntoIterator<Item = Result<Record<'a>, E>>,
+        R: IntoIterator<Item = Result<Record<'data>, E>>,
     {
-        let mut contents = ModuleContents::<'a>::default();
+        let mut contents = ModuleContents::<'data>::default();
         let mut metadata_fields = Vec::new();
 
         for data in records.into_iter() {
@@ -558,40 +620,50 @@ impl<'a> ValidModule<'a> {
         Ok(Self::validate(contents, metadata_fields))
     }
 
-    pub fn from_records<R: IntoIterator<Item = Record<'a>>>(records: R) -> Result<Self, Error> {
+    pub fn from_records<R: IntoIterator<Item = Record<'data>>>(records: R) -> Result<Self, Error> {
         Self::from_records_fallible::<_, std::convert::Infallible>(records.into_iter().map(Ok)).unwrap()
     }
 
-    pub fn contents(&self) -> &ModuleContents<'a> {
+    pub fn contents(&self) -> &ModuleContents<'data> {
         &self.contents
     }
 
-    pub fn into_contents(self) -> ModuleContents<'a> {
+    pub fn exports(&self) -> &Exports {
+        &self.exports
+    }
+
+    pub fn into_contents(self) -> ModuleContents<'data> {
         self.contents
     }
 }
 
-impl<'a> TryFrom<Vec<Record<'a>>> for ValidModule<'a> {
+impl<'data> TryFrom<Vec<Record<'data>>> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: Vec<Record<'a>>) -> Result<Self, Self::Error> {
+    fn try_from(records: Vec<Record<'data>>) -> Result<Self, Self::Error> {
         Self::from_records(records)
     }
 }
 
-impl<'a> TryFrom<Box<[Record<'a>]>> for ValidModule<'a> {
+impl<'data> TryFrom<Box<[Record<'data>]>> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: Box<[Record<'a>]>) -> Result<Self, Self::Error> {
+    fn try_from(records: Box<[Record<'data>]>) -> Result<Self, Self::Error> {
         Self::try_from(records.into_vec())
     }
 }
 
-impl<'a, const N: usize> TryFrom<[Record<'a>; N]> for ValidModule<'a> {
+impl<'data, const N: usize> TryFrom<[Record<'data>; N]> for ValidModule<'data> {
     type Error = Error;
 
-    fn try_from(records: [Record<'a>; N]) -> Result<Self, Self::Error> {
+    fn try_from(records: [Record<'data>; N]) -> Result<Self, Self::Error> {
         Self::from_records(records)
+    }
+}
+
+impl<'data> std::fmt::Debug for ValidModule<'data> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.contents, f)
     }
 }
 
