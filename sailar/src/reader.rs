@@ -655,7 +655,7 @@ impl<R: Read> RecordReader<R> {
 
         fn read_export(source: &mut BufferWrapper) -> Result<record::Export<'static>> {
             let flags: usize = source.read_unsigned_integer_try_into(|| ErrorKind::MissingExportFlags)?;
-            let is_export = flags & (!1) == 1;
+            let is_export = flags & 1 == 1;
             let length = flags >> 1;
 
             if is_export && length == 0 {

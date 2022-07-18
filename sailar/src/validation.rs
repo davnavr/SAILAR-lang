@@ -124,8 +124,8 @@ pub enum ErrorKind {
     /// Used when more than one entry point was specified by a metadata record.
     #[error("duplicate entry point #{duplicate}, #{defined} is already defined as the entry point function")]
     DuplicateEntryPoint {
-        defined: index::FunctionInstantiation,
-        duplicate: index::FunctionInstantiation,
+        defined: index::Function,
+        duplicate: index::Function,
     },
     #[error(transparent)]
     InvalidIndex(#[from] InvalidIndexError),
@@ -161,17 +161,16 @@ impl<E: Into<ErrorKind>> From<E> for Error {
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
-pub struct ModuleContents<'a> {
-    pub module_identifiers: Vec<record::ModuleIdentifier<'a>>,
-    pub entry_point: Option<index::FunctionInstantiation>,
+pub struct ModuleContents<'data> {
+    pub module_identifiers: Vec<record::ModuleIdentifier<'data>>,
+    pub entry_point: Option<index::Function>,
     /// The list of all identifier records in the module.
-    pub identifiers: Vec<Cow<'a, crate::identifier::Id>>,
-    pub type_signatures: Vec<Cow<'a, signature::Type>>,
-    pub function_signatures: Vec<Cow<'a, signature::Function>>,
-    pub data: Vec<Cow<'a, record::DataArray>>,
-    pub code: Vec<CowBox<'a, record::CodeBlock<'a>>>,
-    pub function_definitions: Vec<CowBox<'a, record::FunctionDefinition<'a>>>,
-    //pub function_instantiations
+    pub identifiers: Vec<Cow<'data, crate::identifier::Id>>,
+    pub type_signatures: Vec<Cow<'data, signature::Type>>,
+    pub function_signatures: Vec<Cow<'data, signature::Function>>,
+    pub data: Vec<Cow<'data, record::DataArray>>,
+    pub code: Vec<CowBox<'data, record::CodeBlock<'data>>>,
+    pub function_templates: Vec<record::FunctionTemplate<'data>>,
 }
 
 // TODO: Instead of definitions & instantiations, how about definitions (the functions w/ no generic parameters and instantiations), and templates make all have symbols.
@@ -495,30 +494,25 @@ impl<'a> ValidModule<'a> {
             }
         }
 
-        for definition in contents.function_definitions.iter() {
-            check_function_signature_index(definition.signature)?;
+        for template in contents.function_templates.iter() {
+            check_function_signature_index(template.signature)?;
 
-            match definition.body {
-                record::FunctionBody::Definition(code_index) => {
-                    let entry_block = get_code_block(code_index)?;
-                    let signature = contents.function_signatures[usize::from(definition.signature)].as_ref();
+            let entry_block = get_code_block(template.entry_block)?;
+            let signature = contents.function_signatures[usize::from(template.signature)].as_ref();
 
-                    if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
-                        return Err(FunctionDefinitionTypeMismatchError {
-                            entry_block: code_index,
-                            are_parameters_wrong: true,
-                            actual_types: get_type_signature_list_owned(signature.parameter_types())?,
-                            expected_types: get_type_signature_list_owned(entry_block.input_types())?,
-                        })?;
-                    }
-
-                    // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
-                }
-                record::FunctionBody::Foreign { .. } => (),
+            if !signature_comparer.are_type_index_lists_equal(entry_block.input_types(), signature.parameter_types()) {
+                return Err(FunctionDefinitionTypeMismatchError {
+                    entry_block: template.entry_block,
+                    are_parameters_wrong: true,
+                    actual_types: get_type_signature_list_owned(signature.parameter_types())?,
+                    expected_types: get_type_signature_list_owned(entry_block.input_types())?,
+                })?;
             }
+
+            // TODO: Check to see what the eventual return types are (don't compare to entry block's return types)
         }
 
-        //for (index, instantiation) in contents.function_instantiations.iter() {}
+        //for (index, instantiation) in contents.functions.iter() {}
 
         for field in metadata_fields.into_iter() {
             match field {
@@ -555,6 +549,7 @@ impl<'a> ValidModule<'a> {
                 Record::FunctionSignature(signature) => contents.function_signatures.push(signature),
                 Record::Data(data) => contents.data.push(data),
                 Record::CodeBlock(block) => contents.code.push(block),
+                Record::FunctionTemplate(template) => contents.function_templates.push(template),
                 bad => todo!("validate {:?}", bad),
             }
         }
