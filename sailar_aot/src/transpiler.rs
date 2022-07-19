@@ -96,13 +96,13 @@ impl<'cache, 'module, 'context> Transpiler<'cache, 'module, 'context> {
                         self.builder.build_return(match std::ops::Deref::deref(values) {
                             [] => None,
                             [value] => {
-                                actual_return_value = self.translate_value(&value)?;
+                                actual_return_value = self.translate_value(value)?;
                                 Some(&actual_return_value)
                             }
                             _ => todo!("multiple return values not yet supported"),
                         });
                     }
-                    bad => todo!("add support for {:?}", bad),
+                    //bad => todo!("add support for {:?}", bad),
                 }
             }
         }

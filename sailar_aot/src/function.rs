@@ -44,7 +44,7 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
                 };
 
                 let function = self.module.add_function(
-                    &crate::name_mangling::mangle(std::ops::Deref::deref(instantiation))?,
+                    &crate::name_mangling::mangle(instantiation.as_ref())?,
                     signature,
                     Some(linkage),
                 );

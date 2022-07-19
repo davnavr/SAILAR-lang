@@ -45,6 +45,12 @@ impl<T: ?Sized> Deref for ArcEq<T> {
     }
 }
 
+impl<T: ?Sized> AsRef<T> for ArcEq<T> {
+    fn as_ref(&self) -> &T {
+        self.0.as_ref()
+    }
+}
+
 impl<T: ?Sized> PartialEq for ArcEq<T> {
     fn eq(&self, other: &Self) -> bool {
         ArcPtr::ptr_eq(&self.0, &other.0)
