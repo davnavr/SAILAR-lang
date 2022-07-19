@@ -5,16 +5,16 @@
 use crate::error::{self, Error};
 use sailar::identifier::Id;
 
-/// Creates a SAILAR identifier string by copying from a sequence of bytes with the specified byte [`length`]. If the bytes are
+/// Creates a SAILAR identifier string by copying from a sequence of bytes with the specified byte `length`. If the bytes are
 /// not valid UTF-8, returns `null` and an error that can be disposed with [`sailar_dispose_error`].
 ///
-/// The identifier can be disposed later with [`sailar_dispose_identifier`].
+/// The identifier can be disposed later with [`sailar_identifier_dispose`].
 ///
 /// # Safety
 ///
 /// See the [`crate#safety`] documentation.
 ///
-/// [`sailar_dispose_error`]: error::sailar_dispose_error
+/// [`sailar_dispose_error`]: error::sailar_error_dispose
 #[no_mangle]
 pub unsafe extern "C" fn sailar_identifier_from_utf8(
     contents: *const u8,
