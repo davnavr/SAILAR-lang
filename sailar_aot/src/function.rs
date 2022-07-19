@@ -12,8 +12,8 @@ use std::sync::Arc;
 pub struct Cache<'types, 'module, 'context> {
     module: &'module inkwell::module::Module<'context>,
     type_cache: &'types crate::signature::Cache<'module, 'context>,
-    functions: RefCell<rustc_hash::FxHashMap<ArcEq<function::Instantiation>, LlvmFunction<'context>>>,
-    undefined_functions: RefCell<Vec<(Arc<function::Instantiation>, LlvmFunction<'context>)>>,
+    functions: RefCell<rustc_hash::FxHashMap<ArcEq<function::Function>, LlvmFunction<'context>>>,
+    undefined_functions: RefCell<Vec<(Arc<function::Function>, LlvmFunction<'context>)>>,
 }
 
 impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
@@ -29,45 +29,36 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
         }
     }
 
-    pub fn get_or_define(&self, instantiation: Arc<function::Instantiation>) -> Result<LlvmFunction<'context>> {
+    pub fn get_or_define(&self, instantiation: Arc<function::Function>) -> Result<LlvmFunction<'context>> {
         Ok(match self.functions.borrow_mut().entry(ArcEq::from(instantiation)) {
             hash_map::Entry::Occupied(occupied) => *occupied.get(),
             hash_map::Entry::Vacant(vacant) => {
                 let instantiation = vacant.key();
-                let definition = vacant.key().template()?.as_definition()?;
-                let signature = self.type_cache.get_function_type(definition.signature()?.clone())?;
+                let template = vacant.key().template()?.as_definition()?;
+                let signature = self.type_cache.get_function_type(template.signature()?.clone())?;
 
-                let linkage;
-                let name;
-                let requires_body;
+                let linkage = if template.export().kind() == sailar::record::ExportKind::Export {
+                    inkwell::module::Linkage::External
+                } else { 
+                    inkwell::module::Linkage::Private
+                };
 
-                match definition.body()? {
-                    sailar_load::function::Body::Defined(_) => {
-                        requires_body = true;
-                        name = crate::name_mangling::mangle(std::ops::Deref::deref(instantiation))?;
-                        linkage = match instantiation.export() {
-                            sailar::record::Export::Hidden | sailar::record::Export::Private(_) => {
-                                inkwell::module::Linkage::Private
-                            }
-                            sailar::record::Export::Export(_) => inkwell::module::Linkage::External,
-                        };
-                    }
-                }
+                let function = self.module.add_function(
+                    &crate::name_mangling::mangle(instantiation.as_ref())?,
+                    signature,
+                    Some(linkage),
+                );
 
-                let function = self.module.add_function(&name, signature, Some(linkage));
-
-                if requires_body {
-                    self.undefined_functions
-                        .borrow_mut()
-                        .push((Arc::from(ArcEq::clone(vacant.key())), function));
-                }
+                self.undefined_functions
+                    .borrow_mut()
+                    .push((Arc::from(ArcEq::clone(vacant.key())), function));
 
                 *vacant.insert(function)
             }
         })
     }
 
-    pub fn next_undefined(&self) -> Option<(Arc<function::Instantiation>, LlvmFunction<'context>)> {
+    pub fn next_undefined(&self) -> Option<(Arc<function::Function>, LlvmFunction<'context>)> {
         self.undefined_functions.borrow_mut().pop()
     }
 }

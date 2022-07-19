@@ -1,7 +1,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A program that returns an exit code of 1 (failure).
-    let program: Vec<sailar::record::Record<'static>> =
-        sailar_samples::exit_with(sailar::identifier::Identifier::try_from("False")?, 1).into_records();
+    let program = sailar::validation::ValidModule::from_builder(
+        sailar_samples::exit_with(sailar::identifier::Identifier::try_from("False")?, 1))?;
 
     inkwell::targets::Target::initialize_all(&inkwell::targets::InitializationConfig::default());
 

@@ -1,11 +1,12 @@
 //! Module for mangling names.
 
+use sailar_load::error::LoaderError;
 use sailar_load::module::{Export, Module};
 use std::fmt::Write;
 use std::sync::Arc;
 
 fn mangle_module_name(module: &Arc<Module>, buffer: &mut String) {
-    match module.module_identifier() {
+    match module.module_identifiers().iter().next() {
         Some(identifier) => {
             buffer.push_str(identifier.name().as_str());
             for n in identifier.version().iter() {
@@ -22,24 +23,24 @@ fn mangle_module_name(module: &Arc<Module>, buffer: &mut String) {
 pub trait Definition {
     fn index(&self) -> usize;
 
-    fn export(&self) -> &Export;
+    fn export(&self) -> Result<&Export, LoaderError>;
 
     fn module(&self) -> &std::sync::Weak<Module>;
 
     fn anonymous_prefix() -> &'static str;
 }
 
-impl Definition for Arc<sailar_load::function::Instantiation> {
+impl Definition for sailar_load::function::Function {
     fn index(&self) -> usize {
-        sailar_load::function::Instantiation::index(self).into()
+        self.index().into()
     }
 
-    fn export(&self) -> &Export {
-        sailar_load::function::Instantiation::export(self)
+    fn export(&self) -> Result<&Export, LoaderError> {
+        Ok(self.template()?.as_definition()?.export())
     }
 
     fn module(&self) -> &std::sync::Weak<Module> {
-        sailar_load::function::Instantiation::module(self)
+        self.module()
     }
 
     fn anonymous_prefix() -> &'static str {
@@ -47,14 +48,14 @@ impl Definition for Arc<sailar_load::function::Instantiation> {
     }
 }
 
-pub fn mangle<D: Definition>(definition: &D) -> Result<String, sailar_load::error::LoaderError> {
+pub fn mangle<D: Definition>(definition: &D) -> Result<String, LoaderError> {
     let mut buffer = String::new();
     let module = Module::upgrade_weak(definition.module())?;
     mangle_module_name(&module, &mut buffer);
 
     buffer.push('_');
 
-    if let Some(symbol) = definition.export().symbol() {
+    if let Some(symbol) = definition.export()?.symbol() {
         buffer.push_str(symbol.as_str());
     } else {
         buffer.push_str(D::anonymous_prefix());

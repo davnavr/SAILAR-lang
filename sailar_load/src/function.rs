@@ -8,23 +8,26 @@ use sailar::signature;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Weak};
 
+/// Represents a defined or imported function template.
 #[derive(Clone, Debug)]
 pub enum Template {
-    Definition(Arc<Definition>),
+    Defined(Arc<DefinedTemplate>),
     //Import()
 }
 
 impl Template {
-    pub fn as_definition(&self) -> Result<&Arc<Definition>, error::LoaderError> {
+    pub fn as_definition(&self) -> Result<&Arc<DefinedTemplate>, error::LoaderError> {
         match self {
-            Self::Definition(definition) => Ok(definition),
+            Self::Defined(definition) => Ok(definition),
         }
     }
+
+    //pub fn export
 }
 
-impl From<Arc<Definition>> for Template {
-    fn from(definition: Arc<Definition>) -> Self {
-        Self::Definition(definition)
+impl From<Arc<DefinedTemplate>> for Template {
+    fn from(definition: Arc<DefinedTemplate>) -> Self {
+        Self::Defined(definition)
     }
 }
 
@@ -37,14 +40,14 @@ pub struct Signature {
 
 impl Signature {
     pub(crate) fn new(
-        signature: std::borrow::Cow<'static, signature::Function>,
+        signature: signature::Function,
         index: sailar::index::FunctionSignature,
         module: Weak<module::Module>,
     ) -> Arc<Self> {
         Arc::new(Self {
             index,
             return_type_count: signature.return_type_count,
-            types: type_system::LazySignatureList::new(signature.into_owned().types),
+            types: type_system::LazySignatureList::new(signature.types),
             module,
         })
     }
@@ -116,23 +119,87 @@ impl std::cmp::PartialEq for Signature {
     }
 }
 
-pub struct Instantiation {
+/// Represents a function instantiation.
+///
+/// Instances of `Function` represent the targets of `call` instructions or the entry points of programs.
+pub struct Function {
     template: lazy_init::LazyTransform<sailar::index::FunctionTemplate, Result<Template, error::LoaderError>>,
-    export: module::Export,
-    index: sailar::index::FunctionInstantiation,
+    index: sailar::index::Function,
     module: Weak<module::Module>,
+    signature: lazy_init::Lazy<Result<Arc<Signature>, error::LoaderError>>,
 }
 
-impl Instantiation {
+impl Function {
     pub(crate) fn new(
-        instantiation: record::FunctionInstantiation<'static>,
-        index: sailar::index::FunctionInstantiation,
+        instantiation: record::Function<'static>,
+        index: sailar::index::Function,
         module: Weak<module::Module>,
     ) -> Arc<Self> {
         Arc::new(Self {
             template: lazy_init::LazyTransform::new(instantiation.template),
-            export: instantiation.export,
             index,
+            module,
+            signature: Default::default(),
+        })
+    }
+
+    pub fn module(&self) -> &Weak<module::Module> {
+        &self.module
+    }
+
+    pub fn index(&self) -> sailar::index::Function {
+        self.index
+    }
+
+    pub fn template(&self) -> Result<&Template, error::LoaderError> {
+        self.template
+            .get_or_create(|template| {
+                module::Module::upgrade_weak(&self.module).map(|module| module.index_function_template(template))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// Returns the signature of the function template if there are no generic type arguments.
+    pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
+        self.signature
+            .get_or_create(|| self.template()?.as_definition()?.signature().cloned())
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.debug_struct("Instantiation")
+            .field("index", &self.index)
+            .field("template", &self.template.get())
+            .finish()
+    }
+}
+
+type DefinedBody = Arc<crate::code_block::Code>;
+
+/// Represents a defined function template, containing SAILAR code as its body.
+pub struct DefinedTemplate {
+    index: sailar::index::FunctionTemplate,
+    export: module::Export,
+    entry_block: lazy_init::LazyTransform<sailar::index::CodeBlock, Result<DefinedBody, error::LoaderError>>,
+    signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
+    module: Weak<module::Module>,
+}
+
+impl DefinedTemplate {
+    pub(crate) fn new(
+        template: record::FunctionTemplate<'static>,
+        index: sailar::index::FunctionTemplate,
+        module: Weak<module::Module>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            index,
+            export: template.export,
+            entry_block: lazy_init::LazyTransform::new(template.entry_block),
+            signature: lazy_init::LazyTransform::new(template.signature),
             module,
         })
     }
@@ -141,7 +208,7 @@ impl Instantiation {
         &self.module
     }
 
-    pub fn index(&self) -> sailar::index::FunctionInstantiation {
+    pub fn index(&self) -> sailar::index::FunctionTemplate {
         self.index
     }
 
@@ -149,75 +216,14 @@ impl Instantiation {
         &self.export
     }
 
-    pub fn template(&self) -> Result<&Template, error::LoaderError> {
-        self.template
-            .get_or_create(|template| {
-                module::Module::upgrade_weak(&self.module).and_then(|module| module.get_function_template(template))
-            })
-            .as_ref()
-            .map_err(Clone::clone)
+    pub fn is_exported(&self) -> bool {
+        self.export.kind() == record::ExportKind::Export
     }
 
-    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
-        Symbol::new(self.clone())
-    }
-
-    pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
-        match self.template()? {
-            Template::Definition(definition) => definition.signature(),
-        }
-    }
-}
-
-impl Debug for Instantiation {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        f.debug_struct("Instantiation")
-            .field("export", &self.export)
-            .field("template", &self.template.get())
-            .finish()
-    }
-}
-
-/// Represents a function body.
-#[derive(Clone, Debug)]
-pub enum Body {
-    Defined(Arc<crate::code_block::Code>),
-}
-
-/// Represents a function definition.
-pub struct Definition {
-    index: usize,
-    body: lazy_init::LazyTransform<record::FunctionBody<'static>, Result<Body, error::LoaderError>>,
-    signature: lazy_init::LazyTransform<sailar::index::FunctionSignature, Result<Arc<Signature>, error::LoaderError>>,
-    module: Weak<module::Module>,
-}
-
-impl Definition {
-    pub(crate) fn new(definition: record::FunctionDefinition<'static>, index: usize, module: Weak<module::Module>) -> Arc<Self> {
-        Arc::new(Self {
-            index,
-            body: lazy_init::LazyTransform::new(definition.body),
-            signature: lazy_init::LazyTransform::new(definition.signature),
-            module,
-        })
-    }
-
-    pub fn module(&self) -> &Weak<module::Module> {
-        &self.module
-    }
-
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn body(&self) -> Result<&Body, error::LoaderError> {
-        self.body
-            .get_or_create(|body| match body {
-                record::FunctionBody::Definition(code) => {
-                    let module = module::Module::upgrade_weak(&self.module)?;
-                    Ok(Body::Defined(module.get_code_block(code)?.clone()))
-                }
-                record::FunctionBody::Foreign { .. } => todo!("foreign function bodies not yet supported"),
+    pub fn entry_block(&self) -> Result<&DefinedBody, error::LoaderError> {
+        self.entry_block
+            .get_or_create(|entry_block| {
+                module::Module::upgrade_weak(&self.module).map(|module| module.code_blocks()[usize::from(entry_block)].clone())
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -226,9 +232,8 @@ impl Definition {
     pub fn signature(&self) -> Result<&Arc<Signature>, error::LoaderError> {
         self.signature
             .get_or_create(|signature| {
-                module::Module::upgrade_weak(&self.module)?
-                    .get_function_signature(signature)
-                    .cloned()
+                module::Module::upgrade_weak(&self.module)
+                    .map(|module| module.function_signatures()[usize::from(signature)].clone())
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -237,15 +242,21 @@ impl Definition {
     pub fn to_template(self: &Arc<Self>) -> Template {
         Template::from(self.clone())
     }
+
+    pub fn to_symbol(self: &Arc<Self>) -> Option<Symbol> {
+        Symbol::new(self.clone())
+    }
 }
 
-impl Debug for Definition {
+impl Debug for DefinedTemplate {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Definition")
+            .field("index", &self.index)
+            .field("export", &self.export)
             .field("signature", &self.signature.get())
-            .field("body", &self.body.get())
+            .field("entry_block", &self.entry_block.get())
             .finish()
     }
 }
 
-crate::symbol_wrapper!(pub struct Symbol(Instantiation));
+crate::symbol_wrapper!(pub struct Symbol(DefinedTemplate));

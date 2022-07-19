@@ -6,7 +6,7 @@ use inkwell::basic_block::BasicBlock as LlvmBlock;
 use inkwell::builder::Builder as LlvmBuilder;
 use inkwell::values::BasicValueEnum as LlvmBasicValue;
 use inkwell::values::FunctionValue as LlvmFunction;
-use sailar_load::code_block::{Code, Instruction};
+use sailar_load::code_block::{Code, TypedInstruction};
 use sailar_load::type_system::Type;
 use std::collections::hash_map;
 use std::sync::Arc;
@@ -76,36 +76,33 @@ impl<'cache, 'module, 'context> Transpiler<'cache, 'module, 'context> {
     /// Translates the contents of the specified SAILAR function, writing the LLVM IR to the specified LLVM function.
     pub fn translate(
         &mut self,
-        function: Arc<sailar_load::function::Instantiation>,
+        function: Arc<sailar_load::function::Function>,
         destination: LlvmFunction<'context>,
     ) -> Result<()> {
         self.block_lookup.clear();
         self.undefined_blocks.clear();
 
-        let entry_block = match function.template()?.as_definition()?.body()? {
-            sailar_load::function::Body::Defined(code) => code,
-            //_ => todo!("cannot translate SAILAR function with foreign body"),
-        };
+        let entry_block = function.template()?.as_definition()?.entry_block()?;
 
         self.get_or_add_block(destination, entry_block.clone());
 
         while let Some((sailar_block, llvm_block)) = self.undefined_blocks.pop() {
             self.builder.position_at_end(llvm_block);
-            for opcode in sailar_block.instructions()?.iter() {
-                match opcode {
-                    Instruction::Nop | Instruction::Break => (),
-                    Instruction::Ret(values) => {
+            for instruction in sailar_block.typed_instructions()?.iter() {
+                match instruction {
+                    TypedInstruction::Nop | TypedInstruction::Break => (),
+                    TypedInstruction::Ret(values) => {
                         let actual_return_value;
                         self.builder.build_return(match std::ops::Deref::deref(values) {
                             [] => None,
                             [value] => {
-                                actual_return_value = self.translate_value(&value)?;
+                                actual_return_value = self.translate_value(value)?;
                                 Some(&actual_return_value)
                             }
                             _ => todo!("multiple return values not yet supported"),
                         });
                     }
-                    bad => todo!("add support for {:?}", bad),
+                    //bad => todo!("add support for {:?}", bad),
                 }
             }
         }

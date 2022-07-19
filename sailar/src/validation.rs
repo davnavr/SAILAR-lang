@@ -192,11 +192,13 @@ pub struct Exports {
     pub function_templates: Vec<index::FunctionTemplate>,
 }
 
+pub type ModuleIdentifierSet<'data> = rustc_hash::FxHashSet<record::ModuleIdentifier<'data>>;
+
 /// Represents the contents of a SAILAR module.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct ModuleContents<'data> {
-    pub module_identifiers: Vec<record::ModuleIdentifier<'data>>,
+    pub module_identifiers: ModuleIdentifierSet<'data>,
     pub entry_point: Option<index::Function>,
     /// The list of all identifier records in the module.
     pub identifiers: Vec<Cow<'data, crate::identifier::Id>>,
@@ -205,6 +207,7 @@ pub struct ModuleContents<'data> {
     pub data: Vec<Cow<'data, [u8]>>,
     pub code: Vec<record::CodeBlock<'data>>,
     pub function_templates: Vec<record::FunctionTemplate<'data>>,
+    pub functions: Vec<record::Function<'data>>,
 }
 
 impl<'data> ModuleContents<'data> {
@@ -575,11 +578,17 @@ impl<'data> ValidModule<'data> {
             }
         }
 
-        //for (index, instantiation) in contents.functions.iter() {}
+        let check_function_template_index = get_index_validator(contents.function_templates.len());
+
+        for instantiation in contents.functions.iter() {
+            check_function_template_index(instantiation.template)?;
+        }
 
         for field in metadata_fields.into_iter() {
             match field {
-                record::MetadataField::ModuleIdentifier(identifier) => contents.module_identifiers.push(identifier),
+                record::MetadataField::ModuleIdentifier(identifier) => {
+                    contents.module_identifiers.insert(identifier);
+                }
                 record::MetadataField::EntryPoint(entry_point) => {
                     if let Some(defined) = contents.entry_point {
                         return Err(ErrorKind::DuplicateEntryPoint {
@@ -613,7 +622,7 @@ impl<'data> ValidModule<'data> {
                 Record::Data(data) => contents.data.push(data),
                 Record::CodeBlock(block) => contents.code.push(block),
                 Record::FunctionTemplate(template) => contents.function_templates.push(template),
-                bad => todo!("validate {:?}", bad),
+                Record::Function(function) => contents.functions.push(function),
             }
         }
 
@@ -622,6 +631,10 @@ impl<'data> ValidModule<'data> {
 
     pub fn from_records<R: IntoIterator<Item = Record<'data>>>(records: R) -> Result<Self, Error> {
         Self::from_records_fallible::<_, std::convert::Infallible>(records.into_iter().map(Ok)).unwrap()
+    }
+
+    pub fn from_builder(builder: crate::builder::Builder<'static>) -> Result<Self, Error> {
+        Self::from_records(builder.into_records())
     }
 
     pub fn contents(&self) -> &ModuleContents<'data> {
