@@ -101,8 +101,7 @@ impl<'cache, 'module, 'context> Transpiler<'cache, 'module, 'context> {
                             }
                             _ => todo!("multiple return values not yet supported"),
                         });
-                    }
-                    //bad => todo!("add support for {:?}", bad),
+                    } //bad => todo!("add support for {:?}", bad),
                 }
             }
         }

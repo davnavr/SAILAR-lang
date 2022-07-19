@@ -245,6 +245,8 @@ impl<'input> Inputs<'input> {
             }
         }
 
+        output_module.verify().map_err(error::CompilationErrorKind::InvalidOutput)?;
+
         Ok(Compilation {
             output_module,
             input_modules,

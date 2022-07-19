@@ -58,15 +58,15 @@ pub enum InvalidEntryPointError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompilationErrorKind {
-    /// Indicates that some error occured while resolving a reference to a SAILAR module.
-    #[error(transparent)]
-    ModuleResolution(#[from] GenericError),
     #[error(transparent)]
     InvalidEntryPoint(#[from] InvalidEntryPointError),
     #[error(transparent)]
     Loader(#[from] sailar_load::error::LoaderError),
     #[error(transparent)]
     InvalidTarget(#[from] crate::target::Error),
+    /// Used when validation of a produced LLVM module fails
+    #[error(transparent)]
+    InvalidOutput(inkwell::support::LLVMString),
 }
 
 /// The error type used when an error occurs during compilation.

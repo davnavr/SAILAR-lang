@@ -39,7 +39,7 @@ impl<'types, 'module, 'context> Cache<'types, 'module, 'context> {
 
                 let linkage = if template.export().kind() == sailar::record::ExportKind::Export {
                     inkwell::module::Linkage::External
-                } else { 
+                } else {
                     inkwell::module::Linkage::Private
                 };
 
