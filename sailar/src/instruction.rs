@@ -335,11 +335,11 @@ instruction_set! {{
     /// On supported platforms, indicates a debugger breakpoint has been hit. Behaves like a `nop` instruction otherwise.
     Break = 1,
     /// ```text
-    /// ret <value0>, <value1>, ... ; Return multiple values
-    /// ret ; Return no values
+    /// return <value0>, <value1>, ... ; Return multiple values
+    /// return ; Return no values
     /// ```
     /// Transfers control flow back to the calling function, providing the specified return value(s).
-    Ret(_values: Box<[Value]>,) = 2,
+    Return(_values: Box<[Value]>,) = 2,
     // Select = 3,
     // Switch = 4,
     // Br = 5,
@@ -353,31 +353,31 @@ instruction_set! {{
     //CallIndr = 8,
     //CallRet = 9,
     /// ```text
-    /// <sum> = addi <x> <y>
-    /// <sum> = addi sat <x> <y>
-    /// <sum>, <overflowed> = addi ovf <x> <y>
+    /// <sum> = iadd <x> <y> ; Ignores any overflow/underflow
+    /// <sum> = iadd sat <x> <y> ; Performs saturating addition
+    /// <sum>, <overflowed> = iadd ovf <x> <y>
     /// ```
     /// Calculates the sum of two integer values.
-    AddI(_op: Box<IntegerArithmetic>,) = 0xA,
+    IAdd(_op: Box<IntegerArithmetic>,) = 0xA,
     /// ```text
-    /// <sum> = subi <x> <y> ; Calculates x - y
-    /// <sum> = subi sat <x> <y>
-    /// <sum>, <overflowed> = subi ovf <x> <y>
+    /// <sum> = isub <x> <y> ; Calculates x - y, ignoring any overflow/underflow
+    /// <sum> = isub sat <x> <y>
+    /// <sum>, <overflowed> = isub ovf <x> <y>
     /// ```
     /// Calculates the integer result of subtracting `y` from `x`.
-    SubI(_op: Box<IntegerArithmetic>,) = 0xB,
+    ISub(_op: Box<IntegerArithmetic>,) = 0xB,
     // TODO: Could introduce muli overflow variant that returns the HIGH overflowing bits instead of just a single I overflow bool.
-    //MulI(_op: Box<IntegerArithmetic>,) = 0xC,
-    //DivI = 0xD,
-    //RemI,
-    //ModI,
-    //DivRemI,
-    //AddF,
-    //SubF,
-    //MulF,
-    //DivF,
-    //RemF,
-    //NegF,
+    //IMul(_op: Box<IntegerArithmetic>,) = 0xC,
+    //IDiv = 0xD,
+    //IRem,
+    //IMod,
+    //IDivRem,
+    //FAdd,
+    //FSub,
+    //FMul,
+    //FDiv,
+    //FRem,
+    //FNeg,
     //Not
     //And,
     //Or,
@@ -396,10 +396,10 @@ impl Instruction {
     /// ```
     /// # use sailar::instruction::Instruction;
     /// assert_eq!(Instruction::Nop.is_terminator(), false);
-    /// assert_eq!(Instruction::Ret(Default::default()).is_terminator(), true);
+    /// assert_eq!(Instruction::Return(Default::default()).is_terminator(), true);
     /// ```
     pub fn is_terminator(&self) -> bool {
-        matches!(self, Self::Ret(_))
+        matches!(self, Self::Return(_))
     }
 }
 

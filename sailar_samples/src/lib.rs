@@ -40,7 +40,7 @@ pub fn exit_with(name: Identifier, exit_code: u32) -> Builder<'static> {
     };
 
     let main_code = {
-        let instructions = vec![Instruction::Ret(
+        let instructions = vec![Instruction::Return(
             vec![instruction::ConstantInteger::I32(exit_code.to_le_bytes()).into()].into_boxed_slice(),
         )];
 

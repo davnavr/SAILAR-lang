@@ -32,7 +32,7 @@ impl TypedValue {
 pub enum TypedInstruction {
     Nop,
     Break,
-    Ret(Box<[TypedValue]>),
+    Return(Box<[TypedValue]>),
 }
 
 pub struct Code {
@@ -103,7 +103,7 @@ impl Code {
                     typed_instructions.push(match instruction {
                         Instruction::Nop => TypedInstruction::Nop,
                         Instruction::Break => TypedInstruction::Break,
-                        Instruction::Ret(values) => {
+                        Instruction::Return(values) => {
                             assert!(values.len() == result_types.len());
 
                             let mut return_values = Vec::with_capacity(values.len());
@@ -112,7 +112,7 @@ impl Code {
                                 return_values.push(TypedValue::new(return_type.signature()?.clone(), value.clone()));
                             }
 
-                            TypedInstruction::Ret(return_values.into_boxed_slice())
+                            TypedInstruction::Return(return_values.into_boxed_slice())
                         }
                         bad => todo!("translate {:?}", bad),
                     })

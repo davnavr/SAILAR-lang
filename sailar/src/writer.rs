@@ -157,7 +157,7 @@ impl<W: Write> Writer<W> {
             self.write_byte(u8::from(instruction.opcode()))?;
             match instruction {
                 Instruction::Nop | Instruction::Break => (),
-                Instruction::Ret(values) => {
+                Instruction::Return(values) => {
                     self.write_length(values.len())?;
                     values.iter().try_for_each(|value| self.write_code_value(value))?;
                 }
@@ -166,7 +166,7 @@ impl<W: Write> Writer<W> {
                     self.write_length(arguments.len())?;
                     arguments.iter().try_for_each(|argument| self.write_code_value(argument))?;
                 }
-                Instruction::AddI(operands) | Instruction::SubI(operands) => {
+                Instruction::IAdd(operands) | Instruction::ISub(operands) => {
                     self.write_byte(u8::from(operands.overflow_behavior()))?;
                     self.write_code_value(operands.x_value())?;
                     self.write_code_value(operands.y_value())?;

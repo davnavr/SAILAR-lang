@@ -488,7 +488,7 @@ impl<'data> ValidModule<'data> {
 
                     match instruction {
                         Instruction::Nop | Instruction::Break => (),
-                        Instruction::AddI(arguments) | Instruction::SubI(arguments) => {
+                        Instruction::IAdd(arguments) | Instruction::ISub(arguments) => {
                             let operand_type = next_temporary_register_type()?;
 
                             if !operand_type.is_integer() {
@@ -510,7 +510,7 @@ impl<'data> ValidModule<'data> {
                                 instruction::OverflowBehavior::Ignore | instruction::OverflowBehavior::Saturate => (),
                             }
                         }
-                        Instruction::Ret(values) => {
+                        Instruction::Return(values) => {
                             expected_types_for_values(values.as_ref(), block.result_types())?;
                             has_terminator = true;
                         }

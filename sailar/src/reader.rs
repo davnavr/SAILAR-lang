@@ -620,13 +620,13 @@ impl<R: Read> RecordReader<R> {
                 Ok(match source.wrap_result(Opcode::try_from(opcode_value))? {
                     Opcode::Nop => Instruction::Nop,
                     Opcode::Break => Instruction::Break,
-                    Opcode::Ret => Instruction::Ret(read_many_code_values(source)?),
+                    Opcode::Return => Instruction::Return(read_many_code_values(source)?),
                     Opcode::Call => Instruction::Call(
                         source.read_unsigned_integer_try_into(|| ErrorKind::MissingInstructionCalleeIndex)?,
                         read_many_code_values(source)?,
                     ),
-                    Opcode::AddI => Instruction::AddI(read_integer_arithmteic(source)?),
-                    Opcode::SubI => Instruction::SubI(read_integer_arithmteic(source)?),
+                    Opcode::IAdd => Instruction::IAdd(read_integer_arithmteic(source)?),
+                    Opcode::ISub => Instruction::ISub(read_integer_arithmteic(source)?),
                 })
             };
 

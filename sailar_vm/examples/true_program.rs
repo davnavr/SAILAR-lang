@@ -4,7 +4,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = sailar_load::state::Configuration::new().create_state();
 
-    let module = state.load_module(sailar::validation::ValidModule::from_builder(program)?).unwrap();
+    let module = state
+        .load_module(sailar::validation::ValidModule::from_builder(program)?)
+        .unwrap();
 
     let main = module.entry_point().ok_or("expected entry point to be present")?;
     let runtime = sailar_vm::runtime::Configuration::new().initialize_runtime();

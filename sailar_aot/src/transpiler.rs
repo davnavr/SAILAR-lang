@@ -91,7 +91,7 @@ impl<'cache, 'module, 'context> Transpiler<'cache, 'module, 'context> {
             for instruction in sailar_block.typed_instructions()?.iter() {
                 match instruction {
                     TypedInstruction::Nop | TypedInstruction::Break => (),
-                    TypedInstruction::Ret(values) => {
+                    TypedInstruction::Return(values) => {
                         let actual_return_value;
                         self.builder.build_return(match std::ops::Deref::deref(values) {
                             [] => None,
