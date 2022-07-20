@@ -24,6 +24,27 @@ impl ConstantInteger {
             Self::I64(_) => signature::IntegerSize::I64,
         }
     }
+
+    fn to_comparable_value(self) -> impl std::cmp::Ord {
+        match self {
+            Self::I8(byte) => u64::from(byte),
+            Self::I16(bytes) => u64::from(u16::from_le_bytes(bytes)),
+            Self::I32(bytes) => u64::from(u32::from_le_bytes(bytes)),
+            Self::I64(bytes) => u64::from_le_bytes(bytes),
+        }
+    }
+}
+
+impl std::cmp::Ord for ConstantInteger {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_comparable_value().cmp(&other.to_comparable_value())
+    }
+}
+
+impl std::cmp::PartialOrd for ConstantInteger {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(std::cmp::Ord::cmp(&self, &other))
+    }
 }
 
 impl std::ops::Deref for ConstantInteger {
@@ -280,6 +301,64 @@ impl IntegerArithmetic {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct ConditionalBranch {
+    pub condition: Value,
+    pub true_branch: index::CodeBlock,
+    pub false_branch: index::CodeBlock,
+}
+
+impl ConditionalBranch {
+    pub fn new(condition: Value, true_branch: index::CodeBlock, false_branch: index::CodeBlock) -> Self {
+        Self { condition, true_branch, false_branch }
+    }
+}
+
+/// Represents the possible targets of a `switch lookup` instruction.
+/// 
+/// See the documentation for [`SwitchLookup`] for more information.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Default)]
+pub struct SwitchLookupBranches {
+    branches: std::collections::BTreeMap<ConstantInteger, index::CodeBlock>,
+}
+
+impl SwitchLookupBranches {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn try_insert(&mut self, value: ConstantInteger, target: index::CodeBlock) -> Result<(), index::CodeBlock> {
+        match self.branches.insert(value, target) {
+            None => Ok(()),
+            Some(existing) => Err(existing),
+        }
+    }
+}
+
+/// Describes a `switch lookup` instruction.
+/// 
+/// See the documentation for [`Instruction::SwitchLookup`] for more information.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct SwitchLookup {
+    pub comparand: Value,
+    pub default_branch: index::CodeBlock,
+    pub branches: SwitchLookupBranches,
+}
+
+/// Describes a `switch table` instruction.
+/// 
+/// See the documentation for [`Instruction::SwitchTable`] for more information.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct SwitchTable {
+    pub index: Value,
+    pub default_branch: index::CodeBlock,
+    pub branches: Box<[index::CodeBlock]>,
+}
+
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("{value:#02X} is not a valid opcode")]
 pub struct InvalidOpcodeError {
@@ -324,51 +403,116 @@ macro_rules! instruction_set {
 }
 
 instruction_set! {{
+    /// Does absolutely nothing.
+    ///
+    /// ### Assembly Syntax
     /// ```text
     /// nop
     /// ```
-    /// Does absolutely nothing.
     Nop = 0,
+    /// Indicates that control flow cannot reach this particular location. Behavior is undefined if this instruction is actually
+    /// reached somehow.
+    ///
+    /// ### Assembly Syntax
     /// ```text
-    /// break
+    /// unreachable
     /// ```
-    /// On supported platforms, indicates a debugger breakpoint has been hit. Behaves like a `nop` instruction otherwise.
-    Break = 1,
+    Unreachable = 1,
+    /// Transfers control flow back to the calling function, providing the specified return value(s).
+    ///
+    /// ### Assembly Syntax
     /// ```text
     /// return <value0>, <value1>, ... ; Return multiple values
     /// return ; Return no values
     /// ```
-    /// Transfers control flow back to the calling function, providing the specified return value(s).
     Return(_values: Box<[Value]>,) = 2,
-    // Select = 3,
-    // Switch = 4,
-    // Br = 5,
-    // BrIf = 6,
+    /// Given an integer value `comparand`, performs a lookup to determine where to transfer control to.
+    /// 
+    /// Note that the comparison values are sorted in increasing order.
+    /// 
+    /// ### Implementation
+    /// The target to jump to can be easily determined using a binary search, taking `O(log n)` time.
+    /// 
+    /// ### Assembly Syntax
+    /// ```text
+    /// switch lookup <comparand_type> <comparand> <value0> <target0>, <value1> <target1>, ... default <default_target>
+    /// switch lookup <comparand_type> <comparand> <value0> <target0> (<argument0>, ...), ... default <default_target>
+    /// ```
+    SwitchLookup(_lookup: Box<SwitchLookup>,) = 3,
+    /// Indexes a table to determine where to transfer control to.
+    /// 
+    /// ### Implementation
+    /// As an index is used into a table to determine the target, this has `O(1)` time complexity.
+    /// 
+    /// ### Assembly Syntax
+    /// ```text
+    /// switch table <index_type> <index> <target0>, <target1>, ... default <default_target>
+    /// switch table <index_type> <index> <target0> (<argument0>, <argument1>, ...), ... default <default_target>
+    /// ```
+    SwitchTable(_table: Box<SwitchTable>,) = 4,
+    /// Unconditionally transfers control flow to the specified code block, using the specified values as inputs.
+    ///
+    /// ### Assembly Syntax
+    /// ```text
+    /// branch <target> ; No arguments
+    /// branch <target> (<argument0>, <argument1>, ...)
+    /// ```
+    Branch(_target: index::CodeBlock,) = 5,
+    /// Performs a conditional branch.
+    /// 
+    /// If the `condition` (an `i1` value) is true, transfers control to the first block; otherwise, control is transferred to
+    /// the second block.
+    ///
+    /// ### Assembly Syntax
+    /// ```text
+    /// branch if <condition> <true_branch> <false_branch> ; No arguments
+    /// branch if <condition> <true_branch> (<argument0>, <argument1>, ...) <false_branch> (<argument0>, <argument1>, ...) ; With arguments
+    /// ```
+    /// 
+    /// ### Example
+    /// ```text
+    /// ; Note that the false block accepts a different number of arguments than the true block
+    /// branch if %condition $true_block (1, $some_other_argument) $false_block (1, 2, 3)
+    /// ```
+    BranchIf(_branch: ConditionalBranch,) = 6,
+    /// Transfers control flow to the specified `function`, providing the specified values as arguments.
+    ///
+    /// ### Assembly Syntax
     /// ```text
     /// <result0>, <result1>, ... = call <function> (<argument0>, <argument1>, ...) ; Call function with return values
     /// call <function> (<argument0>, <argument1>, ...) ; Call function with no return values
     /// ```
-    /// Transfers control flow to the specified `function`, providing the specified values as arguments.
     Call(_callee: index::Function, _arguments: Box<[Value]>,) = 7,
     //CallIndr = 8,
-    //CallRet = 9,
+    /// Selects one of two values of the same type based on a boolean condition value (an `i1`), without the need to use
+    /// branching instructions.
+    /// 
+    /// ### Assembly Syntax
+    /// ```text
+    /// <result> = select <condition> <value1> <value2>
+    /// ```
+    Select = 0x10,
+    /// Calculates the sum of two integer values.
+    ///
+    /// ### Assembly Syntax
     /// ```text
     /// <sum> = iadd <x> <y> ; Ignores any overflow/underflow
     /// <sum> = iadd sat <x> <y> ; Performs saturating addition
     /// <sum>, <overflowed> = iadd ovf <x> <y>
     /// ```
-    /// Calculates the sum of two integer values.
-    IAdd(_op: Box<IntegerArithmetic>,) = 0xA,
+    IAdd(_op: Box<IntegerArithmetic>,) = 0x1A,
+    /// Calculates the integer result of subtracting `y` from `x`.
+    ///
+    /// ### Assembly Syntax
     /// ```text
     /// <sum> = isub <x> <y> ; Calculates x - y, ignoring any overflow/underflow
     /// <sum> = isub sat <x> <y>
     /// <sum>, <overflowed> = isub ovf <x> <y>
     /// ```
-    /// Calculates the integer result of subtracting `y` from `x`.
-    ISub(_op: Box<IntegerArithmetic>,) = 0xB,
+    ISub(_op: Box<IntegerArithmetic>,) = 0x1B,
     // TODO: Could introduce muli overflow variant that returns the HIGH overflowing bits instead of just a single I overflow bool.
-    //IMul(_op: Box<IntegerArithmetic>,) = 0xC,
-    //IDiv = 0xD,
+    //IMul(_op: Box<IntegerArithmetic>,) = 0x1C,
+    //IDiv = 0x1D,
     //IRem,
     //IMod,
     //IDivRem,
@@ -399,7 +543,7 @@ impl Instruction {
     /// assert_eq!(Instruction::Return(Default::default()).is_terminator(), true);
     /// ```
     pub fn is_terminator(&self) -> bool {
-        matches!(self, Self::Return(_))
+        matches!(self, Self::Return(_) | Self::Unreachable | Self::Branch(_) | Self::SwitchLookup(_) | Self::SwitchTable(_))
     }
 }
 
