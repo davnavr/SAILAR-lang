@@ -487,7 +487,10 @@ impl<'data> ValidModule<'data> {
                     }
 
                     match instruction {
-                        Instruction::Nop | Instruction::Break => (),
+                        Instruction::Nop => (),
+                        Instruction::Unreachable => {
+                            has_terminator = true;
+                        }
                         Instruction::IAdd(arguments) | Instruction::ISub(arguments) => {
                             let operand_type = next_temporary_register_type()?;
 
@@ -522,6 +525,14 @@ impl<'data> ValidModule<'data> {
                     } else if !has_terminator {
                         invalid_instruction!(InvalidInstructionKind::ExpectedTerminator);
                     }
+                }
+
+                if current_temporary_count.get() < block.temporary_count() {
+                    todo!(
+                        "error for not enough temporaries defined (expected {}, got {})",
+                        block.temporary_count(),
+                        current_temporary_count.get()
+                    )
                 }
             }
         }

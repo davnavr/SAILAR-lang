@@ -134,14 +134,24 @@ impl<W: Write> Writer<W> {
         self.write_byte(flags.bits())?;
         match value {
             instruction::Value::IndexedRegister(index) => self.write_length(*index),
-            instruction::Value::Constant(instruction::Constant::Integer(integer)) => match integer {
-                _ if flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) => Ok(()),
-                instruction::ConstantInteger::I8(byte) => self.write_byte(*byte),
-                instruction::ConstantInteger::I16(ref bytes) => self.write_all(bytes),
-                instruction::ConstantInteger::I32(ref bytes) => self.write_all(bytes),
-                instruction::ConstantInteger::I64(ref bytes) => self.write_all(bytes),
-            },
+            instruction::Value::Constant(instruction::Constant::Integer(integer)) => {
+                if !flags.contains(instruction::ValueFlags::INTEGER_IS_EMBEDDED) {
+                    self.write_all(integer.bytes())
+                } else {
+                    Ok(())
+                }
+            }
         }
+    }
+
+    fn write_many_code_values(&mut self, values: &[instruction::Value]) -> Result {
+        self.write_length(values.len())?;
+        values.iter().try_for_each(|value| self.write_code_value(value))
+    }
+
+    fn write_branch_target(&mut self, target: &instruction::BranchTarget) -> Result {
+        self.write_length(target.target)?;
+        self.write_many_code_values(&target.arguments)
     }
 
     fn write_code_block(&mut self, block: &record::CodeBlock) -> Result {
@@ -156,15 +166,41 @@ impl<W: Write> Writer<W> {
         for instruction in block.instructions.iter() {
             self.write_byte(u8::from(instruction.opcode()))?;
             match instruction {
-                Instruction::Nop | Instruction::Break => (),
-                Instruction::Return(values) => {
-                    self.write_length(values.len())?;
-                    values.iter().try_for_each(|value| self.write_code_value(value))?;
+                Instruction::Nop | Instruction::Unreachable => (),
+                Instruction::Return(values) => self.write_many_code_values(values)?,
+                Instruction::Branch(target) => self.write_branch_target(target)?,
+                Instruction::BranchIf(conditional_branch) => {
+                    self.write_code_value(&conditional_branch.condition)?;
+                    self.write_branch_target(&conditional_branch.true_branch)?;
+                    self.write_branch_target(&conditional_branch.false_branch)?;
+                }
+                Instruction::SwitchTable(table) => {
+                    self.write_code_value(&table.index)?;
+                    self.write_length(table.default_branch)?;
+                    self.write_length(table.branches.len())?;
+                    table
+                        .branches
+                        .iter()
+                        .try_for_each(|target| self.write_branch_target(target))?;
+                }
+                Instruction::SwitchLookup(lookup) => {
+                    self.write_length(lookup.comparand_type)?;
+                    self.write_code_value(&lookup.comparand)?;
+                    self.write_length(lookup.default_branch)?;
+                    self.write_length(lookup.branches.len())?;
+                    lookup.branches.iter().try_for_each(|(value, branch)| {
+                        todo!("have a special encoding for constant only values");
+                        self.write_branch_target(branch)
+                    })?;
                 }
                 Instruction::Call(callee, arguments) => {
                     self.write_length(*callee)?;
-                    self.write_length(arguments.len())?;
-                    arguments.iter().try_for_each(|argument| self.write_code_value(argument))?;
+                    self.write_many_code_values(arguments)?;
+                }
+                Instruction::Select(selection) => {
+                    self.write_code_value(&selection.condition)?;
+                    self.write_code_value(&selection.true_value)?;
+                    self.write_code_value(&selection.false_value)?;
                 }
                 Instruction::IAdd(operands) | Instruction::ISub(operands) => {
                     self.write_byte(u8::from(operands.overflow_behavior()))?;

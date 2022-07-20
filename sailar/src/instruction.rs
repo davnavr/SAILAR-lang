@@ -25,6 +25,10 @@ impl ConstantInteger {
         }
     }
 
+    pub fn bytes(&self) -> &[u8] {
+        self.borrow()
+    }
+
     fn to_comparable_value(self) -> impl std::cmp::Ord {
         match self {
             Self::I8(byte) => u64::from(byte),
@@ -74,6 +78,12 @@ impl BorrowMut<[u8]> for ConstantInteger {
             Self::I32(i) => i.as_mut_slice(),
             Self::I64(l) => l.as_mut_slice(),
         }
+    }
+}
+
+impl AsRef<[u8]> for ConstantInteger {
+    fn as_ref(&self) -> &[u8] {
+        self.borrow()
     }
 }
 
@@ -305,23 +315,42 @@ impl IntegerArithmetic {
 #[non_exhaustive]
 pub struct ConditionalBranch {
     pub condition: Value,
-    pub true_branch: index::CodeBlock,
-    pub false_branch: index::CodeBlock,
+    pub true_branch: BranchTarget,
+    pub false_branch: BranchTarget,
 }
 
 impl ConditionalBranch {
-    pub fn new(condition: Value, true_branch: index::CodeBlock, false_branch: index::CodeBlock) -> Self {
-        Self { condition, true_branch, false_branch }
+    pub fn new(condition: Value, true_branch: BranchTarget, false_branch: BranchTarget) -> Self {
+        Self {
+            condition,
+            true_branch,
+            false_branch,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct BranchTarget {
+    pub target: index::CodeBlock,
+    pub arguments: Box<[Value]>,
+}
+
+impl BranchTarget {
+    pub fn new<A: Into<Box<[Value]>>>(target: index::CodeBlock, arguments: A) -> Self {
+        Self {
+            target,
+            arguments: arguments.into(),
+        }
     }
 }
 
 /// Represents the possible targets of a `switch lookup` instruction.
-/// 
+///
 /// See the documentation for [`SwitchLookup`] for more information.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct SwitchLookupBranches {
-    branches: std::collections::BTreeMap<ConstantInteger, index::CodeBlock>,
+    branches: std::collections::BTreeMap<ConstantInteger, BranchTarget>,
 }
 
 impl SwitchLookupBranches {
@@ -329,34 +358,64 @@ impl SwitchLookupBranches {
         Self::default()
     }
 
-    pub fn try_insert(&mut self, value: ConstantInteger, target: index::CodeBlock) -> Result<(), index::CodeBlock> {
+    pub fn len(&self) -> usize {
+        self.branches.len()
+    }
+
+    pub fn try_insert(&mut self, value: ConstantInteger, target: BranchTarget) -> Result<(), index::CodeBlock> {
         match self.branches.insert(value, target) {
             None => Ok(()),
-            Some(existing) => Err(existing),
+            Some(existing) => Err(existing.target),
         }
+    }
+
+    pub fn iter(&self) -> impl std::iter::ExactSizeIterator<Item = (&ConstantInteger, &BranchTarget)> {
+        self.branches.iter()
     }
 }
 
 /// Describes a `switch lookup` instruction.
-/// 
+///
 /// See the documentation for [`Instruction::SwitchLookup`] for more information.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct SwitchLookup {
+    pub comparand_type: index::TypeSignature,
     pub comparand: Value,
     pub default_branch: index::CodeBlock,
     pub branches: SwitchLookupBranches,
 }
 
 /// Describes a `switch table` instruction.
-/// 
+///
 /// See the documentation for [`Instruction::SwitchTable`] for more information.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct SwitchTable {
     pub index: Value,
     pub default_branch: index::CodeBlock,
-    pub branches: Box<[index::CodeBlock]>,
+    pub branches: Box<[BranchTarget]>,
+}
+
+/// Describes a `select` instruction.
+///
+/// See the documentation for [`Instruction::Select`] for more information.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub struct Selection {
+    pub condition: Value,
+    pub true_value: Value,
+    pub false_value: Value,
+}
+
+impl Selection {
+    pub fn new(condition: Value, true_value: Value, false_value: Value) -> Self {
+        Self {
+            condition,
+            true_value,
+            false_value,
+        }
+    }
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -427,12 +486,12 @@ instruction_set! {{
     /// ```
     Return(_values: Box<[Value]>,) = 2,
     /// Given an integer value `comparand`, performs a lookup to determine where to transfer control to.
-    /// 
+    ///
     /// Note that the comparison values are sorted in increasing order.
-    /// 
+    ///
     /// ### Implementation
     /// The target to jump to can be easily determined using a binary search, taking `O(log n)` time.
-    /// 
+    ///
     /// ### Assembly Syntax
     /// ```text
     /// switch lookup <comparand_type> <comparand> <value0> <target0>, <value1> <target1>, ... default <default_target>
@@ -440,10 +499,10 @@ instruction_set! {{
     /// ```
     SwitchLookup(_lookup: Box<SwitchLookup>,) = 3,
     /// Indexes a table to determine where to transfer control to.
-    /// 
+    ///
     /// ### Implementation
     /// As an index is used into a table to determine the target, this has `O(1)` time complexity.
-    /// 
+    ///
     /// ### Assembly Syntax
     /// ```text
     /// switch table <index_type> <index> <target0>, <target1>, ... default <default_target>
@@ -457,9 +516,9 @@ instruction_set! {{
     /// branch <target> ; No arguments
     /// branch <target> (<argument0>, <argument1>, ...)
     /// ```
-    Branch(_target: index::CodeBlock,) = 5,
+    Branch(_target: BranchTarget,) = 5,
     /// Performs a conditional branch.
-    /// 
+    ///
     /// If the `condition` (an `i1` value) is true, transfers control to the first block; otherwise, control is transferred to
     /// the second block.
     ///
@@ -468,7 +527,7 @@ instruction_set! {{
     /// branch if <condition> <true_branch> <false_branch> ; No arguments
     /// branch if <condition> <true_branch> (<argument0>, <argument1>, ...) <false_branch> (<argument0>, <argument1>, ...) ; With arguments
     /// ```
-    /// 
+    ///
     /// ### Example
     /// ```text
     /// ; Note that the false block accepts a different number of arguments than the true block
@@ -486,12 +545,12 @@ instruction_set! {{
     //CallIndr = 8,
     /// Selects one of two values of the same type based on a boolean condition value (an `i1`), without the need to use
     /// branching instructions.
-    /// 
+    ///
     /// ### Assembly Syntax
     /// ```text
     /// <result> = select <condition> <value1> <value2>
     /// ```
-    Select = 0x10,
+    Select(_select: Selection,) = 0x10,
     /// Calculates the sum of two integer values.
     ///
     /// ### Assembly Syntax
@@ -543,7 +602,15 @@ impl Instruction {
     /// assert_eq!(Instruction::Return(Default::default()).is_terminator(), true);
     /// ```
     pub fn is_terminator(&self) -> bool {
-        matches!(self, Self::Return(_) | Self::Unreachable | Self::Branch(_) | Self::SwitchLookup(_) | Self::SwitchTable(_))
+        matches!(
+            self,
+            Self::Return(_)
+                | Self::Unreachable
+                | Self::Branch(_)
+                | Self::BranchIf(_)
+                | Self::SwitchLookup(_)
+                | Self::SwitchTable(_)
+        )
     }
 }
 
